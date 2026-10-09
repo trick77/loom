@@ -27,7 +27,7 @@ import (
 // settle before its terminal event and again once a late call (the title of
 // a failed turn) has finished, without counting anything twice.
 type turnCostSettler struct {
-	s             *server
+	s             *Engine
 	user          auth.User
 	userMessageID string
 	acc           *llm.UsageAccumulator

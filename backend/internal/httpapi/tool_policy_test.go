@@ -93,7 +93,7 @@ func TestCategoryGrantsCodingDocs(t *testing.T) {
 // tool set: docgen schemas are withheld for a plain category and present once the
 // gate enables them.
 func TestAvailableToolsGatesDocgen(t *testing.T) {
-	srv := &server{
+	srv := &Engine{
 		artifacts: fakeArtifactStore{},
 		usersDir:  t.TempDir(),
 		docTools:  []docgen.Generator{docgen.TextGenerator{}},
@@ -128,7 +128,7 @@ func TestAvailableToolsGatesDocgen(t *testing.T) {
 // context7) is withheld for a general turn, appears once a fresh classification
 // judges the turn coding, and is always present when there is no category signal.
 func TestAvailableToolsGatesCategoryTaggedMCP(t *testing.T) {
-	srv := &server{
+	srv := &Engine{
 		mcp: fakeMCPService{
 			ToolList: []llm.Tool{
 				{Type: "function", Function: llm.ToolFunction{Name: "tavily__search"}},

@@ -42,7 +42,7 @@ func marshalPastedTexts(blocks []chat.MessagePastedText) json.RawMessage {
 //
 // images, when non-nil, is the batch lookup the caller already made for the
 // same ids (the vision path resolves them first); nil looks them up here.
-func (s *server) resolveSentAttachments(ctx context.Context, userID string, thread chat.Thread, imageIDs, documentIDs []string, images map[string]artifact.Artifact) json.RawMessage {
+func (s *Engine) resolveSentAttachments(ctx context.Context, userID string, thread chat.Thread, imageIDs, documentIDs []string, images map[string]artifact.Artifact) json.RawMessage {
 	attachments := make([]chat.MessageAttachment, 0, len(imageIDs)+len(documentIDs))
 
 	if s.artifacts != nil && len(imageIDs) > 0 {

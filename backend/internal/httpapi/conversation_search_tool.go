@@ -54,7 +54,7 @@ func conversationSearchTool() llm.Tool {
 // model. It is user-scoped via SearchMessages, excludes the active thread (already
 // in context), and never errors out — failures and empty results surface as plain
 // notes, since this feeds a tool result.
-func (s *server) conversationSearchDigest(ctx context.Context, userID string, thread chat.Thread, args map[string]any) string {
+func (s *Engine) conversationSearchDigest(ctx context.Context, userID string, thread chat.Thread, args map[string]any) string {
 	query, _ := args["query"].(string)
 	query = strings.TrimSpace(query)
 	if query == "" {

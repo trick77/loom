@@ -184,7 +184,7 @@ var urlPattern = regexp.MustCompile(`https?://[^\s<>"'` + "`" + `)\]}]+`)
 // and registers each source URL, so the model can cite them inline. It is a
 // no-op for non-web tools. The raw (un-capped) output is passed in; the caller
 // caps the returned string.
-func (s *server) relabelWebToolOutput(toolName string, arguments map[string]any, output string, reg *webSourceRegistry) string {
+func (s *Engine) relabelWebToolOutput(toolName string, arguments map[string]any, output string, reg *webSourceRegistry) string {
 	if reg == nil {
 		return output
 	}

@@ -50,7 +50,7 @@ var turnGateTimeout = 30 * time.Second
 // imageRoutingFor. The gate is fail-safe (ImageIntentNone on any error), so a
 // classification failure — including the turnGateTimeout expiring — degrades to
 // the normal, non-image path instead of holding up the answer.
-func (s *server) classifyImageTurn(ctx context.Context, user auth.User, threadID, content string, hasAttachedImage bool, priorMessages []chat.Message) imageRouting {
+func (s *Engine) classifyImageTurn(ctx context.Context, user auth.User, threadID, content string, hasAttachedImage bool, priorMessages []chat.Message) imageRouting {
 	if len(s.imageTools) == 0 || s.artifacts == nil || strings.TrimSpace(s.usersDir) == "" {
 		return imageRouting{}
 	}

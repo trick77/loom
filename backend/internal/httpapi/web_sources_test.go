@@ -158,7 +158,7 @@ func TestPrependURLSourceFetch(t *testing.T) {
 }
 
 func TestRelabelWebToolOutputObscuraNavigateThenSnapshot(t *testing.T) {
-	srv := &server{}
+	srv := &Engine{}
 	reg := newWebSourceRegistryAfter(0)
 	navArgs := map[string]any{"url": "https://truefoundry.com/pricing"}
 	// Navigate registers the source and arms the snapshot header.
@@ -174,7 +174,7 @@ func TestRelabelWebToolOutputObscuraNavigateThenSnapshot(t *testing.T) {
 }
 
 func TestRelabelWebToolOutputNonWebToolIsNoop(t *testing.T) {
-	srv := &server{}
+	srv := &Engine{}
 	reg := newWebSourceRegistryAfter(0)
 	out := srv.relabelWebToolOutput("conversation_search", map[string]any{}, "digest", reg)
 	if out != "digest" {
@@ -232,7 +232,7 @@ func TestRelabelTavilyTextCapturesSidebarFields(t *testing.T) {
 }
 
 func TestFetchSourceCapturesSnippet(t *testing.T) {
-	srv := &server{}
+	srv := &Engine{}
 	reg := newWebSourceRegistryAfter(0)
 	page := "  Modal is a serverless   platform\nfor running Python.  "
 	out := srv.relabelWebToolOutput(fetchToolName, map[string]any{"url": "https://modal.com/docs"}, page, reg)
@@ -278,7 +278,7 @@ func TestAddDetailedBackfillsEmptyFields(t *testing.T) {
 // the header armed by an earlier successful navigate was left in place, so the
 // next snapshot was labelled with the previous page's URL.
 func TestRelabelWebToolOutputFailedNavigateDisarmsSnapshotLabel(t *testing.T) {
-	srv := &server{}
+	srv := &Engine{}
 	reg := newWebSourceRegistryAfter(0)
 	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://first.example/"}, "navigated ok", reg)
 	_ = srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<first page>", reg)

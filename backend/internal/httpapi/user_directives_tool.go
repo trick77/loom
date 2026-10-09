@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"net/http"
 	"strings"
 
 	"github.com/trick77/loom/internal/chat"
@@ -105,7 +104,7 @@ func stringArg(args map[string]any, key string) string {
 // state rather than the (now stale) snapshot in its system prompt. They never
 // return errors out-of-band — failures surface as plain tool output.
 
-func (s *server) addUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
+func (s *Engine) addUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
 	content := strings.TrimSpace(stringArg(args, "content"))
 	if content == "" {
 		return "tool failed: content is required."
@@ -119,7 +118,7 @@ func (s *server) addUserDirectiveDigest(ctx context.Context, userID string, args
 	return "Saved. The user's current standing instructions:\n" + s.currentDirectivesList(ctx, userID)
 }
 
-func (s *server) removeUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
+func (s *Engine) removeUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
 	id := strings.TrimSpace(stringArg(args, "id"))
 	if id == "" {
 		return "tool failed: id is required."
@@ -134,7 +133,7 @@ func (s *server) removeUserDirectiveDigest(ctx context.Context, userID string, a
 	return "Removed. The user's current standing instructions:\n" + s.currentDirectivesList(ctx, userID)
 }
 
-func (s *server) replaceUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
+func (s *Engine) replaceUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
 	id := strings.TrimSpace(stringArg(args, "id"))
 	content := strings.TrimSpace(stringArg(args, "content"))
 	if id == "" || content == "" {
@@ -155,7 +154,7 @@ func (s *server) replaceUserDirectiveDigest(ctx context.Context, userID string, 
 
 // currentDirectivesList loads and renders the user's directives for echoing back
 // in tool output. On a load error it says so rather than failing the tool.
-func (s *server) currentDirectivesList(ctx context.Context, userID string) string {
+func (s *Engine) currentDirectivesList(ctx context.Context, userID string) string {
 	directives, err := s.thread.ListUserDirectives(ctx, userID)
 	if err != nil {
 		return "(could not load the current instructions: " + err.Error() + ")"
@@ -172,20 +171,16 @@ func renderDirectivesList(directives []chat.UserDirective) string {
 	return renderDirectiveLines(directives)
 }
 
-// handleGetUserDirectives backs the read-only Memories-page directives view. There
-// is no create/update/delete endpoint — those go through the chat tools above.
-func (s *server) handleGetUserDirectives(w http.ResponseWriter, r *http.Request) {
-	user, ok := currentUser(w, r)
-	if !ok || !requireThreadStore(w, s) {
-		return
+// renderDirectiveLines renders directives as "- [id] text" bullet lines, the
+// form both the system prompt and the tool digests use.
+func renderDirectiveLines(directives []chat.UserDirective) string {
+	var b strings.Builder
+	for _, d := range directives {
+		b.WriteString("- [")
+		b.WriteString(d.ID)
+		b.WriteString("] ")
+		b.WriteString(strings.TrimSpace(d.Content))
+		b.WriteString("\n")
 	}
-	directives, err := s.thread.ListUserDirectives(r.Context(), user.ID)
-	if err != nil {
-		serverError(w, r, err, "list user directives failed")
-		return
-	}
-	if directives == nil {
-		directives = []chat.UserDirective{}
-	}
-	writeJSON(w, directives)
+	return strings.TrimRight(b.String(), "\n")
 }

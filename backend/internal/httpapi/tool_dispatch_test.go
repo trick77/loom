@@ -12,7 +12,7 @@ import (
 // Every argument-taking built-in tool used to parse its arguments in its own
 // copy of the same block; one path now serves them all.
 func TestExecuteBuiltInToolReportsInvalidArgumentsForEveryArgTool(t *testing.T) {
-	s := &server{}
+	s := &Engine{}
 	for _, name := range []string{conversationSearchToolName, readThreadToolName, addUserDirectiveToolName, removeUserDirectiveToolName, replaceUserDirectiveToolName} {
 		call := llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: "{not json"}}
 		run := &turnRun{s: s, user: testUser, thread: chat.Thread{ID: "t1"}}

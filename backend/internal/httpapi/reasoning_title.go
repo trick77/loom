@@ -36,7 +36,7 @@ var reasoningTitleStartBytes = 300
 // collected so they can be merged into the persisted activity trace. The zero
 // value is not usable; build one with newReasoningTitleTracker.
 type reasoningTitleTracker struct {
-	s        *server
+	s        *Engine
 	stream   Emitter
 	ctx      context.Context
 	inf      llm.InferenceMetadata
@@ -51,7 +51,7 @@ type reasoningTitleTracker struct {
 	spawned map[string]bool   // reasoning id -> already generating
 }
 
-func newReasoningTitleTracker(ctx context.Context, s *server, stream Emitter, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
+func newReasoningTitleTracker(ctx context.Context, s *Engine, stream Emitter, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
 	return &reasoningTitleTracker{s: s, stream: stream, ctx: ctx, inf: inf, language: language, titles: map[string]string{}, spawned: map[string]bool{}}
 }
 

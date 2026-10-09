@@ -35,7 +35,7 @@ const minPerThreadDigestBytes = 600
 // title line first, then delegates the activity header + transcript here so that
 // rendering lives in one place. It never returns an error — the output feeds a
 // tool result — surfacing load failures and empty threads as readable notes.
-func (s *server) renderThreadDigest(ctx context.Context, userID string, t chat.Thread, byteBudget int) string {
+func (s *Engine) renderThreadDigest(ctx context.Context, userID string, t chat.Thread, byteBudget int) string {
 	messages, err := s.thread.ListRecentMessages(ctx, userID, t.ID, maxRecentMessagesPerThread)
 	if err != nil {
 		slog.Warn("thread digest: list messages failed", "thread_id", t.ID, "err", err)

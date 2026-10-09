@@ -39,7 +39,7 @@ const (
 // remaining budget is inlined truncated (head only) so the model always sees its
 // content this turn; such a document is intentionally LEFT OUT of the returned set
 // so RAG can still retrieve its remaining chunks once indexing finishes.
-func (s *server) documentInlineContext(ctx context.Context, userID string, thread chat.Thread, ids []string, docIdx *docIndexer) (string, map[string]bool, []citation) {
+func (s *Engine) documentInlineContext(ctx context.Context, userID string, thread chat.Thread, ids []string, docIdx *docIndexer) (string, map[string]bool, []citation) {
 	if s.documents == nil || len(ids) == 0 {
 		return "", nil, nil
 	}

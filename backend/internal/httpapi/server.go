@@ -66,37 +66,32 @@ type Deps struct {
 }
 
 type server struct {
-	version                    string
-	model                      llm.ModelInfo
-	background                 *Background
-	inflight                   inflightKeys
-	oidc                       OIDCService
-	auth                       *auth.Middleware
-	sessions                   SessionService
-	sessionTTL                 time.Duration
-	users                      UserService
-	thread                     ThreadStore
-	usage                      UsageStore
-	artifacts                  ArtifactStore
-	documents                  DocumentService
-	llm                        ChatClient
-	mcp                        ToolService
-	docTools                   []docgen.Generator
-	imageTools                 []imagegen.Tool
-	sandbox                    SandboxRunner
-	imageDefaultModel          string
-	imageTypographyModel       string
-	usersDir                   string
-	faviconCacheDir            string
-	faviconClient              *http.Client             // nil → faviconDefaultClient (overridden in tests)
-	faviconService             func(host string) string // nil → Google's favicon service (overridden in tests)
-	oidcAdminGroup             string
-	devAuthClaims              auth.Claims
-	postLogoutRedirectURL      string
-	publicURL                  string
-	knowledgeInlineTokenBudget int
-	projectSummaryTokenBudget  int
-	activeStreams              activeStreamRegistry
+	version               string
+	model                 llm.ModelInfo
+	background            *Background
+	inflight              inflightKeys
+	oidc                  OIDCService
+	auth                  *auth.Middleware
+	sessions              SessionService
+	sessionTTL            time.Duration
+	users                 UserService
+	thread                ThreadStore
+	usage                 UsageStore
+	artifacts             ArtifactStore
+	documents             DocumentService
+	llm                   ChatClient
+	mcp                   ToolService
+	usersDir              string
+	faviconCacheDir       string
+	faviconClient         *http.Client             // nil → faviconDefaultClient (overridden in tests)
+	faviconService        func(host string) string // nil → Google's favicon service (overridden in tests)
+	oidcAdminGroup        string
+	devAuthClaims         auth.Claims
+	postLogoutRedirectURL string
+	publicURL             string
+	activeStreams         activeStreamRegistry
+	// engine runs the chat turns the stream handlers start.
+	engine *Engine
 }
 
 // The dependency ports the turn engine shares with the HTTP handlers live in
@@ -122,11 +117,16 @@ func NewBackground(parent context.Context) *Background {
 	return turn.NewBackground(parent)
 }
 
-// recordUsage runs a best-effort usage-counter update. A nil store (e.g. in
+// recordUsage runs a best-effort usage-counter update; see recordUsageIn.
+func (s *server) recordUsage(counter string, fn func() error) {
+	recordUsageIn(s.usage, counter, fn)
+}
+
+// recordUsageIn runs a best-effort usage-counter update. A nil store (e.g. in
 // tests) or any write error is logged and swallowed so counting never fails the
 // underlying request. counter is a short label used only for logging.
-func (s *server) recordUsage(counter string, fn func() error) {
-	if s.usage == nil {
+func recordUsageIn(store UsageStore, counter string, fn func() error) {
+	if store == nil {
 		return
 	}
 	if err := fn(); err != nil {
@@ -162,15 +162,29 @@ func newServer(d Deps) *server {
 	if background == nil {
 		background = NewBackground(context.Background())
 	}
-	return &server{
-		background:                 background,
-		version:                    d.Version,
-		model:                      d.Model,
-		oidc:                       d.OIDC,
-		auth:                       d.Auth,
-		sessions:                   d.Sessions,
-		sessionTTL:                 d.SessionTTL,
-		users:                      d.Users,
+	s := &server{
+		background:            background,
+		version:               d.Version,
+		model:                 d.Model,
+		oidc:                  d.OIDC,
+		auth:                  d.Auth,
+		sessions:              d.Sessions,
+		sessionTTL:            d.SessionTTL,
+		users:                 d.Users,
+		thread:                d.Thread,
+		usage:                 d.Usage,
+		artifacts:             d.Artifacts,
+		documents:             d.Documents,
+		llm:                   d.LLM,
+		mcp:                   d.MCP,
+		usersDir:              d.UsersDir,
+		faviconCacheDir:       faviconCacheDirFor(d.UsersDir),
+		oidcAdminGroup:        d.OIDCAdminGroup,
+		devAuthClaims:         d.DevAuthClaims,
+		postLogoutRedirectURL: d.PostLogoutRedirectURL,
+		publicURL:             d.PublicURL,
+	}
+	s.engine = &Engine{
 		thread:                     d.Thread,
 		usage:                      d.Usage,
 		artifacts:                  d.Artifacts,
@@ -183,14 +197,11 @@ func newServer(d Deps) *server {
 		imageDefaultModel:          d.ImageDefaultModel,
 		imageTypographyModel:       d.ImageGenTypographyModel,
 		usersDir:                   d.UsersDir,
-		faviconCacheDir:            faviconCacheDirFor(d.UsersDir),
-		oidcAdminGroup:             d.OIDCAdminGroup,
-		devAuthClaims:              d.DevAuthClaims,
-		postLogoutRedirectURL:      d.PostLogoutRedirectURL,
-		publicURL:                  d.PublicURL,
 		knowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
 		projectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
+		memory:                     engineMemory{s: s},
 	}
+	return s
 }
 
 // NewWithMemoryWorker returns the HTTP handler and the background memory worker

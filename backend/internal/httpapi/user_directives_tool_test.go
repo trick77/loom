@@ -10,7 +10,7 @@ import (
 
 func TestUserDirectiveTools_AddRemoveReplaceRoundTrip(t *testing.T) {
 	fake := &fakeThreadStore{}
-	s := &server{thread: fake}
+	s := &Engine{thread: fake}
 	ctx := context.Background()
 
 	// Add: the tool echoes the post-mutation list with ids.
@@ -43,7 +43,7 @@ func TestUserDirectiveTools_AddRemoveReplaceRoundTrip(t *testing.T) {
 }
 
 func TestAddUserDirectiveDigest_RequiresContent(t *testing.T) {
-	s := &server{thread: &fakeThreadStore{}}
+	s := &Engine{thread: &fakeThreadStore{}}
 	out := s.addUserDirectiveDigest(context.Background(), "alice", map[string]any{"content": "  "})
 	if !strings.Contains(out, "content is required") {
 		t.Fatalf("expected content-required failure, got:\n%s", out)
@@ -52,7 +52,7 @@ func TestAddUserDirectiveDigest_RequiresContent(t *testing.T) {
 
 func TestAddUserDirectiveDigest_BudgetFullMessage(t *testing.T) {
 	fake := &fakeThreadStore{DirectiveWriteErr: chat.ErrDirectivesBudgetExceeded}
-	s := &server{thread: fake}
+	s := &Engine{thread: fake}
 	out := s.addUserDirectiveDigest(context.Background(), "alice", map[string]any{"content": "one more"})
 	if !strings.Contains(strings.ToLower(out), "budget is full") {
 		t.Fatalf("expected a budget-full message guiding the model to remove one first, got:\n%s", out)
@@ -63,7 +63,7 @@ func TestAddUserDirectiveDigest_BudgetFullMessage(t *testing.T) {
 }
 
 func TestRemoveUserDirectiveDigest_UnknownID(t *testing.T) {
-	s := &server{thread: &fakeThreadStore{}}
+	s := &Engine{thread: &fakeThreadStore{}}
 	out := s.removeUserDirectiveDigest(context.Background(), "alice", map[string]any{"id": "nope"})
 	if !strings.Contains(out, "No saved instruction has that id") {
 		t.Fatalf("expected unknown-id note, got:\n%s", out)

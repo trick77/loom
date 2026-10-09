@@ -31,7 +31,7 @@ type toolRun struct {
 
 // runToolCall performs the MCP call itself. It touches no per-turn state, so a
 // round's independent web reads can run it concurrently (see startToolRuns).
-func (s *server) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
+func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	arguments, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
 		return toolRun{argsErr: err}
@@ -49,8 +49,8 @@ func (s *server) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 }
 
 // executeToolCall runs one MCP call start to finish. It needs only the user,
-// not a whole turn, so it stays on the server.
-func (s *server) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry) string {
+// not a whole turn, so it stays on the engine.
+func (s *Engine) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry) string {
 	return (&turnRun{s: s, user: user}).finishToolCall(ctx, call, round, reg, s.runToolCall(ctx, call))
 }
 
@@ -105,7 +105,7 @@ func runsConcurrently(name string) bool {
 // call order, so results, source numbering and history keep the model's order;
 // only the waiting overlaps. A lone eligible call gains nothing and is left to
 // the sequential path.
-func (s *server) startToolRuns(ctx context.Context, calls []llm.ToolCall, skipped []bool) []<-chan toolRun {
+func (s *Engine) startToolRuns(ctx context.Context, calls []llm.ToolCall, skipped []bool) []<-chan toolRun {
 	runs := make([]<-chan toolRun, len(calls))
 	eligible := 0
 	for i, call := range calls {
@@ -150,7 +150,7 @@ func (s *server) startToolRuns(ctx context.Context, calls []llm.ToolCall, skippe
 // one navigated page); this covers the model driving obscura directly. The
 // deterministic fetch->obscura fallback navigates obscura outside this path, so
 // it counts itself in fetchObscuraFallback — there is no double count.
-func (s *server) countToolCall(ctx context.Context, user auth.User, toolName string) {
+func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName string) {
 	switch toolName {
 	case tavilySearchExposedName:
 		s.recordUsage("web_search", func() error { return s.usage.IncWebSearch(ctx, user.ID) })
@@ -217,7 +217,7 @@ func (t *turnRun) fetchObscuraFallback(ctx context.Context, toolName string, arg
 // tools the turn is unlikely to need — never one the model has already been told
 // to use. Called once per turn (not per round); the trimmed set is reused across
 // all tool rounds.
-func (s *server) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
+func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 	tools := []llm.Tool(nil)
 	names := map[string]string{}
 	// The cross-thread summarizer is only meaningful inside a project (it reads the
@@ -429,7 +429,7 @@ const maxTypographyImageSide = 1024
 // NeedsText flag (authoritative on the required-image path), and a lexical scan of
 // the model-authored compiled prompt (which covers a self-initiated generate_image
 // in the normal tool loop, where no gate flag flows).
-func (s *server) resolveThreadImageModel(ctx context.Context, userID string, thread chat.Thread, typography bool, compiledPrompt string) string {
+func (s *Engine) resolveThreadImageModel(ctx context.Context, userID string, thread chat.Thread, typography bool, compiledPrompt string) string {
 	if locked := strings.TrimSpace(thread.ImageModel); locked != "" {
 		return locked
 	}
@@ -538,7 +538,7 @@ func (t *turnRun) executeImageTool(ctx context.Context, call llm.ToolCall) (*art
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
 }
 
-func (s *server) docGenerator(name string) docgen.Generator {
+func (s *Engine) docGenerator(name string) docgen.Generator {
 	for _, candidate := range s.docTools {
 		if candidate.ToolName() == name {
 			return candidate
@@ -547,7 +547,7 @@ func (s *server) docGenerator(name string) docgen.Generator {
 	return nil
 }
 
-func (s *server) imageTool(name string) *imagegen.Tool {
+func (s *Engine) imageTool(name string) *imagegen.Tool {
 	for i := range s.imageTools {
 		if s.imageTools[i].ToolName() == name {
 			return &s.imageTools[i]
@@ -627,7 +627,7 @@ func isArgTool(name string) bool {
 
 // runArgTool dispatches one of the argument-taking built-in tools; the
 // arguments have already been parsed and validated as JSON.
-func (s *server) runArgTool(ctx context.Context, user auth.User, thread chat.Thread, name string, args map[string]any) string {
+func (s *Engine) runArgTool(ctx context.Context, user auth.User, thread chat.Thread, name string, args map[string]any) string {
 	switch name {
 	case conversationSearchToolName:
 		return s.conversationSearchDigest(ctx, user.ID, thread, args)

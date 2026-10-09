@@ -54,7 +54,7 @@ func TestLoadEditSourceImage_reportsSourceDimensions(t *testing.T) {
 	const userID, rel = "u1", "outputs/wide-photo.png"
 	usersDir := writeTestPNG(t, userID, rel, 1920, 1080)
 
-	s := &server{
+	s := &Engine{
 		usersDir: usersDir,
 		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_1",
@@ -104,7 +104,7 @@ func TestLoadEditSourceImage_undecodableHasUnknownDimensions(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 
-	s := &server{
+	s := &Engine{
 		usersDir: usersDir,
 		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_1",

@@ -45,7 +45,7 @@ func readThreadTool() llm.Tool {
 // exist) returns ok=false and a plain not-found note — there is no cross-user
 // leak. The whole project-summary byte budget is spent on this single thread,
 // then capToolOutput is the final guard on the tool-result envelope.
-func (s *server) readThreadDigest(ctx context.Context, userID, threadID string) string {
+func (s *Engine) readThreadDigest(ctx context.Context, userID, threadID string) string {
 	threadID = strings.TrimSpace(threadID)
 	if threadID == "" {
 		return "tool failed: thread_id is required."

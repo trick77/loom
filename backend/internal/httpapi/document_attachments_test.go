@@ -56,7 +56,7 @@ func TestDocumentInlineContext_inlinesChatScopedDoc(t *testing.T) {
 		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "notes.md", ThreadID: strPtr("t1")}},
 		texts: map[string]string{"d1": "Summarize me please."},
 	}
-	s := &server{documents: stub}
+	s := &Engine{documents: stub}
 	thread := chat.Thread{ID: "t1"}
 
 	block, inlined, _ := s.documentInlineContext(context.Background(), "u1", thread, []string{"d1"}, newDocIndexer())
@@ -76,7 +76,7 @@ func TestDocumentInlineContext_skipsOutOfScopeDoc(t *testing.T) {
 		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "x.md", ThreadID: strPtr("other")}},
 		texts: map[string]string{"d1": "secret"},
 	}
-	s := &server{documents: stub}
+	s := &Engine{documents: stub}
 
 	block, inlined, _ := s.documentInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, []string{"d1"}, newDocIndexer())
 	if block != "" || len(inlined) != 0 {
@@ -90,7 +90,7 @@ func TestDocumentInlineContext_truncatesOversizedDoc(t *testing.T) {
 		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "big.txt", ThreadID: strPtr("t1")}},
 		texts: map[string]string{"d1": big},
 	}
-	s := &server{documents: stub}
+	s := &Engine{documents: stub}
 
 	block, inlined, _ := s.documentInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, []string{"d1"}, newDocIndexer())
 	// The model must still see the document's head this turn (never "nothing").
@@ -111,7 +111,7 @@ func TestDocumentInlineContext_dedupesRepeatedID(t *testing.T) {
 		docs:  map[string]rag.Document{"d1": {ID: "d1", Filename: "notes.md", ThreadID: strPtr("t1")}},
 		texts: map[string]string{"d1": "UNIQUEMARKER content."},
 	}
-	s := &server{documents: stub}
+	s := &Engine{documents: stub}
 
 	block, _, _ := s.documentInlineContext(context.Background(), "u1", chat.Thread{ID: "t1"}, []string{"d1", "d1"}, newDocIndexer())
 	if got := strings.Count(block, "UNIQUEMARKER"); got != 1 {
@@ -120,7 +120,7 @@ func TestDocumentInlineContext_dedupesRepeatedID(t *testing.T) {
 }
 
 func TestKnowledgeContext_excludesInlinedDocs(t *testing.T) {
-	s := &server{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
+	s := &Engine{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
 		{DocumentID: "d1", Filename: "inlined.md", Text: "already inline"},
 		{DocumentID: "d2", Filename: "other.md", Text: "fresh chunk"},
 	}}}
@@ -150,7 +150,7 @@ func TestDocumentInlineContextNumbersAndCitesAttachments(t *testing.T) {
 		},
 		texts: map[string]string{"d1": "Retention is 45 days.", "d2": "Rollback at p95 > 9s."},
 	}
-	s := &server{documents: stub}
+	s := &Engine{documents: stub}
 	docIdx := newDocIndexer()
 
 	block, _, citations := s.documentInlineContext(context.Background(), "u1",
@@ -189,7 +189,7 @@ func TestDocumentInlineContextSkippedDocTakesNoNumber(t *testing.T) {
 			"d2": "Never makes it in.",
 		},
 	}
-	s := &server{documents: stub}
+	s := &Engine{documents: stub}
 	docIdx := newDocIndexer()
 
 	block, _, citations := s.documentInlineContext(context.Background(), "u1",

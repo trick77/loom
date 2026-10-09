@@ -28,7 +28,7 @@ import (
 func strp(s string) *string { return &s }
 
 type sandboxFixture struct {
-	srv    *server
+	srv    *Engine
 	box    *fakeSandbox
 	thread chat.Thread
 	body   *httptest.ResponseRecorder
@@ -70,7 +70,7 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &server{
+	srv := &Engine{
 		sandbox:   box,
 		documents: docs,
 		usersDir:  usersDir,
@@ -108,7 +108,7 @@ func TestSandboxOfferedFollowsHealthAndConfig(t *testing.T) {
 	if f.srv.sandboxOffered() {
 		t.Fatal("offered without an artifact store")
 	}
-	if (&server{}).sandboxOffered() {
+	if (&Engine{}).sandboxOffered() {
 		t.Fatal("offered without a sandbox")
 	}
 }
@@ -142,7 +142,7 @@ func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 		}
 	}
 
-	empty := &server{sandbox: f.box}
+	empty := &Engine{sandbox: f.box}
 	if got := empty.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil); got != sandboxGuidancePrompt {
 		t.Fatalf("no documents: %q", got)
 	}
@@ -210,7 +210,7 @@ func TestSandboxGuidanceNamesTheTurnsAttachment(t *testing.T) {
 		docs = append(docs, rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv"})
 	}
 	old := rag.Document{ID: "old-project-file", ProjectID: strp("p1"), Filename: "budget.xlsx"}
-	s := &server{documents: &listDocuments{Docs: docs, Extra: []rag.Document{old}}}
+	s := &Engine{documents: &listDocuments{Docs: docs, Extra: []rag.Document{old}}}
 	thread := chat.Thread{ID: "t1", ProjectID: strp("p1")}
 	g := s.sandboxGuidance(context.Background(), testUser.ID, thread, []string{"old-project-file", "d00"})
 	if !strings.Contains(g, sandboxAlias(old)+` (attached now as "budget.xlsx")`) {
@@ -235,7 +235,7 @@ func TestSandboxGuidanceCapsTheList(t *testing.T) {
 	for i := 0; i < maxSandboxInputsListed+3; i++ {
 		docs = append(docs, rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv"})
 	}
-	s := &server{documents: &listDocuments{Docs: docs}}
+	s := &Engine{documents: &listDocuments{Docs: docs}}
 	g := s.sandboxGuidance(context.Background(), testUser.ID, chat.Thread{ID: "t1"}, nil)
 	if strings.Count(g, "\n- ") != maxSandboxInputsListed+1 || !strings.Contains(g, "and 3 more") {
 		t.Fatalf("list not capped:\n%s", g)

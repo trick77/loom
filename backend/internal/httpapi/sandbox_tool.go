@@ -70,7 +70,7 @@ var sandboxOutputExt = map[string]bool{".png": true, ".csv": true, ".xlsx": true
 // sandboxOffered reports whether run_python is available this turn. The
 // sidecar is optional: unconfigured or failing its health probe, the tool and
 // its guidance simply stay out of the prompt.
-func (s *server) sandboxOffered() bool {
+func (s *Engine) sandboxOffered() bool {
 	return s.sandbox != nil && s.sandbox.Available() && s.artifacts != nil && strings.TrimSpace(s.usersDir) != ""
 }
 
@@ -115,7 +115,7 @@ const sandboxGuidanceScan = 50
 // user-global ones, each newest first. Between uploads the list (and the
 // aliases, derived from the document id) is the same on every turn, so the
 // guidance block keeps the prompt cache; an upload changes it once.
-func (s *server) sandboxInputs(ctx context.Context, userID string, thread chat.Thread, limit int) []sandboxInput {
+func (s *Engine) sandboxInputs(ctx context.Context, userID string, thread chat.Thread, limit int) []sandboxInput {
 	if s.documents == nil {
 		return nil
 	}
@@ -188,7 +188,7 @@ func sandboxAlias(d rag.Document) string {
 
 // sandboxGuidance is the prompt block that comes with the tool: the rule and
 // the input files of this thread.
-func (s *server) sandboxGuidance(ctx context.Context, userID string, thread chat.Thread, turnAttachmentIDs []string) string {
+func (s *Engine) sandboxGuidance(ctx context.Context, userID string, thread chat.Thread, turnAttachmentIDs []string) string {
 	inputs := s.sandboxInputs(ctx, userID, thread, sandboxGuidanceScan)
 	listed := inputs
 	if len(listed) > maxSandboxInputsListed {
@@ -218,7 +218,7 @@ func (s *server) sandboxGuidance(ctx context.Context, userID string, thread chat
 
 // missingAttachments returns the turn's attachments that run_python can read
 // but listed does not name.
-func (s *server) missingAttachments(ctx context.Context, userID string, thread chat.Thread, listed []sandboxInput, ids []string) []sandboxInput {
+func (s *Engine) missingAttachments(ctx context.Context, userID string, thread chat.Thread, listed []sandboxInput, ids []string) []sandboxInput {
 	if s.documents == nil || len(ids) == 0 {
 		return nil
 	}
@@ -260,7 +260,7 @@ func countIn(inputs, of []sandboxInput) int {
 // the job, persist the files it wrote as artifacts and report back to the
 // model. A failing program is a normal result; only an infrastructure problem
 // returns "tool failed".
-func (s *server) runSandboxTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall) (output string, created []artifactResponse) {
+func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall) (output string, created []artifactResponse) {
 	start := time.Now()
 	defer func() {
 		attrs := []any{
@@ -325,7 +325,7 @@ func (s *server) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 // sandboxFiles resolves the model's file names to the bytes of in-scope
 // documents. The second result is a model-facing message when a name is
 // unknown or the files are too large.
-func (s *server) sandboxFiles(ctx context.Context, userID string, thread chat.Thread, raw any) ([]sandbox.File, string) {
+func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Thread, raw any) ([]sandbox.File, string) {
 	if raw == nil {
 		return nil, ""
 	}
@@ -381,7 +381,7 @@ var errSandboxInputTooLarge = errors.New("the input files together are too large
 // readSandboxInput reads a document's bytes through the documents package's
 // sandboxed opener (user root only, no traversal or symlink escape), always
 // under the requesting user.
-func (s *server) readSandboxInput(userID string, doc rag.Document, budget int) ([]byte, error) {
+func (s *Engine) readSandboxInput(userID string, doc rag.Document, budget int) ([]byte, error) {
 	doc.UserID = userID
 	f, err := documents.VolumeOpener{UsersDir: s.usersDir}.OpenDocument(doc)
 	if err != nil {
@@ -401,7 +401,7 @@ func (s *server) readSandboxInput(userID string, doc rag.Document, budget int) (
 // persistSandboxFile stores one output file as an artifact of the thread. The
 // sidecar already filtered names and types; this is the second check, at the
 // point where the bytes enter the user's volume.
-func (s *server) persistSandboxFile(ctx context.Context, user auth.User, thread chat.Thread, f sandbox.File) (artifactResponse, string) {
+func (s *Engine) persistSandboxFile(ctx context.Context, user auth.User, thread chat.Thread, f sandbox.File) (artifactResponse, string) {
 	ext := strings.ToLower(filepath.Ext(f.Name))
 	if !sandboxOutputExt[ext] || strings.ContainsAny(f.Name, `/\`) {
 		return artifactResponse{}, "file type not allowed"

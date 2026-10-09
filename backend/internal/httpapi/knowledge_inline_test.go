@@ -10,7 +10,7 @@ import (
 )
 
 func TestKnowledgeInlineContext_injectsWholeWhenUnderBudget(t *testing.T) {
-	s := &server{
+	s := &Engine{
 		documents: &inlineStub{
 			indexed: []rag.IndexedDoc{
 				{ID: "d1", Filename: "briefing.pdf", TokenCount: 100},
@@ -44,7 +44,7 @@ func TestKnowledgeInlineContext_injectsWholeWhenUnderBudget(t *testing.T) {
 }
 
 func TestKnowledgeInlineContext_leavesOversizeForRAG(t *testing.T) {
-	s := &server{
+	s := &Engine{
 		documents: &inlineStub{
 			indexed: []rag.IndexedDoc{
 				{ID: "small", Filename: "small.md", TokenCount: 100},
@@ -72,7 +72,7 @@ func TestKnowledgeInlineContext_leavesOversizeForRAG(t *testing.T) {
 }
 
 func TestKnowledgeInlineContext_disabledWhenBudgetZero(t *testing.T) {
-	s := &server{
+	s := &Engine{
 		documents: &inlineStub{
 			indexed: []rag.IndexedDoc{{ID: "d1", Filename: "a.md", TokenCount: 10}},
 			texts:   map[string]string{"d1": "hi"},
@@ -86,7 +86,7 @@ func TestKnowledgeInlineContext_disabledWhenBudgetZero(t *testing.T) {
 }
 
 func TestKnowledgeInlineContext_skipsAlreadyAttachedDoc(t *testing.T) {
-	s := &server{
+	s := &Engine{
 		documents: &inlineStub{
 			indexed: []rag.IndexedDoc{{ID: "d1", Filename: "a.md", TokenCount: 10}},
 			texts:   map[string]string{"d1": "already attached in full"},
@@ -108,7 +108,7 @@ func TestKnowledgeInlineContext_skipsAlreadyAttachedDoc(t *testing.T) {
 }
 
 func TestKnowledgeInlineContext_skipsDocWithNoExtractableText(t *testing.T) {
-	s := &server{
+	s := &Engine{
 		documents: &inlineStub{
 			indexed: []rag.IndexedDoc{{ID: "d1", Filename: "empty.pdf", TokenCount: 100}},
 			texts:   map[string]string{"d1": "   "}, // extracts to whitespace only

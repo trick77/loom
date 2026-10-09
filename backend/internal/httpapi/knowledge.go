@@ -73,7 +73,7 @@ func (d *docIndexer) count() int {
 // similarity search, not parsed from the model's output). It is best-effort: any
 // failure (feature disabled, embedding down, nothing indexed) yields empty
 // results and never blocks the chat turn.
-func (s *server) knowledgeContextForThread(ctx context.Context, userID string, thread chat.Thread, query string, excludeDocIDs map[string]bool, docs *docIndexer) (string, []citation) {
+func (s *Engine) knowledgeContextForThread(ctx context.Context, userID string, thread chat.Thread, query string, excludeDocIDs map[string]bool, docs *docIndexer) (string, []citation) {
 	if s.documents == nil || strings.TrimSpace(query) == "" {
 		return "", nil
 	}

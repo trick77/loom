@@ -20,7 +20,7 @@ func TestConversationSearchDigest_FormatsHits(t *testing.T) {
 			CreatedAt:   time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC),
 		},
 	}}
-	s := &server{thread: fake}
+	s := &Engine{thread: fake}
 
 	out := s.conversationSearchDigest(context.Background(), "alice", chat.Thread{ID: "current"}, map[string]any{
 		"query": "frozen snapshots",
@@ -35,7 +35,7 @@ func TestConversationSearchDigest_FormatsHits(t *testing.T) {
 
 func TestConversationSearchDigest_NoMatches(t *testing.T) {
 	fake := &fakeThreadStore{SearchHits: nil}
-	s := &server{thread: fake}
+	s := &Engine{thread: fake}
 
 	out := s.conversationSearchDigest(context.Background(), "alice", chat.Thread{ID: "current"}, map[string]any{
 		"query": "nonexistent",
@@ -46,7 +46,7 @@ func TestConversationSearchDigest_NoMatches(t *testing.T) {
 }
 
 func TestConversationSearchDigest_RequiresQuery(t *testing.T) {
-	s := &server{thread: &fakeThreadStore{}}
+	s := &Engine{thread: &fakeThreadStore{}}
 	out := s.conversationSearchDigest(context.Background(), "alice", chat.Thread{ID: "current"}, map[string]any{
 		"query": "   ",
 	})

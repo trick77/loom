@@ -11,7 +11,7 @@ import (
 )
 
 func TestResolveSentAttachments_resolvesImageAndScopedDocument(t *testing.T) {
-	s := &server{
+	s := &Engine{
 		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: "u1", DisplayFilename: "photo.png", MIMEType: "image/png", SizeBytes: 1234, DownloadURL: "/api/artifacts/art_1/download"},
 		}},
@@ -45,7 +45,7 @@ func TestResolveSentAttachments_resolvesImageAndScopedDocument(t *testing.T) {
 }
 
 func TestResolveSentAttachments_skipsForeignUserArtifact(t *testing.T) {
-	s := &server{
+	s := &Engine{
 		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: "someone_else", DisplayFilename: "secret.png", MIMEType: "image/png"},
 		}},
@@ -59,7 +59,7 @@ func TestResolveSentAttachments_skipsForeignUserArtifact(t *testing.T) {
 }
 
 func TestResolveSentAttachments_skipsOutOfScopeDocument(t *testing.T) {
-	s := &server{
+	s := &Engine{
 		documents: &inlineStub{docs: map[string]rag.Document{
 			"d1": {ID: "d1", Filename: "other.md", ThreadID: strPtr("other-thread")},
 		}},
@@ -73,7 +73,7 @@ func TestResolveSentAttachments_skipsOutOfScopeDocument(t *testing.T) {
 }
 
 func TestResolveSentAttachments_emptyWhenNoIDs(t *testing.T) {
-	s := &server{}
+	s := &Engine{}
 	raw := s.resolveSentAttachments(context.Background(), "u1", chat.Thread{ID: "t1"}, nil, nil, nil)
 	if string(raw) != "[]" {
 		t.Fatalf("want [], got %s", raw)

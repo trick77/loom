@@ -51,7 +51,7 @@ func projectThreadsTool() llm.Tool {
 // execution window. The output is bounded in BYTES (per-thread share, plus a hard
 // overall ceiling via capToolOutput as a final guard), so returning it without the
 // generic byte cap re-truncating the tail is safe even for multibyte content.
-func (s *server) projectThreadsDigest(ctx context.Context, userID string, thread chat.Thread) string {
+func (s *Engine) projectThreadsDigest(ctx context.Context, userID string, thread chat.Thread) string {
 	if thread.ProjectID == nil {
 		return "This thread does not belong to a project, so there are no other project threads to read."
 	}

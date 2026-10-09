@@ -29,7 +29,7 @@ import (
 //
 // It is best-effort: any failure (feature disabled, lookup or extraction error,
 // nothing indexed) yields empty results and never blocks the chat turn.
-func (s *server) knowledgeInlineContext(ctx context.Context, userID string, thread chat.Thread, excludeDocIDs map[string]bool, docIdx *docIndexer) (string, map[string]bool, []citation, bool) {
+func (s *Engine) knowledgeInlineContext(ctx context.Context, userID string, thread chat.Thread, excludeDocIDs map[string]bool, docIdx *docIndexer) (string, map[string]bool, []citation, bool) {
 	if s.documents == nil || s.knowledgeInlineTokenBudget <= 0 {
 		return "", nil, nil, false
 	}

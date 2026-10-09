@@ -74,7 +74,7 @@ func TestProjectThreadsDigestExcludesAndCovers(t *testing.T) {
 		{"user", "Summarize the threads in this project"},
 	})
 
-	srv := &server{thread: st, projectSummaryTokenBudget: 6000}
+	srv := &Engine{thread: st, projectSummaryTokenBudget: 6000}
 	digest := srv.projectThreadsDigest(ctx, userID, current)
 
 	for _, want := range []string{"Warsaw Weather", "Warsaw Food", "around 15C", "pierogi at Zapiecek"} {
@@ -101,7 +101,7 @@ func TestProjectThreadsDigestNoOtherThreads(t *testing.T) {
 	}
 	current := seedThread(t, st, userID, project.ID, "Only Thread", [][2]string{{"user", "hi"}})
 
-	digest := (&server{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current)
+	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current)
 	if !strings.Contains(digest, "no other threads") {
 		t.Errorf("expected an explicit no-other-threads message, got:\n%s", digest)
 	}
@@ -111,7 +111,7 @@ func TestProjectThreadsDigestNoOtherThreads(t *testing.T) {
 // must not attempt to read sibling threads.
 func TestProjectThreadsDigestProjectless(t *testing.T) {
 	st, userID := openProjectDigestStore(t)
-	digest := (&server{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(context.Background(), userID, chat.Thread{ID: "x"})
+	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(context.Background(), userID, chat.Thread{ID: "x"})
 	if !strings.Contains(digest, "does not belong to a project") {
 		t.Errorf("expected projectless message, got:\n%s", digest)
 	}
@@ -157,7 +157,7 @@ func TestProjectThreadsDigestBoundedBytes(t *testing.T) {
 	}
 	current := seedThread(t, st, userID, project.ID, "current", [][2]string{{"user", "summarize"}})
 
-	digest := (&server{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current)
+	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current)
 	if len(digest) > maxToolResultContentBytes {
 		t.Errorf("digest is %d bytes, exceeds the %d-byte tool envelope", len(digest), maxToolResultContentBytes)
 	}

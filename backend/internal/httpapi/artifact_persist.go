@@ -28,7 +28,7 @@ type artifactSpec struct {
 // a failed persist leaves nothing behind on disk. This is the one path for
 // every generated artifact (documents, images, extracted code); uploads go
 // through artifact.CreateUploadFile.
-func (s *server) persistArtifactBytes(ctx context.Context, user auth.User, thread chat.Thread, spec artifactSpec) (artifact.Artifact, error) {
+func (s *Engine) persistArtifactBytes(ctx context.Context, user auth.User, thread chat.Thread, spec artifactSpec) (artifact.Artifact, error) {
 	out, file, err := artifact.CreateOutputFile(artifact.OutputRequest{
 		UsersDir:        s.usersDir,
 		UserID:          user.ID,

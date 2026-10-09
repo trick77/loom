@@ -87,14 +87,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// image) is a plain 400 here. Once the user message is stored and the SSE
 	// stream is open there is no way to reject the send cleanly. The store trims
 	// content, so the text part uses the same trimmed form the message will carry.
-	imageParts, imageArtifacts, err := s.resolveImageAttachments(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
+	imageParts, imageArtifacts, err := s.engine.resolveImageAttachments(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Persist the images and documents the user sent with this message so the sent
 	// previews survive a reload (resolved user-scoped; out-of-scope ids skipped).
-	sentAttachments := s.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs, imageArtifacts)
+	sentAttachments := s.engine.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs, imageArtifacts)
 	// Persist the collapsed paste blocks so the sent bubble renders "Pasted" chips
 	// on reload instead of the inline wall of text. Their text is already folded
 	// into body.Content, so the model and every content-derived path (title,
@@ -151,7 +151,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// titles.wait below so it runs after it: the reasoning-title calls must have
 	// finished before the turn's cost is read. The success path settles
 	// explicitly before "done"; this is then a no-op.
-	costs := &turnCostSettler{s: s, user: user, userMessageID: userMessage.ID, acc: usageTotal}
+	costs := &turnCostSettler{s: s.engine, user: user, userMessageID: userMessage.ID, acc: usageTotal}
 	defer costs.settle(context.WithoutCancel(r.Context()))
 	if err := sendSSEJSON(stream, "user_message", userMessage); err != nil {
 		return
@@ -163,13 +163,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// round. The deferred waits keep any title goroutine from writing to the
 	// SSE stream after the handler returns. They run before costs.settle, so a
 	// working title that outlived the answer still has its cost booked.
-	titles := newReasoningTitleTracker(streamCtx, s, emitter, inference, userResponseLanguage(user))
+	titles := newReasoningTitleTracker(streamCtx, s.engine, emitter, inference, userResponseLanguage(user))
 	defer titles.wait()
 	defer titles.waitWorking()
 	titles.spawnWorking(userMessage.Content)
 
 	run := &turnRun{
-		s:           s,
+		s:           s.engine,
 		stream:      emitter,
 		titles:      titles,
 		inference:   inference,
@@ -180,12 +180,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		start:       turnStart,
 	}
 	run.plan = run.prepareTurn(turnInput{
-		streamCtx:     streamCtx,
-		turnCtx:       turnCtx,
-		reqCtx:        r.Context(),
-		body:          body,
-		priorMessages: priorMessages,
-		imageParts:    imageParts,
+		streamCtx:             streamCtx,
+		turnCtx:               turnCtx,
+		reqCtx:                r.Context(),
+		content:               body.Content,
+		imageAttachmentIDs:    body.ImageAttachmentIDs,
+		documentAttachmentIDs: body.DocumentAttachmentIDs,
+		priorMessages:         priorMessages,
+		imageParts:            imageParts,
 	})
 	// titleThread names an as-yet-untitled thread. It runs after the answer so the
 	// title model can see the reply, not just the question — passing an empty

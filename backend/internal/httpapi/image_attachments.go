@@ -21,7 +21,7 @@ const maxImageAttachmentsPerMessage = 5
 // whole list (count, ownership, image type, readable file) and fails on the
 // first problem, so callers run it before persisting anything: a rejected
 // attachment list is a plain 400, not an orphaned user turn.
-func (s *server) imageContentParts(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
+func (s *Engine) imageContentParts(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
 	parts, _, err := s.resolveImageAttachments(ctx, userID, text, artifactIDs)
 	return parts, err
 }
@@ -29,7 +29,7 @@ func (s *server) imageContentParts(ctx context.Context, userID, text string, art
 // resolveImageAttachments is imageContentParts that also hands back the
 // looked-up artifacts, so the send path can record the sent attachments
 // without a second batch query.
-func (s *server) resolveImageAttachments(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, map[string]artifact.Artifact, error) {
+func (s *Engine) resolveImageAttachments(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, map[string]artifact.Artifact, error) {
 	if len(artifactIDs) == 0 {
 		return nil, nil, nil
 	}
@@ -115,7 +115,7 @@ type editImageSource struct {
 // accepts any image the user owns, whatever thread it came from: "Use in
 // thread" re-references an artifact from a new thread, and rejecting it here
 // silently dropped the source of the follow-up edit.
-func (s *server) loadEditSourceImage(ctx context.Context, userID, artifactID string) (editImageSource, bool, error) {
+func (s *Engine) loadEditSourceImage(ctx context.Context, userID, artifactID string) (editImageSource, bool, error) {
 	if s.artifacts == nil || strings.TrimSpace(artifactID) == "" {
 		return editImageSource{}, false, nil
 	}

@@ -1268,7 +1268,7 @@ func TestClassifyImageTurnPreconditions(t *testing.T) {
 	create := llm.ImageIntent{Action: llm.ImageIntentCreate}
 
 	// Image tooling configured + a non-empty message: the gate's intent is mapped.
-	configured := &server{
+	configured := &Engine{
 		artifacts:  fakeArtifactStore{},
 		usersDir:   t.TempDir(),
 		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
@@ -1284,7 +1284,7 @@ func TestClassifyImageTurnPreconditions(t *testing.T) {
 
 	// No image tooling: never routes (and the gate must not be consulted — a nil
 	// llm would panic if it were).
-	noTools := &server{artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
+	noTools := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
 	if got := noTools.classifyImageTurn(context.Background(), auth.User{ID: "user_1", Username: "jan"}, "thr_1", "zeichne mir einen Fuchs", true, nil); got != (imageRouting{}) {
 		t.Fatalf("classifyImageTurn(no image tools) = %+v, want zero routing", got)
 	}
@@ -1308,7 +1308,7 @@ func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
 		{ID: "img_other_thread", UserID: userID, ThreadID: "thr_2", VolumeRelPath: rel, MIMEType: "image/png"},
 		{ID: "img_bad_mime", UserID: userID, ThreadID: "thr_1", VolumeRelPath: rel, MIMEType: "image/bmp"},
 	}}
-	srv := &server{artifacts: store, usersDir: usersDir}
+	srv := &Engine{artifacts: store, usersDir: usersDir}
 
 	// Happy path: original bytes are returned for an in-scope, allowed image.
 	src, ok, err := srv.loadEditSourceImage(context.Background(), userID, "img_ok")
@@ -1359,7 +1359,7 @@ func TestLatestImageArtifactIDReturnsNewestWithID(t *testing.T) {
 }
 
 func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
-	srv := &server{
+	srv := &Engine{
 		artifacts: fakeArtifactStore{},
 		usersDir:  t.TempDir(),
 		docTools:  []docgen.Generator{docgen.TextGenerator{}},
@@ -1397,7 +1397,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 
 	t.Run("falls back to obscura when fetch fails", func(t *testing.T) {
 		var navigated bool
-		srv := &server{mcp: fakeMCPService{
+		srv := &Engine{mcp: fakeMCPService{
 			Available: map[string]bool{
 				obscuraNavigateToolName: true,
 				obscuraSnapshotToolName: true,
@@ -1435,7 +1435,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	})
 
 	t.Run("skips obscura for a failed PDF extraction", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{
+		srv := &Engine{mcp: fakeMCPService{
 			Available: map[string]bool{
 				obscuraNavigateToolName: true,
 				obscuraSnapshotToolName: true,
@@ -1460,7 +1460,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	// fallback must get its own budget or it can never rescue a timed-out fetch.
 	t.Run("fallback gets its own deadline", func(t *testing.T) {
 		var fetchDeadline, navigateDeadline time.Time
-		srv := &server{mcp: fakeMCPService{
+		srv := &Engine{mcp: fakeMCPService{
 			Available: map[string]bool{
 				obscuraNavigateToolName: true,
 				obscuraSnapshotToolName: true,
@@ -1486,7 +1486,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	})
 
 	t.Run("surfaces fetch failure when obscura is unavailable", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{Err: errFakeTool}}
+		srv := &Engine{mcp: fakeMCPService{Err: errFakeTool}}
 
 		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
 
@@ -1497,7 +1497,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 
 	t.Run("does not fall back for non-fetch tools", func(t *testing.T) {
 		var obscuraCalled bool
-		srv := &server{mcp: fakeMCPService{
+		srv := &Engine{mcp: fakeMCPService{
 			Available: map[string]bool{
 				obscuraNavigateToolName: true,
 				obscuraSnapshotToolName: true,
@@ -3199,7 +3199,7 @@ func TestStartToolRuns(t *testing.T) {
 	search := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}
 
 	t.Run("a lone eligible call stays on the sequential path", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{Result: "ok"}}
+		srv := &Engine{mcp: fakeMCPService{Result: "ok"}}
 		runs := srv.startToolRuns(context.Background(), []llm.ToolCall{fetch("https://a.example"), search}, []bool{false, false})
 		if runs[0] != nil || runs[1] != nil {
 			t.Fatalf("runs = %v, want none started", runs)
@@ -3207,7 +3207,7 @@ func TestStartToolRuns(t *testing.T) {
 	})
 
 	t.Run("skipped and stateful calls are not started", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{Result: "ok"}}
+		srv := &Engine{mcp: fakeMCPService{Result: "ok"}}
 		calls := []llm.ToolCall{fetch("https://a.example"), search, fetch("https://b.example"), fetch("https://c.example")}
 		runs := srv.startToolRuns(context.Background(), calls, []bool{false, false, false, true})
 		if runs[0] == nil || runs[2] == nil || runs[1] != nil || runs[3] != nil {
@@ -3220,7 +3220,7 @@ func TestStartToolRuns(t *testing.T) {
 	})
 
 	t.Run("a panicking call fails that call only", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{CallFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
+		srv := &Engine{mcp: fakeMCPService{CallFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
 			if args["url"] == "https://a.example" {
 				panic("boom")
 			}
@@ -3238,7 +3238,7 @@ func TestStartToolRuns(t *testing.T) {
 	t.Run("a cancelled round releases the calls still waiting for a slot", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		release := make(chan struct{})
-		srv := &server{mcp: fakeMCPService{CallFunc: func(context.Context, string, map[string]any) (string, error) {
+		srv := &Engine{mcp: fakeMCPService{CallFunc: func(context.Context, string, map[string]any) (string, error) {
 			<-release
 			return "ok", nil
 		}}}

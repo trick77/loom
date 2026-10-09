@@ -19,7 +19,7 @@ import (
 // what varies per call (ctx, a round's history, a tool call) stays a parameter.
 // The incognito turn uses a reduced form with no thread, message or plan.
 type turnRun struct {
-	s         *server
+	s         *Engine
 	stream    Emitter
 	titles    *reasoningTitleTracker
 	inference llm.InferenceMetadata
@@ -40,11 +40,14 @@ type turnInput struct {
 	// turnCtx carries the same attribution on the request context for the
 	// helpers that must not be cancelled by a stop; reqCtx is the bare request
 	// context.
-	streamCtx     context.Context
-	turnCtx       context.Context
-	reqCtx        context.Context
-	body          streamMessageRequest
-	priorMessages []chat.Message
+	streamCtx context.Context
+	turnCtx   context.Context
+	reqCtx    context.Context
+	// content and the attachment ids are the user's send as requested.
+	content               string
+	imageAttachmentIDs    []string
+	documentAttachmentIDs []string
+	priorMessages         []chat.Message
 	// imageParts are the vision parts for the images the user attached this
 	// turn, resolved (and validated) before anything was persisted.
 	imageParts []llm.MessageContentPart
@@ -120,7 +123,7 @@ func (t *turnRun) prepareTurn(in turnInput) turnPlan {
 	)
 	parallel(
 		func() {
-			imageRoute = t.s.classifyImageTurn(in.streamCtx, t.user, t.thread.ID, in.body.Content, len(in.body.ImageAttachmentIDs) > 0, in.priorMessages)
+			imageRoute = t.s.classifyImageTurn(in.streamCtx, t.user, t.thread.ID, in.content, len(in.imageAttachmentIDs) > 0, in.priorMessages)
 		},
 		func() {
 			if freshlyClassified {
@@ -144,20 +147,20 @@ func (t *turnRun) prepareTurn(in turnInput) turnPlan {
 			defer cancelDrift()
 			turnCategory, _ = t.s.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)
 		},
-		func() { userContext = t.s.userContextForUser(in.reqCtx, t.user.ID) },
-		func() { projectContext = t.s.projectContextForThread(in.reqCtx, t.user.ID, t.thread) },
+		func() { userContext = t.s.memory.UserContext(in.reqCtx, t.user.ID) },
+		func() { projectContext = t.s.memory.ProjectContext(in.reqCtx, t.user.ID, t.thread) },
 		// run_python's guidance travels with the tool: when the sidecar is
 		// off, the prompt never mentions it.
 		func() {
 			if sandboxOn {
-				sandboxGuidance = t.s.sandboxGuidance(in.reqCtx, t.user.ID, t.thread, in.body.DocumentAttachmentIDs)
+				sandboxGuidance = t.s.sandboxGuidance(in.reqCtx, t.user.ID, t.thread, in.documentAttachmentIDs)
 			}
 		},
 		func() {
 			var inlinedDocIDs, knowledgeInlinedIDs map[string]bool
 			var attachmentSources []citation
 			var inlinedAll bool
-			documentContext, inlinedDocIDs, attachmentSources = t.s.documentInlineContext(in.turnCtx, t.user.ID, t.thread, in.body.DocumentAttachmentIDs, docIdx)
+			documentContext, inlinedDocIDs, attachmentSources = t.s.documentInlineContext(in.turnCtx, t.user.ID, t.thread, in.documentAttachmentIDs, docIdx)
 			knowledgeContext, knowledgeInlinedIDs, knowledgeSources, inlinedAll = t.s.knowledgeInlineContext(in.turnCtx, t.user.ID, t.thread, inlinedDocIDs, docIdx)
 			if !inlinedAll {
 				ragExclude := mergeDocIDSets(inlinedDocIDs, knowledgeInlinedIDs)
@@ -202,8 +205,8 @@ func (t *turnRun) prepareTurn(in turnInput) turnPlan {
 	// model for direct editing (image-to-image). Defaults to the photo the user
 	// attached this turn; the follow-up branch below sets it to a reused prior image.
 	editSourceID := ""
-	if len(in.body.ImageAttachmentIDs) > 0 {
-		editSourceID = in.body.ImageAttachmentIDs[0]
+	if len(in.imageAttachmentIDs) > 0 {
+		editSourceID = in.imageAttachmentIDs[0]
 	}
 	// Silently reuse the conversation's most recent image as the model's vision
 	// input when this turn is a follow-up edit/restyle ("make it cyberpunk",

@@ -26,10 +26,10 @@ func (f *hangingIntentChatClient) ClassifyImageIntent(ctx context.Context, _ str
 
 // serverWithHangingIntentGate wires the minimum classifyImageTurn needs to get
 // past its short-circuits: an image tool, an artifact store and a users dir.
-func serverWithHangingIntentGate(t *testing.T) (*server, *hangingIntentChatClient) {
+func serverWithHangingIntentGate(t *testing.T) (*Engine, *hangingIntentChatClient) {
 	t.Helper()
 	chat := &hangingIntentChatClient{entered: make(chan struct{})}
-	return &server{
+	return &Engine{
 		llm:        chat,
 		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		artifacts:  fakeArtifactStore{},

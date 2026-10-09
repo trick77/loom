@@ -16,7 +16,7 @@ func TestReadThreadDigest_OwnedThread(t *testing.T) {
 			{ID: "m2", Role: chat.RoleAssistant, Content: "So edits never leak into a shared link."},
 		},
 	}
-	s := &server{thread: fake, projectSummaryTokenBudget: 4000}
+	s := &Engine{thread: fake, projectSummaryTokenBudget: 4000}
 
 	out := s.readThreadDigest(context.Background(), "alice", "thread-abc")
 	for _, want := range []string{"=== Thread: Sharing design ===", "Why frozen snapshots?", "leak into a shared link"} {
@@ -29,7 +29,7 @@ func TestReadThreadDigest_OwnedThread(t *testing.T) {
 func TestReadThreadDigest_NotOwnedReturnsNotFound(t *testing.T) {
 	// Empty fake.thread.ID makes the user-scoped GetThread report not-found, the
 	// same way the real store does for another user's (or a missing) thread id.
-	s := &server{thread: &fakeThreadStore{}, projectSummaryTokenBudget: 4000}
+	s := &Engine{thread: &fakeThreadStore{}, projectSummaryTokenBudget: 4000}
 
 	out := s.readThreadDigest(context.Background(), "alice", "someone-elses-thread")
 	if !strings.Contains(out, "No thread with id") {
@@ -41,7 +41,7 @@ func TestReadThreadDigest_NotOwnedReturnsNotFound(t *testing.T) {
 }
 
 func TestReadThreadDigest_RequiresThreadID(t *testing.T) {
-	s := &server{thread: &fakeThreadStore{}, projectSummaryTokenBudget: 4000}
+	s := &Engine{thread: &fakeThreadStore{}, projectSummaryTokenBudget: 4000}
 	out := s.readThreadDigest(context.Background(), "alice", "  ")
 	if !strings.Contains(out, "thread_id is required") {
 		t.Fatalf("expected thread_id-required failure, got:\n%s", out)

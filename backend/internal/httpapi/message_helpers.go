@@ -65,7 +65,7 @@ func strPtr(value string) *string {
 // model only ever saw the bare question — production always passed an empty
 // assistant message. See generateAndSendThreadTitle, which now runs once the
 // answer exists.
-func (s *server) classifyFirstTurn(requestCtx context.Context, user auth.User, threadID, userMessage string) string {
+func (s *Engine) classifyFirstTurn(requestCtx context.Context, user auth.User, threadID, userMessage string) string {
 	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
 	requestCtx, cancelClassify := context.WithTimeout(requestCtx, turnGateTimeout)
 	defer cancelClassify()
@@ -81,7 +81,7 @@ func (s *server) classifyFirstTurn(requestCtx context.Context, user auth.User, t
 // persistThreadCategory stores the category without touching the title, which is
 // written later in the turn by generateAndSendThreadTitle. Best-effort: a failed
 // write costs a stored label, never the answer.
-func (s *server) persistThreadCategory(persistCtx context.Context, user auth.User, threadID, category string) {
+func (s *Engine) persistThreadCategory(persistCtx context.Context, user auth.User, threadID, category string) {
 	_, _, _ = s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Category: &category})
 }
 
@@ -136,7 +136,7 @@ func (t *turnRun) generateAndSendThreadTitle(ctx context.Context, assistantMessa
 	// refresh its big-picture description (debounced/count-gated, so this is cheap and
 	// fires real work only when the set actually changed). Best-effort, off the hot path.
 	if thread.ProjectID != nil {
-		t.s.maybeRefreshProjectDescriptionAsync(ctx, t.user, *thread.ProjectID)
+		t.s.memory.RefreshProjectDescription(ctx, t.user, *thread.ProjectID)
 	}
 	return t.stream.Send("thread", thread)
 }

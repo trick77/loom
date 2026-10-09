@@ -12,7 +12,7 @@ import (
 )
 
 func TestKnowledgeContext_buildsBlockAndSources(t *testing.T) {
-	s := &server{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
+	s := &Engine{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
 		{DocumentID: "d1", Filename: "guide.pdf", Text: "Install with make build."},
 		{DocumentID: "d1", Filename: "guide.pdf", Text: "Run make test."},
 		{DocumentID: "d2", Filename: "notes.md", Text: "Remember the API key."},
@@ -37,7 +37,7 @@ func TestKnowledgeContext_buildsBlockAndSources(t *testing.T) {
 
 func TestKnowledgeContext_passesProjectScope(t *testing.T) {
 	stub := &stubDocs{}
-	s := &server{documents: stub}
+	s := &Engine{documents: stub}
 	pid := "p1"
 	thread := chat.Thread{ID: "t1", ProjectID: &pid}
 	s.knowledgeContextForThread(context.Background(), "u1", thread, "q", nil, newDocIndexer())
@@ -47,7 +47,7 @@ func TestKnowledgeContext_passesProjectScope(t *testing.T) {
 }
 
 func TestKnowledgeContext_bestEffortOnError(t *testing.T) {
-	s := &server{documents: &stubDocs{Err: errors.New("embed down")}}
+	s := &Engine{documents: &stubDocs{Err: errors.New("embed down")}}
 	block, sources := s.knowledgeContextForThread(context.Background(), "u1", chat.Thread{ID: "t1"}, "q", nil, newDocIndexer())
 	if block != "" || sources != nil {
 		t.Errorf("on error want empty block/sources, got %q / %v", block, sources)
@@ -55,7 +55,7 @@ func TestKnowledgeContext_bestEffortOnError(t *testing.T) {
 }
 
 func TestKnowledgeContext_disabledWhenNoService(t *testing.T) {
-	s := &server{}
+	s := &Engine{}
 	if block, sources := s.knowledgeContextForThread(context.Background(), "u1", chat.Thread{ID: "t1"}, "q", nil, newDocIndexer()); block != "" || sources != nil {
 		t.Errorf("want empty when documents disabled, got %q / %v", block, sources)
 	}
@@ -64,7 +64,7 @@ func TestKnowledgeContext_disabledWhenNoService(t *testing.T) {
 // Documents are numbered per document, not per chunk: several excerpts of one file
 // share its marker, matching how the UI groups them.
 func TestKnowledgeContextNumbersPerDocumentNotPerChunk(t *testing.T) {
-	s := &server{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
+	s := &Engine{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
 		{DocumentID: "d1", Filename: "guide.pdf", Text: "first chunk"},
 		{DocumentID: "d1", Filename: "guide.pdf", Text: "second chunk"},
 		{DocumentID: "d2", Filename: "notes.md", Text: "other doc"},

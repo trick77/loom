@@ -39,7 +39,7 @@ func TestImageContentParts_acceptsArtifactFromDifferentThread(t *testing.T) {
 		t.Fatalf("write png: %v", err)
 	}
 
-	s := &server{
+	s := &Engine{
 		usersDir: usersDir,
 		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_1",
@@ -90,7 +90,7 @@ func TestImageContentParts_rejectsForeignUserArtifact(t *testing.T) {
 		t.Fatalf("write png: %v", err)
 	}
 
-	s := &server{
+	s := &Engine{
 		usersDir: usersDir,
 		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_1",
