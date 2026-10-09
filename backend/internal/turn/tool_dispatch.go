@@ -220,6 +220,7 @@ func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 			continue
 		}
 		tool := spec.schema()
+		tool.LongRunning = spec.longRunning
 		if owner, exists := names[tool.Function.Name]; exists {
 			slog.Warn("skipping duplicate built-in tool name", "tool", tool.Function.Name, "existing", owner)
 			continue

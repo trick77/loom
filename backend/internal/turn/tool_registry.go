@@ -34,6 +34,10 @@ type toolSpec struct {
 	// call; count nil counts nothing. Built-ins count themselves.
 	counter string
 	count   func(u UsageStore, ctx context.Context, userID string) error
+	// longRunning marks a tool whose argument can be a whole document; the
+	// LLM client widens its budgets while it is on offer (see
+	// llm.Tool.LongRunning).
+	longRunning bool
 }
 
 type toolRunFunc func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response)
@@ -178,6 +182,7 @@ func docToolSpec(gen docgen.Generator) toolSpec {
 			output, resp := t.runDocGenerator(ctx, call, gen)
 			return output, oneArtifact(resp)
 		},
+		longRunning: true,
 	}
 }
 

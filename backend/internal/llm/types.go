@@ -6,6 +6,11 @@ import "time"
 type Tool struct {
 	Type     string       `json:"type"`
 	Function ToolFunction `json:"function"`
+	// LongRunning marks a tool whose call argument can be a whole document:
+	// while it is on offer the turn gets the document budgets (completion
+	// tokens, total timeout, tool-call idle window). loom-side only; it never
+	// reaches the wire.
+	LongRunning bool `json:"-"`
 }
 
 // ToolFunction is the function specification within a tool, including its name, description, and parameters.

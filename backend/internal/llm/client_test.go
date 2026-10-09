@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -524,6 +525,7 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedCompletionBudget(t *testin
 			Description: "Create a PDF",
 			Parameters:  map[string]any{"type": "object"},
 		},
+		LongRunning: true,
 	}}, nil)
 	if err != nil {
 		t.Fatalf("StreamChatWithTools() error: %v", err)
@@ -551,6 +553,7 @@ func TestClient_StreamChatWithDocumentToolUsesExpandedTimeout(t *testing.T) {
 			Description: "Create a PDF",
 			Parameters:  map[string]any{"type": "object"},
 		},
+		LongRunning: true,
 	}}, nil)
 	if err != nil {
 		t.Fatalf("StreamChatWithTools() error = %v, want document tool timeout expansion", err)
@@ -570,6 +573,7 @@ func TestClient_DocumentToolPreservesDisabledTimeout(t *testing.T) {
 			Description: "Create a PDF",
 			Parameters:  map[string]any{"type": "object"},
 		},
+		LongRunning: true,
 	}})
 	if got != 0 {
 		t.Fatalf("timeoutForTools() = %s, want 0 for disabled timeout", got)
@@ -593,7 +597,7 @@ func TestClient_NonDocumentToolKeepsConfiguredTimeout(t *testing.T) {
 }
 
 func TestToolCallIdleTimeout_WidensOnlyForDocumentTools(t *testing.T) {
-	doc := []Tool{{Type: "function", Function: ToolFunction{Name: "create_pdf_file", Parameters: map[string]any{"type": "object"}}}}
+	doc := []Tool{{Type: "function", Function: ToolFunction{Name: "create_pdf_file", Parameters: map[string]any{"type": "object"}}, LongRunning: true}}
 	if got := toolCallIdleTimeout(doc); got != documentToolTimeout {
 		t.Fatalf("toolCallIdleTimeout(doc) = %s, want %s", got, documentToolTimeout)
 	}
@@ -603,11 +607,52 @@ func TestToolCallIdleTimeout_WidensOnlyForDocumentTools(t *testing.T) {
 	}
 }
 
+// LongRunning is loom-side only: neither the request on the wire nor a
+// marshalled Tool carries it.
+func TestToolLongRunningNeverReachesTheWire(t *testing.T) {
+	var raw []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Done\"},\"finish_reason\":\"stop\"}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	t.Cleanup(server.Close)
+	client := mustClient(t, Config{BaseURL: server.URL}, server.Client())
+	tool := Tool{Type: "function", Function: ToolFunction{Name: "create_pdf_file", Parameters: map[string]any{"type": "object"}}, LongRunning: true}
+	if _, err := client.StreamChatWithTools(context.Background(), []Message{{Role: "user", Content: "Make a PDF"}}, []Tool{tool}, nil); err != nil {
+		t.Fatalf("StreamChatWithTools() error: %v", err)
+	}
+	var body struct {
+		Tools []struct {
+			Type     string         `json:"type"`
+			Function map[string]any `json:"function"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if len(body.Tools) != 1 || body.Tools[0].Function["name"] != "create_pdf_file" {
+		t.Fatalf("request tools = %+v, want the one tool", body.Tools)
+	}
+	if strings.Contains(strings.ToLower(string(raw)), "long") {
+		t.Fatalf("request carries the LongRunning flag: %s", raw)
+	}
+	marshalled, err := json.Marshal(tool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(marshalled)), "long") {
+		t.Fatalf("marshalled Tool carries the LongRunning flag: %s", marshalled)
+	}
+}
+
 func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *testing.T) {
 	tests := []struct {
 		name                 string
 		configuredTokens     int
 		toolName             string
+		longRunning          bool
 		wantCompletionTokens int
 	}{
 		{
@@ -619,6 +664,7 @@ func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *
 			name:                 "document tool preserves higher configured budget",
 			configuredTokens:     documentToolMaxCompletionTokens * 2,
 			toolName:             "create_pdf_file",
+			longRunning:          true,
 			wantCompletionTokens: documentToolMaxCompletionTokens * 2,
 		},
 	}
@@ -646,6 +692,7 @@ func TestClient_StreamChatWithNonDocumentToolKeepsConfiguredCompletionBudget(t *
 					Description: "Tool",
 					Parameters:  map[string]any{"type": "object"},
 				},
+				LongRunning: tt.longRunning,
 			}}, nil)
 			if err != nil {
 				t.Fatalf("StreamChatWithTools() error: %v", err)

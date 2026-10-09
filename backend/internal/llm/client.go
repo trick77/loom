@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/trick77/llmwire"
@@ -284,19 +285,8 @@ func toolCallIdleTimeout(tools []Tool) time.Duration {
 	return 0
 }
 
+// hasDocumentGenerationTool reports whether any tool on offer is long-running
+// (see Tool.LongRunning).
 func hasDocumentGenerationTool(tools []Tool) bool {
-	for _, tool := range tools {
-		// Keep this list in sync with backend/internal/docgen generator
-		// ToolName methods. The llm package intentionally stays a leaf package
-		// and does not import docgen.
-		switch tool.Function.Name {
-		case "create_text_file",
-			"create_pdf_file",
-			"create_xlsx_file",
-			"create_docx_file",
-			"create_pptx_presentation":
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(tools, func(tool Tool) bool { return tool.LongRunning })
 }
