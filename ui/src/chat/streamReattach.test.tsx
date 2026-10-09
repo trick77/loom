@@ -113,6 +113,22 @@ test("a stream dropped mid-answer reattaches and finishes the answer", async () 
   expect(screen.getAllByText("Hi")).toHaveLength(1);
 });
 
+// The server already has the question once it confirmed it: putting it back
+// in the composer would invite a duplicate send.
+test("a reattach that fails keeps the confirmed question out of the composer", async () => {
+  const fetchMock = shellFetch({
+    thread: () => Response.json({ thread, messages: [] }),
+    stream: () => sse([userMessage], true),
+    attach: () => Response.json({ error: "boom" }, { status: 500 }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await sendHi();
+
+  expect(await screen.findByText("boom")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("");
+});
+
 test("a turn that finished while the stream was down is loaded from the thread", async () => {
   let threadLoads = 0;
   const fetchMock = shellFetch({

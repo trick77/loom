@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+
+	"github.com/trick77/loom/internal/sse"
 )
 
 // turnHub carries one chat turn's events to the clients watching it. The turn
@@ -14,21 +16,16 @@ import (
 // return it reattaches and gets the whole turn replayed from the start.
 type turnHub struct {
 	mu     sync.Mutex
-	events []hubEvent
+	events []sse.Event
 	closed bool
 	// changed is closed and replaced on every append and on close, waking the
 	// followers.
 	changed chan struct{}
 }
 
-type hubEvent struct {
-	name string
-	data string
-}
-
 // eventWriter is the client end of a follower; *sse.Writer satisfies it.
 type eventWriter interface {
-	Send(event, data string) error
+	SendEvents(events []sse.Event) error
 }
 
 func newTurnHub() *turnHub {
@@ -47,7 +44,7 @@ func (h *turnHub) SendJSON(event string, data any) error {
 	if h.closed {
 		return nil
 	}
-	h.events = append(h.events, hubEvent{name: event, data: string(payload)})
+	h.events = append(h.events, sse.Event{Name: event, Data: string(payload)})
 	close(h.changed)
 	h.changed = make(chan struct{})
 	return nil
@@ -64,7 +61,9 @@ func (h *turnHub) close() {
 }
 
 // follow writes the log to w from the start, then each event as it arrives,
-// until the hub closes, ctx ends or a write fails.
+// until the hub closes, ctx ends or a write fails. Whatever piled up since the
+// last write goes out in one write: a reattaching client gets the whole
+// backlog at once.
 func (h *turnHub) follow(ctx context.Context, w eventWriter) {
 	next := 0
 	for {
@@ -72,13 +71,11 @@ func (h *turnHub) follow(ctx context.Context, w eventWriter) {
 		pending := h.events[next:]
 		closed, changed := h.closed, h.changed
 		h.mu.Unlock()
-		for _, e := range pending {
-			if err := w.Send(e.name, e.data); err != nil {
+		if len(pending) > 0 {
+			if err := w.SendEvents(pending); err != nil {
 				return
 			}
-		}
-		next += len(pending)
-		if len(pending) > 0 {
+			next += len(pending)
 			continue
 		}
 		if closed {

@@ -7,23 +7,30 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/trick77/loom/internal/sse"
 )
 
-// recordingEventWriter collects what a follower writes; failAfter > 0 makes
-// every write past that count fail, like a client that went away.
+// recordingEventWriter collects what a follower writes, and the size of each
+// write; failAfter > 0 makes every write past that many fail, like a client
+// that went away.
 type recordingEventWriter struct {
 	mu        sync.Mutex
 	events    []string
+	writes    []int
 	failAfter int
 }
 
-func (w *recordingEventWriter) Send(event, data string) error {
+func (w *recordingEventWriter) SendEvents(events []sse.Event) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.failAfter > 0 && len(w.events) >= w.failAfter {
+	if w.failAfter > 0 && len(w.writes) >= w.failAfter {
 		return errors.New("client gone")
 	}
-	w.events = append(w.events, event+" "+data)
+	for _, e := range events {
+		w.events = append(w.events, e.Name+" "+e.Data)
+	}
+	w.writes = append(w.writes, len(events))
 	return nil
 }
 
@@ -58,6 +65,10 @@ func TestTurnHubReplaysTheLogThenFollowsLive(t *testing.T) {
 	if got := w.got(); got != want {
 		t.Fatalf("events = %s, want %s", got, want)
 	}
+	// The backlog is one write, so a reattaching client gets it at once.
+	if w.writes[0] < 2 {
+		t.Fatalf("first write carried %d events, want at least the 2-event backlog", w.writes[0])
+	}
 }
 
 func TestTurnHubFollowAfterCloseReplaysEverything(t *testing.T) {
@@ -91,8 +102,9 @@ func TestTurnHubFailedWriteStopsOnlyThatFollower(t *testing.T) {
 	}
 	hub.close()
 	wg.Wait()
-	if got := gone.got(); got != `delta "a"` {
-		t.Fatalf("gone follower got %s, want only the first event", got)
+	// The first write lands, the next fails, and the follower gives up.
+	if len(gone.writes) != 1 {
+		t.Fatalf("gone follower made %d writes, want 1 before it stopped", len(gone.writes))
 	}
 	if got := live.got(); got != `delta "a"|delta "b"|delta "c"` {
 		t.Fatalf("live follower got %s, want every event", got)

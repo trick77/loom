@@ -894,6 +894,8 @@ export function ThreadShell({
     // The server stored the user message: from then on the turn runs on the
     // server whatever happens to this connection.
     let userMessageConfirmed = false;
+    // The stream dropped and the run is following the turn again.
+    let reattaching = false;
     // The thread this run belongs to, known up front for an existing thread and
     // filled in below for one created by this send. Whether the user is still
     // looking at it decides the writes into `messages`, which is a single array
@@ -1143,6 +1145,7 @@ export function ThreadShell({
           stopRequested(abortController)
         )
           throw error;
+        reattaching = true;
         await resumeRunningTurn(
           threadIDForRun,
           abortController.signal,
@@ -1184,7 +1187,9 @@ export function ThreadShell({
         const staleID = optimisticUserMessageID;
         setMessages((current) => current.filter((item) => item.id !== staleID));
       }
-      if (options.restoreDraftOnError) {
+      // A failed reattach leaves the question on the server, where the turn
+      // may still finish: restoring it would invite a duplicate send.
+      if (options.restoreDraftOnError && !reattaching) {
         setDrafts((current) =>
           setScopedDraft(current, restoreScope, {
             text: options.restoreDraft ?? content,

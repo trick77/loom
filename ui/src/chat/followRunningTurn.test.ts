@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { StreamInterruptedError } from "../api";
-import { followRunningTurn } from "./followRunningTurn";
+import { MAX_ATTACH_ATTEMPTS, followRunningTurn } from "./followRunningTurn";
 
 function sseResponse(events: string[]) {
   const encoder = new TextEncoder();
@@ -100,7 +100,7 @@ describe("followRunningTurn", () => {
     expect(created[1].onAssistantMessage).toHaveBeenCalled();
   });
 
-  test("gives up as interrupted after three dropped attempts", async () => {
+  test("gives up as interrupted once every attempt dropped", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new TypeError("Load failed"));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -112,7 +112,7 @@ describe("followRunningTurn", () => {
         retryDelayMs: 0,
       }),
     ).rejects.toBeInstanceOf(StreamInterruptedError);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_ATTACH_ATTEMPTS);
   });
 
   test("reports a turn that finished meanwhile", async () => {

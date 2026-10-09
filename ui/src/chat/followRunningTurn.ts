@@ -5,7 +5,11 @@ import {
 } from "../api";
 
 // How many reattaches are tried before the turn is reported as interrupted.
-const MAX_ATTACH_ATTEMPTS = 3;
+// With the backoff below that is about 45s: a phone coming back from the
+// background can take several seconds to get its network back.
+export const MAX_ATTACH_ATTEMPTS = 8;
+// The backoff doubles from retryDelayMs and stops growing at this multiple.
+const MAX_BACKOFF_FACTOR = 10;
 
 // followRunningTurn reattaches to a thread's turn that is still running on the
 // server, typically after a phone froze the tab and dropped the stream. It
@@ -30,7 +34,8 @@ export async function followRunningTurn(opts: {
       if (!dropped) throw error;
       if (attempt >= MAX_ATTACH_ATTEMPTS) throw new StreamInterruptedError();
     }
-    await sleep(retryDelayMs * attempt, opts.signal);
+    const factor = Math.min(2 ** (attempt - 1), MAX_BACKOFF_FACTOR);
+    await sleep(retryDelayMs * factor, opts.signal);
   }
 }
 

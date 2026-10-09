@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,11 +41,28 @@ func NewWriter(w http.ResponseWriter) (*Writer, error) {
 	return &Writer{w: w, rc: http.NewResponseController(w), lastActivity: time.Now()}, nil
 }
 
+// Event is one named event with its data payload.
+type Event struct {
+	Name string
+	Data string
+}
+
 // Send writes one event with the given name and data payload, then flushes.
 func (s *Writer) Send(event, data string) error {
+	return s.SendEvents([]Event{{Name: event, Data: data}})
+}
+
+// SendEvents writes events with a single flush. A client catching up on a
+// long backlog then gets it in one go instead of one network write, and one
+// render, per event.
+func (s *Writer) SendEvents(events []Event) error {
+	var b strings.Builder
+	for _, e := range events {
+		fmt.Fprintf(&b, "event: %s\ndata: %s\n\n", e.Name, e.Data)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.writeLocked(fmt.Sprintf("event: %s\ndata: %s\n\n", event, data))
+	return s.writeLocked(b.String())
 }
 
 // writeLocked writes and flushes text under writeTimeout. The deadline is
