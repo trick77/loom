@@ -34,10 +34,6 @@ type toolSpec struct {
 	// call; count nil counts nothing. Built-ins count themselves.
 	counter string
 	count   func(u UsageStore, ctx context.Context, userID string) error
-	// longRunning marks a tool whose argument can be a whole document; the
-	// LLM client widens its budgets while it is on offer (see
-	// llm.Tool.LongRunning).
-	longRunning bool
 }
 
 type toolRunFunc func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response)
@@ -167,13 +163,17 @@ func indexTools(tools []toolSpec) map[string]*toolSpec {
 
 // docToolSpec offers a file generator. They are the biggest built-in schema
 // chunk, so the gate offers them only when the turn's category or wording
-// plausibly wants a downloadable file.
+// plausibly wants a downloadable file. Its argument can be a whole document, so
+// it is long-running: the LLM client widens its budgets while it is on offer
+// (see llm.Tool.LongRunning).
 func docToolSpec(gen docgen.Generator) toolSpec {
 	return toolSpec{
 		name: gen.ToolName(),
 		schema: func() llm.Tool {
 			s := gen.Schema()
-			return toolFromSchema(s.Name, s.Description, s.Parameters)
+			tool := toolFromSchema(s.Name, s.Description, s.Parameters)
+			tool.LongRunning = true
+			return tool
 		},
 		offered: func(e *Engine, _ chat.Thread, gate toolGate) bool {
 			return e.canStoreArtifacts() && gate.docgenEnabled()
@@ -182,7 +182,6 @@ func docToolSpec(gen docgen.Generator) toolSpec {
 			output, resp := t.runDocGenerator(ctx, call, gen)
 			return output, oneArtifact(resp)
 		},
-		longRunning: true,
 	}
 }
 
