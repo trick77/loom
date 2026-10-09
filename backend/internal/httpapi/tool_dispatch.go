@@ -16,7 +16,6 @@ import (
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
-	"github.com/trick77/loom/internal/sse"
 )
 
 // toolRun is the outcome of an MCP tool call's network half: everything
@@ -320,7 +319,7 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 // executeBuiltInTool runs a tool loom implements itself. It returns the
 // model-facing output, the artifacts the call created (run_python can write
 // several) and whether the name was a built-in at all.
-func (s *server) executeBuiltInTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource, typography bool) (string, []artifactResponse, bool) {
+func (s *server) executeBuiltInTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource, typography bool) (string, []artifactResponse, bool) {
 	if call.Function.Name == projectThreadsToolName {
 		return s.projectThreadsDigest(ctx, user.ID, thread), nil, true
 	}
@@ -360,7 +359,7 @@ func oneArtifact(resp *artifactResponse) []artifactResponse {
 // server-side failures invisible. The deferred log fixes that: every outcome is
 // recorded with the tool name, argument size, a truncated argument preview and
 // the result, so the next failure is diagnosable from the logs.
-func (s *server) runDocGenerator(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifactResponse) {
+func (s *server) runDocGenerator(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifactResponse) {
 	start := time.Now()
 	defer func() {
 		attrs := []any{
@@ -406,7 +405,7 @@ func (s *server) runDocGenerator(ctx context.Context, stream *sse.Writer, user a
 		return capToolOutput("tool failed: " + err.Error()), nil
 	}
 	response := artifactResponseFromArtifact(created)
-	_ = sendSSEJSON(stream, "artifact", response)
+	_ = stream.Send("artifact", response)
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
 
@@ -443,7 +442,7 @@ func (s *server) resolveThreadImageModel(ctx context.Context, userID string, thr
 	return candidate
 }
 
-func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource, typography bool) (*artifactResponse, string, bool) {
+func (s *server) executeImageTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall, editSource *editImageSource, typography bool) (*artifactResponse, string, bool) {
 	generator := s.imageTool(call.Function.Name)
 	if generator == nil {
 		return nil, "", false
@@ -530,7 +529,7 @@ func (s *server) executeImageTool(ctx context.Context, stream *sse.Writer, user 
 	response.Height = meta.Height
 	response.DurationMs = meta.DurationMs
 	s.recordUsage("image_gen", func() error { return s.usage.IncImageGen(ctx, user.ID) })
-	_ = sendSSEJSON(stream, "artifact", response)
+	_ = stream.Send("artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
 }
 

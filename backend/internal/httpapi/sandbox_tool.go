@@ -27,7 +27,6 @@ import (
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
-	"github.com/trick77/loom/internal/sse"
 )
 
 const sandboxToolName = "run_python"
@@ -263,7 +262,7 @@ func countIn(inputs, of []sandboxInput) int {
 // the job, persist the files it wrote as artifacts and report back to the
 // model. A failing program is a normal result; only an infrastructure problem
 // returns "tool failed".
-func (s *server) runSandboxTool(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, call llm.ToolCall) (output string, created []artifactResponse) {
+func (s *server) runSandboxTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall) (output string, created []artifactResponse) {
 	start := time.Now()
 	defer func() {
 		attrs := []any{
@@ -318,7 +317,7 @@ func (s *server) runSandboxTool(ctx context.Context, stream *sse.Writer, user au
 			notes = append(notes, f.Name+": "+why)
 			continue
 		}
-		_ = sendSSEJSON(stream, "artifact", resp)
+		_ = stream.Send("artifact", resp)
 		created = append(created, resp)
 	}
 	notes = append(notes, res.Dropped...)

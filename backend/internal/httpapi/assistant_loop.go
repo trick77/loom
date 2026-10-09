@@ -13,7 +13,6 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/sse"
 )
 
 const (
@@ -65,7 +64,7 @@ type assistantLoopResult struct {
 // userPrompt is the user's own message text for this turn, used only by the
 // required-image path: the last history message's Content is blanked when image
 // parts are attached, so the raw text is not recoverable from history there.
-func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool, userPrompt string, sourceIndexOffset int) (out assistantLoopResult, outErr error) {
+func (s *server) runAssistantLoop(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, gate toolGate, imageArtifactRequired bool, editSource *editImageSource, typography bool, userPrompt string, sourceIndexOffset int) (out assistantLoopResult, outErr error) {
 	tools := s.availableTools(thread, gate)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -227,7 +226,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 					output = s.executeToolCall(ctx, user, call, round, reg)
 				}
 			}
-			if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+			if err := stream.Send("tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				cancelRuns()
 				return assistantLoopResult{}, err
 			}
@@ -251,10 +250,10 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 		//
 		// Ordering is what makes this correct: the model can only cite [n] after
 		// seeing it in a tool result, the registry assigns that index while processing
-		// the result (above), and sse.Writer.Send is sequential — so the snapshot
+		// the result (above), and stream.Send is sequential — so the snapshot
 		// always reaches the browser before the deltas that reference it.
 		if reg.len() > 0 {
-			if err := sendSSEJSON(stream, "web_sources", webSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
+			if err := stream.Send("web_sources", webSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
 				return assistantLoopResult{}, err
 			}
 		}
@@ -323,7 +322,7 @@ func (s *server) runAssistantLoop(ctx context.Context, stream *sse.Writer, title
 // clear message rather than an empty bubble.
 const finalAnswerFallback = "I couldn't put together a final answer from the information gathered. Please try rephrasing or narrowing your question."
 
-func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool, editSource *editImageSource, typography bool, userPrompt string) (assistantLoopResult, error) {
+func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata, user auth.User, thread chat.Thread, imageTool llm.Tool, editSource *editImageSource, typography bool, userPrompt string) (assistantLoopResult, error) {
 	compilerPrompt := imagePromptCompilerSystemPrompt
 	if editSource != nil && len(editSource.Data) > 0 {
 		// The source image is forwarded to the model directly, so the compiler must
@@ -370,7 +369,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 		// streamed call would be, or the tool_result below refers to a step that
 		// does not exist on either side.
 		b.addTraceEvent(toolCallEvent(call))
-		if err := sendSSEJSON(stream, "tool_call", toolCallResponse{
+		if err := stream.Send("tool_call", toolCallResponse{
 			ID:        call.ID,
 			Name:      call.Function.Name,
 			Arguments: call.Function.Arguments,
@@ -386,7 +385,7 @@ func (s *server) runRequiredImageAssistantLoop(ctx context.Context, stream *sse.
 	if !handled {
 		output = capToolOutput("tool failed: generate_image is not available")
 	}
-	if err := sendSSEJSON(stream, "tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+	if err := stream.Send("tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 		return assistantLoopResult{}, err
 	}
 	b.setToolResult(call.ID, output)
@@ -501,7 +500,7 @@ func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, arti
 // path exactly: with no tools there are no persistence-capable side effects (no
 // artifacts, no directive/memory writes), which is what lets an incognito turn
 // answer while writing nothing.
-func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata) (assistantLoopResult, error) {
+func (s *server) runIncognitoAssistantTurn(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, history []llm.Message, inference llm.InferenceMetadata) (assistantLoopResult, error) {
 	b := &blockBuilder{}
 	result, err := s.streamAssistantTurn(ctx, stream, titles, b.nextReasoningID(), history, inferenceWithPurpose(inference, "chat", 1), nil)
 	// Safety net: a tool-eager model may still emit an inline tool call
@@ -550,15 +549,15 @@ func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamRes
 // reasoning abstract while the model is still reasoning (see
 // reasoningTitleStartBytes), or at the latest when it starts answering or
 // calling a tool, so the title overlaps the turn instead of trailing it.
-func (s *server) streamAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+func (s *server) streamAssistantTurn(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
 	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, true)
 }
 
-func (s *server) streamAssistantTurnSuppressingContent(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+func (s *server) streamAssistantTurnSuppressingContent(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
 	return s.streamAssistantTurnWithContentStreaming(ctx, stream, titles, reasoningID, history, meta, tools, false)
 }
 
-func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
+func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
 	callCtx := llm.WithInferenceMetadata(ctx, meta)
 	var reasoningBuf strings.Builder
 	titleSpawned := false
@@ -599,7 +598,7 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 	}
 	return s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
-			if err := sendSSEJSON(stream, "assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
+			if err := stream.Send("assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
 				return err
 			}
 			// The buffer only feeds the title, so it stops growing once that is spawned.
@@ -613,18 +612,18 @@ func (s *server) streamAssistantTurnWithContentStreaming(ctx context.Context, st
 		}
 		if event.ToolPending {
 			spawnTitle()
-			return sendSSEJSON(stream, "tool_pending", struct{}{})
+			return stream.Send("tool_pending", struct{}{})
 		}
 		if event.Delta != "" && streamContent {
 			spawnTitle()
 			if err := awaitTitle(); err != nil {
 				return err
 			}
-			return sendSSEJSON(stream, "assistant_delta", streamDeltaResponse{Content: event.Delta})
+			return stream.Send("assistant_delta", streamDeltaResponse{Content: event.Delta})
 		}
 		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
 			spawnTitle()
-			return sendSSEJSON(stream, "tool_call", toolCallResponse{
+			return stream.Send("tool_call", toolCallResponse{
 				ID:        event.ToolCall.ID,
 				Name:      event.ToolCall.Function.Name,
 				Arguments: event.ToolCall.Function.Arguments,

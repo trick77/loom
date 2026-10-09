@@ -10,7 +10,6 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/sse"
 )
 
 // persistAssistantTurn turns a finished loop result into the stored assistant
@@ -19,7 +18,7 @@ import (
 // merges the knowledge and web citations, and inserts the row. ctx must
 // outlive the request (the caller detaches it): a client that disconnected
 // still gets its answer persisted.
-func (s *server) persistAssistantTurn(ctx context.Context, stream *sse.Writer, titles *reasoningTitleTracker, user auth.User, thread chat.Thread, result *assistantLoopResult, knowledgeSources []citation, usageTotal *llm.UsageAccumulator, turnStart time.Time) (chat.Message, error) {
+func (s *server) persistAssistantTurn(ctx context.Context, stream Emitter, titles *reasoningTitleTracker, user auth.User, thread chat.Thread, result *assistantLoopResult, knowledgeSources []citation, usageTotal *llm.UsageAccumulator, turnStart time.Time) (chat.Message, error) {
 	artifacts := result.Artifacts
 	if artifacts == nil {
 		artifacts = []artifactResponse{}

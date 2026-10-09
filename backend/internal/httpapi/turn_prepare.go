@@ -11,7 +11,6 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/sse"
 )
 
 // turnInput is what the prompt-assembly phase of a persisted turn works from.
@@ -23,7 +22,7 @@ type turnInput struct {
 	streamCtx     context.Context
 	turnCtx       context.Context
 	reqCtx        context.Context
-	stream        *sse.Writer
+	stream        Emitter
 	user          auth.User
 	thread        chat.Thread
 	body          streamMessageRequest
@@ -172,7 +171,7 @@ func (s *server) prepareTurn(in turnInput) turnPlan {
 		fileToolGuidance = fileToolGuardrailPrompt
 	}
 	if len(knowledgeSources) > 0 {
-		_ = sendSSEJSON(in.stream, "knowledge_sources", map[string]any{"sources": knowledgeSources})
+		_ = in.stream.Send("knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
 	toolGuidance := joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance)
 	history := buildLLMHistory(in.user, toolGuidance, classifier.Block(category), userContext, projectContext, knowledgeContext, documentContext, in.priorMessages, in.userMessage)

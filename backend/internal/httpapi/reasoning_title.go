@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/sse"
 )
 
 // reasoningTitleTimeout bounds a single background title call. wait() blocks the
@@ -37,7 +36,7 @@ var reasoningTitleStartBytes = 300
 // value is not usable; build one with newReasoningTitleTracker.
 type reasoningTitleTracker struct {
 	s        *server
-	stream   *sse.Writer
+	stream   Emitter
 	ctx      context.Context
 	inf      llm.InferenceMetadata
 	language string // user's response language; "" for the English default
@@ -51,7 +50,7 @@ type reasoningTitleTracker struct {
 	spawned map[string]bool   // reasoning id -> already generating
 }
 
-func newReasoningTitleTracker(ctx context.Context, s *server, stream *sse.Writer, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
+func newReasoningTitleTracker(ctx context.Context, s *server, stream Emitter, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
 	return &reasoningTitleTracker{s: s, stream: stream, ctx: ctx, inf: inf, language: language, titles: map[string]string{}, spawned: map[string]bool{}}
 }
 
@@ -95,7 +94,7 @@ func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan stru
 		t.mu.Lock()
 		t.titles[reasoningID] = title
 		t.mu.Unlock()
-		_ = sendSSEJSON(t.stream, "assistant_reasoning_title", reasoningTitleResponse{ID: reasoningID, Title: title})
+		_ = t.stream.Send("assistant_reasoning_title", reasoningTitleResponse{ID: reasoningID, Title: title})
 	}()
 	return done
 }
@@ -127,7 +126,7 @@ func (t *reasoningTitleTracker) spawnWorking(userMessage string) {
 		if err != nil || strings.TrimSpace(title) == "" {
 			return
 		}
-		_ = sendSSEJSON(t.stream, "assistant_working_title", workingTitleResponse{Title: title})
+		_ = t.stream.Send("assistant_working_title", workingTitleResponse{Title: title})
 	}()
 }
 

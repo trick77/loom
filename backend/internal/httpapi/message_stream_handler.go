@@ -144,6 +144,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// notably while a model serializes a large tool-call argument server-side and
 	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
+	emitter := sseEmitter{w: stream}
 	// Book what the turn spent on every exit path. Deferred ahead of
 	// titles.wait below so it runs after it: the reasoning-title calls must have
 	// finished before the turn's cost is read. The success path settles
@@ -160,7 +161,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// round. The deferred waits keep any title goroutine from writing to the
 	// SSE stream after the handler returns. They run before costs.settle, so a
 	// working title that outlived the answer still has its cost booked.
-	titles := newReasoningTitleTracker(streamCtx, s, stream, inference, userResponseLanguage(user))
+	titles := newReasoningTitleTracker(streamCtx, s, emitter, inference, userResponseLanguage(user))
 	defer titles.wait()
 	defer titles.waitWorking()
 	titles.spawnWorking(userMessage.Content)
@@ -169,7 +170,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		streamCtx:     streamCtx,
 		turnCtx:       turnCtx,
 		reqCtx:        r.Context(),
-		stream:        stream,
+		stream:        emitter,
 		user:          user,
 		thread:        thread,
 		body:          body,
@@ -199,7 +200,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		// per-message stats and the lifetime rollup. WithoutCancel keeps that
 		// value while letting the call outlive a client disconnect.
 		titleCtx := context.WithoutCancel(streamCtx)
-		if err := s.generateAndSendThreadTitle(titleCtx, titleCtx, stream, user, threadID, thread.Title, userMessage.Content, assistantMessage); err != nil {
+		if err := s.generateAndSendThreadTitle(titleCtx, titleCtx, emitter, user, threadID, thread.Title, userMessage.Content, assistantMessage); err != nil {
 			slog.Warn("thread title generation failed", "thread_id", threadID, "error", err)
 		}
 	}
@@ -208,7 +209,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// the client, ahead of the terminal event it stops reading at.
 	finishCosts := func() {
 		titles.wait()
-		costs.settleAndReport(context.WithoutCancel(r.Context()), stream)
+		costs.settleAndReport(context.WithoutCancel(r.Context()), emitter)
 	}
 	// failTurn ends a turn that has no answer to persist. The spend so far is
 	// reported just before the error event (the client stops reading at it),
@@ -220,12 +221,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// reason: they go to the same upstream. Their cost, like the title's, is
 	// picked up by the deferred settle.
 	failTurn := func(titleSource, message string) {
-		costs.settleAndReport(context.WithoutCancel(r.Context()), stream)
+		costs.settleAndReport(context.WithoutCancel(r.Context()), emitter)
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		titleThread(titleSource)
 	}
 
-	assistantResult, err := s.runAssistantLoop(streamCtx, stream, titles, plan.history, inference, user, thread, plan.gate, plan.imageRoute.generate, plan.editSource, plan.imageRoute.typography, userMessage.Content, plan.sourceCount)
+	assistantResult, err := s.runAssistantLoop(streamCtx, emitter, titles, plan.history, inference, user, thread, plan.gate, plan.imageRoute.generate, plan.editSource, plan.imageRoute.typography, userMessage.Content, plan.sourceCount)
 	if err != nil {
 		if streamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
@@ -278,7 +279,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	persistCtx := context.WithoutCancel(r.Context())
-	assistantMessage, err := s.persistAssistantTurn(persistCtx, stream, titles, user, thread, &assistantResult, plan.knowledgeSources, usageTotal, turnStart)
+	assistantMessage, err := s.persistAssistantTurn(persistCtx, emitter, titles, user, thread, &assistantResult, plan.knowledgeSources, usageTotal, turnStart)
 	if err != nil {
 		slog.Warn("persist assistant message failed", "thread_id", threadID, "err", err)
 		failTurn(assistantContent, "persist assistant message failed")

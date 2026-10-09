@@ -9,7 +9,6 @@ import (
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/sse"
 )
 
 // Code/XML blocks below these bounds are treated as illustrative snippets and
@@ -73,7 +72,7 @@ var (
 // When the model already produced an explicit (non-image) file this turn, the
 // user asked for a save directly and we suppress auto-extraction so the same
 // code is not duplicated as a second download.
-func (s *server) extractCodeArtifacts(ctx context.Context, stream *sse.Writer, user auth.User, thread chat.Thread, content string, existing []artifactResponse) []artifactResponse {
+func (s *server) extractCodeArtifacts(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, content string, existing []artifactResponse) []artifactResponse {
 	for _, a := range existing {
 		if !strings.HasPrefix(a.MIMEType, "image/") {
 			return nil
@@ -87,7 +86,7 @@ func (s *server) extractCodeArtifacts(ctx context.Context, stream *sse.Writer, u
 			slog.Warn("auto code artifact failed", "thread_id", thread.ID, "filename", q.filename, "err", err)
 			continue
 		}
-		_ = sendSSEJSON(stream, "artifact", response)
+		_ = stream.Send("artifact", response)
 		created = append(created, response)
 	}
 	return created

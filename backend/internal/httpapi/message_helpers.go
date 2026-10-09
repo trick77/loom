@@ -9,7 +9,6 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/sse"
 	"golang.org/x/text/language"
 	"golang.org/x/text/language/display"
 )
@@ -106,7 +105,7 @@ const titleSourceLimit = 2000
 // the stream. expectedTitle is the title the turn started from: the update is a
 // compare-and-set against it, so a rename made while the answer streamed wins
 // and no thread event is sent for the discarded generated title.
-func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream *sse.Writer, user auth.User, threadID, expectedTitle, userMessage, assistantMessage string) error {
+func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Context, stream Emitter, user auth.User, threadID, expectedTitle, userMessage, assistantMessage string) error {
 	titleInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "title", Round: 1}
 	requestCtx, cancelTitle := context.WithTimeout(requestCtx, turnGateTimeout)
 	defer cancelTitle()
@@ -137,7 +136,7 @@ func (s *server) generateAndSendThreadTitle(requestCtx, persistCtx context.Conte
 	if thread.ProjectID != nil {
 		s.maybeRefreshProjectDescriptionAsync(persistCtx, user, *thread.ProjectID)
 	}
-	return sendSSEJSON(stream, "thread", thread)
+	return stream.Send("thread", thread)
 }
 
 func buildLLMHistory(user auth.User, toolGuidance, classifierContext, userContext, projectContext, knowledgeContext, documentContext string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {

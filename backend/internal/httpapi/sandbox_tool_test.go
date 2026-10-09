@@ -57,7 +57,7 @@ type sandboxFixture struct {
 	box    *fakeSandbox
 	thread chat.Thread
 	body   *httptest.ResponseRecorder
-	stream *sse.Writer
+	stream Emitter
 }
 
 func newSandboxFixture(t *testing.T) sandboxFixture {
@@ -102,7 +102,7 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 		usage:     stubUsageStore{},
 		artifacts: fakeArtifactStore{},
 	}
-	return sandboxFixture{srv: srv, box: box, thread: thread, body: rec, stream: stream}
+	return sandboxFixture{srv: srv, box: box, thread: thread, body: rec, stream: sseEmitter{w: stream}}
 }
 
 func runCall(args string) llm.ToolCall {

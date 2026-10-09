@@ -8,7 +8,6 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/sse"
 	"github.com/trick77/loom/internal/usage"
 )
 
@@ -65,13 +64,13 @@ func (c *turnCostSettler) settle(ctx context.Context) {
 // settleAndReport settles and tells the client the message's new cost.
 // Callers run it before the turn's terminal event ("done" or "error"): the
 // client stops reading at either.
-func (c *turnCostSettler) settleAndReport(ctx context.Context, stream *sse.Writer) {
+func (c *turnCostSettler) settleAndReport(ctx context.Context, stream Emitter) {
 	c.settle(ctx)
 	c.mu.Lock()
 	booked := c.booked
 	c.mu.Unlock()
 	if booked.ID != "" {
-		_ = sendSSEJSON(stream, "message_cost", booked)
+		_ = stream.Send("message_cost", booked)
 	}
 }
 

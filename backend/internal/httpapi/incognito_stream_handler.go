@@ -76,12 +76,13 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	}
 	defer recoverToStream(stream, r)
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
+	emitter := sseEmitter{w: stream}
 
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
-	titles := newReasoningTitleTracker(streamCtx, s, stream, inference, userResponseLanguage(user))
+	titles := newReasoningTitleTracker(streamCtx, s, emitter, inference, userResponseLanguage(user))
 	defer titles.wait()
 
-	assistantResult, err := s.runIncognitoAssistantTurn(streamCtx, stream, titles, history, inference)
+	assistantResult, err := s.runIncognitoAssistantTurn(streamCtx, emitter, titles, history, inference)
 	if err != nil {
 		if streamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
