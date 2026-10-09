@@ -7,50 +7,12 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/rag"
 )
 
-type stubDocs struct {
-	chunks []rag.RetrievedChunk
-	err    error
-	gotPID *string
-}
-
-func (s *stubDocs) Upload(context.Context, documents.UploadInput) (rag.Document, artifact.Artifact, error) {
-	return rag.Document{}, artifact.Artifact{}, nil
-}
-func (s *stubDocs) List(context.Context, string, *string) ([]rag.Document, error) { return nil, nil }
-func (s *stubDocs) Get(context.Context, string, string) (rag.Document, bool, error) {
-	return rag.Document{}, false, nil
-}
-func (s *stubDocs) FullText(context.Context, string, string) (string, error) { return "", nil }
-func (s *stubDocs) Index(context.Context, string, string) error              { return nil }
-func (s *stubDocs) Delete(context.Context, string, string) error             { return nil }
-func (s *stubDocs) DeleteForArtifact(context.Context, string, string) (bool, error) {
-	return false, nil
-}
-func (s *stubDocs) DeleteThreadData(context.Context, string, string) error { return nil }
-func (s *stubDocs) ArtifactIDsForThreadArtifactsInUse(context.Context, string, string) ([]string, error) {
-	return nil, nil
-}
-func (s *stubDocs) DeleteProjectData(context.Context, string, string) error { return nil }
-func (s *stubDocs) DocumentsInScope(context.Context, string, *string, *string, int) ([]rag.Document, error) {
-	return nil, nil
-}
-
-func (s *stubDocs) IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error) {
-	return nil, nil
-}
-func (s *stubDocs) Retrieve(_ context.Context, _ string, projectID *string, _ *string, _ string, _ int) ([]rag.RetrievedChunk, error) {
-	s.gotPID = projectID
-	return s.chunks, s.err
-}
-
 func TestKnowledgeContext_buildsBlockAndSources(t *testing.T) {
-	s := &server{documents: &stubDocs{chunks: []rag.RetrievedChunk{
+	s := &server{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
 		{DocumentID: "d1", Filename: "guide.pdf", Text: "Install with make build."},
 		{DocumentID: "d1", Filename: "guide.pdf", Text: "Run make test."},
 		{DocumentID: "d2", Filename: "notes.md", Text: "Remember the API key."},
@@ -79,13 +41,13 @@ func TestKnowledgeContext_passesProjectScope(t *testing.T) {
 	pid := "p1"
 	thread := chat.Thread{ID: "t1", ProjectID: &pid}
 	s.knowledgeContextForThread(context.Background(), "u1", thread, "q", nil, newDocIndexer())
-	if stub.gotPID == nil || *stub.gotPID != "p1" {
-		t.Errorf("retrieve project scope = %v, want p1", stub.gotPID)
+	if stub.GotPID == nil || *stub.GotPID != "p1" {
+		t.Errorf("retrieve project scope = %v, want p1", stub.GotPID)
 	}
 }
 
 func TestKnowledgeContext_bestEffortOnError(t *testing.T) {
-	s := &server{documents: &stubDocs{err: errors.New("embed down")}}
+	s := &server{documents: &stubDocs{Err: errors.New("embed down")}}
 	block, sources := s.knowledgeContextForThread(context.Background(), "u1", chat.Thread{ID: "t1"}, "q", nil, newDocIndexer())
 	if block != "" || sources != nil {
 		t.Errorf("on error want empty block/sources, got %q / %v", block, sources)
@@ -102,7 +64,7 @@ func TestKnowledgeContext_disabledWhenNoService(t *testing.T) {
 // Documents are numbered per document, not per chunk: several excerpts of one file
 // share its marker, matching how the UI groups them.
 func TestKnowledgeContextNumbersPerDocumentNotPerChunk(t *testing.T) {
-	s := &server{documents: &stubDocs{chunks: []rag.RetrievedChunk{
+	s := &server{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
 		{DocumentID: "d1", Filename: "guide.pdf", Text: "first chunk"},
 		{DocumentID: "d1", Filename: "guide.pdf", Text: "second chunk"},
 		{DocumentID: "d2", Filename: "notes.md", Text: "other doc"},

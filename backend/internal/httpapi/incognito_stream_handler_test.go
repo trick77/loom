@@ -18,7 +18,7 @@ func TestIncognitoStreamEmitsReplyAndPersistsNothing(t *testing.T) {
 	store := &fakeThreadStore{}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{cost: 4200},
+		LLM:    fakeChatClient{Cost: 4200},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/incognito/messages:stream", `{"content":"Hi"}`)
@@ -43,14 +43,14 @@ func TestIncognitoStreamEmitsReplyAndPersistsNothing(t *testing.T) {
 		}
 	}
 	// The persisted transcript must be untouched — nothing incognito is stored.
-	if len(store.messages) != 0 {
-		t.Fatalf("persisted messages = %d, want 0 (incognito must not persist)", len(store.messages))
+	if len(store.Messages) != 0 {
+		t.Fatalf("persisted messages = %d, want 0 (incognito must not persist)", len(store.Messages))
 	}
-	if store.assistantContent != "" {
-		t.Fatalf("assistantContent = %q, want empty (no assistant message persisted)", store.assistantContent)
+	if store.AssistantContent != "" {
+		t.Fatalf("assistantContent = %q, want empty (no assistant message persisted)", store.AssistantContent)
 	}
-	if len(store.userDirectives) != 0 {
-		t.Fatalf("userDirectives = %d, want 0 (incognito must not write memory)", len(store.userDirectives))
+	if len(store.UserDirectives) != 0 {
+		t.Fatalf("userDirectives = %d, want 0 (incognito must not write memory)", len(store.UserDirectives))
 	}
 	// A title/thread event is emitted only on the persisted path; incognito never
 	// creates or titles a thread.

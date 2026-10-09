@@ -32,12 +32,12 @@ func TestPublicShareArtifact_gatedByActiveShareAndAllowlist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	artifacts := fakeArtifactStore{artifacts: []artifact.Artifact{
+	artifacts := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png", SizeBytes: 64},
 		// art_secret exists and is owned by the same user but is NOT in any share.
 		{ID: "art_secret", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "s.png", MIMEType: "image/png", SizeBytes: 64},
 	}}
-	threads := &fakeThreadStore{shares: map[string]chat.Share{
+	threads := &fakeThreadStore{Shares: map[string]chat.Share{
 		"t1": {
 			ID: "s1", ShareID: "SHARE_A", ThreadID: "t1", UserID: "user_1",
 			Shared: true, ArtifactIDs: []string{"art_1"},
@@ -71,7 +71,7 @@ func TestPublicShareArtifact_gatedByActiveShareAndAllowlist(t *testing.T) {
 	}
 
 	// Disable the share: the direct URLs stop working immediately — download AND thumbnail.
-	threads.shares["t1"] = chat.Share{
+	threads.Shares["t1"] = chat.Share{
 		ID: "s1", ShareID: "SHARE_A", ThreadID: "t1", UserID: "user_1",
 		Shared: false, ArtifactIDs: []string{"art_1"},
 	}

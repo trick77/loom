@@ -63,8 +63,8 @@ func TestListThreadsUsesCurrentUserScope(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if store.listThreadsUserID != testUser.ID {
-		t.Fatalf("ListThreads userID = %q, want %q", store.listThreadsUserID, testUser.ID)
+	if store.ListThreadsUserID != testUser.ID {
+		t.Fatalf("ListThreads userID = %q, want %q", store.ListThreadsUserID, testUser.ID)
 	}
 }
 
@@ -79,17 +79,17 @@ func TestListThreadsParsesQueryOptions(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if !store.listThreadsOptions.ProjectlessOnly {
+	if !store.ListThreadsOptions.ProjectlessOnly {
 		t.Fatal("ProjectlessOnly = false, want true")
 	}
-	if !store.listThreadsOptions.StarredOnly {
+	if !store.ListThreadsOptions.StarredOnly {
 		t.Fatal("StarredOnly = false, want true")
 	}
-	if !store.listThreadsOptions.Archived {
+	if !store.ListThreadsOptions.Archived {
 		t.Fatal("Archived = false, want true")
 	}
-	if store.listThreadsOptions.Limit != 12 {
-		t.Fatalf("Limit = %d, want 12", store.listThreadsOptions.Limit)
+	if store.ListThreadsOptions.Limit != 12 {
+		t.Fatalf("Limit = %d, want 12", store.ListThreadsOptions.Limit)
 	}
 }
 
@@ -101,7 +101,7 @@ func TestSearchThreadContentReturnsSnippetsAndClampsLimit(t *testing.T) {
 			Snippet: "…a «vpn» snippet…",
 		})
 	}
-	store := &fakeThreadStore{contentHits: hits}
+	store := &fakeThreadStore{ContentHits: hits}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	// A limit above the ceiling must be clamped to the 200-result maximum.
@@ -191,7 +191,7 @@ func TestArchiveAndDeleteThreadReturn204(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &fakeThreadStore{
-				thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
+				Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
 			}
 			srv := newAuthenticatedServer(t, Deps{Thread: store})
 			rec := httptest.NewRecorder()
@@ -207,7 +207,7 @@ func TestArchiveAndDeleteThreadReturn204(t *testing.T) {
 }
 
 func TestUpdateThreadCanMoveIntoProject(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", `{"projectId":"proj_1"}`)
@@ -217,17 +217,17 @@ func TestUpdateThreadCanMoveIntoProject(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if !store.updateThreadInput.ProjectID.Set {
+	if !store.UpdateThreadInput.ProjectID.Set {
 		t.Fatal("ProjectID.Set = false, want true")
 	}
-	if store.updateThreadInput.ProjectID.Value == nil || *store.updateThreadInput.ProjectID.Value != "proj_1" {
-		t.Fatalf("ProjectID.Value = %v, want proj_1", store.updateThreadInput.ProjectID.Value)
+	if store.UpdateThreadInput.ProjectID.Value == nil || *store.UpdateThreadInput.ProjectID.Value != "proj_1" {
+		t.Fatalf("ProjectID.Value = %v, want proj_1", store.UpdateThreadInput.ProjectID.Value)
 	}
 }
 
 func TestUpdateThreadCanRemoveFromProject(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Thread"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Thread"}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", `{"projectId":null}`)
@@ -237,18 +237,18 @@ func TestUpdateThreadCanRemoveFromProject(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if !store.updateThreadInput.ProjectID.Set {
+	if !store.UpdateThreadInput.ProjectID.Set {
 		t.Fatal("ProjectID.Set = false, want true")
 	}
-	if store.updateThreadInput.ProjectID.Value != nil {
-		t.Fatalf("ProjectID.Value = %v, want nil", store.updateThreadInput.ProjectID.Value)
+	if store.UpdateThreadInput.ProjectID.Value != nil {
+		t.Fatalf("ProjectID.Value = %v, want nil", store.UpdateThreadInput.ProjectID.Value)
 	}
 }
 
 func TestUpdateThreadProjectNotFoundReturns404(t *testing.T) {
 	store := &fakeThreadStore{
-		thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
-		updateThreadErr: chat.ErrProjectNotFound,
+		Thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
+		UpdateThreadErr: chat.ErrProjectNotFound,
 	}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
@@ -272,11 +272,11 @@ func TestDeleteThreadRemovesGeneratedArtifactFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+		Artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:            "art_1",
 			UserID:        testUser.ID,
 			ThreadID:      "thr_1",
@@ -298,7 +298,7 @@ func TestDeleteThreadRemovesGeneratedArtifactFiles(t *testing.T) {
 }
 
 func TestDeleteThreadPurgesThreadRAGData(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	docs := &fakeDocumentService{}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs})
 	rec := httptest.NewRecorder()
@@ -309,13 +309,13 @@ func TestDeleteThreadPurgesThreadRAGData(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body.String())
 	}
-	if len(docs.deletedThreadData) != 1 || docs.deletedThreadData[0] != "thr_1" {
-		t.Fatalf("DeleteThreadData calls = %v, want [thr_1]", docs.deletedThreadData)
+	if len(docs.DeletedThreadData) != 1 || docs.DeletedThreadData[0] != "thr_1" {
+		t.Fatalf("DeleteThreadData calls = %v, want [thr_1]", docs.DeletedThreadData)
 	}
 }
 
 func TestBulkDeleteThreadsPurgesThreadRAGData(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	docs := &fakeDocumentService{}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs})
 	rec := httptest.NewRecorder()
@@ -326,8 +326,8 @@ func TestBulkDeleteThreadsPurgesThreadRAGData(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if len(docs.deletedThreadData) != 2 {
-		t.Fatalf("DeleteThreadData calls = %v, want 2", docs.deletedThreadData)
+	if len(docs.DeletedThreadData) != 2 {
+		t.Fatalf("DeleteThreadData calls = %v, want 2", docs.DeletedThreadData)
 	}
 }
 
@@ -346,10 +346,10 @@ func TestBulkDeleteThreadsRemovesArtifactsAndCountsDeleted(t *testing.T) {
 	absOne := writeArtifact("files/outputs/one.txt")
 	absTwo := writeArtifact("files/outputs/two.txt")
 
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{
+		Artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: testUser.ID, ThreadID: "thr_1", VolumeRelPath: "files/outputs/one.txt"},
 			{ID: "art_2", UserID: testUser.ID, ThreadID: "thr_2", VolumeRelPath: "files/outputs/two.txt"},
 		}},
@@ -381,7 +381,7 @@ func TestBulkDeleteThreadsRemovesArtifactsAndCountsDeleted(t *testing.T) {
 }
 
 func TestBulkDeleteThreadsSkipsEmptyAndDuplicateIDs(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads:delete", `{"threadIds":["thr_1","thr_1",""]}`)
@@ -416,7 +416,7 @@ func TestCreateThreadRejectsUnknownJSONFields(t *testing.T) {
 }
 
 func TestCreateThreadHidesInternalStoreErrors(t *testing.T) {
-	store := &fakeThreadStore{createThreadErr: errors.New("insert thread: database unavailable")}
+	store := &fakeThreadStore{CreateThreadErr: errors.New("insert thread: database unavailable")}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads", `{}`)
@@ -440,8 +440,8 @@ func TestDeleteThreadLogsUnderlyingCauseOn500(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
 	store := &fakeThreadStore{
-		thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
-		deleteThreadErr: errors.New("delete thread: database is locked"),
+		Thread:          chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"},
+		DeleteThreadErr: errors.New("delete thread: database is locked"),
 	}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()

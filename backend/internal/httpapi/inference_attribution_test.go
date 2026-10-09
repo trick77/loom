@@ -65,7 +65,7 @@ func (s *attributionStub) IndexedDocsInScope(context.Context, string, *string, *
 // gate had when it logged without a username.
 func TestStreamMessage_attributesPromptAssemblyModelCalls(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	docs := &attributionStub{
 		docs: map[string]rag.Document{"d1": {ID: "d1", Filename: "photo.png", ThreadID: strPtr("thr_1")}},

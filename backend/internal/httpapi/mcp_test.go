@@ -12,7 +12,7 @@ import (
 
 func TestHandleMCPServers_returnsStatusSnapshot(t *testing.T) {
 	srv := newAuthenticatedServer(t, Deps{
-		MCP: fakeMCPService{servers: []mcp.ServerStatus{
+		MCP: fakeMCPService{Servers: []mcp.ServerStatus{
 			{Name: "ipverse", Active: true, Transport: "streamable-http", Endpoint: "gateway.ipverse.net", Origin: mcp.OriginFile, ToolCount: 2},
 			{Name: "obscura", Active: false, Transport: "streamable-http", Endpoint: "obscura:8090", Origin: mcp.OriginBuiltIn, ToolCount: 0, Error: "dial tcp: connection refused"},
 		}},
@@ -62,7 +62,7 @@ func TestHandleMCPServers_emptyIsAlwaysArray(t *testing.T) {
 
 func TestHandleMCPTools_splitsServerAndRequiredArgs(t *testing.T) {
 	srv := newAuthenticatedServer(t, Deps{
-		MCP: fakeMCPService{tools: []llm.Tool{
+		MCP: fakeMCPService{ToolList: []llm.Tool{
 			{Type: "function", Function: llm.ToolFunction{
 				Name:        "ipverse__whois",
 				Description: "Batch WHOIS lookup",

@@ -120,7 +120,7 @@ func TestDocumentInlineContext_dedupesRepeatedID(t *testing.T) {
 }
 
 func TestKnowledgeContext_excludesInlinedDocs(t *testing.T) {
-	s := &server{documents: &stubDocs{chunks: []rag.RetrievedChunk{
+	s := &server{documents: &stubDocs{Chunks: []rag.RetrievedChunk{
 		{DocumentID: "d1", Filename: "inlined.md", Text: "already inline"},
 		{DocumentID: "d2", Filename: "other.md", Text: "fresh chunk"},
 	}}}

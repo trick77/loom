@@ -56,7 +56,7 @@ func TestLoadEditSourceImage_reportsSourceDimensions(t *testing.T) {
 
 	s := &server{
 		usersDir: usersDir,
-		artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_1",
 			UserID:          userID,
 			ThreadID:        "t1",
@@ -106,7 +106,7 @@ func TestLoadEditSourceImage_undecodableHasUnknownDimensions(t *testing.T) {
 
 	s := &server{
 		usersDir: usersDir,
-		artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_1",
 			UserID:          userID,
 			ThreadID:        "t1",
@@ -142,8 +142,8 @@ func TestStreamMessageAppliesAspectRatioFromToolCall(t *testing.T) {
 	}
 
 	llmClient := &fakeToolChatClient{
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
-		results: []llm.StreamResult{{
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		Results: []llm.StreamResult{{
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
@@ -153,7 +153,7 @@ func TestStreamMessageAppliesAspectRatioFromToolCall(t *testing.T) {
 				},
 			}},
 		}},
-		plain: "Created desert-canyon.png.",
+		Plain: "Created desert-canyon.png.",
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     threadStore,

@@ -25,31 +25,6 @@ import (
 	"github.com/trick77/loom/internal/sse"
 )
 
-type fakeSandbox struct {
-	available bool
-	result    sandbox.Result
-	err       error
-	got       []sandbox.Request
-}
-
-func (f *fakeSandbox) Available() bool        { return f.available }
-func (f *fakeSandbox) Timeout() time.Duration { return time.Minute }
-func (f *fakeSandbox) Run(_ context.Context, r sandbox.Request) (sandbox.Result, error) {
-	f.got = append(f.got, r)
-	return f.result, f.err
-}
-
-// listDocuments is a document service whose List returns several documents.
-type listDocuments struct {
-	fakeDocumentService
-	docs  []rag.Document
-	extra []rag.Document // found by Get only, outside the scope listing
-}
-
-func (l *listDocuments) DocumentsInScope(context.Context, string, *string, *string, int) ([]rag.Document, error) {
-	return l.docs, nil
-}
-
 func strp(s string) *string { return &s }
 
 type sandboxFixture struct {
@@ -77,7 +52,7 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 	write("projects/p1/notes.md", "# notes")
 	write("files/global.json", "{}")
 	thread := chat.Thread{ID: "t1", ProjectID: strp("p1")}
-	docs := &listDocuments{docs: []rag.Document{
+	docs := &listDocuments{Docs: []rag.Document{
 		{ID: "doc-aaaa1111", ThreadID: strp("t1"), Filename: "Umsatz Übersicht (2025).csv", VolumeRelpath: "files/umsatz.csv"},
 		{ID: "doc-bbbb2222", ProjectID: strp("p1"), Filename: "notes.md", VolumeRelpath: "projects/p1/notes.md"},
 		// Same user, another thread: never offered, never readable.
@@ -89,7 +64,7 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 		// User-global: in every thread's scope, as for knowledge.
 		{ID: "doc-ffff6666", Filename: "global.json", VolumeRelpath: "files/global.json"},
 	}}
-	box := &fakeSandbox{available: true}
+	box := &fakeSandbox{Enabled: true}
 	rec := httptest.NewRecorder()
 	stream, err := sse.NewWriter(rec)
 	if err != nil {
@@ -124,11 +99,11 @@ func TestSandboxOfferedFollowsHealthAndConfig(t *testing.T) {
 		t.Fatalf("run_python missing from %v", names)
 	}
 
-	f.box.available = false
+	f.box.Enabled = false
 	if f.srv.sandboxOffered() || toolNames(f.srv.availableTools(f.thread, toolGate{category: "general", sandbox: false}))[sandboxToolName] {
 		t.Fatal("unhealthy sandbox still offered")
 	}
-	f.box.available = true
+	f.box.Enabled = true
 	f.srv.artifacts = nil
 	if f.srv.sandboxOffered() {
 		t.Fatal("offered without an artifact store")
@@ -196,17 +171,17 @@ func TestRunSandboxToolArgumentErrors(t *testing.T) {
 		docs = append(docs, d)
 		names = append(names, `"`+sandboxAlias(d)+`"`)
 	}
-	f.srv.documents = &listDocuments{docs: docs}
+	f.srv.documents = &listDocuments{Docs: docs}
 	out, _, _ = f.turn(chat.Thread{ID: "t1"}).executeBuiltInTool(context.Background(),
 		runCall(`{"code":"1","files":[`+strings.Join(names, ",")+`]}`))
-	if !strings.Contains(out, fmt.Sprintf("at most %d input files", maxSandboxInputFiles)) || len(f.box.got) != 0 {
+	if !strings.Contains(out, fmt.Sprintf("at most %d input files", maxSandboxInputFiles)) || len(f.box.Got) != 0 {
 		t.Fatalf("too many files: %q", out)
 	}
 }
 
 func TestRunSandboxToolPassesRejectionReason(t *testing.T) {
 	f := newSandboxFixture(t)
-	f.box.err = fmt.Errorf("%w: code exceeds 262144 bytes", sandbox.ErrRejected)
+	f.box.Err = fmt.Errorf("%w: code exceeds 262144 bytes", sandbox.ErrRejected)
 	out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(), runCall(`{"code":"1"}`))
 	if !strings.Contains(out, "code exceeds 262144 bytes") || strings.Contains(out, "unavailable") {
 		t.Fatalf("output %q", out)
@@ -227,20 +202,6 @@ func TestFormatSandboxResultPutsStdoutLast(t *testing.T) {
 	}
 }
 
-func (l *listDocuments) Get(_ context.Context, _ string, id string) (rag.Document, bool, error) {
-	for _, d := range l.docs {
-		if d.ID == id {
-			return d, true, nil
-		}
-	}
-	for _, d := range l.extra {
-		if d.ID == id {
-			return d, true, nil
-		}
-	}
-	return rag.Document{}, false, nil
-}
-
 // A file attached this turn is named even when the stable list is full and
 // the file lies outside the scan (an older project file).
 func TestSandboxGuidanceNamesTheTurnsAttachment(t *testing.T) {
@@ -249,7 +210,7 @@ func TestSandboxGuidanceNamesTheTurnsAttachment(t *testing.T) {
 		docs = append(docs, rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv"})
 	}
 	old := rag.Document{ID: "old-project-file", ProjectID: strp("p1"), Filename: "budget.xlsx"}
-	s := &server{documents: &listDocuments{docs: docs, extra: []rag.Document{old}}}
+	s := &server{documents: &listDocuments{Docs: docs, Extra: []rag.Document{old}}}
 	thread := chat.Thread{ID: "t1", ProjectID: strp("p1")}
 	g := s.sandboxGuidance(context.Background(), testUser.ID, thread, []string{"old-project-file", "d00"})
 	if !strings.Contains(g, sandboxAlias(old)+` (attached now as "budget.xlsx")`) {
@@ -263,7 +224,7 @@ func TestSandboxGuidanceNamesTheTurnsAttachment(t *testing.T) {
 	}
 	// Out-of-scope or unreadable attachments stay out.
 	other := rag.Document{ID: "x", ThreadID: strp("t9"), Filename: "x.csv"}
-	s.documents = &listDocuments{extra: []rag.Document{other}}
+	s.documents = &listDocuments{Extra: []rag.Document{other}}
 	if g := s.sandboxGuidance(context.Background(), testUser.ID, thread, []string{"x", "missing"}); g != sandboxGuidancePrompt {
 		t.Fatalf("out-of-scope attachment named:\n%s", g)
 	}
@@ -274,7 +235,7 @@ func TestSandboxGuidanceCapsTheList(t *testing.T) {
 	for i := 0; i < maxSandboxInputsListed+3; i++ {
 		docs = append(docs, rag.Document{ID: fmt.Sprintf("d%02d", i), ThreadID: strp("t1"), Filename: "f.csv"})
 	}
-	s := &server{documents: &listDocuments{docs: docs}}
+	s := &server{documents: &listDocuments{Docs: docs}}
 	g := s.sandboxGuidance(context.Background(), testUser.ID, chat.Thread{ID: "t1"}, nil)
 	if strings.Count(g, "\n- ") != maxSandboxInputsListed+1 || !strings.Contains(g, "and 3 more") {
 		t.Fatalf("list not capped:\n%s", g)
@@ -317,7 +278,7 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 	if err := png.Encode(&pngBuf, img); err != nil {
 		t.Fatal(err)
 	}
-	f.box.result = sandbox.Result{
+	f.box.Result = sandbox.Result{
 		Stdout: "Top: A 10\n",
 		Files: []sandbox.File{
 			{Name: "chart.png", Data: pngBuf.Bytes()},
@@ -332,7 +293,7 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 	if !handled {
 		t.Fatal("run_python not handled")
 	}
-	req := f.box.got[0]
+	req := f.box.Got[0]
 	if req.Code != "print(1)" || len(req.Files) != 2 || string(req.Files[0].Data) != "kunde,umsatz\nA,10\n" || req.Files[1].Name != aliasNotes {
 		t.Fatalf("request %+v", req)
 	}
@@ -360,7 +321,7 @@ func TestRunSandboxToolRejectsOutOfScopeFiles(t *testing.T) {
 	if !strings.Contains(out, aliasUmsatz) {
 		t.Fatalf("the valid names must be listed: %q", out)
 	}
-	if len(f.box.got) != 0 {
+	if len(f.box.Got) != 0 {
 		t.Fatal("job ran with an unknown file")
 	}
 }
@@ -379,7 +340,7 @@ func TestRunSandboxToolReportsFailures(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newSandboxFixture(t)
-			f.box.err = tc.err
+			f.box.Err = tc.err
 			out, created, _ := f.turn(f.thread).executeBuiltInTool(context.Background(), runCall(tc.args))
 			if !strings.HasPrefix(out, toolFailedPrefix) || !strings.Contains(out, tc.want) || created != nil {
 				t.Fatalf("output %q created %v", out, created)
@@ -388,7 +349,7 @@ func TestRunSandboxToolReportsFailures(t *testing.T) {
 	}
 
 	f := newSandboxFixture(t)
-	f.box.available = false
+	f.box.Enabled = false
 	if out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(), runCall(`{"code":"1"}`)); !strings.Contains(out, "not available") {
 		t.Fatalf("withdrawn sandbox: %q", out)
 	}
@@ -396,7 +357,7 @@ func TestRunSandboxToolReportsFailures(t *testing.T) {
 	f = newSandboxFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	f.box.err = context.Canceled
+	f.box.Err = context.Canceled
 	if out, _, _ := f.turn(f.thread).executeBuiltInTool(ctx, runCall(`{"code":"1"}`)); out != "tool failed: cancelled" {
 		t.Fatalf("cancelled: %q", out)
 	}
@@ -404,7 +365,7 @@ func TestRunSandboxToolReportsFailures(t *testing.T) {
 
 func TestRunSandboxToolNonZeroExitIsAResult(t *testing.T) {
 	f := newSandboxFixture(t)
-	f.box.result = sandbox.Result{ExitCode: 1, Stderr: "Traceback\nKeyError: 'Umsatz'\n", TimedOut: true}
+	f.box.Result = sandbox.Result{ExitCode: 1, Stderr: "Traceback\nKeyError: 'Umsatz'\n", TimedOut: true}
 	out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(), runCall(`{"code":"x"}`))
 	if strings.HasPrefix(out, toolFailedPrefix) {
 		t.Fatalf("a failing program is not a tool failure: %q", out)
@@ -424,7 +385,7 @@ func TestRunSandboxToolInputBudget(t *testing.T) {
 	}
 	out, _, _ := f.turn(f.thread).executeBuiltInTool(context.Background(),
 		runCall(`{"code":"1","files":["`+aliasUmsatz+`"]}`))
-	if !strings.Contains(out, "too large") || len(f.box.got) != 0 {
+	if !strings.Contains(out, "too large") || len(f.box.Got) != 0 {
 		t.Fatalf("output %q", out)
 	}
 }
@@ -446,14 +407,14 @@ func TestSandboxToolSchema(t *testing.T) {
 }
 
 func TestStreamMessageRunsPythonAndAnswers(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
-	llmClient := &fakeToolChatClient{results: []llm.StreamResult{
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
 		{ToolCalls: []llm.ToolCall{{ID: "call_py", Type: "function", Function: llm.ToolCallFunction{
 			Name: sandboxToolName, Arguments: `{"code":"print('strawberry'.count('r'))"}`,
 		}}}},
 		{Content: "There are 3."},
 	}}
-	box := &fakeSandbox{available: true, result: sandbox.Result{Stdout: "3\n"}}
+	box := &fakeSandbox{Enabled: true, Result: sandbox.Result{Stdout: "3\n"}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread:    store,
 		LLM:       llmClient,
@@ -470,27 +431,27 @@ func TestStreamMessageRunsPythonAndAnswers(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"name":"run_python"`) || !strings.Contains(rec.Body.String(), `exit_code: 0\nstdout:\n3`) {
 		t.Fatalf("SSE body lacks the run:\n%s", rec.Body.String())
 	}
-	if store.assistantContent != "There are 3." {
-		t.Fatalf("answer %q", store.assistantContent)
+	if store.AssistantContent != "There are 3." {
+		t.Fatalf("answer %q", store.AssistantContent)
 	}
-	if !toolNames(llmClient.tools[0])[sandboxToolName] {
+	if !toolNames(llmClient.Tools[0])[sandboxToolName] {
 		t.Fatal("run_python not offered to the model")
 	}
-	if !strings.Contains(llmClient.histories[0][0].Content, sandboxGuidancePrompt) {
+	if !strings.Contains(llmClient.Histories[0][0].Content, sandboxGuidancePrompt) {
 		t.Fatal("guidance missing from the system prompt")
 	}
-	if len(box.got) != 1 || box.got[0].Code != "print('strawberry'.count('r'))" {
-		t.Fatalf("sandbox requests %+v", box.got)
+	if len(box.Got) != 1 || box.Got[0].Code != "print('strawberry'.count('r'))" {
+		t.Fatalf("sandbox requests %+v", box.Got)
 	}
 }
 
 func TestStreamMessageOmitsPythonWhenSandboxDown(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
-	llmClient := &fakeToolChatClient{results: []llm.StreamResult{{Content: "Hi."}}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{{Content: "Hi."}}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread:    store,
 		LLM:       llmClient,
-		Sandbox:   &fakeSandbox{available: false},
+		Sandbox:   &fakeSandbox{Enabled: false},
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
 	})
@@ -500,7 +461,7 @@ func TestStreamMessageOmitsPythonWhenSandboxDown(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
-	if toolNames(llmClient.tools[0])[sandboxToolName] || strings.Contains(llmClient.histories[0][0].Content, "run_python") {
+	if toolNames(llmClient.Tools[0])[sandboxToolName] || strings.Contains(llmClient.Histories[0][0].Content, "run_python") {
 		t.Fatal("run_python offered or named while the sandbox is down")
 	}
 }

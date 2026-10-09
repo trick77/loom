@@ -29,12 +29,12 @@ func TestRenderUserContext(t *testing.T) {
 func TestStreamMessageInjectsUserMemory(t *testing.T) {
 	var capturedHistory []llm.Message
 	store := &fakeThreadStore{
-		thread:     chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Loose chat"},
-		userMemory: chat.UserMemory{Content: "- Works at Acme in Zurich"},
+		Thread:     chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Loose chat"},
+		UserMemory: chat.UserMemory{Content: "- Works at Acme in Zurich"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{history: &capturedHistory},
+		LLM:    fakeChatClient{History: &capturedHistory},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Where do I work?"}`)
@@ -56,16 +56,16 @@ func TestStreamMessageInjectsUserMemory(t *testing.T) {
 // messages since the last refresh (zero delta), nothing regenerates.
 func TestRefreshUserMemoryIfDue_NoNewMessagesIsNoOp(t *testing.T) {
 	store := &fakeThreadStore{
-		userMessageCount: 0,
-		messages:         []chat.Message{{Role: chat.RoleUser, Content: "Hi"}},
+		UserMessageCount: 0,
+		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "Hi"}},
 	}
-	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
+	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "must not be stored"}}
 
 	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
-	if store.userMemory.Content != "" {
-		t.Fatalf("memory = %q, want no refresh with zero new messages", store.userMemory.Content)
+	if store.UserMemory.Content != "" {
+		t.Fatalf("memory = %q, want no refresh with zero new messages", store.UserMemory.Content)
 	}
 }
 
@@ -76,20 +76,20 @@ func TestRefreshUserMemoryIfDue_NoNewMessagesIsNoOp(t *testing.T) {
 // left describing conversations that no longer exist.
 func TestRefreshUserMemoryIfDue_NegativeDeltaRefoldsRemainingTranscript(t *testing.T) {
 	store := &fakeThreadStore{
-		userMessageCount: 2,
-		userMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 5},
-		messages:         []chat.Message{{Role: chat.RoleUser, Content: "Hi"}},
+		UserMessageCount: 2,
+		UserMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 5},
+		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "Hi"}},
 	}
-	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- rebuilt"}}
+	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- rebuilt"}}
 
 	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
-	if store.userMemory.Content != "- rebuilt" {
-		t.Fatalf("memory = %q, want rebuilt from the remaining transcript", store.userMemory.Content)
+	if store.UserMemory.Content != "- rebuilt" {
+		t.Fatalf("memory = %q, want rebuilt from the remaining transcript", store.UserMemory.Content)
 	}
-	if store.userMemory.SourceMessageCount != 2 {
-		t.Fatalf("SourceMessageCount = %d, want the current count 2", store.userMemory.SourceMessageCount)
+	if store.UserMemory.SourceMessageCount != 2 {
+		t.Fatalf("SourceMessageCount = %d, want the current count 2", store.UserMemory.SourceMessageCount)
 	}
 }
 
@@ -97,18 +97,18 @@ func TestRefreshUserMemoryIfDue_NegativeDeltaRefoldsRemainingTranscript(t *testi
 // fires the gate and the incremental refresh folds in the recent messages.
 func TestRefreshUserMemoryIfDue_AnyNewMessageRefreshes(t *testing.T) {
 	store := &fakeThreadStore{
-		userMessageCount: 1,
-		messages:         []chat.Message{{Role: chat.RoleUser, Content: "I moved to Zurich"}},
+		UserMessageCount: 1,
+		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "I moved to Zurich"}},
 	}
-	s := &server{thread: store, llm: fakeChatClient{projectMemory: "- Lives in Zurich"}}
+	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- Lives in Zurich"}}
 
 	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
-	if store.userMemory.Content != "- Lives in Zurich" {
-		t.Fatalf("memory = %q, want refreshed content", store.userMemory.Content)
+	if store.UserMemory.Content != "- Lives in Zurich" {
+		t.Fatalf("memory = %q, want refreshed content", store.UserMemory.Content)
 	}
-	if store.userMemory.SourceMessageCount != 1 {
-		t.Fatalf("source count = %d, want 1", store.userMemory.SourceMessageCount)
+	if store.UserMemory.SourceMessageCount != 1 {
+		t.Fatalf("source count = %d, want 1", store.UserMemory.SourceMessageCount)
 	}
 }

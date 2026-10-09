@@ -32,11 +32,11 @@ import (
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{title: "# Albert Einstein 🧠⚛️ The legendary physicist"},
+		LLM:    fakeChatClient{Title: "# Albert Einstein 🧠⚛️ The legendary physicist"},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -68,28 +68,28 @@ func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
 	if threadEvent < 0 || assistantDelta < 0 || threadEvent < assistantDelta {
 		t.Fatalf("thread title event index = %d, assistant delta index = %d, want title after assistant response:\n%s", threadEvent, assistantDelta, body)
 	}
-	if store.assistantContent != "Hello" {
-		t.Fatalf("assistantContent = %q, want Hello", store.assistantContent)
+	if store.AssistantContent != "Hello" {
+		t.Fatalf("assistantContent = %q, want Hello", store.AssistantContent)
 	}
-	if len(store.messages) != 2 {
-		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	if len(store.Messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.Messages))
 	}
-	if store.messages[0].Role != chat.RoleUser || store.messages[0].Content != "Hi" {
-		t.Fatalf("first persisted message = %#v, want user Hi", store.messages[0])
+	if store.Messages[0].Role != chat.RoleUser || store.Messages[0].Content != "Hi" {
+		t.Fatalf("first persisted message = %#v, want user Hi", store.Messages[0])
 	}
-	if store.messages[1].Role != chat.RoleAssistant || store.messages[1].Content != "Hello" {
-		t.Fatalf("second persisted message = %#v, want assistant Hello", store.messages[1])
+	if store.Messages[1].Role != chat.RoleAssistant || store.Messages[1].Content != "Hello" {
+		t.Fatalf("second persisted message = %#v, want assistant Hello", store.Messages[1])
 	}
 }
 
 func TestStreamMessageTitlesFromTheAnswer(t *testing.T) {
 	var seen string
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{title: "Greeting", titleAssistantSeen: &seen},
+		LLM:    fakeChatClient{Title: "Greeting", TitleAssistantSeen: &seen},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -109,13 +109,13 @@ func TestStreamMessageTitlesFromTheAnswer(t *testing.T) {
 
 func TestStreamMessageKeepsExistingTitleWhenGenerationYieldsNothing(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		// An empty title is what the drift guard returns when the model answers in
 		// a script the turn never used.
-		LLM: fakeChatClient{title: "", category: "coding"},
+		LLM: fakeChatClient{Title: "", Category: "coding"},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -127,22 +127,22 @@ func TestStreamMessageKeepsExistingTitleWhenGenerationYieldsNothing(t *testing.T
 	}
 	// No title write at all — the thread keeps whatever it was created with
 	// rather than being blanked to a placeholder.
-	if store.updateThreadInput.Title != nil {
-		t.Fatalf("UpdateThread title = %q, want no title write", *store.updateThreadInput.Title)
+	if store.UpdateThreadInput.Title != nil {
+		t.Fatalf("UpdateThread title = %q, want no title write", *store.UpdateThreadInput.Title)
 	}
 	// The category is persisted by the pre-answer classifier and is unaffected.
-	if store.updateThreadInput.Category == nil || *store.updateThreadInput.Category != "coding" {
-		t.Fatalf("UpdateThread category = %#v, want coding", store.updateThreadInput.Category)
+	if store.UpdateThreadInput.Category == nil || *store.UpdateThreadInput.Category != "coding" {
+		t.Fatalf("UpdateThread category = %#v, want coding", store.UpdateThreadInput.Category)
 	}
 }
 
 func TestStreamMessageGeneratesTitleWhenThreadTitleIsFirstPrompt(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Explain this document"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Explain this document"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{title: "Document summary"},
+		LLM:    fakeChatClient{Title: "Document summary"},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Explain this document"}`)
@@ -160,14 +160,14 @@ func TestStreamMessageGeneratesTitleWhenThreadTitleIsFirstPrompt(t *testing.T) {
 
 func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	streamText := "Answer."
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			streamText:    &streamText,
-			reasoningText: "I should reason first.",
+			StreamText:    &streamText,
+			ReasoningText: "I should reason first.",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -185,10 +185,10 @@ func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
 	if !strings.Contains(body, `"content":"I should reason first."`) {
 		t.Fatalf("body missing reasoning content:\n%s", body)
 	}
-	if len(store.messages) == 0 {
+	if len(store.Messages) == 0 {
 		t.Fatal("no messages persisted")
 	}
-	last := store.messages[len(store.messages)-1]
+	last := store.Messages[len(store.Messages)-1]
 	if last.Role != chat.RoleAssistant || last.ReasoningContent != "I should reason first." {
 		t.Fatalf("persisted assistant = %#v", last)
 	}
@@ -200,16 +200,16 @@ func TestStreamMessageSendsReasoningTitleBeforeFirstAnswerDelta(t *testing.T) {
 	gate := make(chan struct{})
 	time.AfterFunc(100*time.Millisecond, func() { close(gate) })
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	streamText := "Answer."
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			streamText:         &streamText,
-			reasoningText:      "Short thought.",
-			reasoningTitle:     "Thinking briefly",
-			reasoningTitleGate: gate,
+			StreamText:         &streamText,
+			ReasoningText:      "Short thought.",
+			ReasoningTitle:     "Thinking briefly",
+			ReasoningTitleGate: gate,
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -232,16 +232,16 @@ func TestStreamMessageAnswerNotHeldPastReasoningTitleHold(t *testing.T) {
 	reasoningTitleHold = 50 * time.Millisecond
 	gate := make(chan struct{})
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	streamText := "Answer."
 	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			streamText:         &streamText,
-			reasoningText:      "Short thought.",
-			reasoningTitle:     "Never arrives",
-			reasoningTitleGate: gate,
+			StreamText:         &streamText,
+			ReasoningText:      "Short thought.",
+			ReasoningTitle:     "Never arrives",
+			ReasoningTitleGate: gate,
 		},
 	}))
 	t.Cleanup(srv.Close)
@@ -282,10 +282,10 @@ func TestStreamMessageAnswerNotHeldPastReasoningTitleHold(t *testing.T) {
 func TestStreamMessageSendsWorkingTitleWhileGatesRun(t *testing.T) {
 	classifyGate := make(chan struct{})
 	var release sync.Once
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Is 1001 prime?"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Is 1001 prime?"}}
 	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{workingTitle: "Checking whether 1001 is prime", classifyGate: classifyGate},
+		LLM:    fakeChatClient{WorkingTitle: "Checking whether 1001 is prime", ClassifyGate: classifyGate},
 	}))
 	t.Cleanup(srv.Close)
 	// After srv.Close in registration order, so it runs first: Close waits on
@@ -327,10 +327,10 @@ func TestStreamMessageSendsWorkingTitleWhileGatesRun(t *testing.T) {
 func TestStreamMessageAnswerNotHeldByWorkingTitle(t *testing.T) {
 	gate := make(chan struct{})
 	var release sync.Once
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
 	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{workingTitle: "Greeting the user", workingTitleGate: gate},
+		LLM:    fakeChatClient{WorkingTitle: "Greeting the user", WorkingTitleGate: gate},
 	}))
 	t.Cleanup(srv.Close)
 	// After srv.Close in registration order, so it runs first: Close waits on
@@ -369,18 +369,18 @@ func TestStreamMessageAnswerNotHeldByWorkingTitle(t *testing.T) {
 // The working title is a call of the turn like the reasoning title: its cost
 // lands on the answer.
 func TestStreamMessageBooksWorkingTitleCost(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{workingTitle: "Greeting the user", workingTitleCost: 7, cost: 1000},
+		LLM:    fakeChatClient{WorkingTitle: "Greeting the user", WorkingTitleCost: 7, Cost: 1000},
 	})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`))
 
-	if len(store.messages) != 2 {
-		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	if len(store.Messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.Messages))
 	}
-	if cost := store.messages[1].CostNanoUSD; cost == nil || *cost != 1007 {
+	if cost := store.Messages[1].CostNanoUSD; cost == nil || *cost != 1007 {
 		t.Fatalf("assistant CostNanoUSD = %v, want 1007 (answer and working title)", cost)
 	}
 }
@@ -398,17 +398,17 @@ func TestStreamMessageSendsReasoningTitleWhileStillReasoning(t *testing.T) {
 	var release sync.Once
 	seen := make(chan string, 4)
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	streamText := "Answer."
 	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			streamText:         &streamText,
-			reasoningDeltas:    []string{"The user asks why the sky is blue.", " Rayleigh scattering explains it."},
-			reasoningHold:      hold,
-			reasoningTitle:     "Explaining the blue sky",
-			reasoningTitleSeen: seen,
+			StreamText:         &streamText,
+			ReasoningDeltas:    []string{"The user asks why the sky is blue.", " Rayleigh scattering explains it."},
+			ReasoningHold:      hold,
+			ReasoningTitle:     "Explaining the blue sky",
+			ReasoningTitleSeen: seen,
 		},
 	}))
 	t.Cleanup(srv.Close)
@@ -459,15 +459,15 @@ func TestStreamMessageSendsReasoningTitleWhileStillReasoning(t *testing.T) {
 
 func TestStreamMessageEmitsAndPersistsReasoningTitle(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	streamText := "Answer."
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			streamText:     &streamText,
-			reasoningText:  "The user wants the latest sources, so I will search.",
-			reasoningTitle: "Searching current sources",
+			StreamText:     &streamText,
+			ReasoningText:  "The user wants the latest sources, so I will search.",
+			ReasoningTitle: "Searching current sources",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -489,10 +489,10 @@ func TestStreamMessageEmitsAndPersistsReasoningTitle(t *testing.T) {
 	if strings.Index(body, "event: assistant_reasoning_title") > strings.Index(body, "event: assistant_message") {
 		t.Fatalf("title event came after assistant_message:\n%s", body)
 	}
-	if len(store.messages) == 0 {
+	if len(store.Messages) == 0 {
 		t.Fatal("no messages persisted")
 	}
-	last := store.messages[len(store.messages)-1]
+	last := store.Messages[len(store.Messages)-1]
 	if !strings.Contains(string(last.ActivityTrace), `"title":"Searching current sources"`) {
 		t.Fatalf("persisted activity trace missing title: %s", last.ActivityTrace)
 	}
@@ -500,10 +500,10 @@ func TestStreamMessageEmitsAndPersistsReasoningTitle(t *testing.T) {
 
 func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{
 				ReasoningContent: "alpha reasoning",
 				ToolCalls: []llm.ToolCall{{
@@ -514,7 +514,7 @@ func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 			},
 			{ReasoningContent: "beta reasoning", Content: "Final answer."},
 		},
-		titleFor: func(reasoning string) string {
+		TitleFor: func(reasoning string) string {
 			switch {
 			case strings.Contains(reasoning, "alpha"):
 				return "Alpha abstract"
@@ -529,11 +529,11 @@ func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{
+			ToolList: []llm.Tool{{
 				Type:     "function",
 				Function: llm.ToolFunction{Name: "search__web", Description: "Search", Parameters: map[string]any{"type": "object"}},
 			}},
-			result: "search result",
+			Result: "search result",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -544,10 +544,10 @@ func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	if len(store.messages) == 0 {
+	if len(store.Messages) == 0 {
 		t.Fatal("no messages persisted")
 	}
-	last := store.messages[len(store.messages)-1]
+	last := store.Messages[len(store.Messages)-1]
 	var trace []activityTraceEvent
 	if err := json.Unmarshal(last.ActivityTrace, &trace); err != nil {
 		t.Fatalf("unmarshal activity trace: %v\n%s", err, last.ActivityTrace)
@@ -583,7 +583,7 @@ func TestStreamMessageUsesFallbackWhenForcedFinalAnswerIsEmpty(t *testing.T) {
 	}
 
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{
 				Content: "",
 				ToolCalls: []llm.ToolCall{{
@@ -594,7 +594,7 @@ func TestStreamMessageUsesFallbackWhenForcedFinalAnswerIsEmpty(t *testing.T) {
 			},
 			{Content: ""}, // round 2: no text, no tool calls -> forces tool-free final answer
 		},
-		plain: "", // every tool-free call (final + retry) returns empty, as if the inline XML was stripped
+		Plain: "", // every tool-free call (final + retry) returns empty, as if the inline XML was stripped
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
@@ -641,7 +641,7 @@ func TestStreamMessageExecutesBuiltInArtifactTool(t *testing.T) {
 	}
 
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{
 				Content: "",
 				ToolCalls: []llm.ToolCall{{
@@ -701,8 +701,8 @@ func TestStreamMessageExecutesBuiltInImageTool(t *testing.T) {
 	}
 
 	llmClient := &fakeToolChatClient{
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
-		results: []llm.StreamResult{
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		Results: []llm.StreamResult{
 			{
 				Content: "",
 				ToolCalls: []llm.ToolCall{{
@@ -715,7 +715,7 @@ func TestStreamMessageExecutesBuiltInImageTool(t *testing.T) {
 				}},
 			},
 		},
-		plain: "Created robot.png.",
+		Plain: "Created robot.png.",
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     threadStore,
@@ -765,8 +765,8 @@ func TestStreamMessageUsesFallbackTextWhenImageFinalResponseIsEmpty(t *testing.T
 		t.Fatal(err)
 	}
 	llmClient := &fakeToolChatClient{
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
-		results: []llm.StreamResult{{
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		Results: []llm.StreamResult{{
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
@@ -824,8 +824,8 @@ func TestStreamMessagePersistsImageWhenFinalResponseIsCanceled(t *testing.T) {
 		t.Fatal(err)
 	}
 	llmClient := &fakeToolChatClient{
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
-		results: []llm.StreamResult{{
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		Results: []llm.StreamResult{{
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
@@ -835,7 +835,7 @@ func TestStreamMessagePersistsImageWhenFinalResponseIsCanceled(t *testing.T) {
 				},
 			}},
 		}},
-		plainErr: context.Canceled,
+		PlainErr: context.Canceled,
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     threadStore,
@@ -876,7 +876,7 @@ func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
 	// One round emits two generate_image calls; a second round ends the loop with
 	// plain text. The cap must run only the first call regardless of format.
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{ToolCalls: []llm.ToolCall{
 				{ID: "call_1", Type: "function", Function: llm.ToolCallFunction{
 					Name:      "generate_image",
@@ -936,13 +936,13 @@ func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
 
 func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 	llmClient := &fakeToolChatClient{
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
-		results:     []llm.StreamResult{{Content: "I am a text-based AI assistant and cannot generate images."}},
-		plain:       "Created the image.",
-		titleResult: "Glass City At Sunrise",
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		Results:     []llm.StreamResult{{Content: "I am a text-based AI assistant and cannot generate images."}},
+		Plain:       "Created the image.",
+		TitleResult: "Glass City At Sunrise",
 	}
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	provider := &recordingImageProvider{}
 	server := newAuthenticatedServer(t, Deps{
@@ -951,7 +951,7 @@ func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 		ImageTools: []imagegen.Tool{imagegen.NewTool(provider)},
 		UsersDir:   t.TempDir(),
 		LLM:        llmClient,
-		MCP: fakeMCPService{tools: []llm.Tool{{
+		MCP: fakeMCPService{ToolList: []llm.Tool{{
 			Type:     "function",
 			Function: llm.ToolFunction{Name: "search__web", Description: "Search the web"},
 		}}},
@@ -977,21 +977,21 @@ func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 	}
 	// The fallback leaves through the normal answered-turn path, so the thread is
 	// still named — a refusal must not cost the turn its title.
-	if store.thread.Title != "Glass City At Sunrise" {
-		t.Fatalf("thread title = %q, want the generated title", store.thread.Title)
+	if store.Thread.Title != "Glass City At Sunrise" {
+		t.Fatalf("thread title = %q, want the generated title", store.Thread.Title)
 	}
-	if len(llmClient.tools) == 0 {
+	if len(llmClient.Tools) == 0 {
 		t.Fatal("no tool round was run")
 	}
-	offeredTools := llmClient.tools[0]
+	offeredTools := llmClient.Tools[0]
 	if len(offeredTools) != 1 || offeredTools[0].Function.Name != "generate_image" {
 		t.Fatalf("offered tools = %#v, want only generate_image", offeredTools)
 	}
-	if len(llmClient.histories) == 0 {
+	if len(llmClient.Histories) == 0 {
 		t.Fatal("LLM history was not captured")
 	}
 	foundDirective := false
-	for _, message := range llmClient.histories[0] {
+	for _, message := range llmClient.Histories[0] {
 		if message.Role == "system" &&
 			strings.Contains(message.Content, "Your only job is to call `generate_image` exactly once") &&
 			strings.Contains(message.Content, "Do not refuse based on being text-based") {
@@ -999,14 +999,14 @@ func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 		}
 	}
 	if !foundDirective {
-		t.Fatalf("history missing forced image compiler directive: %#v", llmClient.histories[0])
+		t.Fatalf("history missing forced image compiler directive: %#v", llmClient.Histories[0])
 	}
 }
 
 func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 	llmClient := &fakeToolChatClient{
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
-		results: []llm.StreamResult{{
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		Results: []llm.StreamResult{{
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
@@ -1018,7 +1018,7 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 		}},
 	}
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     store,
@@ -1036,15 +1036,15 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 	if !strings.Contains(body, `"error":"tool failed: fal generation timed out: context deadline exceeded"`) {
 		t.Fatalf("SSE body missing provider failure error:\n%s", body)
 	}
-	if store.assistantContent != "" {
-		t.Fatalf("assistantContent = %q, want no persisted assistant after image failure", store.assistantContent)
+	if store.AssistantContent != "" {
+		t.Fatalf("assistantContent = %q, want no persisted assistant after image failure", store.AssistantContent)
 	}
 }
 
 func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T) {
 	llmClient := &fakeToolChatClient{
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
-		results: []llm.StreamResult{
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		Results: []llm.StreamResult{
 			{
 				Content: "Sure, I will create that now.",
 				ToolCalls: []llm.ToolCall{{
@@ -1057,10 +1057,10 @@ func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T)
 				}},
 			},
 		},
-		plain: "Created robot.png.",
+		Plain: "Created robot.png.",
 	}
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     store,
@@ -1089,8 +1089,8 @@ func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testin
 	textOnlyImageClaim := "Here's your trick77 logo in full cyberpunk style."
 	var history []llm.Message
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
-		messages: []chat.Message{{
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+		Messages: []chat.Message{{
 			ID:        "old_1",
 			ThreadID:  "thr_1",
 			Role:      chat.RoleAssistant,
@@ -1099,9 +1099,9 @@ func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testin
 		}},
 	}
 	capturingLLM := &fakeToolChatClient{
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentEdit},
-		results:     []llm.StreamResult{{Content: textOnlyImageClaim}},
-		plain:       "Created the image.",
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentEdit},
+		Results:     []llm.StreamResult{{Content: textOnlyImageClaim}},
+		Plain:       "Created the image.",
 	}
 	provider := &recordingImageProvider{}
 	server := newAuthenticatedServer(t, Deps{
@@ -1122,16 +1122,16 @@ func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testin
 	if !strings.Contains(body, "event: artifact") {
 		t.Fatalf("SSE body missing fallback image artifact:\n%s", body)
 	}
-	if strings.Contains(store.assistantContent, textOnlyImageClaim) {
-		t.Fatalf("assistantContent = %q, want no persisted text-only image claim", store.assistantContent)
+	if strings.Contains(store.AssistantContent, textOnlyImageClaim) {
+		t.Fatalf("assistantContent = %q, want no persisted text-only image claim", store.AssistantContent)
 	}
 	if got := provider.request.Prompt; got != "make it cyberpunk" {
 		t.Fatalf("fallback prompt = %q, want the user's own message", got)
 	}
-	if len(capturingLLM.histories) == 0 {
+	if len(capturingLLM.Histories) == 0 {
 		t.Fatal("LLM history was not captured")
 	}
-	history = capturingLLM.histories[0]
+	history = capturingLLM.Histories[0]
 	foundDirective := false
 	for _, message := range history {
 		if message.Role == "system" && strings.Contains(message.Content, "Your only job is to call `generate_image` exactly once") {
@@ -1145,7 +1145,7 @@ func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testin
 
 func TestStreamMessagePersistsEmptyArtifactListForTextOnlyAssistant(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
@@ -1156,11 +1156,11 @@ func TestStreamMessagePersistsEmptyArtifactListForTextOnlyAssistant(t *testing.T
 
 	srv.ServeHTTP(rec, req)
 
-	if len(store.messages) != 2 {
-		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	if len(store.Messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.Messages))
 	}
-	if string(store.messages[1].Artifacts) != "[]" {
-		t.Fatalf("assistant artifacts = %s, want []", store.messages[1].Artifacts)
+	if string(store.Messages[1].Artifacts) != "[]" {
+		t.Fatalf("assistant artifacts = %s, want []", store.Messages[1].Artifacts)
 	}
 }
 
@@ -1177,11 +1177,11 @@ func TestStreamMessageAddsImageAttachmentsToLLMHistory(t *testing.T) {
 	}
 	var history []llm.Message
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+		Artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_image",
 			UserID:          testUser.ID,
 			ThreadID:        "thr_1",
@@ -1191,7 +1191,7 @@ func TestStreamMessageAddsImageAttachmentsToLLMHistory(t *testing.T) {
 			SizeBytes:       int64(len(imageBytes)),
 		}}},
 		UsersDir: usersDir,
-		LLM:      fakeChatClient{history: &history},
+		LLM:      fakeChatClient{History: &history},
 	})
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"What is this?","imageAttachmentIds":["art_image"]}`)
 	rec := httptest.NewRecorder()
@@ -1272,7 +1272,7 @@ func TestClassifyImageTurnPreconditions(t *testing.T) {
 		artifacts:  fakeArtifactStore{},
 		usersDir:   t.TempDir(),
 		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		llm:        fakeChatClient{imageIntent: create},
+		llm:        fakeChatClient{ImageIntent: create},
 	}
 	if got := configured.classifyImageTurn(context.Background(), auth.User{ID: "user_1", Username: "jan"}, "thr_1", "zeichne mir einen Fuchs", false, nil); !got.generate {
 		t.Fatalf("classifyImageTurn(create intent) = %+v, want generate=true", got)
@@ -1303,7 +1303,7 @@ func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
 	if err := os.WriteFile(abs, png, 0o644); err != nil {
 		t.Fatalf("write png: %v", err)
 	}
-	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "img_ok", UserID: userID, ThreadID: "thr_1", VolumeRelPath: rel, MIMEType: "image/png"},
 		{ID: "img_other_thread", UserID: userID, ThreadID: "thr_2", VolumeRelPath: rel, MIMEType: "image/png"},
 		{ID: "img_bad_mime", UserID: userID, ThreadID: "thr_1", VolumeRelPath: rel, MIMEType: "image/bmp"},
@@ -1363,7 +1363,7 @@ func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 		artifacts: fakeArtifactStore{},
 		usersDir:  t.TempDir(),
 		docTools:  []docgen.Generator{docgen.TextGenerator{}},
-		mcp: fakeMCPService{tools: []llm.Tool{
+		mcp: fakeMCPService{ToolList: []llm.Tool{
 			{Type: "function", Function: llm.ToolFunction{Name: "create_text_file"}},
 			{Type: "function", Function: llm.ToolFunction{Name: "search__web"}},
 		}},
@@ -1398,11 +1398,11 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	t.Run("falls back to obscura when fetch fails", func(t *testing.T) {
 		var navigated bool
 		srv := &server{mcp: fakeMCPService{
-			available: map[string]bool{
+			Available: map[string]bool{
 				obscuraNavigateToolName: true,
 				obscuraSnapshotToolName: true,
 			},
-			callFunc: func(_ context.Context, name string, args map[string]any) (string, error) {
+			CallFunc: func(_ context.Context, name string, args map[string]any) (string, error) {
 				switch name {
 				case fetchToolName:
 					return "", errFakeTool
@@ -1436,11 +1436,11 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 
 	t.Run("skips obscura for a failed PDF extraction", func(t *testing.T) {
 		srv := &server{mcp: fakeMCPService{
-			available: map[string]bool{
+			Available: map[string]bool{
 				obscuraNavigateToolName: true,
 				obscuraSnapshotToolName: true,
 			},
-			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+			CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
 				if name == fetchToolName {
 					return "", mcp.PDFExtractionError{Err: errors.New("Failed to extract PDF x: no extractable text")}
 				}
@@ -1461,11 +1461,11 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	t.Run("fallback gets its own deadline", func(t *testing.T) {
 		var fetchDeadline, navigateDeadline time.Time
 		srv := &server{mcp: fakeMCPService{
-			available: map[string]bool{
+			Available: map[string]bool{
 				obscuraNavigateToolName: true,
 				obscuraSnapshotToolName: true,
 			},
-			callFunc: func(ctx context.Context, name string, _ map[string]any) (string, error) {
+			CallFunc: func(ctx context.Context, name string, _ map[string]any) (string, error) {
 				switch name {
 				case fetchToolName:
 					fetchDeadline, _ = ctx.Deadline()
@@ -1486,7 +1486,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	})
 
 	t.Run("surfaces fetch failure when obscura is unavailable", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{err: errFakeTool}}
+		srv := &server{mcp: fakeMCPService{Err: errFakeTool}}
 
 		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
 
@@ -1498,11 +1498,11 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 	t.Run("does not fall back for non-fetch tools", func(t *testing.T) {
 		var obscuraCalled bool
 		srv := &server{mcp: fakeMCPService{
-			available: map[string]bool{
+			Available: map[string]bool{
 				obscuraNavigateToolName: true,
 				obscuraSnapshotToolName: true,
 			},
-			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+			CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
 				if name == obscuraNavigateToolName || name == obscuraSnapshotToolName {
 					obscuraCalled = true
 				}
@@ -1533,23 +1533,6 @@ func (p *recordingImageProvider) Generate(ctx context.Context, req imagegen.Gene
 	return fakeImageProvider{}.Generate(ctx, req)
 }
 
-type fakeImageProvider struct{}
-
-func (fakeImageProvider) Generate(_ context.Context, req imagegen.GenerateRequest) (imagegen.GenerateResult, error) {
-	return imagegen.GenerateResult{
-		Filename:  req.Filename,
-		Extension: "png",
-		MIMEType:  "image/png",
-		Bytes:     []byte("\x89PNG\r\n\x1a\nfake"),
-		Provider:  "fake",
-		Model:     "fake-model",
-		RequestID: "request-1",
-		Prompt:    req.Prompt,
-		Width:     req.Width,
-		Height:    req.Height,
-	}, nil
-}
-
 type errorImageProvider struct {
 	err error
 }
@@ -1560,11 +1543,11 @@ func (f errorImageProvider) Generate(context.Context, imagegen.GenerateRequest) 
 
 func TestStreamMessagePersistsAssistantTokenUsage(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM: fakeChatClient{usage: llm.TokenUsage{
+		LLM: fakeChatClient{Usage: llm.TokenUsage{
 			PromptTokens:     7,
 			CompletionTokens: 3,
 			TotalTokens:      10,
@@ -1581,10 +1564,10 @@ func TestStreamMessagePersistsAssistantTokenUsage(t *testing.T) {
 
 	srv.ServeHTTP(rec, req)
 
-	if len(store.messages) != 2 {
-		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	if len(store.Messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.Messages))
 	}
-	assistant := store.messages[1]
+	assistant := store.Messages[1]
 	if got := derefInt(assistant.PromptTokens); got != 7 {
 		t.Fatalf("PromptTokens = %d, want 7", got)
 	}
@@ -1614,28 +1597,28 @@ func derefInt(value *int) int {
 func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 	store := &fakeThreadStore{
 		// Default title so the thread-title helper call fires this turn.
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	recorder := &recordingUsageStore{}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		Usage:  recorder,
 		LLM: fakeChatClient{
-			title:          "Fresh title",
-			reasoningTitle: "Explaining things",
-			reasoningText:  "Let me think about this.",
-			usage: llm.TokenUsage{
+			Title:          "Fresh title",
+			ReasoningTitle: "Explaining things",
+			ReasoningText:  "Let me think about this.",
+			Usage: llm.TokenUsage{
 				PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10,
 				PromptTokensDetails:    llm.PromptTokenDetails{CachedTokens: 5},
 				CompletionTokenDetails: llm.CompletionTokenDetails{ReasoningTokens: 2},
 			},
 			// Reasoning-title call runs with thinking disabled: cost is almost all
 			// prompt (it re-sends the whole reasoning), no reasoning tokens.
-			reasoningTitleUsage: llm.TokenUsage{PromptTokens: 100, CompletionTokens: 1, TotalTokens: 101},
-			titleUsage:          llm.TokenUsage{PromptTokens: 20, CompletionTokens: 4, TotalTokens: 24},
-			cost:                1000,
-			reasoningTitleCost:  100,
-			titleCost:           10,
+			ReasoningTitleUsage: llm.TokenUsage{PromptTokens: 100, CompletionTokens: 1, TotalTokens: 101},
+			TitleUsage:          llm.TokenUsage{PromptTokens: 20, CompletionTokens: 4, TotalTokens: 24},
+			Cost:                1000,
+			ReasoningTitleCost:  100,
+			TitleCost:           10,
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -1643,10 +1626,10 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 
 	srv.ServeHTTP(rec, req)
 
-	if len(store.messages) != 2 {
-		t.Fatalf("persisted messages = %d, want 2", len(store.messages))
+	if len(store.Messages) != 2 {
+		t.Fatalf("persisted messages = %d, want 2", len(store.Messages))
 	}
-	assistant := store.messages[1]
+	assistant := store.Messages[1]
 	// Every call of the turn is on the message's cost, the thread title too:
 	// it runs after the message is written and is added onto it afterwards, so
 	// the thread's Σ counts it.
@@ -1680,10 +1663,10 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 
 	// The lifetime rollup is read after titling, so it carries every helper:
 	// 7+100+20 prompt, 3+1+4 completion, 10+101+24 total.
-	if len(recorder.deltas) != 1 {
-		t.Fatalf("AddTokens calls = %d, want 1", len(recorder.deltas))
+	if len(recorder.Deltas) != 1 {
+		t.Fatalf("AddTokens calls = %d, want 1", len(recorder.Deltas))
 	}
-	delta := recorder.deltas[0]
+	delta := recorder.Deltas[0]
 	for _, c := range []struct {
 		name string
 		got  int
@@ -1716,35 +1699,35 @@ func TestStreamMessageAggregatesHelperTokenUsage(t *testing.T) {
 // and in the lifetime rollup.
 func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	recorder := &recordingUsageStore{}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		Usage:  recorder,
 		LLM: fakeChatClient{
-			title:         "Fresh title",
-			titleCost:     10,
-			streamErr:     errors.New("upstream exploded"),
-			streamErrCost: 5,
+			Title:         "Fresh title",
+			TitleCost:     10,
+			StreamErr:     errors.New("upstream exploded"),
+			StreamErrCost: 5,
 		},
 	})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`))
 
-	if len(store.messages) != 1 {
-		t.Fatalf("persisted messages = %d, want only the user message", len(store.messages))
+	if len(store.Messages) != 1 {
+		t.Fatalf("persisted messages = %d, want only the user message", len(store.Messages))
 	}
-	user := store.messages[0]
+	user := store.Messages[0]
 	if user.CostNanoUSD == nil || *user.CostNanoUSD != 15 {
 		t.Fatalf("user message CostNanoUSD = %v, want 15 (failed round and thread title)", user.CostNanoUSD)
 	}
 	var lifetime int64
-	for _, d := range recorder.deltas {
+	for _, d := range recorder.Deltas {
 		lifetime += d.CostNanoUSD
 	}
 	if lifetime != 15 {
-		t.Fatalf("lifetime cost = %d over %+v, want 15", lifetime, recorder.deltas)
+		t.Fatalf("lifetime cost = %d over %+v, want 15", lifetime, recorder.Deltas)
 	}
 	// The error goes out at once, not after the title call: when the upstream
 	// is down the title fails too and would use up its whole timeout first.
@@ -1770,16 +1753,16 @@ func TestStreamMessageFailedTurnErrorDoesNotWaitForReasoningTitles(t *testing.T)
 	reasoningTitleHold = 50 * time.Millisecond
 	gate := make(chan struct{})
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	srv := httptest.NewServer(newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			reasoningText:      "Let me think about this.",
-			reasoningTitle:     "Thinking",
-			reasoningTitleGate: gate,
-			streamErr:          errors.New("upstream exploded"),
-			streamErrDelta:     "Partial",
+			ReasoningText:      "Let me think about this.",
+			ReasoningTitle:     "Thinking",
+			ReasoningTitleGate: gate,
+			StreamErr:          errors.New("upstream exploded"),
+			StreamErrDelta:     "Partial",
 		},
 	}))
 	t.Cleanup(srv.Close)
@@ -1817,10 +1800,10 @@ func TestStreamMessageFailedTurnErrorDoesNotWaitForReasoningTitles(t *testing.T)
 // The persisted stats must sum every tool round, not just the final answer turn.
 func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{
 				ReasoningContent: "I should search first.",
 				ToolCalls: []llm.ToolCall{{
@@ -1840,7 +1823,7 @@ func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{
+			ToolList: []llm.Tool{{
 				Type: "function",
 				Function: llm.ToolFunction{
 					Name:        "search__web",
@@ -1848,7 +1831,7 @@ func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 					Parameters:  map[string]any{"type": "object"},
 				},
 			}},
-			result: "search result",
+			Result: "search result",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -1859,10 +1842,10 @@ func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if len(store.messages) < 2 {
-		t.Fatalf("persisted messages = %#v, want assistant message", store.messages)
+	if len(store.Messages) < 2 {
+		t.Fatalf("persisted messages = %#v, want assistant message", store.Messages)
 	}
-	assistant := store.messages[len(store.messages)-1]
+	assistant := store.Messages[len(store.Messages)-1]
 	if got := derefInt(assistant.PromptTokens); got != 41 {
 		t.Fatalf("PromptTokens = %d, want 41 (11+30)", got)
 	}
@@ -1876,12 +1859,12 @@ func TestStreamMessageAggregatesTokenUsageAcrossToolRounds(t *testing.T) {
 
 func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	var cancel context.CancelFunc
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM: fakeChatClient{afterStream: func() {
+		LLM: fakeChatClient{AfterStream: func() {
 			cancel()
 		}},
 	})
@@ -1893,17 +1876,17 @@ func TestStreamMessagePersistsAssistantAfterClientContextCancel(t *testing.T) {
 
 	srv.ServeHTTP(rec, req)
 
-	if store.assistantContent != "Hello" {
-		t.Fatalf("assistantContent = %q, want Hello", store.assistantContent)
+	if store.AssistantContent != "Hello" {
+		t.Fatalf("assistantContent = %q, want Hello", store.AssistantContent)
 	}
-	if store.assistantContextErr != nil {
-		t.Fatalf("assistant AddMessage context error = %v, want nil", store.assistantContextErr)
+	if store.AssistantContextErr != nil {
+		t.Fatalf("assistant AddMessage context error = %v, want nil", store.AssistantContextErr)
 	}
 }
 
 func TestStopStreamMessageCancelsActiveAssistantTurn(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &blockingChatClient{
 		started: make(chan struct{}),
@@ -2037,7 +2020,7 @@ func TestStopCauseSanitizesAndWrapsSource(t *testing.T) {
 
 func TestStopStreamMessagePersistsPartialAssistantContent(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &blockingChatClient{
 		started:        make(chan struct{}),
@@ -2075,19 +2058,19 @@ func TestStopStreamMessagePersistsPartialAssistantContent(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("stream handler did not return after stop")
 	}
-	if store.assistantContent != "Partial answer" {
-		t.Fatalf("assistantContent = %q, want partial answer", store.assistantContent)
+	if store.AssistantContent != "Partial answer" {
+		t.Fatalf("assistantContent = %q, want partial answer", store.AssistantContent)
 	}
 }
 
 func TestStreamMessageRejectsEmptyAssistantResponse(t *testing.T) {
 	empty := ""
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{streamText: &empty},
+		LLM:    fakeChatClient{StreamText: &empty},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -2098,22 +2081,22 @@ func TestStreamMessageRejectsEmptyAssistantResponse(t *testing.T) {
 	if !strings.Contains(body, `"error":"empty assistant response"`) {
 		t.Fatalf("SSE body missing empty response error:\n%s", body)
 	}
-	if len(store.messages) != 1 || store.messages[0].Role != chat.RoleUser {
-		t.Fatalf("persisted messages = %#v, want only user message", store.messages)
+	if len(store.Messages) != 1 || store.Messages[0].Role != chat.RoleUser {
+		t.Fatalf("persisted messages = %#v, want only user message", store.Messages)
 	}
 }
 
 func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 	var history []llm.Message
 	store := &fakeThreadStore{
-		thread:   chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
-		messages: []chat.Message{{ID: "old_1", ThreadID: "thr_1", Role: chat.RoleAssistant, Content: "Earlier answer"}},
+		Thread:   chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Messages: []chat.Message{{ID: "old_1", ThreadID: "thr_1", Role: chat.RoleAssistant, Content: "Earlier answer"}},
 	}
 	user := testUser
 	user.ResponseLanguage = "de"
 	srv := newAuthenticatedServerForUser(t, user, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{history: &history},
+		LLM:    fakeChatClient{History: &history},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Neue Frage"}`)
@@ -2140,11 +2123,11 @@ func TestStreamMessageBuildsResponseLanguageHistory(t *testing.T) {
 func TestStreamMessageSystemPromptRoutesURLTools(t *testing.T) {
 	var history []llm.Message
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{history: &history},
+		LLM:    fakeChatClient{History: &history},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Read https://example.com"}`)
@@ -2181,11 +2164,11 @@ func TestSystemPromptForUserIncludesCurrentDate(t *testing.T) {
 func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 	var history []llm.Message
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{history: &history},
+		LLM:    fakeChatClient{History: &history},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"What happened last week?"}`)
@@ -2212,11 +2195,11 @@ func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 func TestStreamMessageSystemPromptBoundsOpenEndedBrainstorming(t *testing.T) {
 	var history []llm.Message
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title", Category: string(classifier.Brainstorming)},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title", Category: string(classifier.Brainstorming)},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{history: &history},
+		LLM:    fakeChatClient{History: &history},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Name my chatbot"}`)
@@ -2239,7 +2222,7 @@ func TestStreamMessageSystemPromptBoundsOpenEndedBrainstorming(t *testing.T) {
 
 func TestStreamMessageReturns503WhenLLMDependencyMissing(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
@@ -2257,11 +2240,11 @@ func TestStreamMessageReturns503WhenLLMDependencyMissing(t *testing.T) {
 
 func TestStreamMessageStillCompletesWhenTitleGenerationFails(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{titleErr: errors.New("title model unavailable")},
+		LLM:    fakeChatClient{TitleErr: errors.New("title model unavailable")},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -2282,10 +2265,10 @@ func TestStreamMessageStillCompletesWhenTitleGenerationFails(t *testing.T) {
 
 func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{
 				ReasoningContent: "I should search first.",
 				ToolCalls: []llm.ToolCall{{
@@ -2304,7 +2287,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{
+			ToolList: []llm.Tool{{
 				Type: "function",
 				Function: llm.ToolFunction{
 					Name:        "search__web",
@@ -2312,7 +2295,7 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 					Parameters:  map[string]any{"type": "object"},
 				},
 			}},
-			result: "search result",
+			Result: "search result",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -2342,13 +2325,13 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	if pending, call := strings.Index(body, "event: tool_pending"), strings.Index(body, "event: tool_call"); pending == -1 || pending > call {
 		t.Fatalf("tool_pending should precede tool_call: pending=%d call=%d\n%s", pending, call, body)
 	}
-	if store.assistantContent != "I found Lume." {
-		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
+	if store.AssistantContent != "I found Lume." {
+		t.Fatalf("assistantContent = %q, want final answer", store.AssistantContent)
 	}
-	if len(llmClient.histories) != 2 {
-		t.Fatalf("stream calls = %d, want 2", len(llmClient.histories))
+	if len(llmClient.Histories) != 2 {
+		t.Fatalf("stream calls = %d, want 2", len(llmClient.Histories))
 	}
-	lastHistory := llmClient.histories[1]
+	lastHistory := llmClient.Histories[1]
 	if len(lastHistory) < 3 {
 		t.Fatalf("last history too short: %#v", lastHistory)
 	}
@@ -2358,10 +2341,10 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	if got := lastHistory[len(lastHistory)-2]; got.Role != "assistant" || got.ReasoningContent != "" {
 		t.Fatalf("assistant tool-call history = %#v, want reasoning omitted from provider history", got)
 	}
-	if len(store.messages) < 2 {
-		t.Fatalf("persisted messages = %#v, want assistant message", store.messages)
+	if len(store.Messages) < 2 {
+		t.Fatalf("persisted messages = %#v, want assistant message", store.Messages)
 	}
-	trace := string(store.messages[len(store.messages)-1].ActivityTrace)
+	trace := string(store.Messages[len(store.Messages)-1].ActivityTrace)
 	for _, want := range []string{
 		`"type":"reasoning"`,
 		`"content":"I should search first."`,
@@ -2419,10 +2402,10 @@ func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
 
 func TestStreamMessageRecoversFromToolError(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{ToolCalls: []llm.ToolCall{{
 				ID: "call_1",
 				Function: llm.ToolCallFunction{
@@ -2437,8 +2420,8 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
-			err:   errFakeTool,
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			Err:      errFakeTool,
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -2453,8 +2436,8 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 	if !strings.Contains(body, "event: tool_result") || !strings.Contains(body, "tool failed: fake tool failed") {
 		t.Fatalf("SSE body missing tool failure result:\n%s", body)
 	}
-	if store.assistantContent != "The search tool failed, but I can continue." {
-		t.Fatalf("assistantContent = %q, want recovered answer", store.assistantContent)
+	if store.AssistantContent != "The search tool failed, but I can continue." {
+		t.Fatalf("assistantContent = %q, want recovered answer", store.AssistantContent)
 	}
 }
 
@@ -2463,14 +2446,14 @@ func TestStreamMessageRecoversFromToolError(t *testing.T) {
 // tool result, then completes with a normal final answer.
 func TestStreamMessageDefersDefaultToolCallsBeyondCap(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	// Round 1 batches one search past the default per-round cap; round 2 concludes.
 	round1 := make([]llm.ToolCall, maxToolCallsPerRound+1)
 	for i := range round1 {
 		round1[i] = llm.ToolCall{ID: "call_search", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}
 	}
-	llmClient := &fakeToolChatClient{results: []llm.StreamResult{
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
 		{ToolCalls: round1},
 		{Content: "Final answer."},
 	}}
@@ -2479,8 +2462,8 @@ func TestStreamMessageDefersDefaultToolCallsBeyondCap(t *testing.T) {
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
-			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
 				calls[name]++
 				return "search result", nil
 			},
@@ -2501,8 +2484,8 @@ func TestStreamMessageDefersDefaultToolCallsBeyondCap(t *testing.T) {
 	if !strings.Contains(body, "Deferred:") {
 		t.Fatalf("SSE body missing deferred tool result:\n%s", body)
 	}
-	if store.assistantContent != "Final answer." {
-		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
+	if store.AssistantContent != "Final answer." {
+		t.Fatalf("assistantContent = %q, want final answer", store.AssistantContent)
 	}
 }
 
@@ -2510,13 +2493,13 @@ func TestStreamMessageDefersDefaultToolCallsBeyondCap(t *testing.T) {
 // paste with a dozen links runs them all in one round.
 func TestStreamMessageDefersCheapToolCallsBeyondHigherCap(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	round1 := make([]llm.ToolCall, cheapToolCallsPerRound+1)
 	for i := range round1 {
 		round1[i] = llm.ToolCall{ID: "call_fetch", Function: llm.ToolCallFunction{Name: fetchToolName, Arguments: `{"url":"https://example.com"}`}}
 	}
-	llmClient := &fakeToolChatClient{results: []llm.StreamResult{
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
 		{ToolCalls: round1},
 		{Content: "Fetched the links."},
 	}}
@@ -2526,8 +2509,8 @@ func TestStreamMessageDefersCheapToolCallsBeyondHigherCap(t *testing.T) {
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: fetchToolName}}},
-			callFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: fetchToolName}}},
+			CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
 				callsMu.Lock()
 				defer callsMu.Unlock()
 				calls[name]++
@@ -2550,8 +2533,8 @@ func TestStreamMessageDefersCheapToolCallsBeyondHigherCap(t *testing.T) {
 	if !strings.Contains(body, "Deferred:") {
 		t.Fatalf("SSE body missing deferred tool result:\n%s", body)
 	}
-	if store.assistantContent != "Fetched the links." {
-		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
+	if store.AssistantContent != "Fetched the links." {
+		t.Fatalf("assistantContent = %q, want final answer", store.AssistantContent)
 	}
 }
 
@@ -2560,14 +2543,14 @@ func TestStreamMessageDefersCheapToolCallsBeyondHigherCap(t *testing.T) {
 // in the order the model issued them.
 func TestStreamMessageRunsARoundsFetchesConcurrentlyInCallOrder(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	urls := []string{"https://a.example/1", "https://b.example/2", "https://c.example/3"}
 	round1 := make([]llm.ToolCall, len(urls))
 	for i, u := range urls {
 		round1[i] = llm.ToolCall{ID: fmt.Sprintf("call_%d", i+1), Function: llm.ToolCallFunction{Name: fetchToolName, Arguments: fmt.Sprintf(`{"url":%q}`, u)}}
 	}
-	llmClient := &fakeToolChatClient{results: []llm.StreamResult{
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
 		{ToolCalls: round1},
 		{Content: "Fetched the links."},
 	}}
@@ -2582,8 +2565,8 @@ func TestStreamMessageRunsARoundsFetchesConcurrentlyInCallOrder(t *testing.T) {
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: fetchToolName}}},
-			callFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: fetchToolName}}},
+			CallFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
 				inFlight.Done()
 				select {
 				case <-allStarted:
@@ -2617,14 +2600,14 @@ func TestStreamMessageRunsARoundsFetchesConcurrentlyInCallOrder(t *testing.T) {
 		}
 		last = at
 	}
-	if store.assistantContent != "Fetched the links." {
-		t.Fatalf("assistantContent = %q, want final answer", store.assistantContent)
+	if store.AssistantContent != "Fetched the links." {
+		t.Fatalf("assistantContent = %q, want final answer", store.AssistantContent)
 	}
 }
 
 func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	results := make([]llm.StreamResult, maxToolRounds)
 	for i := range results {
@@ -2636,13 +2619,13 @@ func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
 			},
 		}}}
 	}
-	llmClient := &fakeToolChatClient{results: results, plain: "Final answer without more tools."}
+	llmClient := &fakeToolChatClient{Results: results, Plain: "Final answer without more tools."}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
-			result: "search result",
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			Result:   "search result",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -2654,30 +2637,30 @@ func TestStreamMessageUsesFinalNoToolCallAfterRoundExhaustion(t *testing.T) {
 	if strings.Contains(body, "empty assistant response") {
 		t.Fatalf("SSE body returned empty response after round exhaustion:\n%s", body)
 	}
-	if store.assistantContent != "Final answer without more tools." {
-		t.Fatalf("assistantContent = %q, want final no-tool answer", store.assistantContent)
+	if store.AssistantContent != "Final answer without more tools." {
+		t.Fatalf("assistantContent = %q, want final no-tool answer", store.AssistantContent)
 	}
 }
 
 func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	// Round 1 runs a tool; round 2 returns nothing (no tool call, no content) —
 	// the model gave up without answering. The loop must force a final answer.
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
 			{},
 		},
-		plain: "Final answer after the tool ran.",
+		Plain: "Final answer after the tool ran.",
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
-			result: "search result",
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			Result:   "search result",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -2689,12 +2672,12 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 	if strings.Contains(body, "empty assistant response") {
 		t.Fatalf("SSE body returned empty response after the model stopped empty:\n%s", body)
 	}
-	if store.assistantContent != "Final answer after the tool ran." {
-		t.Fatalf("assistantContent = %q, want forced final answer", store.assistantContent)
+	if store.AssistantContent != "Final answer after the tool ran." {
+		t.Fatalf("assistantContent = %q, want forced final answer", store.AssistantContent)
 	}
 	// The forced final turn is a clean, tool-free synthesis: it nudges the model to
 	// write its answer from the gathered notes, and offers no tools.
-	lastHistory := llmClient.histories[len(llmClient.histories)-1]
+	lastHistory := llmClient.Histories[len(llmClient.Histories)-1]
 	nudged := false
 	for _, msg := range lastHistory {
 		if strings.Contains(msg.Content, "write your complete final answer") {
@@ -2704,7 +2687,7 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 	if !nudged {
 		t.Fatalf("final turn history missing the synthesis directive: %#v", lastHistory)
 	}
-	lastTools := llmClient.tools[len(llmClient.tools)-1]
+	lastTools := llmClient.Tools[len(llmClient.Tools)-1]
 	if len(lastTools) != 0 {
 		t.Fatalf("final turn tools = %#v, want none (tool-free synthesis)", lastTools)
 	}
@@ -2716,22 +2699,22 @@ func TestStreamMessageForcesFinalAnswerWhenModelStopsEmptyAfterTools(t *testing.
 // instead of reflexively emitting another tool call over a tool-saturated history.
 func TestStreamMessageForcedFinalUsesCleanSynthesisHistory(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	// Round 1 runs a tool; round 2 is empty (model gives up) → forced final turn.
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
 			{},
 		},
-		plain: "Synthesized answer from notes.",
+		Plain: "Synthesized answer from notes.",
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools:  []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
-			result: "SEARCH_RESULT_NOTE",
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			Result:   "SEARCH_RESULT_NOTE",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -2739,10 +2722,10 @@ func TestStreamMessageForcedFinalUsesCleanSynthesisHistory(t *testing.T) {
 
 	srv.ServeHTTP(rec, req)
 
-	if store.assistantContent != "Synthesized answer from notes." {
-		t.Fatalf("assistantContent = %q, want the synthesized prose", store.assistantContent)
+	if store.AssistantContent != "Synthesized answer from notes." {
+		t.Fatalf("assistantContent = %q, want the synthesized prose", store.AssistantContent)
 	}
-	final := llmClient.histories[len(llmClient.histories)-1]
+	final := llmClient.Histories[len(llmClient.Histories)-1]
 	// No tool-call/tool-result turns survive into the synthesis history.
 	for _, msg := range final {
 		if msg.Role == "tool" || len(msg.ToolCalls) > 0 {
@@ -2774,12 +2757,12 @@ func TestStreamMessageStampsImageGenerationCategory(t *testing.T) {
 	}
 
 	llmClient := &fakeToolChatClient{
-		titleResult: "Cat astronaut",
+		TitleResult: "Cat astronaut",
 		// The image-intent gate routes this as a creation, which stamps the category.
-		imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+		ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
 		// The classifier would say creative_writing; the override must win.
-		classifyResult: string(classifier.CreativeWriting),
-		results: []llm.StreamResult{{
+		ClassifyResult: string(classifier.CreativeWriting),
+		Results: []llm.StreamResult{{
 			ToolCalls: []llm.ToolCall{{
 				ID:   "call_1",
 				Type: "function",
@@ -2789,7 +2772,7 @@ func TestStreamMessageStampsImageGenerationCategory(t *testing.T) {
 				},
 			}},
 		}},
-		plain: "Created cat.png.",
+		Plain: "Created cat.png.",
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:     threadStore,
@@ -2828,10 +2811,10 @@ func TestStreamMessageDoesNotStampImageGenerationWhenImageToolsAbsent(t *testing
 	}
 
 	llmClient := &fakeToolChatClient{
-		titleResult:    "Cat astronaut",
-		classifyResult: string(classifier.CreativeWriting),
-		results:        []llm.StreamResult{{Content: "A cat astronaut would look like..."}},
-		plain:          "A cat astronaut would look like...",
+		TitleResult:    "Cat astronaut",
+		ClassifyResult: string(classifier.CreativeWriting),
+		Results:        []llm.StreamResult{{Content: "A cat astronaut would look like..."}},
+		Plain:          "A cat astronaut would look like...",
 	}
 	// No ImageTools dependency: image generation is unconfigured.
 	server := newAuthenticatedServer(t, Deps{
@@ -2870,26 +2853,26 @@ func TestStreamMessageGatesToolsByCategory(t *testing.T) {
 	}
 	newServer := func(_ string, llmClient *fakeToolChatClient) http.Handler {
 		return newAuthenticatedServer(t, Deps{
-			Thread:    &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}},
+			Thread:    &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}},
 			Artifacts: fakeArtifactStore{},
 			UsersDir:  t.TempDir(),
 			DocTools:  []docgen.Generator{docgen.TextGenerator{}},
 			LLM:       llmClient,
 			MCP: fakeMCPService{
-				tools: []llm.Tool{
+				ToolList: []llm.Tool{
 					{Type: "function", Function: llm.ToolFunction{Name: "search__web", Description: "Search the web"}},
 					{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs", Description: "Library docs"}},
 				},
-				toolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
+				ToolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
 			},
 		})
 	}
 	run := func(t *testing.T, category, content string) map[string]bool {
 		t.Helper()
 		llmClient := &fakeToolChatClient{
-			classifyResult: category,
-			titleResult:    "T",
-			results:        []llm.StreamResult{{Content: "ok"}},
+			ClassifyResult: category,
+			TitleResult:    "T",
+			Results:        []llm.StreamResult{{Content: "ok"}},
 		}
 		req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"`+content+`"}`)
 		rec := httptest.NewRecorder()
@@ -2897,10 +2880,10 @@ func TestStreamMessageGatesToolsByCategory(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 		}
-		if len(llmClient.tools) != 1 {
-			t.Fatalf("tool rounds = %d, want 1; body=%s", len(llmClient.tools), rec.Body.String())
+		if len(llmClient.Tools) != 1 {
+			t.Fatalf("tool rounds = %d, want 1; body=%s", len(llmClient.Tools), rec.Body.String())
 		}
-		return toolNames(llmClient.tools[0])
+		return toolNames(llmClient.Tools[0])
 	}
 
 	t.Run("general turn ships a trimmed set", func(t *testing.T) {
@@ -2938,19 +2921,19 @@ func TestStreamMessageGatesToolsByCategory(t *testing.T) {
 // injected — without any keyword lexicon.
 func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 	llmClient := &fakeToolChatClient{
-		classifyResult: string(classifier.Coding), // fresh per-turn classification
-		results:        []llm.StreamResult{{Content: "ok"}},
+		ClassifyResult: string(classifier.Coding), // fresh per-turn classification
+		Results:        []llm.StreamResult{{Content: "ok"}},
 	}
 	server := newAuthenticatedServer(t, Deps{
 		// Non-default title + stored general category => no re-title, drift runs.
-		Thread:    &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Weekend plans", Category: string(classifier.General)}},
+		Thread:    &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Weekend plans", Category: string(classifier.General)}},
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
 		DocTools:  []docgen.Generator{docgen.TextGenerator{}},
 		LLM:       llmClient,
 		MCP: fakeMCPService{
-			tools:          []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs"}}},
-			toolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
+			ToolList:       []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs"}}},
+			ToolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
 		},
 	})
 
@@ -2960,11 +2943,11 @@ func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
 	}
-	if len(llmClient.tools) != 1 {
-		t.Fatalf("tool rounds = %d, want 1; body=%s", len(llmClient.tools), rec.Body.String())
+	if len(llmClient.Tools) != 1 {
+		t.Fatalf("tool rounds = %d, want 1; body=%s", len(llmClient.Tools), rec.Body.String())
 	}
 	var hasContext7, hasDocgen bool
-	for _, tool := range llmClient.tools[0] {
+	for _, tool := range llmClient.Tools[0] {
 		switch tool.Function.Name {
 		case "context7__query-docs":
 			hasContext7 = true
@@ -2998,11 +2981,11 @@ func TestStreamMessageRejectsBadImageAttachmentsBeforePersisting(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"}}
+			store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"}}
 			usersDir := t.TempDir()
 			srv := newAuthenticatedServer(t, Deps{
 				Thread:    store,
-				Artifacts: fakeArtifactStore{artifacts: tt.artifacts},
+				Artifacts: fakeArtifactStore{Artifacts: tt.artifacts},
 				UsersDir:  usersDir,
 				LLM:       fakeChatClient{},
 			})
@@ -3023,8 +3006,8 @@ func TestStreamMessageRejectsBadImageAttachmentsBeforePersisting(t *testing.T) {
 			if strings.Contains(rec.Body.String(), usersDir) {
 				t.Fatalf("body leaks the volume path:\n%s", rec.Body.String())
 			}
-			if len(store.messages) != 0 {
-				t.Fatalf("persisted messages = %d, want 0", len(store.messages))
+			if len(store.Messages) != 0 {
+				t.Fatalf("persisted messages = %d, want 0", len(store.Messages))
 			}
 		})
 	}
@@ -3033,14 +3016,14 @@ func TestStreamMessageRejectsBadImageAttachmentsBeforePersisting(t *testing.T) {
 // A panic inside the reasoning-title goroutine must not kill the process or
 // hang the turn: the title is skipped and the answer still lands.
 func TestStreamMessageSurvivesReasoningTitlePanic(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"}}
 	streamText := "Answer."
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			streamText:          &streamText,
-			reasoningText:       "Thinking about it.",
-			reasoningTitlePanic: true,
+			StreamText:          &streamText,
+			ReasoningText:       "Thinking about it.",
+			ReasoningTitlePanic: true,
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -3061,8 +3044,8 @@ func TestStreamMessageSurvivesReasoningTitlePanic(t *testing.T) {
 // first events are already on the wire); the client must still get a
 // terminal error event instead of a silently truncated stream.
 func TestStreamMessageEmitsErrorEventOnPanic(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "T"}}
-	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{streamPanic: true}})
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "T"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{StreamPanic: true}})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
 
@@ -3080,12 +3063,12 @@ func TestStreamMessageEmitsErrorEventOnPanic(t *testing.T) {
 // Titling runs after the answer; a rename the user made while the answer was
 // streaming is newer than the snapshot the turn started from and must win.
 func TestStreamMessageKeepsRenameMadeDuringStream(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			title:       "Generated",
-			afterStream: func() { store.thread.Title = "Mine" },
+			Title:       "Generated",
+			AfterStream: func() { store.Thread.Title = "Mine" },
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -3096,8 +3079,8 @@ func TestStreamMessageKeepsRenameMadeDuringStream(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
-	if store.thread.Title != "Mine" {
-		t.Fatalf("thread title = %q, want the rename kept", store.thread.Title)
+	if store.Thread.Title != "Mine" {
+		t.Fatalf("thread title = %q, want the rename kept", store.Thread.Title)
 	}
 	if strings.Contains(rec.Body.String(), `"title":"Generated"`) {
 		t.Fatalf("stream announced the generated title over the rename:\n%s", rec.Body.String())
@@ -3111,13 +3094,13 @@ func TestStreamMessageKeepsRenameMadeDuringStream(t *testing.T) {
 func TestPrepareTurnRunsImageGateAndClassifierConcurrently(t *testing.T) {
 	imageGate := make(chan struct{})
 	classifyEntered := make(chan struct{}, 1)
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Hi"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Hi"}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
 		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		UsersDir:   t.TempDir(),
-		LLM:        fakeChatClient{category: "coding", imageIntentGate: imageGate, classifyEntered: classifyEntered},
+		LLM:        fakeChatClient{Category: "coding", ImageIntentGate: imageGate, ClassifyEntered: classifyEntered},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -3138,7 +3121,7 @@ func TestPrepareTurnRunsImageGateAndClassifierConcurrently(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("turn did not finish")
 	}
-	if got := store.updateThreadInput.Category; got == nil || *got != "coding" {
+	if got := store.UpdateThreadInput.Category; got == nil || *got != "coding" {
 		t.Fatalf("persisted category = %v, want the classifier's", got)
 	}
 }
@@ -3147,21 +3130,21 @@ func TestPrepareTurnRunsImageGateAndClassifierConcurrently(t *testing.T) {
 // is already in; the image category must still win, as it did when the
 // classifier was skipped for image turns.
 func TestPrepareTurnImageTurnKeepsImageCategoryOverClassifier(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Draw"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Draw"}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread:     store,
 		Artifacts:  fakeArtifactStore{},
 		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
 		UsersDir:   t.TempDir(),
 		LLM: fakeChatClient{
-			category:    "coding",
-			imageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+			Category:    "coding",
+			ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
 		},
 	})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Draw a robot"}`))
 
-	if got := store.updateThreadInput.Category; got == nil || *got != string(classifier.ImageGeneration) {
+	if got := store.UpdateThreadInput.Category; got == nil || *got != string(classifier.ImageGeneration) {
 		t.Fatalf("persisted category = %v, want %q", got, classifier.ImageGeneration)
 	}
 }
@@ -3174,17 +3157,17 @@ func TestPrepareTurnLoadsContextsConcurrently(t *testing.T) {
 	classifyGate := make(chan struct{})
 	fullTextEntered := make(chan struct{}, 1)
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 		// A prior turn: the thread is not freshly classified, so the drift
 		// classifier runs for this message.
-		messages: []chat.Message{{ID: "m0", ThreadID: "thr_1", Role: chat.RoleUser, Content: "earlier"}},
+		Messages: []chat.Message{{ID: "m0", ThreadID: "thr_1", Role: chat.RoleUser, Content: "earlier"}},
 	}
 	docs := &fakeDocumentService{
-		doc:             rag.Document{ID: "d1", ThreadID: strPtr("thr_1"), Filename: "notes.txt", Status: rag.StatusEmbedded},
-		fullText:        "notes",
-		fullTextEntered: fullTextEntered,
+		Doc:             rag.Document{ID: "d1", ThreadID: strPtr("thr_1"), Filename: "notes.txt", Status: rag.StatusEmbedded},
+		Text:            "notes",
+		FullTextEntered: fullTextEntered,
 	}
-	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs, LLM: fakeChatClient{classifyGate: classifyGate}})
+	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs, LLM: fakeChatClient{ClassifyGate: classifyGate}})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Summarize","documentAttachmentIds":["d1"]}`)
 
@@ -3216,7 +3199,7 @@ func TestStartToolRuns(t *testing.T) {
 	search := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}
 
 	t.Run("a lone eligible call stays on the sequential path", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{result: "ok"}}
+		srv := &server{mcp: fakeMCPService{Result: "ok"}}
 		runs := srv.startToolRuns(context.Background(), []llm.ToolCall{fetch("https://a.example"), search}, []bool{false, false})
 		if runs[0] != nil || runs[1] != nil {
 			t.Fatalf("runs = %v, want none started", runs)
@@ -3224,7 +3207,7 @@ func TestStartToolRuns(t *testing.T) {
 	})
 
 	t.Run("skipped and stateful calls are not started", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{result: "ok"}}
+		srv := &server{mcp: fakeMCPService{Result: "ok"}}
 		calls := []llm.ToolCall{fetch("https://a.example"), search, fetch("https://b.example"), fetch("https://c.example")}
 		runs := srv.startToolRuns(context.Background(), calls, []bool{false, false, false, true})
 		if runs[0] == nil || runs[2] == nil || runs[1] != nil || runs[3] != nil {
@@ -3237,7 +3220,7 @@ func TestStartToolRuns(t *testing.T) {
 	})
 
 	t.Run("a panicking call fails that call only", func(t *testing.T) {
-		srv := &server{mcp: fakeMCPService{callFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
+		srv := &server{mcp: fakeMCPService{CallFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
 			if args["url"] == "https://a.example" {
 				panic("boom")
 			}
@@ -3255,7 +3238,7 @@ func TestStartToolRuns(t *testing.T) {
 	t.Run("a cancelled round releases the calls still waiting for a slot", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		release := make(chan struct{})
-		srv := &server{mcp: fakeMCPService{callFunc: func(context.Context, string, map[string]any) (string, error) {
+		srv := &server{mcp: fakeMCPService{CallFunc: func(context.Context, string, map[string]any) (string, error) {
 			<-release
 			return "ok", nil
 		}}}

@@ -12,7 +12,7 @@ import (
 
 func TestResolveSentAttachments_resolvesImageAndScopedDocument(t *testing.T) {
 	s := &server{
-		artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{
+		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: "u1", DisplayFilename: "photo.png", MIMEType: "image/png", SizeBytes: 1234, DownloadURL: "/api/artifacts/art_1/download"},
 		}},
 		documents: &inlineStub{docs: map[string]rag.Document{
@@ -46,7 +46,7 @@ func TestResolveSentAttachments_resolvesImageAndScopedDocument(t *testing.T) {
 
 func TestResolveSentAttachments_skipsForeignUserArtifact(t *testing.T) {
 	s := &server{
-		artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{
+		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: "someone_else", DisplayFilename: "secret.png", MIMEType: "image/png"},
 		}},
 	}

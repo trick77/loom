@@ -57,7 +57,7 @@ func TestArchiveAndDeleteProjectReturn204(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &fakeThreadStore{
-				project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"},
+				Project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"},
 			}
 			srv := newAuthenticatedServer(t, Deps{Thread: store})
 			rec := httptest.NewRecorder()
@@ -83,7 +83,7 @@ func TestStarAndUnstarProjectReturnUpdatedProject(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &fakeThreadStore{
-				project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"},
+				Project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"},
 			}
 			srv := newAuthenticatedServer(t, Deps{Thread: store})
 			rec := httptest.NewRecorder()
@@ -130,11 +130,11 @@ func TestDeleteProjectRemovesGeneratedArtifactFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &fakeThreadStore{
-		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "School"},
+		Project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "School"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+		Artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:            "art_1",
 			UserID:        testUser.ID,
 			ThreadID:      "thr_1",
@@ -157,7 +157,7 @@ func TestDeleteProjectRemovesGeneratedArtifactFiles(t *testing.T) {
 }
 
 func TestDeleteProjectPurgesProjectRAGData(t *testing.T) {
-	store := &fakeThreadStore{project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"}}
+	store := &fakeThreadStore{Project: chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "School"}}
 	docs := &fakeDocumentService{}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, Documents: docs})
 	rec := httptest.NewRecorder()
@@ -168,8 +168,8 @@ func TestDeleteProjectPurgesProjectRAGData(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body.String())
 	}
-	if len(docs.deletedProjectData) != 1 || docs.deletedProjectData[0] != "proj_1" {
-		t.Fatalf("DeleteProjectData calls = %v, want [proj_1]", docs.deletedProjectData)
+	if len(docs.DeletedProjectData) != 1 || docs.DeletedProjectData[0] != "proj_1" {
+		t.Fatalf("DeleteProjectData calls = %v, want [proj_1]", docs.DeletedProjectData)
 	}
 }
 

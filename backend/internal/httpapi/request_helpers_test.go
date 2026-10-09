@@ -15,7 +15,7 @@ import (
 // request body": the client can act on a 413 (shorten, split) but not on a 400
 // that looks like a malformed payload.
 func TestDecodeJSONBodyReturns413WhenBodyExceedsLimit(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "T"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "T"}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	body := `{"title":"` + strings.Repeat("x", maxJSONBodyBytes+1024) + `"}`
 	req := authenticatedRequest(http.MethodPatch, "/api/threads/thr_1", body)
@@ -34,7 +34,7 @@ func TestDecodeJSONBodyReturns413WhenBodyExceedsLimit(t *testing.T) {
 // The stream endpoint's limit must leave room for what one send legitimately
 // carries: the content cap plus the pasted blocks, which duplicate that text.
 func TestStreamMessageAcceptsLargePastedTextBody(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "T"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "T"}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{}})
 	pasted := strings.Repeat("p", 3*maxJSONBodyBytes)
 	body := `{"content":"` + strings.Repeat("c", 20_000) + `","pastedTexts":[{"text":"` + pasted + `","lineCount":1}]}`
@@ -54,10 +54,10 @@ func TestStreamMessageAcceptsLargePastedTextBody(t *testing.T) {
 // Every JSON body is bounded, the memory instruction included.
 func TestEditMemoryRejectsOversizedBody(t *testing.T) {
 	store := &fakeThreadStore{
-		project:       chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "P"},
-		projectMemory: chat.ProjectMemory{ProjectID: "proj_1", Content: "- x", SourceMessageCount: 1},
+		Project:       chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "P"},
+		ProjectMemory: chat.ProjectMemory{ProjectID: "proj_1", Content: "- x", SourceMessageCount: 1},
 	}
-	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{editedMemory: "- y"}})
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{EditedMemory: "- y"}})
 	body := `{"instruction":"` + strings.Repeat("i", maxJSONBodyBytes+1024) + `"}`
 	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", body)
 	rec := httptest.NewRecorder()

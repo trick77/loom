@@ -10,7 +10,7 @@ import (
 )
 
 func TestConversationSearchDigest_FormatsHits(t *testing.T) {
-	fake := &fakeThreadStore{searchHits: []chat.MessageSearchHit{
+	fake := &fakeThreadStore{SearchHits: []chat.MessageSearchHit{
 		{
 			MessageID:   "m1",
 			ThreadID:    "thread-abc",
@@ -34,7 +34,7 @@ func TestConversationSearchDigest_FormatsHits(t *testing.T) {
 }
 
 func TestConversationSearchDigest_NoMatches(t *testing.T) {
-	fake := &fakeThreadStore{searchHits: nil}
+	fake := &fakeThreadStore{SearchHits: nil}
 	s := &server{thread: fake}
 
 	out := s.conversationSearchDigest(context.Background(), "alice", chat.Thread{ID: "current"}, map[string]any{

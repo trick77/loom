@@ -130,11 +130,11 @@ func TestAvailableToolsGatesDocgen(t *testing.T) {
 func TestAvailableToolsGatesCategoryTaggedMCP(t *testing.T) {
 	srv := &server{
 		mcp: fakeMCPService{
-			tools: []llm.Tool{
+			ToolList: []llm.Tool{
 				{Type: "function", Function: llm.ToolFunction{Name: "tavily__search"}},
 				{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs"}},
 			},
-			toolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
+			ToolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
 		},
 	}
 

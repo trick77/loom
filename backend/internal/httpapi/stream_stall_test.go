@@ -18,13 +18,13 @@ import (
 // turn the way a client disconnect (context.Canceled) does.
 func TestStreamMessageSurfacesStallAsClearError(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM: fakeChatClient{
-			reasoningText: "thinking",
-			streamErr:     fmt.Errorf("read chat completion stream: %w", llm.ErrStreamStalled),
+			ReasoningText: "thinking",
+			StreamErr:     fmt.Errorf("read chat completion stream: %w", llm.ErrStreamStalled),
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -39,8 +39,8 @@ func TestStreamMessageSurfacesStallAsClearError(t *testing.T) {
 	if strings.Contains(body, "stream failed") {
 		t.Fatalf("stall surfaced as generic 'stream failed':\n%s", body)
 	}
-	if len(store.messages) != 1 || store.messages[0].Role != chat.RoleUser {
-		t.Fatalf("persisted messages = %#v, want only the user message", store.messages)
+	if len(store.Messages) != 1 || store.Messages[0].Role != chat.RoleUser {
+		t.Fatalf("persisted messages = %#v, want only the user message", store.Messages)
 	}
 }
 

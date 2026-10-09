@@ -18,10 +18,10 @@ func TestUserDirectiveTools_AddRemoveReplaceRoundTrip(t *testing.T) {
 	if !strings.Contains(out, "Saved") || !strings.Contains(out, "Always answer in metric units") {
 		t.Fatalf("add output unexpected:\n%s", out)
 	}
-	if len(fake.userDirectives) != 1 {
-		t.Fatalf("directive not stored: %+v", fake.userDirectives)
+	if len(fake.UserDirectives) != 1 {
+		t.Fatalf("directive not stored: %+v", fake.UserDirectives)
 	}
-	id := fake.userDirectives[0].ID
+	id := fake.UserDirectives[0].ID
 	if !strings.Contains(out, id) {
 		t.Fatalf("add output should echo the id %q so the model can later edit it:\n%s", id, out)
 	}
@@ -37,8 +37,8 @@ func TestUserDirectiveTools_AddRemoveReplaceRoundTrip(t *testing.T) {
 	if !strings.Contains(out, "Removed") || !strings.Contains(out, "(none)") {
 		t.Fatalf("remove output unexpected:\n%s", out)
 	}
-	if len(fake.userDirectives) != 0 {
-		t.Fatalf("directive not removed: %+v", fake.userDirectives)
+	if len(fake.UserDirectives) != 0 {
+		t.Fatalf("directive not removed: %+v", fake.UserDirectives)
 	}
 }
 
@@ -51,7 +51,7 @@ func TestAddUserDirectiveDigest_RequiresContent(t *testing.T) {
 }
 
 func TestAddUserDirectiveDigest_BudgetFullMessage(t *testing.T) {
-	fake := &fakeThreadStore{directiveWriteErr: chat.ErrDirectivesBudgetExceeded}
+	fake := &fakeThreadStore{DirectiveWriteErr: chat.ErrDirectivesBudgetExceeded}
 	s := &server{thread: fake}
 	out := s.addUserDirectiveDigest(context.Background(), "alice", map[string]any{"content": "one more"})
 	if !strings.Contains(strings.ToLower(out), "budget is full") {
@@ -74,7 +74,7 @@ func TestUserContextForUser_RendersBothBlocksIndependently(t *testing.T) {
 	// Directives present but derived memory empty: the directives block must still
 	// be injected (the old code returned "" whenever memory was blank).
 	fake := &fakeThreadStore{
-		userDirectives: []chat.UserDirective{{ID: "dir_0", Content: "Always use metric"}},
+		UserDirectives: []chat.UserDirective{{ID: "dir_0", Content: "Always use metric"}},
 	}
 	s := &server{thread: fake}
 	out := s.userContextForUser(context.Background(), "alice")
@@ -89,7 +89,7 @@ func TestUserContextForUser_RendersBothBlocksIndependently(t *testing.T) {
 	}
 
 	// Derived memory present but no directives: only the derived block.
-	fake2 := &fakeThreadStore{userMemory: chat.UserMemory{Content: "## Work context\n- Backend dev"}}
+	fake2 := &fakeThreadStore{UserMemory: chat.UserMemory{Content: "## Work context\n- Backend dev"}}
 	s2 := &server{thread: fake2}
 	out2 := s2.userContextForUser(context.Background(), "alice")
 	if !strings.Contains(out2, "Personal context about the user") || !strings.Contains(out2, "Backend dev") {
@@ -104,7 +104,7 @@ func TestUserMemoryScope_ExclusionsFeedDirectiveContent(t *testing.T) {
 	// The dedup source: the user scope must surface directive CONTENT (no ids) so
 	// the generator can avoid restating a standing instruction in derived memory.
 	fake := &fakeThreadStore{
-		userDirectives: []chat.UserDirective{
+		UserDirectives: []chat.UserDirective{
 			{ID: "dir_0", Content: "Always use metric"},
 			{ID: "dir_1", Content: "Call me Jan"},
 		},
@@ -137,8 +137,8 @@ func TestProjectMemoryScope_HasNoExclusions(t *testing.T) {
 
 func TestUserContextForUser_DirectivesOutrankDerived(t *testing.T) {
 	fake := &fakeThreadStore{
-		userDirectives: []chat.UserDirective{{ID: "dir_0", Content: "Be terse"}},
-		userMemory:     chat.UserMemory{Content: "## Work context\n- Backend dev"},
+		UserDirectives: []chat.UserDirective{{ID: "dir_0", Content: "Be terse"}},
+		UserMemory:     chat.UserMemory{Content: "## Work context\n- Backend dev"},
 	}
 	s := &server{thread: fake}
 	out := s.userContextForUser(context.Background(), "alice")

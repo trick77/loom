@@ -45,8 +45,8 @@ func TestDeleteThreadRemovesArtifactThumbnails(t *testing.T) {
 	absThumbnail := writeUserFile(t, usersDir, artifact.ThumbnailRelPath(relPath))
 
 	srv := newAuthenticatedServer(t, Deps{
-		Thread: &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}},
-		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+		Thread: &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}},
+		Artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:               "art_1",
 			UserID:           testUser.ID,
 			ThreadID:         "thr_1",
@@ -81,13 +81,13 @@ func TestDeleteThreadSparesArtifactsBackingSurvivingDocuments(t *testing.T) {
 	absSwept := writeUserFile(t, usersDir, sweptRel)
 	var detached []string
 
-	docs := &fakeDocumentService{artifactsInUse: []string{"art_kept"}}
+	docs := &fakeDocumentService{ArtifactsInUse: []string{"art_kept"}}
 	srv := newAuthenticatedServer(t, Deps{
-		Thread:    &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}},
+		Thread:    &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}},
 		Documents: docs,
 		Artifacts: fakeArtifactStore{
-			detached: &detached,
-			artifacts: []artifact.Artifact{
+			Detached: &detached,
+			Artifacts: []artifact.Artifact{
 				{ID: "art_kept", UserID: testUser.ID, ThreadID: "thr_1", VolumeRelPath: keptRel},
 				{ID: "art_swept", UserID: testUser.ID, ThreadID: "thr_1", VolumeRelPath: sweptRel},
 			},
@@ -111,8 +111,8 @@ func TestDeleteThreadSparesArtifactsBackingSurvivingDocuments(t *testing.T) {
 	}
 	// The in-use query only tells survivors apart once the thread's own documents
 	// are gone, so it must run after DeleteThreadData.
-	if len(docs.deletedThreadData) != 1 || len(docs.inUseQueriedThreads) != 1 {
-		t.Fatalf("DeleteThreadData=%v, in-use queries=%v, want one each", docs.deletedThreadData, docs.inUseQueriedThreads)
+	if len(docs.DeletedThreadData) != 1 || len(docs.InUseQueriedThreads) != 1 {
+		t.Fatalf("DeleteThreadData=%v, in-use queries=%v, want one each", docs.DeletedThreadData, docs.InUseQueriedThreads)
 	}
 }
 
@@ -123,11 +123,11 @@ func TestDeleteThreadFailsWhenArtifactRetentionFails(t *testing.T) {
 	relPath := "files/outputs/chart.png"
 	abs := writeUserFile(t, usersDir, relPath)
 
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread:    store,
-		Documents: &fakeDocumentService{artifactsInUseErr: errors.New("boom")},
-		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{
+		Documents: &fakeDocumentService{ArtifactsInUseErr: errors.New("boom")},
+		Artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: testUser.ID, ThreadID: "thr_1", VolumeRelPath: relPath},
 		}},
 		UsersDir: usersDir,
@@ -138,8 +138,8 @@ func TestDeleteThreadFailsWhenArtifactRetentionFails(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body.String())
 	}
-	if len(store.deletedThreads) != 0 {
-		t.Errorf("thread deleted despite cleanup failure: %v", store.deletedThreads)
+	if len(store.DeletedThreads) != 0 {
+		t.Errorf("thread deleted despite cleanup failure: %v", store.DeletedThreads)
 	}
 	if !exists(t, abs) {
 		t.Error("artifact file removed despite cleanup failure")
@@ -149,10 +149,10 @@ func TestDeleteThreadFailsWhenArtifactRetentionFails(t *testing.T) {
 // The bulk loop skips a thread it cannot clean up rather than aborting the batch;
 // the skip has to be visible, not silent.
 func TestBulkDeleteThreadsSkipsThreadWhenRAGCleanupFails(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread"}}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread:    store,
-		Documents: &fakeDocumentService{deleteDataErr: errors.New("boom")},
+		Documents: &fakeDocumentService{DeleteDataErr: errors.New("boom")},
 	})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads:delete", `{"threadIds":["thr_1"]}`))
@@ -163,7 +163,7 @@ func TestBulkDeleteThreadsSkipsThreadWhenRAGCleanupFails(t *testing.T) {
 	if body := rec.Body.String(); body != "{\"deleted\":0}\n" && body != "{\"deleted\":0}" {
 		t.Fatalf("body = %q, want deleted 0", body)
 	}
-	if len(store.deletedThreads) != 0 {
-		t.Errorf("thread deleted despite failed knowledge cleanup: %v", store.deletedThreads)
+	if len(store.DeletedThreads) != 0 {
+		t.Errorf("thread deleted despite failed knowledge cleanup: %v", store.DeletedThreads)
 	}
 }

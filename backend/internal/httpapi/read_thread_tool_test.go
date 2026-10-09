@@ -10,8 +10,8 @@ import (
 
 func TestReadThreadDigest_OwnedThread(t *testing.T) {
 	fake := &fakeThreadStore{
-		thread: chat.Thread{ID: "thread-abc", Title: "Sharing design"},
-		messages: []chat.Message{
+		Thread: chat.Thread{ID: "thread-abc", Title: "Sharing design"},
+		Messages: []chat.Message{
 			{ID: "m1", Role: chat.RoleUser, Content: "Why frozen snapshots?"},
 			{ID: "m2", Role: chat.RoleAssistant, Content: "So edits never leak into a shared link."},
 		},

@@ -41,7 +41,7 @@ func TestImageContentParts_acceptsArtifactFromDifferentThread(t *testing.T) {
 
 	s := &server{
 		usersDir: usersDir,
-		artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_1",
 			UserID:          userID,
 			ThreadID:        "old-thread",
@@ -92,7 +92,7 @@ func TestImageContentParts_rejectsForeignUserArtifact(t *testing.T) {
 
 	s := &server{
 		usersDir: usersDir,
-		artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{{
+		artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{{
 			ID:              "art_1",
 			UserID:          "someone_else",
 			DisplayFilename: "secret.png",

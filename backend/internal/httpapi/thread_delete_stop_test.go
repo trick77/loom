@@ -37,7 +37,7 @@ func startBlockedStream(t *testing.T, srv http.Handler, llmClient *blockingChatC
 // exists — and must wait for that turn to unwind before removing the rows.
 func TestDeleteThreadCancelsActiveAssistantTurn(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: llmClient})
@@ -69,7 +69,7 @@ func TestDeleteThreadCancelsActiveAssistantTurn(t *testing.T) {
 
 func TestBulkDeleteThreadsCancelsActiveAssistantTurn(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: llmClient})
@@ -100,8 +100,8 @@ func TestBulkDeleteThreadsCancelsActiveAssistantTurn(t *testing.T) {
 // running on them just like deleting a thread does.
 func TestDeleteProjectCancelsActiveAssistantTurns(t *testing.T) {
 	store := &fakeThreadStore{
-		thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
-		project: chat.Project{ID: "prj_1", UserID: testUser.ID, Name: "Project"},
+		Thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Project: chat.Project{ID: "prj_1", UserID: testUser.ID, Name: "Project"},
 	}
 	llmClient := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: llmClient})
@@ -135,7 +135,7 @@ func TestDeleteProjectCancelsActiveAssistantTurns(t *testing.T) {
 func TestDeleteThreadSkipsTitleGenerationForCanceledTurn(t *testing.T) {
 	newServer := func(llmClient *blockingChatClient) http.Handler {
 		store := &fakeThreadStore{
-			thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
+			Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
 		}
 		return newAuthenticatedServer(t, Deps{Thread: store, LLM: llmClient})
 	}
@@ -181,7 +181,7 @@ func TestDeleteThreadSkipsTitleGenerationForCanceledTurn(t *testing.T) {
 // says so, so the client drops its fetch instead of waiting for a stream end
 // that never comes.
 func TestStopWithoutActiveStreamIsAConflict(t *testing.T) {
-	store := &fakeThreadStore{thread: chat.Thread{ID: "thr_1", UserID: testUser.ID}}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 
 	rec := httptest.NewRecorder()
@@ -300,7 +300,7 @@ func TestStreamCancelDetailsClassifiesThreadDeleted(t *testing.T) {
 // the stop itself does not read the closed stream as a dropped connection.
 func TestStopEndsTheStreamWithDone(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
 	}
 	llmClient := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: llmClient})

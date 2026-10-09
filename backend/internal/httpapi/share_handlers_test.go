@@ -33,8 +33,8 @@ func TestPublicShare_unknownReturns404(t *testing.T) {
 // once disabled the public link 404s.
 func TestShare_createViewDisableFlow(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "t1", UserID: testUser.ID, Title: "My Thread"},
-		messages: []chat.Message{
+		Thread: chat.Thread{ID: "t1", UserID: testUser.ID, Title: "My Thread"},
+		Messages: []chat.Message{
 			{ID: "m1", ThreadID: "t1", Role: chat.RoleUser, Content: "hello there"},
 			{
 				ID:               "m2",

@@ -47,7 +47,7 @@ func volumeFiles(t *testing.T, usersDir string) []string {
 // on disk in two of the three copies of this sequence.
 func TestPersistArtifactBytesRemovesFileAndThumbnailWhenTheRecordFails(t *testing.T) {
 	usersDir := t.TempDir()
-	s := &server{usersDir: usersDir, artifacts: fakeArtifactStore{createErr: errors.New("db down")}}
+	s := &server{usersDir: usersDir, artifacts: fakeArtifactStore{CreateErr: errors.New("db down")}}
 
 	_, err := s.persistArtifactBytes(context.Background(), testUser, chat.Thread{ID: "thr_1"}, artifactSpec{
 		DisplayFilename: "chart.png",
@@ -66,7 +66,7 @@ func TestPersistArtifactBytesRemovesFileAndThumbnailWhenTheRecordFails(t *testin
 func TestPersistArtifactBytesWritesTheFileAndReturnsTheRecord(t *testing.T) {
 	usersDir := t.TempDir()
 	var created artifact.CreateInput
-	s := &server{usersDir: usersDir, artifacts: fakeArtifactStore{created: &created}}
+	s := &server{usersDir: usersDir, artifacts: fakeArtifactStore{Created: &created}}
 
 	got, err := s.persistArtifactBytes(context.Background(), testUser, chat.Thread{ID: "thr_1"}, artifactSpec{
 		DisplayFilename: "notes.txt",

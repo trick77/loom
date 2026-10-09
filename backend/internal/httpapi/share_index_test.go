@@ -69,7 +69,7 @@ func TestInjectShareMeta_defaultsWhenEmpty(t *testing.T) {
 // GET /share/{id} for an active share returns the enriched HTML with the thread
 // title in the card, an absolute og:image, and the noindex header intact.
 func TestShareIndex_servesCardForActiveShare(t *testing.T) {
-	store := &fakeThreadStore{shares: map[string]chat.Share{
+	store := &fakeThreadStore{Shares: map[string]chat.Share{
 		"t1": {
 			ShareID:  "abc123",
 			ThreadID: "t1",
