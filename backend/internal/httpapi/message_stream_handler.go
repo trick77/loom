@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -142,7 +141,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// explicitly before "done"; this is then a no-op.
 	costs := s.engine.NewCostSettler(user, userMessage.ID, usageTotal)
 	defer costs.Settle(context.WithoutCancel(r.Context()))
-	if err := sendSSEJSON(stream, "user_message", userMessage); err != nil {
+	if err := emitter.Send("user_message", userMessage); err != nil {
 		return
 	}
 
@@ -221,7 +220,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// picked up by the deferred settle.
 	failTurn := func(titleSource, message string) {
 		costs.SettleAndReport(context.WithoutCancel(r.Context()), emitter)
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
+		_ = emitter.Send("error", map[string]string{"error": message})
 		titleThread(titleSource)
 	}
 
@@ -245,7 +244,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			// itself (the thread open in a second tab) would otherwise read an
 			// unterminated stream as a dropped connection. The write fails
 			// harmlessly when the client is the one that went away.
-			_ = stream.Send("done", "{}")
+			_ = emitter.Send("done", struct{}{})
 			return
 		}
 		failTurn(assistantResult.Content, turn.StreamFailureMessage(err, assistantResult, "message", threadID))
@@ -285,7 +284,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	costs.SetAssistant(assistantMessage)
-	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
+	if err := emitter.Send("assistant_message", assistantMessage); err != nil {
 		return
 	}
 
@@ -310,7 +309,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// failed/not-found fetch skips the event — the DB order is already correct for
 	// the next refetch.
 	if updated, found, getErr := s.thread.GetThread(persistCtx, user.ID, threadID); getErr == nil && found {
-		_ = sendSSEJSON(stream, "thread", updated)
+		_ = emitter.Send("thread", updated)
 	}
 
 	// Every call of the turn has finished (PersistAssistantTurn waited for the
@@ -326,7 +325,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// MemoryWorker sweep so it does not fire on every turn.
 	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread)
 
-	_ = stream.Send("done", "{}")
+	_ = emitter.Send("done", struct{}{})
 }
 
 func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request) {
@@ -383,14 +382,6 @@ func sanitizeCancelSource(source string) string {
 	return b.String()
 }
 
-func sendSSEJSON(stream *sse.Writer, event string, data any) error {
-	payload, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	return stream.Send(event, string(payload))
-}
-
 func streamCancelDetails(ctx context.Context) (string, string) {
 	cause := context.Cause(ctx)
 	if cause == nil {
@@ -420,6 +411,6 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 func recoverToStream(stream *sse.Writer, r *http.Request) {
 	if p := recover(); p != nil {
 		slog.Error("panic recovered mid-stream", "err", p, "path", r.URL.Path, "stack", string(debug.Stack()))
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": "internal server error"})
+		_ = sseEmitter{w: stream}.Send("error", map[string]string{"error": "internal server error"})
 	}
 }
