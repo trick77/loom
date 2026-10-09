@@ -204,82 +204,30 @@ func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, argumen
 	return capToolOutput(prependURLSource(url, snapshot, reg)), true
 }
 
-// availableTools assembles the tool set injected into the prompt for this turn.
-// The always-on core (cross-thread memory, directives, web search) is offered
-// unconditionally; the heavier optional groups are gated by the turn's toolGate
-// so a simple turn no longer ships file-generation schemas or coding-doc MCP
-// tools it will never use. gate is a widen-only signal, so gating can only omit
-// tools the turn is unlikely to need — never one the model has already been told
-// to use. Called once per turn (not per round); the trimmed set is reused across
-// all tool rounds.
+// availableTools assembles the tool set injected into the prompt for this turn:
+// the built-ins the registry offers, then the MCP tools. The always-on core
+// (cross-thread memory, directives, web search) is offered unconditionally; the
+// heavier optional groups are gated by the turn's toolGate so a simple turn no
+// longer ships file-generation schemas or coding-doc MCP tools it will never
+// use. gate is a widen-only signal, so gating can only omit tools the turn is
+// unlikely to need — never one the model has already been told to use. Called
+// once per turn (not per round); the trimmed set is reused across all tool
+// rounds.
 func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 	tools := []llm.Tool(nil)
 	names := map[string]string{}
-	// The cross-thread summarizer is only meaningful inside a project (it reads the
-	// other threads in the same project), so it is exposed solely for project
-	// threads. A project-less thread never sees it and cannot call it.
-	if thread.ProjectID != nil {
-		tool := projectThreadsTool()
+	specs, _ := s.registry()
+	for _, spec := range specs {
+		if spec.offered != nil && !spec.offered(s, thread, gate) {
+			continue
+		}
+		tool := spec.schema()
+		if owner, exists := names[tool.Function.Name]; exists {
+			slog.Warn("skipping duplicate built-in tool name", "tool", tool.Function.Name, "existing", owner)
+			continue
+		}
 		names[tool.Function.Name] = "built_in"
 		tools = append(tools, tool)
-	}
-	// Cross-thread memory: conversation_search (find anything across the user's
-	// whole history) and read_thread (load one matched thread in full) are always
-	// available — their value is whole-history reach, not project-scoped, so they
-	// are exposed regardless of whether the active thread belongs to a project.
-	for _, tool := range []llm.Tool{conversationSearchTool(), readThreadTool()} {
-		names[tool.Function.Name] = "built_in"
-		tools = append(tools, tool)
-	}
-	// Directive tools manage the user's standing instructions ("other instructions"
-	// memory). They are whole-account, not project-scoped, so always available.
-	for _, tool := range []llm.Tool{addUserDirectiveTool(), removeUserDirectiveTool(), replaceUserDirectiveTool()} {
-		names[tool.Function.Name] = "built_in"
-		tools = append(tools, tool)
-	}
-	if s.artifacts != nil && strings.TrimSpace(s.usersDir) != "" {
-		// Doc generators are the biggest built-in schema chunk, so they are gated:
-		// injected only when the turn's category or wording plausibly wants a
-		// downloadable file. Image generation stays available (one small schema,
-		// and the image path forces it separately when required).
-		if gate.docgenEnabled() {
-			for _, gen := range s.docTools {
-				schema := gen.Schema()
-				names[schema.Name] = "built_in"
-				tools = append(tools, llm.Tool{
-					Type: "function",
-					Function: llm.ToolFunction{
-						Name:        schema.Name,
-						Description: schema.Description,
-						Parameters:  schema.Parameters,
-					},
-				})
-			}
-		}
-		// run_python is one small schema with its own guidance block, offered
-		// in every category: exact math or counting comes up anywhere. It is
-		// absent while the sidecar is unconfigured or unhealthy.
-		if gate.sandbox {
-			tool := sandboxTool()
-			names[tool.Function.Name] = "built_in"
-			tools = append(tools, tool)
-		}
-		for _, gen := range s.imageTools {
-			schema := gen.Schema()
-			if owner, exists := names[schema.Name]; exists {
-				slog.Warn("skipping duplicate image tool name", "tool", schema.Name, "existing", owner)
-				continue
-			}
-			names[schema.Name] = "built_in_image"
-			tools = append(tools, llm.Tool{
-				Type: "function",
-				Function: llm.ToolFunction{
-					Name:        schema.Name,
-					Description: schema.Description,
-					Parameters:  schema.Parameters,
-				},
-			})
-		}
 	}
 	if s.mcp != nil {
 		// MCP servers are gated by their declared categories: a category-neutral
@@ -318,29 +266,13 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 // model-facing output, the artifacts the call created (run_python can write
 // several) and whether the name was a built-in at all.
 func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string, []artifact.Response, bool) {
-	if call.Function.Name == ProjectThreadsToolName {
-		return t.e.projectThreadsDigest(ctx, t.user.ID, t.thread), nil, true
-	}
-	if isArgTool(call.Function.Name) {
-		args, err := parseToolArguments(call.Function.Arguments)
-		if err != nil {
-			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
-		}
-		return t.e.runArgTool(ctx, t.user, t.thread, call.Function.Name, args), nil, true
-	}
-	if call.Function.Name == sandboxToolName {
-		output, created := t.e.runSandboxTool(ctx, t.stream, t.user, t.thread, call)
-		return output, created, true
-	}
-	if response, output, handled := t.executeImageTool(ctx, call); handled {
-		return output, oneArtifact(response), true
-	}
-	generator := t.e.docGenerator(call.Function.Name)
-	if generator == nil {
+	_, byName := t.e.registry()
+	spec := byName[call.Function.Name]
+	if spec == nil || spec.run == nil {
 		return "", nil, false
 	}
-	output, resp := t.runDocGenerator(ctx, call, generator)
-	return output, oneArtifact(resp), true
+	output, created := spec.run(ctx, t, call)
+	return output, created, true
 }
 
 func oneArtifact(resp *artifact.Response) []artifact.Response {
@@ -441,15 +373,12 @@ func (s *Engine) resolveThreadImageModel(ctx context.Context, userID string, thr
 }
 
 // executeImageTool runs an image tool call with the turn's edit source and
-// typography routing.
-func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*artifact.Response, string, bool) {
-	generator := t.e.imageTool(call.Function.Name)
-	if generator == nil {
-		return nil, "", false
-	}
+// typography routing. It returns the model-facing output and the artifact
+// response, nil on failure.
+func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall, generator imagegen.Tool) (string, *artifact.Response) {
 	args, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
-		return nil, capToolOutput("tool failed: invalid arguments: " + err.Error()), true
+		return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil
 	}
 	req := imagegen.ToolRequest{}
 	if prompt, _ := args["prompt"].(string); prompt != "" {
@@ -507,10 +436,10 @@ func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*artifac
 			"tool", call.Function.Name,
 			"thread_id", t.thread.ID,
 			"provider_error", err)
-		return nil, output, true
+		return output, nil
 	}
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
-		return nil, "tool failed: generated image is too large", true
+		return "tool failed: generated image is too large", nil
 	}
 	created, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
 		DisplayFilename: meta.DisplayFilename,
@@ -520,7 +449,7 @@ func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*artifac
 		Thumbnail:       true,
 	})
 	if err != nil {
-		return nil, capToolOutput("tool failed: " + err.Error()), true
+		return capToolOutput("tool failed: " + err.Error()), nil
 	}
 	response := created.Response()
 	response.Model = meta.Model
@@ -530,25 +459,7 @@ func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*artifac
 	response.DurationMs = meta.DurationMs
 	usage.Record(t.e.usage, "image_gen", func() error { return t.e.usage.IncImageGen(ctx, t.user.ID) })
 	_ = t.stream.SendJSON("artifact", response)
-	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
-}
-
-func (s *Engine) docGenerator(name string) docgen.Generator {
-	for _, candidate := range s.docTools {
-		if candidate.ToolName() == name {
-			return candidate
-		}
-	}
-	return nil
-}
-
-func (s *Engine) imageTool(name string) *imagegen.Tool {
-	for i := range s.imageTools {
-		if s.imageTools[i].ToolName() == name {
-			return &s.imageTools[i]
-		}
-	}
-	return nil
+	return fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
 
 func numberArg(value any) (int, bool) {
@@ -608,33 +519,4 @@ func parseToolArguments(raw string) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 	return args, nil
-}
-
-// isArgTool reports whether name is one of the built-in tools that take JSON
-// arguments and answer with a text digest.
-func isArgTool(name string) bool {
-	switch name {
-	case conversationSearchToolName, readThreadToolName, addUserDirectiveToolName, removeUserDirectiveToolName, replaceUserDirectiveToolName:
-		return true
-	}
-	return false
-}
-
-// runArgTool dispatches one of the argument-taking built-in tools; the
-// arguments have already been parsed and validated as JSON.
-func (s *Engine) runArgTool(ctx context.Context, user auth.User, thread chat.Thread, name string, args map[string]any) string {
-	switch name {
-	case conversationSearchToolName:
-		return s.conversationSearchDigest(ctx, user.ID, thread, args)
-	case readThreadToolName:
-		threadID, _ := args["thread_id"].(string)
-		return s.readThreadDigest(ctx, user.ID, threadID)
-	case addUserDirectiveToolName:
-		return capToolOutput(s.addUserDirectiveDigest(ctx, user.ID, args))
-	case removeUserDirectiveToolName:
-		return capToolOutput(s.removeUserDirectiveDigest(ctx, user.ID, args))
-	case replaceUserDirectiveToolName:
-		return capToolOutput(s.replaceUserDirectiveDigest(ctx, user.ID, args))
-	}
-	return capToolOutput("tool failed: unknown tool " + name)
 }

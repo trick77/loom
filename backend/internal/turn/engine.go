@@ -2,6 +2,7 @@ package turn
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
@@ -39,6 +40,11 @@ type Engine struct {
 	// turnGateTimeout bounds the gate calls; zero means the default (see
 	// gateTimeout).
 	turnGateTimeout time.Duration
+	// toolsOnce guards the tool registry: tools in offer order, toolsByName
+	// the same specs by name (see registry).
+	toolsOnce   sync.Once
+	tools       []toolSpec
+	toolsByName map[string]*toolSpec
 }
 
 // Config is what New builds an Engine from. Nil stores and services turn the
