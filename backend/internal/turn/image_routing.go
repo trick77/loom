@@ -151,7 +151,7 @@ func priorConversationHasImageArtifact(messages []chat.Message) bool {
 // cyberpunk") should silently reuse as its source.
 func latestImageArtifactID(messages []chat.Message) string {
 	for _, message := range slices.Backward(messages) {
-		if IsEmptyJSON(message.Artifacts) {
+		if chat.IsEmptyJSON(message.Artifacts) {
 			continue
 		}
 		var artifacts []struct {

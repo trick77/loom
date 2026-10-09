@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // threadDeleteStopTimeout bounds how long a delete waits for a canceled turn on
@@ -114,7 +115,7 @@ func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, r, err)
 		return
 	}
-	s.recordUsage("thread_created", func() error { return s.usage.IncThreadCreated(r.Context(), user.ID) })
+	turn.RecordUsage(s.usage, "thread_created", func() error { return s.usage.IncThreadCreated(r.Context(), user.ID) })
 	writeJSONStatus(w, http.StatusCreated, thread)
 }
 

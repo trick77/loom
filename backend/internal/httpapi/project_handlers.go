@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // stopProjectThreadStreams terminates any turn still generating on a thread of the
@@ -62,7 +63,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, r, err)
 		return
 	}
-	s.recordUsage("project_created", func() error { return s.usage.IncProjectCreated(r.Context(), user.ID) })
+	turn.RecordUsage(s.usage, "project_created", func() error { return s.usage.IncProjectCreated(r.Context(), user.ID) })
 	writeJSONStatus(w, http.StatusCreated, project)
 }
 

@@ -7,10 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/webfetch"
 	"golang.org/x/net/idna"
-
-	"github.com/trick77/loom/internal/turn"
 )
 
 // The fields of a web citation a public share may carry. Everything else the stored
@@ -38,7 +37,7 @@ var shareCitationFields = []string{"url", "title", "filename", "snippet", "index
 // dead bracket the reader cannot act on.
 func projectCitationsForShare(raw json.RawMessage) (json.RawMessage, map[int]bool) {
 	kept := map[int]bool{}
-	if turn.IsEmptyJSON(raw) {
+	if chat.IsEmptyJSON(raw) {
 		return nil, kept
 	}
 	var citations []map[string]json.RawMessage
@@ -342,7 +341,7 @@ func splitInlineCode(line string) []codeSegment {
 // alike — the set stripDroppedMarkers is allowed to touch.
 func citedIndices(raw json.RawMessage) map[int]bool {
 	indices := map[int]bool{}
-	if turn.IsEmptyJSON(raw) {
+	if chat.IsEmptyJSON(raw) {
 		return indices
 	}
 	var citations []map[string]json.RawMessage

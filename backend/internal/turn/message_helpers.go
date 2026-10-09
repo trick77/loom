@@ -2,7 +2,6 @@ package turn
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -51,17 +50,6 @@ func MessageMetricsWithCost(result llm.StreamResult, usage llm.TokenUsage, durat
 
 func strPtr(value string) *string {
 	return &value
-}
-
-// IsEmptyJSON reports whether a raw JSON field carries no array content worth
-// walking: nil, empty, the literal null, or an empty array.
-func IsEmptyJSON(raw json.RawMessage) bool {
-	switch string(raw) {
-	case "", "null", "[]":
-		return true
-	default:
-		return false
-	}
 }
 
 // classifyFirstTurn classifies the thread's first message. The caller injects

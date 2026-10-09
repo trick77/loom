@@ -146,11 +146,11 @@ func (s *Engine) startToolRuns(ctx context.Context, calls []llm.ToolCall, skippe
 func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName string) {
 	switch toolName {
 	case tavilySearchExposedName:
-		s.recordUsage("web_search", func() error { return s.usage.IncWebSearch(ctx, user.ID) })
+		RecordUsage(s.usage, "web_search", func() error { return s.usage.IncWebSearch(ctx, user.ID) })
 	case fetchToolName:
-		s.recordUsage("web_fetch", func() error { return s.usage.IncWebFetch(ctx, user.ID) })
+		RecordUsage(s.usage, "web_fetch", func() error { return s.usage.IncWebFetch(ctx, user.ID) })
 	case obscuraNavigateToolName:
-		s.recordUsage("obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
+		RecordUsage(s.usage, "obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
 	}
 }
 
@@ -196,7 +196,7 @@ func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, argumen
 		return "", false
 	}
 	slog.Info("fetch failed, obscura fallback succeeded", "url", url, "round", round, "result_bytes", len(snapshot))
-	t.e.recordUsage("obscura_fetch", func() error { return t.e.usage.IncObscuraFetch(ctx, t.user.ID) })
+	RecordUsage(t.e.usage, "obscura_fetch", func() error { return t.e.usage.IncObscuraFetch(ctx, t.user.ID) })
 	// The requested fetch URL is the source; annotate the rendered snapshot with
 	// its [n] marker so the model cites it inline like any other web source.
 	return capToolOutput(prependURLSource(url, snapshot, reg)), true
@@ -526,7 +526,7 @@ func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*Artifac
 	response.Width = meta.Width
 	response.Height = meta.Height
 	response.DurationMs = meta.DurationMs
-	t.e.recordUsage("image_gen", func() error { return t.e.usage.IncImageGen(ctx, t.user.ID) })
+	RecordUsage(t.e.usage, "image_gen", func() error { return t.e.usage.IncImageGen(ctx, t.user.ID) })
 	_ = t.stream.Send("artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
 }

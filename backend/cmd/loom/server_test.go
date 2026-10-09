@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/loom/internal/httpapi"
+	"github.com/trick77/loom/internal/background"
 )
 
 // A zero timeout means "no limit", which is the slow-loris exposure a
@@ -60,7 +60,7 @@ func TestServeReturnsListenerError(t *testing.T) {
 	defer cancel()
 
 	done := make(chan error, 1)
-	go func() { done <- serve(ctx, srv, ln, httpapi.NewBackground(ctx), func(context.Context) {}) }()
+	go func() { done <- serve(ctx, srv, ln, background.New(ctx), func(context.Context) {}) }()
 
 	select {
 	case err := <-done:
@@ -93,7 +93,7 @@ func TestServeShutdownCancelsRequestsThenDrainsBackground(t *testing.T) {
 	srv := newServer(ln.Addr().String(), mux)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	bg := httpapi.NewBackground(context.Background())
+	bg := background.New(context.Background())
 	// The task represents an in-flight refresh: it finishes on its own shortly
 	// after the shutdown begins and must be allowed to, not cancelled.
 	var backgroundFinished, backgroundCancelled atomic.Bool
@@ -161,7 +161,7 @@ func TestServeWaitsForWorkersToStop(t *testing.T) {
 		}
 
 		served := make(chan error, 1)
-		go func() { served <- serve(ctx, srv, ln, httpapi.NewBackground(context.Background()), worker) }()
+		go func() { served <- serve(ctx, srv, ln, background.New(context.Background()), worker) }()
 		<-started
 		if listenerFails {
 			_ = ln.Close()
@@ -201,7 +201,7 @@ func TestServeShutdownLetsShortRequestsFinish(t *testing.T) {
 	})
 	srv := newServer(ln.Addr().String(), mux)
 	ctx, cancel := context.WithCancel(context.Background())
-	bg := httpapi.NewBackground(context.Background())
+	bg := background.New(context.Background())
 
 	served := make(chan error, 1)
 	go func() { served <- serve(ctx, srv, ln, bg, func(context.Context) {}) }()

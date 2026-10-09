@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/llm"
 )
 
@@ -81,7 +82,7 @@ func (t *ReasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan stru
 		defer close(done)
 		// Outside the handler chain the recovery middleware can't catch a panic
 		// here, and one would take the process down mid-stream.
-		defer LogPanic("reasoning_title")
+		defer background.LogPanic("reasoning_title")
 		inf := t.inf
 		inf.Purpose = "reasoning_title"
 		// Bound the call so a hung title request can never delay delivery of the
@@ -119,7 +120,7 @@ func (t *ReasoningTitleTracker) SpawnWorking(userMessage string) {
 	t.working.Add(1)
 	go func() {
 		defer t.working.Done()
-		defer LogPanic("working_title")
+		defer background.LogPanic("working_title")
 		inf := t.inf
 		inf.Purpose = "working_title"
 		ctx, cancel := context.WithTimeout(t.ctx, reasoningTitleTimeout)

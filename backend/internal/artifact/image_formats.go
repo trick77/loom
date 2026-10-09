@@ -1,4 +1,4 @@
-package turn
+package artifact
 
 import (
 	"path/filepath"

@@ -12,6 +12,7 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/rag"
 )
@@ -186,7 +187,7 @@ func TestHandleIndexDocument_runsIngestInBackgroundGroup(t *testing.T) {
 		Doc:        rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusPending},
 		IndexCalls: make(chan string, 1),
 	}
-	bg := NewBackground(context.Background())
+	bg := background.New(context.Background())
 	server := newAuthenticatedServer(t, Deps{Documents: svc, Background: bg})
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/documents/d1/index", ""))

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/turn"
 )
 
 // MemoryWorker runs the periodic, activity-gated memory refresh so generation no
@@ -78,7 +78,7 @@ func (w *MemoryWorker) runOnce(ctx context.Context) {
 // the rest of the sweep or kill the worker goroutine. Mirrors the recovery
 // middleware that protects the HTTP path.
 func (w *MemoryWorker) safely(label string, fn func()) {
-	defer turn.LogPanic("memory_sweep:" + label)
+	defer background.LogPanic("memory_sweep:" + label)
 	fn()
 }
 

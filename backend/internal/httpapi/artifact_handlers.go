@@ -343,13 +343,13 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	// Validate against the explicit image allowlist (PNG/JPG/JPEG/WebP/GIF) rather
 	// than a bare image/* prefix: the model only supports these, so rejecting
 	// everything else here keeps unsupported formats out of the LLM path entirely.
-	canonicalMIME, extension, ok := turn.AllowedImageFormat(header.Filename)
+	canonicalMIME, extension, ok := artifact.AllowedImageFormat(header.Filename)
 	if !ok {
 		writeJSONError(w, http.StatusUnsupportedMediaType, "unsupported image format")
 		return
 	}
 	mimeType := header.Header.Get("Content-Type")
-	if !turn.AllowedImageMIME(mimeType) {
+	if !artifact.AllowedImageMIME(mimeType) {
 		mimeType = canonicalMIME
 	}
 	if imagescale.TooLarge(file) {
@@ -408,7 +408,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	// composer previews are fast immediately; the bytes were just written to disk.
 	var thumbnailRelPath string
 	if src, rerr := os.ReadFile(output.AbsPath); rerr == nil {
-		thumbnailRelPath = turn.GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, src, output.VolumeRelPath)
+		thumbnailRelPath = artifact.GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, src, output.VolumeRelPath)
 	}
 	created, err := s.artifacts.Create(r.Context(), artifact.CreateInput{
 		UserID:           user.ID,

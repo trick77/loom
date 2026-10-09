@@ -7,7 +7,6 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/turn"
 )
 
 // Artifacts are embedded as JSON snapshots inside each message at save time — in
@@ -75,7 +74,7 @@ func collectArtifactIDs(messages []chat.Message) ([]string, error) {
 }
 
 func overlayArtifactArray(raw json.RawMessage, byID map[string]artifact.Artifact) (json.RawMessage, error) {
-	if turn.IsEmptyJSON(raw) {
+	if chat.IsEmptyJSON(raw) {
 		return raw, nil
 	}
 	var objs []map[string]json.RawMessage
@@ -99,7 +98,7 @@ var artifactKey = []byte(`"artifact"`)
 // a text block is escaped (\"artifact\") and does not match; a false positive
 // would only take the full path.
 func mayEmbedArtifact(raw json.RawMessage) bool {
-	return !turn.IsEmptyJSON(raw) && bytes.Contains(raw, artifactKey)
+	return !chat.IsEmptyJSON(raw) && bytes.Contains(raw, artifactKey)
 }
 
 func overlayContentBlocks(raw json.RawMessage, byID map[string]artifact.Artifact) (json.RawMessage, error) {
@@ -161,7 +160,7 @@ var (
 )
 
 func decodeArtifactObjects(raw json.RawMessage) ([]map[string]json.RawMessage, error) {
-	if turn.IsEmptyJSON(raw) {
+	if chat.IsEmptyJSON(raw) {
 		return nil, nil
 	}
 	var objs []map[string]json.RawMessage

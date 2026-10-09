@@ -3,7 +3,6 @@ package turn
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 
 	"github.com/trick77/loom/internal/artifact"
@@ -56,7 +55,7 @@ func (s *Engine) persistArtifactBytes(ctx context.Context, user auth.User, threa
 	}
 	thumbnailRelPath := ""
 	if spec.Thumbnail {
-		thumbnailRelPath = GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, spec.Data, out.VolumeRelPath)
+		thumbnailRelPath = artifact.GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, spec.Data, out.VolumeRelPath)
 	}
 	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
 		UserID:           user.ID,
@@ -89,20 +88,4 @@ func ArtifactResponseFromArtifact(item artifact.Artifact) ArtifactResponse {
 		DownloadURL:     item.DownloadURL,
 		ThumbnailURL:    item.ThumbnailURL,
 	}
-}
-
-// GenerateThumbnailBestEffort writes a sidecar thumbnail for a freshly-created
-// raster image artifact, returning its volume-relative path (empty for non-raster
-// types or on failure). It never propagates an error: a missing thumbnail is
-// backfilled lazily by the thumbnail endpoint on first view.
-func GenerateThumbnailBestEffort(usersDir, userID, mimeType string, src []byte, volumeRelPath string) string {
-	if !artifact.IsThumbnailableMIME(mimeType) {
-		return ""
-	}
-	thumbRel, err := artifact.WriteThumbnail(usersDir, userID, volumeRelPath, src)
-	if err != nil {
-		slog.Warn("generate artifact thumbnail failed", "path", volumeRelPath, "err", err)
-		return ""
-	}
-	return thumbRel
 }

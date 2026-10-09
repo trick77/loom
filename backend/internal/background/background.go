@@ -1,4 +1,6 @@
-package turn
+// Package background runs the goroutines that outlive the request which
+// spawned them, and logs a panic in any goroutine outside the handler chain.
+package background
 
 import (
 	"context"
@@ -9,11 +11,11 @@ import (
 	"time"
 )
 
-// Background owns the goroutines a request spawns to outlive it: the project
+// Group owns the goroutines a request spawns to outlive it: the project
 // memory and description refreshes that run after a turn is delivered. It
 // exists so shutdown can wait for them before the database closes, and so a
 // panic in one of them is logged instead of taking the process down.
-type Background struct {
+type Group struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -23,18 +25,17 @@ type Background struct {
 	stopped bool
 }
 
-// NewBackground returns a group whose tasks stop when parent is done or Stop is
-// called.
-func NewBackground(parent context.Context) *Background {
+// New returns a group whose tasks stop when parent is done or Stop is called.
+func New(parent context.Context) *Group {
 	ctx, cancel := context.WithCancel(parent)
-	return &Background{ctx: ctx, cancel: cancel}
+	return &Group{ctx: ctx, cancel: cancel}
 }
 
 // Spawn runs fn on its own goroutine. Its context keeps parent's values (the
 // authenticated user, inference metadata) but not parent's cancellation: the
 // request that spawned the task ending must not abort it, the group stopping
 // must. A panic in fn is recovered and logged under label.
-func (b *Background) Spawn(parent context.Context, label string, fn func(ctx context.Context)) {
+func (b *Group) Spawn(parent context.Context, label string, fn func(ctx context.Context)) {
 	b.mu.Lock()
 	if b.stopped {
 		b.mu.Unlock()
@@ -57,7 +58,7 @@ func (b *Background) Spawn(parent context.Context, label string, fn func(ctx con
 // Stop cancels every task and waits up to timeout for them to finish. A task
 // that outlives the timeout is reported, not killed; the caller decides what
 // that means for the resources the task may still hold.
-func (b *Background) Stop(timeout time.Duration) error {
+func (b *Group) Stop(timeout time.Duration) error {
 	b.mu.Lock()
 	b.stopped = true
 	b.mu.Unlock()

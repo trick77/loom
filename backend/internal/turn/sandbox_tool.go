@@ -301,7 +301,7 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 		}
 		return "tool failed: the Python sandbox is unavailable; answer without it", nil
 	}
-	s.recordUsage("code_run", func() error { return s.usage.IncCodeRun(ctx, user.ID) })
+	RecordUsage(s.usage, "code_run", func() error { return s.usage.IncCodeRun(ctx, user.ID) })
 
 	var notes []string
 	for _, f := range res.Files {

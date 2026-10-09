@@ -98,15 +98,10 @@ type Memory interface {
 	RefreshProjectDescription(ctx context.Context, user auth.User, projectID string)
 }
 
-// recordUsage runs a best-effort usage-counter update against the engine's
-// usage store; see RecordUsage.
-func (s *Engine) recordUsage(counter string, fn func() error) {
-	RecordUsage(s.usage, counter, fn)
-}
-
-// RecordUsage runs a best-effort usage-counter update. A nil store (e.g. in
-// tests) or any write error is logged and swallowed so counting never fails the
-// underlying request. counter is a short label used only for logging.
+// RecordUsage runs a best-effort usage-counter update; the engine and the HTTP
+// handlers both count through it. A nil store (e.g. in tests) skips fn, and any
+// write error is logged and swallowed so counting never fails the underlying
+// request. counter is a short label used only for logging.
 func RecordUsage(store UsageStore, counter string, fn func() error) {
 	if store == nil {
 		return

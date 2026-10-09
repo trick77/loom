@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
@@ -62,13 +63,13 @@ type Deps struct {
 	ProjectSummaryTokenBudget int
 	// Background owns the goroutines that outlive a request (post-turn memory
 	// refreshes). nil means a group nobody stops, which is what tests want.
-	Background *Background
+	Background *background.Group
 }
 
 type server struct {
 	version               string
 	model                 llm.ModelInfo
-	background            *Background
+	background            *background.Group
 	inflight              inflightKeys
 	oidc                  OIDCService
 	auth                  *auth.Middleware
@@ -110,20 +111,7 @@ type (
 	// SandboxRunner is turn.SandboxRunner: it runs run_python jobs;
 	// *sandbox.Client implements it.
 	SandboxRunner = turn.SandboxRunner
-	// Background is turn.Background.
-	Background = turn.Background
 )
-
-// NewBackground returns a group whose tasks stop when parent is done or Stop is
-// called; see turn.NewBackground.
-func NewBackground(parent context.Context) *Background {
-	return turn.NewBackground(parent)
-}
-
-// recordUsage runs a best-effort usage-counter update; see turn.RecordUsage.
-func (s *server) recordUsage(counter string, fn func() error) {
-	turn.RecordUsage(s.usage, counter, fn)
-}
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.
 type OIDCService interface {
@@ -149,12 +137,12 @@ type UserService interface {
 
 // newServer builds the server struct from its dependencies.
 func newServer(d Deps) *server {
-	background := d.Background
-	if background == nil {
-		background = NewBackground(context.Background())
+	bg := d.Background
+	if bg == nil {
+		bg = background.New(context.Background())
 	}
 	s := &server{
-		background:            background,
+		background:            bg,
 		version:               d.Version,
 		model:                 d.Model,
 		oidc:                  d.OIDC,

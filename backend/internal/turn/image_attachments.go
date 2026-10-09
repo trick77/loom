@@ -64,7 +64,7 @@ func (s *Engine) ResolveImageAttachments(ctx context.Context, userID, text strin
 		// artifact (e.g. a generated image, or any artifact referenced by id) must be
 		// an accepted image type, not merely image/*, so an out-of-allowlist format
 		// (e.g. image/bmp) can't slip into the model request via the attach path.
-		if !AllowedImageMIME(item.MIMEType) {
+		if !artifact.AllowedImageMIME(item.MIMEType) {
 			return nil, nil, fmt.Errorf("attachment is not a supported image type")
 		}
 		abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)
@@ -126,7 +126,7 @@ func (s *Engine) loadEditSourceImage(ctx context.Context, userID, artifactID str
 	if !ok {
 		return editImageSource{}, false, nil
 	}
-	if !AllowedImageMIME(item.MIMEType) {
+	if !artifact.AllowedImageMIME(item.MIMEType) {
 		return editImageSource{}, false, nil
 	}
 	abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)

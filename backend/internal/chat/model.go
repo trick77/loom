@@ -191,6 +191,17 @@ type Message struct {
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
+// IsEmptyJSON reports whether a raw JSON field of a Message carries no array
+// content worth walking: nil, empty, the literal null, or an empty array.
+func IsEmptyJSON(raw json.RawMessage) bool {
+	switch string(raw) {
+	case "", "null", "[]":
+		return true
+	default:
+		return false
+	}
+}
+
 // MessageAttachment is one image or document a user sent with a message. It is
 // the persisted, serialized shape stored in Message.Attachments. DownloadURL is
 // computed at send time (deterministic from the artifact id) for images; it is
