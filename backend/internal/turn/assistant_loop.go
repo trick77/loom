@@ -500,12 +500,22 @@ func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, arti
 	return true
 }
 
-// RunIncognitoAssistantTurn runs a single, tool-free assistant turn for an
-// ephemeral incognito thread. It mirrors RunAssistantLoop's len(tools)==0 fast
-// path exactly: with no tools there are no persistence-capable side effects (no
+// IncognitoConfig is an incognito turn's fixed state: where its events go and
+// how its model calls are attributed. It has no thread, message or plan.
+type IncognitoConfig struct {
+	Stream    Emitter
+	Titles    *ReasoningTitleTracker
+	Inference llm.InferenceMetadata
+}
+
+// RunIncognitoTurn runs a single, tool-free assistant turn for an ephemeral
+// incognito thread. It mirrors RunAssistantLoop's len(tools)==0 fast path
+// exactly: with no tools there are no persistence-capable side effects (no
 // artifacts, no directive/memory writes), which is what lets an incognito turn
-// answer while writing nothing.
-func (t *Run) RunIncognitoAssistantTurn(ctx context.Context, history []llm.Message) (LoopResult, error) {
+// answer while writing nothing. It hands out no Run, so none of the persisted
+// turn's methods are reachable from it.
+func (s *Engine) RunIncognitoTurn(ctx context.Context, c IncognitoConfig, history []llm.Message) (LoopResult, error) {
+	t := &Run{e: s, stream: c.Stream, titles: c.Titles, inference: c.Inference}
 	b := &blockBuilder{}
 	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)
 	// Safety net: a tool-eager model may still emit an inline tool call

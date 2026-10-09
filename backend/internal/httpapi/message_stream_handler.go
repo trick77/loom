@@ -156,7 +156,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	defer titles.WaitWorking()
 	titles.SpawnWorking(userMessage.Content)
 
-	run := s.engine.NewRun(turn.RunConfig{
+	run := s.engine.Prepare(turn.RunConfig{
 		Stream:      emitter,
 		Titles:      titles,
 		Inference:   inference,
@@ -165,8 +165,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		UserMessage: userMessage,
 		Usage:       usageTotal,
 		Start:       turnStart,
-	})
-	run.Prepare(turn.PrepareInput{
+	}, turn.PrepareInput{
 		StreamCtx:             streamCtx,
 		TurnCtx:               turnCtx,
 		ReqCtx:                r.Context(),

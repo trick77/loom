@@ -14,10 +14,12 @@ import (
 	"github.com/trick77/loom/internal/llm"
 )
 
-// Run is one chat turn's fixed state: who asks, in which thread, where its
-// events go, and the routing Prepare decided. It is built once per turn;
-// what varies per call (ctx, a round's history, a tool call) stays a parameter.
-// The incognito turn uses a reduced form with no thread, message or plan.
+// Run is one persisted chat turn's fixed state: who asks, in which thread,
+// where its events go, and the routing Prepare decided. Prepare is the only way
+// to get one, so the assistant loop and persistence never run on a turn whose
+// prompt was not assembled. What varies per call (ctx, a round's history, a
+// tool call) stays a parameter. The incognito turn has no Run; see
+// RunIncognitoTurn.
 type Run struct {
 	e         *Engine
 	stream    Emitter
@@ -27,15 +29,14 @@ type Run struct {
 	thread    chat.Thread
 	// userMessage is the persisted user message this turn answers.
 	userMessage chat.Message
-	// plan is set by Prepare before the assistant loop runs.
+	// plan is what Prepare assembled for the assistant loop.
 	plan turnPlan
 	// usage sums every model call of the turn; start times its wall clock.
 	usage *llm.UsageAccumulator
 	start time.Time
 }
 
-// RunConfig is a turn's fixed state as the stream handler knows it. The
-// incognito turn sets only Stream, Titles, Inference and User.
+// RunConfig is a persisted turn's fixed state as the stream handler knows it.
 type RunConfig struct {
 	Stream    Emitter
 	Titles    *ReasoningTitleTracker
@@ -47,21 +48,6 @@ type RunConfig struct {
 	// Usage sums every model call of the turn; Start times its wall clock.
 	Usage *llm.UsageAccumulator
 	Start time.Time
-}
-
-// NewRun starts a turn on the engine.
-func (s *Engine) NewRun(c RunConfig) *Run {
-	return &Run{
-		e:           s,
-		stream:      c.Stream,
-		titles:      c.Titles,
-		inference:   c.Inference,
-		user:        c.User,
-		thread:      c.Thread,
-		userMessage: c.UserMessage,
-		usage:       c.Usage,
-		start:       c.Start,
-	}
 }
 
 // PrepareInput is what the prompt-assembly phase of a persisted turn works from.
@@ -96,12 +82,30 @@ type turnPlan struct {
 	sourceCount int
 }
 
-// Prepare classifies the turn, gates the tools, gathers every context
-// block (user, project, attached documents, project knowledge, RAG) and
-// builds the model history. It emits the knowledge_sources event as a side
+// Prepare starts a persisted turn on the engine: it classifies the turn, gates
+// the tools, gathers every context block (user, project, attached documents,
+// project knowledge, RAG) and builds the model history, and returns the Run
+// that answers and persists it. It emits the knowledge_sources event as a side
 // effect, since the sources are known here and the client wants them before
 // the first token.
-func (t *Run) Prepare(in PrepareInput) {
+func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
+	t := &Run{
+		e:           s,
+		stream:      c.Stream,
+		titles:      c.Titles,
+		inference:   c.Inference,
+		user:        c.User,
+		thread:      c.Thread,
+		userMessage: c.UserMessage,
+		usage:       c.Usage,
+		start:       c.Start,
+	}
+	t.plan = t.prepare(in)
+	return t
+}
+
+// prepare assembles the turn's plan; see Prepare.
+func (t *Run) prepare(in PrepareInput) turnPlan {
 	imageParts := in.ImageParts
 	// category drives the prompt-classifier block injected below. On the first
 	// message we classify now (before the answer history is built) and use the
@@ -273,7 +277,7 @@ func (t *Run) Prepare(in PrepareInput) {
 			editSource = &src
 		}
 	}
-	t.plan = turnPlan{
+	return turnPlan{
 		history:          history,
 		imageRoute:       imageRoute,
 		gate:             gate,

@@ -27,7 +27,7 @@ const incognitoThreadID = "incognito"
 // It is deliberately a stripped-down sibling of handleStreamMessage: no
 // GetThread/ListMessages/AddMessage*, no title generation, no attachments, no
 // RAG/knowledge, no memory refresh. Tools are disabled entirely (see
-// RunIncognitoAssistantTurn) so no tool can write to the DB or disk.
+// turn.Engine.RunIncognitoTurn) so no tool can write to the DB or disk.
 func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok {
@@ -83,8 +83,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, emitter, inference, turn.UserResponseLanguage(user))
 	defer titles.Wait()
 
-	run := s.engine.NewRun(turn.RunConfig{Stream: emitter, Titles: titles, Inference: inference, User: user})
-	assistantResult, err := run.RunIncognitoAssistantTurn(streamCtx, history)
+	assistantResult, err := s.engine.RunIncognitoTurn(streamCtx, turn.IncognitoConfig{Stream: emitter, Titles: titles, Inference: inference}, history)
 	if err != nil {
 		if turn.StreamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
