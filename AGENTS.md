@@ -14,7 +14,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - `make fe-test` — frontend Vitest
 - `make fe-lint` — frontend lint (oxlint: rules-of-hooks, exhaustive-deps, unused vars)
 - `make model-names` — fails on a model/vendor name outside `.env.example` (CI runs it)
-- `make coverage-gate` — 80% on changed lines + project floors; needs `pip install diff-cover==10.3.0`.
+- `make coverage-gate` — 75% on changed lines + project floors; needs `pip install diff-cover==10.3.0`.
 - `make fe-build` — build the SPA into `backend/web/dist` (embedded by Go)
 - `make build` — full build → `bin/loom` (CGO_ENABLED=0)
 - `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_AUTH_MODE`; `make dev` sets both)
