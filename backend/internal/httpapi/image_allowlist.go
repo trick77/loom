@@ -19,18 +19,18 @@ var allowedImageFormats = map[string]string{
 	".gif":  "image/gif",
 }
 
-// allowedImageFormat reports whether filename's extension is an accepted image
+// AllowedImageFormat reports whether filename's extension is an accepted image
 // upload format and, if so, returns its canonical MIME type and the bare
 // extension (without leading dot). The check is case-insensitive.
-func allowedImageFormat(filename string) (mime string, ext string, ok bool) {
+func AllowedImageFormat(filename string) (mime string, ext string, ok bool) {
 	dotExt := strings.ToLower(filepath.Ext(filename))
 	mime, ok = allowedImageFormats[dotExt]
 	return mime, strings.TrimPrefix(dotExt, "."), ok
 }
 
-// allowedImageMIME reports whether a client-provided Content-Type names one of
+// AllowedImageMIME reports whether a client-provided Content-Type names one of
 // the accepted image types (ignoring any parameters such as "; charset").
-func allowedImageMIME(mimeType string) bool {
+func AllowedImageMIME(mimeType string) bool {
 	m := strings.ToLower(strings.TrimSpace(mimeType))
 	if i := strings.IndexByte(m, ';'); i >= 0 {
 		m = strings.TrimSpace(m[:i])

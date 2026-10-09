@@ -10,11 +10,11 @@ import (
 	"github.com/trick77/loom/internal/llm"
 )
 
-// projectThreadsToolName is the built-in tool the model calls to read the other
+// ProjectThreadsToolName is the built-in tool the model calls to read the other
 // threads in the current project so it can summarize, compile, or compare across
 // them. It is exposed only when the active thread belongs to a project (see
 // availableTools), so a project-less thread never sees it.
-const projectThreadsToolName = "read_project_threads"
+const ProjectThreadsToolName = "read_project_threads"
 
 // maxProjectSummaryThreads caps how many sibling threads the digest covers. The
 // most recently active threads are kept; any older overflow is noted in the
@@ -29,7 +29,7 @@ func projectThreadsTool() llm.Tool {
 	return llm.Tool{
 		Type: "function",
 		Function: llm.ToolFunction{
-			Name: projectThreadsToolName,
+			Name: ProjectThreadsToolName,
 			Description: "Read the titles and conversation content of the OTHER threads in the current project. " +
 				"Call this whenever the user asks to summarize, compile, compare, or gather information across the " +
 				"threads or conversations in this project (for example \"summarize the threads in this project\"). " +

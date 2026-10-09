@@ -107,6 +107,9 @@ type (
 	ChatClient = turn.ChatClient
 	// ToolService is turn.ToolService.
 	ToolService = turn.ToolService
+	// SandboxRunner is turn.SandboxRunner: it runs run_python jobs;
+	// *sandbox.Client implements it.
+	SandboxRunner = turn.SandboxRunner
 	// Background is turn.Background.
 	Background = turn.Background
 )
@@ -117,21 +120,9 @@ func NewBackground(parent context.Context) *Background {
 	return turn.NewBackground(parent)
 }
 
-// recordUsage runs a best-effort usage-counter update; see recordUsageIn.
+// recordUsage runs a best-effort usage-counter update; see RecordUsage.
 func (s *server) recordUsage(counter string, fn func() error) {
-	recordUsageIn(s.usage, counter, fn)
-}
-
-// recordUsageIn runs a best-effort usage-counter update. A nil store (e.g. in
-// tests) or any write error is logged and swallowed so counting never fails the
-// underlying request. counter is a short label used only for logging.
-func recordUsageIn(store UsageStore, counter string, fn func() error) {
-	if store == nil {
-		return
-	}
-	if err := fn(); err != nil {
-		slog.Warn("usage counter update failed", "counter", counter, "err", err)
-	}
+	RecordUsage(s.usage, counter, fn)
 }
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.

@@ -6,15 +6,15 @@ import (
 	"github.com/trick77/loom/internal/llm"
 )
 
-// contentBlock is one item in a message's ordered, interleaved timeline. Exactly
+// ContentBlock is one item in a message's ordered, interleaved timeline. Exactly
 // one of the type-specific fields is populated per block, keyed by Type:
 //   - "text":     Content (markdown prose)
 //   - "trace":    Events (a contiguous run of reasoning+tool events = one panel)
 //   - "artifact": Artifact (a produced artifact)
-type contentBlock struct {
+type ContentBlock struct {
 	Type     string               `json:"type"`
 	Content  string               `json:"content,omitempty"`
-	Events   []activityTraceEvent `json:"events,omitempty"`
+	Events   []ActivityTraceEvent `json:"events,omitempty"`
 	Artifact *artifactResponse    `json:"artifact,omitempty"`
 }
 
@@ -22,19 +22,19 @@ type contentBlock struct {
 // assistant turn. Consecutive reasoning/tool events merge into the trailing
 // trace block (one collapsible panel); a prose text block breaks that run.
 type blockBuilder struct {
-	blocks []contentBlock
+	blocks []ContentBlock
 }
 
 // addTraceEvent appends a reasoning or tool event to the trailing trace block,
 // creating a new trace block when the last block is not a trace run. This merges
 // consecutive trace events (e.g. a round's reasoning then its tool calls) into a
 // single panel, while a prose text block in between starts a fresh run.
-func (b *blockBuilder) addTraceEvent(e activityTraceEvent) {
+func (b *blockBuilder) addTraceEvent(e ActivityTraceEvent) {
 	if n := len(b.blocks); n > 0 && b.blocks[n-1].Type == "trace" {
 		b.blocks[n-1].Events = append(b.blocks[n-1].Events, e)
 		return
 	}
-	b.blocks = append(b.blocks, contentBlock{Type: "trace", Events: []activityTraceEvent{e}})
+	b.blocks = append(b.blocks, ContentBlock{Type: "trace", Events: []ActivityTraceEvent{e}})
 }
 
 // addText appends a prose text block, preserving the original (untrimmed) string.
@@ -44,7 +44,7 @@ func (b *blockBuilder) addText(s string) {
 	if strings.TrimSpace(s) == "" {
 		return
 	}
-	b.blocks = append(b.blocks, contentBlock{Type: "text", Content: s})
+	b.blocks = append(b.blocks, ContentBlock{Type: "text", Content: s})
 }
 
 // prose joins the turn's text blocks so far.
@@ -60,7 +60,7 @@ func (b *blockBuilder) prose() string {
 
 // addArtifact appends an artifact block at the position the artifact was produced.
 func (b *blockBuilder) addArtifact(a artifactResponse) {
-	b.blocks = append(b.blocks, contentBlock{Type: "artifact", Artifact: &a})
+	b.blocks = append(b.blocks, ContentBlock{Type: "artifact", Artifact: &a})
 }
 
 // setToolResult stamps a tool call's result onto its matching tool event,
@@ -89,8 +89,8 @@ func (b *blockBuilder) setToolResult(id, output string) {
 // flatTrace concatenates every trace block's events in order. It reproduces the
 // legacy flat activity_trace exactly, so reasoning-id numbering stays identical
 // whether counted over the flat trace or the blocks.
-func (b *blockBuilder) flatTrace() []activityTraceEvent {
-	var out []activityTraceEvent
+func (b *blockBuilder) flatTrace() []ActivityTraceEvent {
+	var out []ActivityTraceEvent
 	for _, block := range b.blocks {
 		if block.Type != "trace" {
 			continue
@@ -111,7 +111,7 @@ func (b *blockBuilder) nextReasoningID() string {
 // prose → tool-call events. The reasoning and tool events merge into the
 // trailing trace block; the prose breaks the run as its own text block.
 // titles.spawn is always called (matching appendTraceAndSpawnTitle).
-func (b *blockBuilder) addResult(titles *reasoningTitleTracker, result llm.StreamResult) {
+func (b *blockBuilder) addResult(titles *ReasoningTitleTracker, result llm.StreamResult) {
 	reasoningID := b.nextReasoningID()
 	if strings.TrimSpace(result.ReasoningContent) != "" {
 		b.addTraceEvent(reasoningEvent(reasoningID, result.ReasoningContent))
@@ -127,7 +127,7 @@ func (b *blockBuilder) addResult(titles *reasoningTitleTracker, result llm.Strea
 // prose. Used for the image prompt-compiler turn, whose content is deliberately
 // hidden from the user (streamAssistantTurnSuppressingContent) and must not
 // surface as a visible text block.
-func (b *blockBuilder) addTraceOnlyResult(titles *reasoningTitleTracker, result llm.StreamResult) {
+func (b *blockBuilder) addTraceOnlyResult(titles *ReasoningTitleTracker, result llm.StreamResult) {
 	reasoningID := b.nextReasoningID()
 	if strings.TrimSpace(result.ReasoningContent) != "" {
 		b.addTraceEvent(reasoningEvent(reasoningID, result.ReasoningContent))
@@ -141,8 +141,8 @@ func (b *blockBuilder) addTraceOnlyResult(titles *reasoningTitleTracker, result 
 // result assembles the loop's outcome from what the builder collected: the
 // flat trace and the ordered blocks travel with every return, whatever else
 // the turn produced.
-func (b *blockBuilder) result(stream llm.StreamResult, artifacts []artifactResponse, toolError string) assistantLoopResult {
-	return assistantLoopResult{
+func (b *blockBuilder) result(stream llm.StreamResult, artifacts []artifactResponse, toolError string) LoopResult {
+	return LoopResult{
 		StreamResult:  stream,
 		Artifacts:     artifacts,
 		ToolError:     toolError,

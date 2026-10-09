@@ -51,14 +51,14 @@ func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 // executeToolCall runs one MCP call start to finish. It needs only the user,
 // not a whole turn, so it stays on the engine.
 func (s *Engine) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry) string {
-	return (&turnRun{s: s, user: user}).finishToolCall(ctx, call, round, reg, s.runToolCall(ctx, call))
+	return (&Run{e: s, user: user}).finishToolCall(ctx, call, round, reg, s.runToolCall(ctx, call))
 }
 
 // finishToolCall turns a finished run into the tool result the model sees:
 // the obscura fallback for a failed fetch, the usage count, and the [n] source
 // labels. It writes to the source registry and the shared obscura browser, so
 // it runs one call at a time, in the order the model issued the calls.
-func (t *turnRun) finishToolCall(ctx context.Context, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) string {
+func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) string {
 	args := summarizeForLog(call.Function.Arguments)
 	if run.argsErr != nil {
 		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", run.argsErr)
@@ -80,10 +80,10 @@ func (t *turnRun) finishToolCall(ctx context.Context, call llm.ToolCall, round i
 		return capToolOutput("tool failed: " + err.Error())
 	}
 	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
-	t.s.countToolCall(ctx, t.user, call.Function.Name)
+	t.e.countToolCall(ctx, t.user, call.Function.Name)
 	// Annotate web-search/fetch results with [n] citation markers and register
 	// their source URLs before capping, so the model can cite them inline.
-	return capToolOutput(t.s.relabelWebToolOutput(call.Function.Name, arguments, output, reg))
+	return capToolOutput(t.e.relabelWebToolOutput(call.Function.Name, arguments, output, reg))
 }
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at
@@ -182,28 +182,28 @@ var tavilySearchExposedName = mcp.ExposedToolName(tavilyServerName, mcp.TavilySe
 // It only fires for the fetch tool when obscura is configured and the call
 // carried a URL. On success it returns the obscura snapshot and true; otherwise
 // it returns ok=false so the caller surfaces the original fetch failure.
-func (t *turnRun) fetchObscuraFallback(ctx context.Context, toolName string, arguments map[string]any, round int, reg *webSourceRegistry) (string, bool) {
+func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, arguments map[string]any, round int, reg *webSourceRegistry) (string, bool) {
 	if toolName != fetchToolName {
 		return "", false
 	}
-	if !t.s.mcp.HasTool(obscuraNavigateToolName) || !t.s.mcp.HasTool(obscuraSnapshotToolName) {
+	if !t.e.mcp.HasTool(obscuraNavigateToolName) || !t.e.mcp.HasTool(obscuraSnapshotToolName) {
 		return "", false
 	}
 	url, ok := arguments["url"].(string)
 	if !ok || strings.TrimSpace(url) == "" {
 		return "", false
 	}
-	if _, err := t.s.mcp.CallTool(ctx, obscuraNavigateToolName, map[string]any{"url": url}); err != nil {
+	if _, err := t.e.mcp.CallTool(ctx, obscuraNavigateToolName, map[string]any{"url": url}); err != nil {
 		slog.Warn("obscura fallback navigate failed", "url", url, "round", round, "err", err)
 		return "", false
 	}
-	snapshot, err := t.s.mcp.CallTool(ctx, obscuraSnapshotToolName, map[string]any{})
+	snapshot, err := t.e.mcp.CallTool(ctx, obscuraSnapshotToolName, map[string]any{})
 	if err != nil {
 		slog.Warn("obscura fallback snapshot failed", "url", url, "round", round, "err", err)
 		return "", false
 	}
 	slog.Info("fetch failed, obscura fallback succeeded", "url", url, "round", round, "result_bytes", len(snapshot))
-	t.s.recordUsage("obscura_fetch", func() error { return t.s.usage.IncObscuraFetch(ctx, t.user.ID) })
+	t.e.recordUsage("obscura_fetch", func() error { return t.e.usage.IncObscuraFetch(ctx, t.user.ID) })
 	// The requested fetch URL is the source; annotate the rendered snapshot with
 	// its [n] marker so the model cites it inline like any other web source.
 	return capToolOutput(prependURLSource(url, snapshot, reg)), true
@@ -322,25 +322,25 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 // executeBuiltInTool runs a tool loom implements itself. It returns the
 // model-facing output, the artifacts the call created (run_python can write
 // several) and whether the name was a built-in at all.
-func (t *turnRun) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string, []artifactResponse, bool) {
-	if call.Function.Name == projectThreadsToolName {
-		return t.s.projectThreadsDigest(ctx, t.user.ID, t.thread), nil, true
+func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string, []artifactResponse, bool) {
+	if call.Function.Name == ProjectThreadsToolName {
+		return t.e.projectThreadsDigest(ctx, t.user.ID, t.thread), nil, true
 	}
 	if isArgTool(call.Function.Name) {
 		args, err := parseToolArguments(call.Function.Arguments)
 		if err != nil {
 			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil, true
 		}
-		return t.s.runArgTool(ctx, t.user, t.thread, call.Function.Name, args), nil, true
+		return t.e.runArgTool(ctx, t.user, t.thread, call.Function.Name, args), nil, true
 	}
 	if call.Function.Name == sandboxToolName {
-		output, created := t.s.runSandboxTool(ctx, t.stream, t.user, t.thread, call)
+		output, created := t.e.runSandboxTool(ctx, t.stream, t.user, t.thread, call)
 		return output, created, true
 	}
 	if response, output, handled := t.executeImageTool(ctx, call); handled {
 		return output, oneArtifact(response), true
 	}
-	generator := t.s.docGenerator(call.Function.Name)
+	generator := t.e.docGenerator(call.Function.Name)
 	if generator == nil {
 		return "", nil, false
 	}
@@ -362,7 +362,7 @@ func oneArtifact(resp *artifactResponse) []artifactResponse {
 // server-side failures invisible. The deferred log fixes that: every outcome is
 // recorded with the tool name, argument size, a truncated argument preview and
 // the result, so the next failure is diagnosable from the logs.
-func (t *turnRun) runDocGenerator(ctx context.Context, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifactResponse) {
+func (t *Run) runDocGenerator(ctx context.Context, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifactResponse) {
 	start := time.Now()
 	defer func() {
 		attrs := []any{
@@ -398,7 +398,7 @@ func (t *turnRun) runDocGenerator(ctx context.Context, call llm.ToolCall, genera
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
 		return "tool failed: generated file is too large", nil
 	}
-	created, err := t.s.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
+	created, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
 		DisplayFilename: meta.DisplayFilename,
 		Extension:       meta.Extension,
 		Data:            buffer.Bytes(),
@@ -407,7 +407,7 @@ func (t *turnRun) runDocGenerator(ctx context.Context, call llm.ToolCall, genera
 	if err != nil {
 		return capToolOutput("tool failed: " + err.Error()), nil
 	}
-	response := artifactResponseFromArtifact(created)
+	response := ArtifactResponseFromArtifact(created)
 	_ = t.stream.Send("artifact", response)
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
@@ -447,8 +447,8 @@ func (s *Engine) resolveThreadImageModel(ctx context.Context, userID string, thr
 
 // executeImageTool runs an image tool call with the turn's edit source and
 // typography routing.
-func (t *turnRun) executeImageTool(ctx context.Context, call llm.ToolCall) (*artifactResponse, string, bool) {
-	generator := t.s.imageTool(call.Function.Name)
+func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*artifactResponse, string, bool) {
+	generator := t.e.imageTool(call.Function.Name)
 	if generator == nil {
 		return nil, "", false
 	}
@@ -495,8 +495,8 @@ func (t *turnRun) executeImageTool(ctx context.Context, call llm.ToolCall) (*art
 	}
 	// Pick (and lock, once per thread) the image model. When it is the typography
 	// model, clamp output to ≤1024 px/side so flex matches the klein default's size.
-	req.Model = t.s.resolveThreadImageModel(ctx, t.user.ID, t.thread, t.plan.imageRoute.typography, req.Prompt)
-	if tm := strings.TrimSpace(t.s.imageTypographyModel); tm != "" && req.Model == tm {
+	req.Model = t.e.resolveThreadImageModel(ctx, t.user.ID, t.thread, t.plan.imageRoute.typography, req.Prompt)
+	if tm := strings.TrimSpace(t.e.imageTypographyModel); tm != "" && req.Model == tm {
 		req.Width, req.Height = imagegen.ClampMaxSide(req.Width, req.Height, maxTypographyImageSide)
 	}
 	var buffer bytes.Buffer
@@ -505,7 +505,7 @@ func (t *turnRun) executeImageTool(ctx context.Context, call llm.ToolCall) (*art
 	// stays as a backstop for any dispatch path that reaches here on a context
 	// without metadata — otherwise the image model would be the one call in a turn
 	// whose log line cannot be tied back to a user or thread.
-	meta, err := generator.Generate(withUserAttribution(ctx, t.user, t.thread.ID), req, &buffer)
+	meta, err := generator.Generate(WithUserAttribution(ctx, t.user, t.thread.ID), req, &buffer)
 	if err != nil {
 		output := capToolOutput("tool failed: " + err.Error())
 		slog.Warn("image tool failed",
@@ -517,7 +517,7 @@ func (t *turnRun) executeImageTool(ctx context.Context, call llm.ToolCall) (*art
 	if buffer.Len() > artifact.MaxArtifactSizeBytes {
 		return nil, "tool failed: generated image is too large", true
 	}
-	created, err := t.s.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
+	created, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
 		DisplayFilename: meta.DisplayFilename,
 		Extension:       meta.Extension,
 		MIMEType:        meta.MIMEType,
@@ -527,13 +527,13 @@ func (t *turnRun) executeImageTool(ctx context.Context, call llm.ToolCall) (*art
 	if err != nil {
 		return nil, capToolOutput("tool failed: " + err.Error()), true
 	}
-	response := artifactResponseFromArtifact(created)
+	response := ArtifactResponseFromArtifact(created)
 	response.Model = meta.Model
 	response.Provider = meta.Provider
 	response.Width = meta.Width
 	response.Height = meta.Height
 	response.DurationMs = meta.DurationMs
-	t.s.recordUsage("image_gen", func() error { return t.s.usage.IncImageGen(ctx, t.user.ID) })
+	t.e.recordUsage("image_gen", func() error { return t.e.usage.IncImageGen(ctx, t.user.ID) })
 	_ = t.stream.Send("artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
 }

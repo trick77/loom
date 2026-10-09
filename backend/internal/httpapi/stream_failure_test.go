@@ -12,14 +12,14 @@ import (
 )
 
 func TestStreamFailureMessageMapsUserStalledAndGenericErrors(t *testing.T) {
-	result := assistantLoopResult{}
-	if got := streamFailureMessage(streamUserError{message: "image generation refused"}, result, "message", "t1"); got != "image generation refused" {
+	result := LoopResult{}
+	if got := StreamFailureMessage(streamUserError{message: "image generation refused"}, result, "message", "t1"); got != "image generation refused" {
 		t.Fatalf("user error -> %q", got)
 	}
-	if got := streamFailureMessage(llm.ErrStreamStalled, result, "message", "t1"); got != llm.ErrStreamStalled.Error() {
+	if got := StreamFailureMessage(llm.ErrStreamStalled, result, "message", "t1"); got != llm.ErrStreamStalled.Error() {
 		t.Fatalf("stalled -> %q", got)
 	}
-	if got := streamFailureMessage(errors.New("boom"), result, "message", "t1"); got != "stream failed" {
+	if got := StreamFailureMessage(errors.New("boom"), result, "message", "t1"); got != "stream failed" {
 		t.Fatalf("generic -> %q", got)
 	}
 }
@@ -32,7 +32,7 @@ func TestStreamFailureMessageLogsAGenericFailure(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&log, nil)))
 	t.Cleanup(func() { slog.SetDefault(restore) })
 
-	streamFailureMessage(errors.New("retrieve: disk I/O error"), assistantLoopResult{StreamResult: llm.StreamResult{Content: "abc"}}, "message", "t1")
+	StreamFailureMessage(errors.New("retrieve: disk I/O error"), LoopResult{StreamResult: llm.StreamResult{Content: "abc"}}, "message", "t1")
 
 	got := log.String()
 	for _, want := range []string{"level=ERROR", `msg="message stream failed"`, "thread_id=t1",
@@ -62,18 +62,18 @@ func TestStreamCanceled(t *testing.T) {
 		{"interrupt on a cancelled stream", stopped, interrupt, true},
 		{"failure on a live stream", live, interrupt, false},
 	} {
-		if got := streamCanceled(tc.ctx, tc.err); got != tc.want {
-			t.Errorf("%s: streamCanceled() = %v, want %v", tc.name, got, tc.want)
+		if got := StreamCanceled(tc.ctx, tc.err); got != tc.want {
+			t.Errorf("%s: StreamCanceled() = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }
 
 func TestMarshalTurnJSONFallsBackToEmptyArrays(t *testing.T) {
-	trace, blocks := marshalTurnJSON("t1", nil, nil)
+	trace, blocks := MarshalTurnJSON("t1", nil, nil)
 	if string(trace) != "[]" || string(blocks) != "[]" {
 		t.Fatalf("empty turn -> %s / %s, want [] / []", trace, blocks)
 	}
-	trace, blocks = marshalTurnJSON("t1", []activityTraceEvent{{}}, []contentBlock{{Type: "text", Content: "x"}})
+	trace, blocks = MarshalTurnJSON("t1", []ActivityTraceEvent{{}}, []ContentBlock{{Type: "text", Content: "x"}})
 	if string(trace) == "[]" || string(blocks) == "[]" {
 		t.Fatalf("populated turn -> %s / %s, want encoded arrays", trace, blocks)
 	}

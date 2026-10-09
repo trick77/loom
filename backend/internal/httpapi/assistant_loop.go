@@ -47,22 +47,26 @@ func toolCallCapPerRound(name string) int {
 	}
 }
 
-type assistantLoopResult struct {
+// LoopResult is what the assistant loop produced: the final answer call's
+// result plus everything the turn gathered on the way to it.
+type LoopResult struct {
 	llm.StreamResult
 	Artifacts     []artifactResponse
 	ToolError     string
-	ActivityTrace []activityTraceEvent
-	Blocks        []contentBlock
+	ActivityTrace []ActivityTraceEvent
+	Blocks        []ContentBlock
 	// WebSources are the web-search/fetch sources gathered this turn, in the [n]
 	// order the model cites them. Persisted as citations and rendered as inline
 	// source pills + a bottom "Sources" row.
 	WebSources []webSource
 }
 
-// runAssistantLoop answers the turn from history, running tool rounds as the
-// model asks for them, then a forced final answer if the rounds run out.
-func (t *turnRun) runAssistantLoop(ctx context.Context, history []llm.Message) (out assistantLoopResult, outErr error) {
-	tools := t.s.availableTools(t.thread, t.plan.gate)
+// RunAssistantLoop answers the turn from the history Prepare built, running
+// tool rounds as the model asks for them, then a forced final answer if the
+// rounds run out.
+func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
+	history := t.plan.history
+	tools := t.e.availableTools(t.thread, t.plan.gate)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)
@@ -112,13 +116,13 @@ func (t *turnRun) runAssistantLoop(ctx context.Context, history []llm.Message) (
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat_tool_round", round), tools)
 		if err != nil {
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, llm.ErrStreamStalled) {
-				return assistantLoopResult{}, err
+				return LoopResult{}, err
 			}
 			b.addResult(t.titles, result)
 			if b.keepInterrupted(&result, err, artifacts) {
 				return b.result(result, artifacts, ""), nil
 			}
-			return assistantLoopResult{}, err
+			return LoopResult{}, err
 		}
 		b.addResult(t.titles, result)
 		if len(result.ToolCalls) == 0 {
@@ -164,7 +168,7 @@ func (t *turnRun) runAssistantLoop(ctx context.Context, history []llm.Message) (
 			// arguments. Stop here with a clear cause instead of replaying it.
 			slog.Warn("tool call truncated at token cap",
 				"round", round, "tool_calls", len(result.ToolCalls), "finish_reason", result.FinishReason)
-			return assistantLoopResult{}, streamUserError{message: "The response was cut off before it finished — the requested output is too large to generate in one turn. Ask for a shorter version or split it into parts."}
+			return LoopResult{}, streamUserError{message: "The response was cut off before it finished — the requested output is too large to generate in one turn. Ask for a shorter version or split it into parts."}
 		}
 		slog.Info("assistant requested tools", "round", round, "tool_calls", len(result.ToolCalls), "content_bytes", len(result.Content))
 
@@ -188,7 +192,7 @@ func (t *turnRun) runAssistantLoop(ctx context.Context, history []llm.Message) (
 		// The round's independent web reads start now and overlap; everything
 		// below still handles the calls one at a time, in the model's order.
 		runsCtx, cancelRuns := context.WithCancel(ctx)
-		runs := t.s.startToolRuns(runsCtx, result.ToolCalls, deferred)
+		runs := t.e.startToolRuns(runsCtx, result.ToolCalls, deferred)
 		lastRoundDeferred = false
 		for i, call := range result.ToolCalls {
 			var output string
@@ -220,12 +224,12 @@ func (t *turnRun) runAssistantLoop(ctx context.Context, history []llm.Message) (
 				} else if runs[i] != nil {
 					output = t.finishToolCall(ctx, call, round, reg, <-runs[i])
 				} else {
-					output = t.s.executeToolCall(ctx, t.user, call, round, reg)
+					output = t.e.executeToolCall(ctx, t.user, call, round, reg)
 				}
 			}
-			if err := t.stream.Send("tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+			if err := t.stream.Send("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				cancelRuns()
-				return assistantLoopResult{}, err
+				return LoopResult{}, err
 			}
 			b.setToolResult(call.ID, output)
 			history = append(history, llm.Message{
@@ -250,8 +254,8 @@ func (t *turnRun) runAssistantLoop(ctx context.Context, history []llm.Message) (
 		// the result (above), and stream.Send is sequential — so the snapshot
 		// always reaches the browser before the deltas that reference it.
 		if reg.len() > 0 {
-			if err := t.stream.Send("web_sources", webSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
-				return assistantLoopResult{}, err
+			if err := t.stream.Send("web_sources", WebSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
+				return LoopResult{}, err
 			}
 		}
 		toolRan = true
@@ -321,7 +325,7 @@ const finalAnswerFallback = "I couldn't put together a final answer from the inf
 
 // runRequiredImageAssistantLoop answers an image turn: a prompt-compiler round
 // that must call imageTool, the image call itself, then a brief final answer.
-func (t *turnRun) runRequiredImageAssistantLoop(ctx context.Context, history []llm.Message, imageTool llm.Tool) (assistantLoopResult, error) {
+func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.Message, imageTool llm.Tool) (LoopResult, error) {
 	compilerPrompt := imagePromptCompilerSystemPrompt
 	if editSource := t.plan.editSource; editSource != nil && len(editSource.Data) > 0 {
 		// The source image is forwarded to the model directly, so the compiler must
@@ -341,7 +345,7 @@ func (t *turnRun) runRequiredImageAssistantLoop(ctx context.Context, history []l
 	// — adding its prose would leak hidden text into the timeline.
 	b.addTraceOnlyResult(t.titles, result)
 	if err != nil {
-		return assistantLoopResult{}, err
+		return LoopResult{}, err
 	}
 	// The first generate_image call wins. Only one image is generated per turn, and
 	// a compiled call — with its prompt, aspect ratio and filename — beats the raw
@@ -370,12 +374,12 @@ func (t *turnRun) runRequiredImageAssistantLoop(ctx context.Context, history []l
 		// streamed call would be, or the tool_result below refers to a step that
 		// does not exist on either side.
 		b.addTraceEvent(toolCallEvent(call))
-		if err := t.stream.Send("tool_call", toolCallResponse{
+		if err := t.stream.Send("tool_call", ToolCallResponse{
 			ID:        call.ID,
 			Name:      call.Function.Name,
 			Arguments: call.Function.Arguments,
 		}); err != nil {
-			return assistantLoopResult{}, err
+			return LoopResult{}, err
 		}
 	}
 	history = append(compilerHistory, llm.Message{
@@ -386,8 +390,8 @@ func (t *turnRun) runRequiredImageAssistantLoop(ctx context.Context, history []l
 	if !handled {
 		output = capToolOutput("tool failed: generate_image is not available")
 	}
-	if err := t.stream.Send("tool_result", toolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
-		return assistantLoopResult{}, err
+	if err := t.stream.Send("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+		return LoopResult{}, err
 	}
 	b.setToolResult(call.ID, output)
 	history = append(history, llm.Message{
@@ -496,12 +500,12 @@ func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, arti
 	return true
 }
 
-// runIncognitoAssistantTurn runs a single, tool-free assistant turn for an
-// ephemeral incognito thread. It mirrors runAssistantLoop's len(tools)==0 fast
+// RunIncognitoAssistantTurn runs a single, tool-free assistant turn for an
+// ephemeral incognito thread. It mirrors RunAssistantLoop's len(tools)==0 fast
 // path exactly: with no tools there are no persistence-capable side effects (no
 // artifacts, no directive/memory writes), which is what lets an incognito turn
 // answer while writing nothing.
-func (t *turnRun) runIncognitoAssistantTurn(ctx context.Context, history []llm.Message) (assistantLoopResult, error) {
+func (t *Run) RunIncognitoAssistantTurn(ctx context.Context, history []llm.Message) (LoopResult, error) {
 	b := &blockBuilder{}
 	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)
 	// Safety net: a tool-eager model may still emit an inline tool call
@@ -509,7 +513,7 @@ func (t *turnRun) runIncognitoAssistantTurn(ctx context.Context, history []llm.M
 	// recovers a call or the markup is truncated/malformed and none is recovered —
 	// leaving empty content. Since there are no tools to run, nudge it once to answer
 	// directly rather than returning the empty (and therefore discarded) reply. Gated
-	// on empty content alone, matching runAssistantLoop's forced-final-answer.
+	// on empty content alone, matching RunAssistantLoop's forced-final-answer.
 	if err == nil && strings.TrimSpace(result.Content) == "" {
 		slog.Info("incognito turn produced no answer text; retrying tool-free", "recovered_tool_calls", len(result.ToolCalls))
 		retryHistory := append(append([]llm.Message(nil), history...), llm.Message{Role: "user", Content: incognitoDirectAnswerNudge})
@@ -550,15 +554,15 @@ func incognitoRetryInference(metadata llm.InferenceMetadata, first llm.StreamRes
 // reasoning abstract while the model is still reasoning (see
 // reasoningTitleStartBytes), or at the latest when it starts answering or
 // calling a tool, so the title overlaps the turn instead of trailing it.
-func (t *turnRun) streamAssistantTurn(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+func (t *Run) streamAssistantTurn(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
 	return t.streamAssistantTurnWithContentStreaming(ctx, reasoningID, history, meta, tools, true)
 }
 
-func (t *turnRun) streamAssistantTurnSuppressingContent(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
+func (t *Run) streamAssistantTurnSuppressingContent(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool) (llm.StreamResult, error) {
 	return t.streamAssistantTurnWithContentStreaming(ctx, reasoningID, history, meta, tools, false)
 }
 
-func (t *turnRun) streamAssistantTurnWithContentStreaming(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
+func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reasoningID string, history []llm.Message, meta llm.InferenceMetadata, tools []llm.Tool, streamContent bool) (llm.StreamResult, error) {
 	callCtx := llm.WithInferenceMetadata(ctx, meta)
 	var reasoningBuf strings.Builder
 	titleSpawned := false
@@ -597,9 +601,9 @@ func (t *turnRun) streamAssistantTurnWithContentStreaming(ctx context.Context, r
 			return ctx.Err()
 		}
 	}
-	return t.s.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
+	return t.e.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
-			if err := t.stream.Send("assistant_reasoning_delta", streamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
+			if err := t.stream.Send("assistant_reasoning_delta", StreamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
 				return err
 			}
 			// The buffer only feeds the title, so it stops growing once that is spawned.
@@ -620,11 +624,11 @@ func (t *turnRun) streamAssistantTurnWithContentStreaming(ctx context.Context, r
 			if err := awaitTitle(); err != nil {
 				return err
 			}
-			return t.stream.Send("assistant_delta", streamDeltaResponse{Content: event.Delta})
+			return t.stream.Send("assistant_delta", StreamDeltaResponse{Content: event.Delta})
 		}
 		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
 			spawnTitle()
-			return t.stream.Send("tool_call", toolCallResponse{
+			return t.stream.Send("tool_call", ToolCallResponse{
 				ID:        event.ToolCall.ID,
 				Name:      event.ToolCall.Function.Name,
 				Arguments: event.ToolCall.Function.Arguments,

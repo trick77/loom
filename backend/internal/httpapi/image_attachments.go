@@ -22,14 +22,14 @@ const maxImageAttachmentsPerMessage = 5
 // first problem, so callers run it before persisting anything: a rejected
 // attachment list is a plain 400, not an orphaned user turn.
 func (s *Engine) imageContentParts(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, error) {
-	parts, _, err := s.resolveImageAttachments(ctx, userID, text, artifactIDs)
+	parts, _, err := s.ResolveImageAttachments(ctx, userID, text, artifactIDs)
 	return parts, err
 }
 
-// resolveImageAttachments is imageContentParts that also hands back the
+// ResolveImageAttachments is imageContentParts that also hands back the
 // looked-up artifacts, so the send path can record the sent attachments
 // without a second batch query.
-func (s *Engine) resolveImageAttachments(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, map[string]artifact.Artifact, error) {
+func (s *Engine) ResolveImageAttachments(ctx context.Context, userID, text string, artifactIDs []string) ([]llm.MessageContentPart, map[string]artifact.Artifact, error) {
 	if len(artifactIDs) == 0 {
 		return nil, nil, nil
 	}
@@ -58,13 +58,13 @@ func (s *Engine) resolveImageAttachments(ctx context.Context, userID, text strin
 		// artifact keeps the thread it was generated/uploaded in, and "Use in thread"
 		// deliberately re-references an existing artifact from a *new* thread, so
 		// requiring item.ThreadID == threadID would reject every cross-thread reuse
-		// (the image would display via resolveSentAttachments but never reach the
+		// (the image would display via ResolveSentAttachments but never reach the
 		// model). User ownership is the real boundary; the thread match added nothing.
 		// Enforce the same image allowlist as the upload path here too: a re-attached
 		// artifact (e.g. a generated image, or any artifact referenced by id) must be
 		// an accepted image type, not merely image/*, so an out-of-allowlist format
 		// (e.g. image/bmp) can't slip into the model request via the attach path.
-		if !allowedImageMIME(item.MIMEType) {
+		if !AllowedImageMIME(item.MIMEType) {
 			return nil, nil, fmt.Errorf("attachment is not a supported image type")
 		}
 		abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)
@@ -126,7 +126,7 @@ func (s *Engine) loadEditSourceImage(ctx context.Context, userID, artifactID str
 	if !ok {
 		return editImageSource{}, false, nil
 	}
-	if !allowedImageMIME(item.MIMEType) {
+	if !AllowedImageMIME(item.MIMEType) {
 		return editImageSource{}, false, nil
 	}
 	abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)

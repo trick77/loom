@@ -311,7 +311,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	found.DisplayFilename = displayFilename
-	writeJSON(w, artifactResponseFromArtifact(found))
+	writeJSON(w, ArtifactResponseFromArtifact(found))
 }
 
 func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Request) {
@@ -342,13 +342,13 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	// Validate against the explicit image allowlist (PNG/JPG/JPEG/WebP/GIF) rather
 	// than a bare image/* prefix: the model only supports these, so rejecting
 	// everything else here keeps unsupported formats out of the LLM path entirely.
-	canonicalMIME, extension, ok := allowedImageFormat(header.Filename)
+	canonicalMIME, extension, ok := AllowedImageFormat(header.Filename)
 	if !ok {
 		writeJSONError(w, http.StatusUnsupportedMediaType, "unsupported image format")
 		return
 	}
 	mimeType := header.Header.Get("Content-Type")
-	if !allowedImageMIME(mimeType) {
+	if !AllowedImageMIME(mimeType) {
 		mimeType = canonicalMIME
 	}
 	if imagescale.TooLarge(file) {
@@ -407,7 +407,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	// composer previews are fast immediately; the bytes were just written to disk.
 	var thumbnailRelPath string
 	if src, rerr := os.ReadFile(output.AbsPath); rerr == nil {
-		thumbnailRelPath = generateThumbnailBestEffort(s.usersDir, user.ID, mimeType, src, output.VolumeRelPath)
+		thumbnailRelPath = GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, src, output.VolumeRelPath)
 	}
 	created, err := s.artifacts.Create(r.Context(), artifact.CreateInput{
 		UserID:           user.ID,
@@ -426,35 +426,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		serverError(w, r, err, "save upload failed")
 		return
 	}
-	writeJSON(w, artifactResponseFromArtifact(created))
-}
-
-func artifactResponseFromArtifact(item artifact.Artifact) artifactResponse {
-	return artifactResponse{
-		ID:              item.ID,
-		DisplayFilename: item.DisplayFilename,
-		MIMEType:        item.MIMEType,
-		SizeBytes:       item.SizeBytes,
-		ProjectID:       item.ProjectID,
-		DownloadURL:     item.DownloadURL,
-		ThumbnailURL:    item.ThumbnailURL,
-	}
-}
-
-// generateThumbnailBestEffort writes a sidecar thumbnail for a freshly-created
-// raster image artifact, returning its volume-relative path (empty for non-raster
-// types or on failure). It never propagates an error: a missing thumbnail is
-// backfilled lazily by the thumbnail endpoint on first view.
-func generateThumbnailBestEffort(usersDir, userID, mimeType string, src []byte, volumeRelPath string) string {
-	if !artifact.IsThumbnailableMIME(mimeType) {
-		return ""
-	}
-	thumbRel, err := artifact.WriteThumbnail(usersDir, userID, volumeRelPath, src)
-	if err != nil {
-		slog.Warn("generate artifact thumbnail failed", "path", volumeRelPath, "err", err)
-		return ""
-	}
-	return thumbRel
+	writeJSON(w, ArtifactResponseFromArtifact(created))
 }
 
 func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, error) {

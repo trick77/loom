@@ -69,7 +69,7 @@ var (
 // When the model already produced an explicit (non-image) file this turn, the
 // user asked for a save directly and we suppress auto-extraction so the same
 // code is not duplicated as a second download.
-func (t *turnRun) extractCodeArtifacts(ctx context.Context, content string, existing []artifactResponse) []artifactResponse {
+func (t *Run) extractCodeArtifacts(ctx context.Context, content string, existing []artifactResponse) []artifactResponse {
 	for _, a := range existing {
 		if !strings.HasPrefix(a.MIMEType, "image/") {
 			return nil
@@ -141,8 +141,8 @@ func isDownloadWorthyCode(body string) bool {
 	return strings.Count(body, "\n")+1 >= codeArtifactMinLines
 }
 
-func (t *turnRun) createCodeArtifact(ctx context.Context, q qualifiedBlock) (artifactResponse, error) {
-	created, err := t.s.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
+func (t *Run) createCodeArtifact(ctx context.Context, q qualifiedBlock) (artifactResponse, error) {
+	created, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
 		DisplayFilename: q.filename,
 		Extension:       q.extension,
 		Data:            []byte(q.block.body),
@@ -150,7 +150,7 @@ func (t *turnRun) createCodeArtifact(ctx context.Context, q qualifiedBlock) (art
 	if err != nil {
 		return artifactResponse{}, err
 	}
-	return artifactResponseFromArtifact(created), nil
+	return ArtifactResponseFromArtifact(created), nil
 }
 
 // codeArtifactFilename derives a meaningful name from the nearest heading above

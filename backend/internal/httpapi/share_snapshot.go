@@ -105,7 +105,7 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 			addID(id)
 		}
 
-		hadAttachment := !isEmptyJSON(msg.Attachments)
+		hadAttachment := !IsEmptyJSON(msg.Attachments)
 
 		sm := shareMessage{
 			ID:            msg.ID,
@@ -121,7 +121,7 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 		// Skip a message that contributes nothing visible (e.g. an image-only upload
 		// whose file we stripped and that left no caption). Keep it if it had an
 		// attachment marker so the transcript still notes something was sent.
-		if sm.Content == "" && isEmptyJSON(sm.Artifacts) && isEmptyJSON(sm.ContentBlocks) && !hadAttachment {
+		if sm.Content == "" && IsEmptyJSON(sm.Artifacts) && IsEmptyJSON(sm.ContentBlocks) && !hadAttachment {
 			continue
 		}
 
@@ -137,7 +137,7 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 // rewriteArtifactArrayForShare rewrites every artifact object's download/thumbnail
 // URL to the public share-scoped path and returns the referenced ids.
 func rewriteArtifactArrayForShare(shareID string, raw json.RawMessage) (json.RawMessage, []string, error) {
-	if isEmptyJSON(raw) {
+	if IsEmptyJSON(raw) {
 		return json.RawMessage("[]"), nil, nil
 	}
 	var objs []map[string]json.RawMessage
@@ -178,7 +178,7 @@ func rewriteContentBlocksForShare(shareID string, raw json.RawMessage, content s
 		return json.Marshal([]map[string]string{{"type": "text", "content": content}})
 	}
 
-	if isEmptyJSON(raw) {
+	if IsEmptyJSON(raw) {
 		out, err := textBlock()
 		return out, nil, err
 	}

@@ -147,8 +147,8 @@ func TestMergeIntoBlocksStampsReasoningTitles(t *testing.T) {
 		t.Fatalf("setup: want reasoning-1, got %q", b.blocks[0].Events[0].ID)
 	}
 
-	tracker := &reasoningTitleTracker{titles: map[string]string{"reasoning-1": "Deliberation"}}
-	tracker.mergeIntoBlocks(b.blocks)
+	tracker := &ReasoningTitleTracker{titles: map[string]string{"reasoning-1": "Deliberation"}}
+	tracker.MergeIntoBlocks(b.blocks)
 
 	if got := b.blocks[0].Events[0].Title; got != "Deliberation" {
 		t.Fatalf("block reasoning title = %q, want Deliberation", got)

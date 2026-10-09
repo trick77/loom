@@ -9,7 +9,12 @@ import (
 
 	"github.com/trick77/webfetch"
 	"golang.org/x/net/idna"
+
+	"github.com/trick77/loom/internal/turn"
 )
+
+// citation is shared by the share/read handlers and the turn engine.
+type citation = turn.Citation
 
 // The fields of a web citation a public share may carry. Everything else the stored
 // citation holds — documentId, score, full — is either meaningless to a reader or
@@ -36,7 +41,7 @@ var shareCitationFields = []string{"url", "title", "filename", "snippet", "index
 // dead bracket the reader cannot act on.
 func projectCitationsForShare(raw json.RawMessage) (json.RawMessage, map[int]bool) {
 	kept := map[int]bool{}
-	if isEmptyJSON(raw) {
+	if IsEmptyJSON(raw) {
 		return nil, kept
 	}
 	var citations []map[string]json.RawMessage
@@ -340,7 +345,7 @@ func splitInlineCode(line string) []codeSegment {
 // alike — the set stripDroppedMarkers is allowed to touch.
 func citedIndices(raw json.RawMessage) map[int]bool {
 	indices := map[int]bool{}
-	if isEmptyJSON(raw) {
+	if IsEmptyJSON(raw) {
 		return indices
 	}
 	var citations []map[string]json.RawMessage

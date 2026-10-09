@@ -10,7 +10,7 @@ import (
 	"github.com/trick77/loom/internal/turn"
 )
 
-// reasoningTitleTimeout bounds a single background title call. wait() blocks the
+// reasoningTitleTimeout bounds a single background title call. Wait() blocks the
 // final assistant_message on outstanding title goroutines and the shared HTTP
 // client has no timeout, so without this a hung title call would stall delivery.
 const reasoningTitleTimeout = 10 * time.Second
@@ -31,18 +31,18 @@ var reasoningTitleHold = 5 * time.Second
 // titled at its end, as before. A var so tests can shorten it.
 var reasoningTitleStartBytes = 300
 
-// reasoningTitleTracker generates a short abstract title for each reasoning
+// ReasoningTitleTracker generates a short abstract title for each reasoning
 // round in the background. Titles are emitted over SSE as they become ready and
 // collected so they can be merged into the persisted activity trace. The zero
 // value is not usable; build one with newReasoningTitleTracker.
-type reasoningTitleTracker struct {
-	s        *Engine
+type ReasoningTitleTracker struct {
+	e        *Engine
 	stream   Emitter
 	ctx      context.Context
 	inf      llm.InferenceMetadata
 	language string // user's response language; "" for the English default
 	wg       sync.WaitGroup
-	// working tracks the working-title call apart from wg: wait() gates the
+	// working tracks the working-title call apart from wg: Wait() gates the
 	// answer on the reasoning titles, and the working title is worthless once
 	// the answer exists, so only the stream's teardown waits for it.
 	working sync.WaitGroup
@@ -51,18 +51,20 @@ type reasoningTitleTracker struct {
 	spawned map[string]bool   // reasoning id -> already generating
 }
 
-func newReasoningTitleTracker(ctx context.Context, s *Engine, stream Emitter, inf llm.InferenceMetadata, language string) *reasoningTitleTracker {
-	return &reasoningTitleTracker{s: s, stream: stream, ctx: ctx, inf: inf, language: language, titles: map[string]string{}, spawned: map[string]bool{}}
+// NewReasoningTitleTracker returns a tracker whose titles are generated on the
+// engine's model, bounded by ctx, and emitted to stream.
+func NewReasoningTitleTracker(ctx context.Context, e *Engine, stream Emitter, inf llm.InferenceMetadata, language string) *ReasoningTitleTracker {
+	return &ReasoningTitleTracker{e: e, stream: stream, ctx: ctx, inf: inf, language: language, titles: map[string]string{}, spawned: map[string]bool{}}
 }
 
 // spawn kicks off a background title generation for one reasoning round. It is a
 // no-op when there is no reasoning id or no reasoning content, and is idempotent
 // per id so the mid-turn boundary and the post-turn fallback never double-fire.
-// The caller must eventually call wait() before tearing down the stream.
+// The caller must eventually call Wait() before tearing down the stream.
 //
 // The returned channel closes once the title has gone out or been skipped (nil
 // when nothing was spawned), so a caller can hold the answer behind it.
-func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan struct{} {
+func (t *ReasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan struct{} {
 	if t == nil || reasoningID == "" || strings.TrimSpace(reasoning) == "" {
 		return nil
 	}
@@ -84,34 +86,34 @@ func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan stru
 		inf := t.inf
 		inf.Purpose = "reasoning_title"
 		// Bound the call so a hung title request can never delay delivery of the
-		// final answer: wait() blocks assistant_message on this goroutine, and the
+		// final answer: Wait() blocks assistant_message on this goroutine, and the
 		// shared HTTP client has no timeout. On timeout the title is simply skipped.
 		ctx, cancel := context.WithTimeout(t.ctx, reasoningTitleTimeout)
 		defer cancel()
-		title, err := t.s.llm.GenerateReasoningTitle(llm.WithInferenceMetadata(ctx, inf), reasoning, t.language)
+		title, err := t.e.llm.GenerateReasoningTitle(llm.WithInferenceMetadata(ctx, inf), reasoning, t.language)
 		if err != nil || strings.TrimSpace(title) == "" {
 			return
 		}
 		t.mu.Lock()
 		t.titles[reasoningID] = title
 		t.mu.Unlock()
-		_ = t.stream.Send("assistant_reasoning_title", reasoningTitleResponse{ID: reasoningID, Title: title})
+		_ = t.stream.Send("assistant_reasoning_title", ReasoningTitleResponse{ID: reasoningID, Title: title})
 	}()
 	return done
 }
 
-// workingTitleResponse is the payload of assistant_working_title.
-type workingTitleResponse struct {
+// WorkingTitleResponse is the payload of assistant_working_title.
+type WorkingTitleResponse struct {
 	Title string `json:"title"`
 }
 
-// spawnWorking kicks off the turn's first sweep line, generated from the
+// SpawnWorking kicks off the turn's first sweep line, generated from the
 // user's message the moment it is sent. The reasoning titles need reasoning to
 // exist; before any does, the reader would see nothing but the dots through
 // the pre-answer gates and the model's first seconds. The client shows it until
 // the first reasoning title replaces it. It is never persisted. The caller must
-// eventually call waitWorking() before tearing down the stream.
-func (t *reasoningTitleTracker) spawnWorking(userMessage string) {
+// eventually call WaitWorking() before tearing down the stream.
+func (t *ReasoningTitleTracker) SpawnWorking(userMessage string) {
 	if t == nil || strings.TrimSpace(userMessage) == "" {
 		return
 	}
@@ -123,33 +125,33 @@ func (t *reasoningTitleTracker) spawnWorking(userMessage string) {
 		inf.Purpose = "working_title"
 		ctx, cancel := context.WithTimeout(t.ctx, reasoningTitleTimeout)
 		defer cancel()
-		title, err := t.s.llm.GenerateWorkingTitle(llm.WithInferenceMetadata(ctx, inf), userMessage, t.language)
+		title, err := t.e.llm.GenerateWorkingTitle(llm.WithInferenceMetadata(ctx, inf), userMessage, t.language)
 		if err != nil || strings.TrimSpace(title) == "" {
 			return
 		}
-		_ = t.stream.Send("assistant_working_title", workingTitleResponse{Title: title})
+		_ = t.stream.Send("assistant_working_title", WorkingTitleResponse{Title: title})
 	}()
 }
 
-// waitWorking blocks until the working-title call has finished.
-func (t *reasoningTitleTracker) waitWorking() {
+// WaitWorking blocks until the working-title call has finished.
+func (t *ReasoningTitleTracker) WaitWorking() {
 	if t == nil {
 		return
 	}
 	t.working.Wait()
 }
 
-// wait blocks until every spawned title goroutine has finished.
-func (t *reasoningTitleTracker) wait() {
+// Wait blocks until every spawned title goroutine has finished.
+func (t *ReasoningTitleTracker) Wait() {
 	if t == nil {
 		return
 	}
 	t.wg.Wait()
 }
 
-// mergeInto stamps collected titles onto their matching reasoning events. Call
-// after wait() so the persisted trace carries the titles.
-func (t *reasoningTitleTracker) mergeInto(trace []activityTraceEvent) {
+// MergeInto stamps collected titles onto their matching reasoning events. Call
+// after Wait() so the persisted trace carries the titles.
+func (t *ReasoningTitleTracker) MergeInto(trace []ActivityTraceEvent) {
 	if t == nil {
 		return
 	}
@@ -158,10 +160,10 @@ func (t *reasoningTitleTracker) mergeInto(trace []activityTraceEvent) {
 	t.stampTitles(trace)
 }
 
-// mergeIntoBlocks stamps collected titles onto the reasoning events inside every
+// MergeIntoBlocks stamps collected titles onto the reasoning events inside every
 // trace block. The blocks' trace events are separate objects from the flat
 // trace, but share the same reasoning-event ids, so the same title map applies.
-func (t *reasoningTitleTracker) mergeIntoBlocks(blocks []contentBlock) {
+func (t *ReasoningTitleTracker) MergeIntoBlocks(blocks []ContentBlock) {
 	if t == nil {
 		return
 	}
@@ -177,7 +179,7 @@ func (t *reasoningTitleTracker) mergeIntoBlocks(blocks []contentBlock) {
 
 // stampTitles writes each collected title onto its matching reasoning event.
 // Callers must hold t.mu.
-func (t *reasoningTitleTracker) stampTitles(events []activityTraceEvent) {
+func (t *ReasoningTitleTracker) stampTitles(events []ActivityTraceEvent) {
 	for i := range events {
 		if events[i].Type != "reasoning" {
 			continue
@@ -188,7 +190,8 @@ func (t *reasoningTitleTracker) stampTitles(events []activityTraceEvent) {
 	}
 }
 
-type reasoningTitleResponse struct {
+// ReasoningTitleResponse is the payload of assistant_reasoning_title.
+type ReasoningTitleResponse struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 }

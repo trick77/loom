@@ -548,7 +548,7 @@ func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 		t.Fatal("no messages persisted")
 	}
 	last := store.Messages[len(store.Messages)-1]
-	var trace []activityTraceEvent
+	var trace []ActivityTraceEvent
 	if err := json.Unmarshal(last.ActivityTrace, &trace); err != nil {
 		t.Fatalf("unmarshal activity trace: %v\n%s", err, last.ActivityTrace)
 	}

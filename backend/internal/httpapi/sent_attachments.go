@@ -15,10 +15,10 @@ import (
 // the message still persists, just without the collapsed chips.
 const maxPastedTextsBytes = 2 << 20 // 2 MiB
 
-// marshalPastedTexts serializes the composer's collapsed paste blocks for storage
+// MarshalPastedTexts serializes the composer's collapsed paste blocks for storage
 // on the message. Returns "[]" when there are none, or when the payload exceeds
 // the cap (best-effort, render-only).
-func marshalPastedTexts(blocks []chat.MessagePastedText) json.RawMessage {
+func MarshalPastedTexts(blocks []chat.MessagePastedText) json.RawMessage {
 	if len(blocks) == 0 {
 		return json.RawMessage("[]")
 	}
@@ -29,7 +29,7 @@ func marshalPastedTexts(blocks []chat.MessagePastedText) json.RawMessage {
 	return raw
 }
 
-// resolveSentAttachments turns the image-artifact and document ids a user sent
+// ResolveSentAttachments turns the image-artifact and document ids a user sent
 // with a message into the persisted MessageAttachment list, so the sent previews
 // survive a reload.
 //
@@ -42,7 +42,7 @@ func marshalPastedTexts(blocks []chat.MessagePastedText) json.RawMessage {
 //
 // images, when non-nil, is the batch lookup the caller already made for the
 // same ids (the vision path resolves them first); nil looks them up here.
-func (s *Engine) resolveSentAttachments(ctx context.Context, userID string, thread chat.Thread, imageIDs, documentIDs []string, images map[string]artifact.Artifact) json.RawMessage {
+func (s *Engine) ResolveSentAttachments(ctx context.Context, userID string, thread chat.Thread, imageIDs, documentIDs []string, images map[string]artifact.Artifact) json.RawMessage {
 	attachments := make([]chat.MessageAttachment, 0, len(imageIDs)+len(documentIDs))
 
 	if s.artifacts != nil && len(imageIDs) > 0 {

@@ -17,24 +17,6 @@ import (
 	"github.com/trick77/loom/internal/turn"
 )
 
-const loomSystemPrompt = "Default to flowing prose — full sentences grouped into paragraphs — when explaining or describing something. Reach for markdown structure only when it genuinely helps the reader: a list when the content is a true enumeration the user would naturally keep as a list (steps to follow, distinct parameters, a checklist), a table to compare several items across the same dimensions, and headings only for genuinely long, multi-section answers. Keep short or simple answers as plain prose — do not add structure for its own sake. Use **bold** sparingly to mark key terms. Put code in fenced markdown blocks. When unsure, use available tools to find the answer before responding; if they turn up nothing, say you don't know rather than guessing. When the user refers to an earlier discussion or decision, or before answering a question that your past conversations together likely already covered, call conversation_search to find the relevant prior threads, then read_thread with a result's thread id to read one in full. Once the tool results give you enough to answer, stop and respond — do not keep fetching more sources past what the request needs. If you are about to say a topic is beyond your knowledge, too recent, or past your training cutoff, first use the available search and fetch tools to look it up; only say you don't know after those tools return nothing useful. For image or logo generation, editing, restyling, or variation requests, call the image generation tool before answering. Never claim that an image was generated unless an image artifact was actually created. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Long code or data you include inline is fine and is offered for download automatically. For URLs, use the lightweight fetch tool first when the task is to read, summarize, quote, or extract page text. Use the browser navigation tool only when fetch cannot access useful content or the page needs JavaScript rendering; it navigates to the URL and reads back the rendered page. Web search results, fetched pages and excerpts from the user's uploaded documents are all labeled with a bracketed number like [1] or [2]. Whenever a sentence or paragraph in your answer draws on one of these sources, append its marker at the end of that sentence — [1], or several like [1][3]. The numbers form one sequence across documents and web sources, so a marker is never ambiguous. Use only numbers that actually appear in the material provided; never invent a citation number, and do not cite anything that was not given to you as a numbered source. Ignore the language of tool results and retrieved documents."
-
-// fileToolGuardrailPrompt steers when to call the file-creation (docgen) tools.
-// It is injected into the system prompt only on turns where those tools are
-// actually offered (see toolGate.docgenEnabled) — naming create_pdf_file et al.
-// when they are gated out of the request would invite the model to call a tool
-// whose schema it never received, producing a malformed call. Kept in sync with
-// the docgen tool set and docgen.FileToolGuardrail.
-const fileToolGuardrailPrompt = "Only call a file-creation tool (create_text_file, create_pdf_file, create_xlsx_file, create_docx_file, create_pptx_presentation) when the user explicitly asks to save, create, export, or download a file; for summarize, explain, or analyze requests — including about attached documents — answer inline in the chat and do not produce a downloadable file."
-
-const imagePromptCompilerSystemPrompt = "The latest user request requires image generation or editing. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Transform the user's request into a concise, visually rich prompt that preserves subject, setting, style, composition, mood, medium, text requirements, and constraints. Add only helpful visual details consistent with the request. Always set `filename` to a short, descriptive name based on the image's main subject (2-4 words, lowercase, hyphen-separated, no path or extension), e.g. `red-fox-in-snow`. Set `aspect_ratio` to the shape the request calls for — wide (16:9, 3:2) for scenery, banners and desktop wallpapers, tall (9:16, 2:3) for posters, book covers and phone wallpapers, 4:3 or 3:4 for a mild lean — and leave it at 1:1 when nothing in the request implies a shape. Infer this from what the user is asking for in whatever language they wrote it in; do not look for particular words. After the tool result, provide a brief final response that refers to the created artifact. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Never claim an image was created unless the tool result confirms an artifact."
-
-// imageEditPromptCompilerSystemPrompt is used when the user's source image is being
-// forwarded to the model directly (image-to-image). The model already sees the
-// pixels, so the prompt must describe only the transformation — re-describing the
-// scene would reintroduce the detail loss the direct-upload path exists to avoid.
-const imageEditPromptCompilerSystemPrompt = "The latest user request edits or transforms an image the user provided, and that source image is supplied to the image model directly. Your only job is to call `generate_image` exactly once. Do not answer conversationally before the tool call. Do not refuse based on being text-based. Write the `prompt` as a concise editing instruction describing ONLY the desired transformation, style, or change to apply to the provided image (e.g. \"Rebuild the provided photo as a detailed LEGO brick set, faithful to its composition and colors\"). Do NOT re-describe the original scene in detail — the model already sees it; restating it discards detail. Always set `filename` to a short, descriptive name based on the result's main subject (2-4 words, lowercase, hyphen-separated, no path or extension), e.g. `lego-city-skyline`. Do not set `aspect_ratio` unless the user asks for a different shape: the edit keeps the source image's proportions by default. After the tool result, provide a brief final response that refers to the created artifact. The generated image is shown to the user automatically as an attachment; never embed, link, or reference it by filename (no markdown `![]()` or `<img>` tags) in your reply. Never claim an image was created unless the tool result confirms an artifact."
-
 // The stream cancel causes are defined in package turn, which reads them back.
 var (
 	errStreamStopRequested = turn.ErrStopRequested
@@ -87,19 +69,19 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// image) is a plain 400 here. Once the user message is stored and the SSE
 	// stream is open there is no way to reject the send cleanly. The store trims
 	// content, so the text part uses the same trimmed form the message will carry.
-	imageParts, imageArtifacts, err := s.engine.resolveImageAttachments(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
+	imageParts, imageArtifacts, err := s.engine.ResolveImageAttachments(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Persist the images and documents the user sent with this message so the sent
 	// previews survive a reload (resolved user-scoped; out-of-scope ids skipped).
-	sentAttachments := s.engine.resolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs, imageArtifacts)
+	sentAttachments := s.engine.ResolveSentAttachments(r.Context(), user.ID, thread, body.ImageAttachmentIDs, body.DocumentAttachmentIDs, imageArtifacts)
 	// Persist the collapsed paste blocks so the sent bubble renders "Pasted" chips
 	// on reload instead of the inline wall of text. Their text is already folded
 	// into body.Content, so the model and every content-derived path (title,
 	// classifier, RAG, history) are unchanged; this is render-only metadata.
-	pastedTexts := marshalPastedTexts(body.PastedTexts)
+	pastedTexts := MarshalPastedTexts(body.PastedTexts)
 	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments, pastedTexts)
 	if err != nil {
 		writeStoreError(w, r, err)
@@ -148,11 +130,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 	emitter := sseEmitter{w: stream}
 	// Book what the turn spent on every exit path. Deferred ahead of
-	// titles.wait below so it runs after it: the reasoning-title calls must have
+	// titles.Wait below so it runs after it: the reasoning-title calls must have
 	// finished before the turn's cost is read. The success path settles
 	// explicitly before "done"; this is then a no-op.
-	costs := &turnCostSettler{s: s.engine, user: user, userMessageID: userMessage.ID, acc: usageTotal}
-	defer costs.settle(context.WithoutCancel(r.Context()))
+	costs := s.engine.NewCostSettler(user, userMessage.ID, usageTotal)
+	defer costs.Settle(context.WithoutCancel(r.Context()))
 	if err := sendSSEJSON(stream, "user_message", userMessage); err != nil {
 		return
 	}
@@ -161,33 +143,32 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Background sweep-line generation: the working title from the question
 	// right away, alongside the pre-answer gates, then one title per reasoning
 	// round. The deferred waits keep any title goroutine from writing to the
-	// SSE stream after the handler returns. They run before costs.settle, so a
+	// SSE stream after the handler returns. They run before costs.Settle, so a
 	// working title that outlived the answer still has its cost booked.
-	titles := newReasoningTitleTracker(streamCtx, s.engine, emitter, inference, userResponseLanguage(user))
-	defer titles.wait()
-	defer titles.waitWorking()
-	titles.spawnWorking(userMessage.Content)
+	titles := NewReasoningTitleTracker(streamCtx, s.engine, emitter, inference, UserResponseLanguage(user))
+	defer titles.Wait()
+	defer titles.WaitWorking()
+	titles.SpawnWorking(userMessage.Content)
 
-	run := &turnRun{
-		s:           s.engine,
-		stream:      emitter,
-		titles:      titles,
-		inference:   inference,
-		user:        user,
-		thread:      thread,
-		userMessage: userMessage,
-		usage:       usageTotal,
-		start:       turnStart,
-	}
-	run.plan = run.prepareTurn(turnInput{
-		streamCtx:             streamCtx,
-		turnCtx:               turnCtx,
-		reqCtx:                r.Context(),
-		content:               body.Content,
-		imageAttachmentIDs:    body.ImageAttachmentIDs,
-		documentAttachmentIDs: body.DocumentAttachmentIDs,
-		priorMessages:         priorMessages,
-		imageParts:            imageParts,
+	run := s.engine.NewRun(RunConfig{
+		Stream:      emitter,
+		Titles:      titles,
+		Inference:   inference,
+		User:        user,
+		Thread:      thread,
+		UserMessage: userMessage,
+		Usage:       usageTotal,
+		Start:       turnStart,
+	})
+	run.Prepare(PrepareInput{
+		StreamCtx:             streamCtx,
+		TurnCtx:               turnCtx,
+		ReqCtx:                r.Context(),
+		Content:               body.Content,
+		ImageAttachmentIDs:    body.ImageAttachmentIDs,
+		DocumentAttachmentIDs: body.DocumentAttachmentIDs,
+		PriorMessages:         priorMessages,
+		ImageParts:            imageParts,
 	})
 	// titleThread names an as-yet-untitled thread. It runs after the answer so the
 	// title model can see the reply, not just the question — passing an empty
@@ -196,7 +177,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// use. Detached from the request context so a canceled or failed turn still
 	// names the thread, as it did when titling ran up front.
 	titleThread := func(assistantMessage string) {
-		if !shouldGenerateThreadTitle(thread.Title, userMessage.Content) {
+		if !ShouldGenerateThreadTitle(thread.Title, userMessage.Content) {
 			return
 		}
 		// The thread is being deleted, so there is nothing left to name: the title
@@ -211,7 +192,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		// per-message stats and the lifetime rollup. WithoutCancel keeps that
 		// value while letting the call outlive a client disconnect.
 		titleCtx := context.WithoutCancel(streamCtx)
-		if err := run.generateAndSendThreadTitle(titleCtx, assistantMessage); err != nil {
+		if err := run.GenerateAndSendThreadTitle(titleCtx, assistantMessage); err != nil {
 			slog.Warn("thread title generation failed", "thread_id", threadID, "error", err)
 		}
 	}
@@ -219,8 +200,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// finishCosts books the turn's spend once every call has finished and tells
 	// the client, ahead of the terminal event it stops reading at.
 	finishCosts := func() {
-		titles.wait()
-		costs.settleAndReport(context.WithoutCancel(r.Context()), emitter)
+		titles.Wait()
+		costs.SettleAndReport(context.WithoutCancel(r.Context()), emitter)
 	}
 	// failTurn ends a turn that has no answer to persist. The spend so far is
 	// reported just before the error event (the client stops reading at it),
@@ -232,14 +213,14 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// reason: they go to the same upstream. Their cost, like the title's, is
 	// picked up by the deferred settle.
 	failTurn := func(titleSource, message string) {
-		costs.settleAndReport(context.WithoutCancel(r.Context()), emitter)
+		costs.SettleAndReport(context.WithoutCancel(r.Context()), emitter)
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		titleThread(titleSource)
 	}
 
-	assistantResult, err := run.runAssistantLoop(streamCtx, run.plan.history)
+	assistantResult, err := run.RunAssistantLoop(streamCtx)
 	if err != nil {
-		if streamCanceled(streamCtx, err) {
+		if StreamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
 			slog.Info("message stream canceled",
 				"thread_id", threadID,
@@ -260,11 +241,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			_ = stream.Send("done", "{}")
 			return
 		}
-		failTurn(assistantResult.Content, streamFailureMessage(err, assistantResult, "message", threadID))
+		failTurn(assistantResult.Content, StreamFailureMessage(err, assistantResult, "message", threadID))
 		return
 	}
 	assistantContent := assistantResult.Content
-	if run.plan.imageRoute.generate && len(assistantResult.Artifacts) == 0 {
+	if run.ImageRequired() && len(assistantResult.Artifacts) == 0 {
 		message := "image generation was not completed"
 		if strings.TrimSpace(assistantResult.ToolError) != "" {
 			message = assistantResult.ToolError
@@ -290,13 +271,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	persistCtx := context.WithoutCancel(r.Context())
-	assistantMessage, err := run.persistAssistantTurn(persistCtx, &assistantResult)
+	assistantMessage, err := run.PersistAssistantTurn(persistCtx, &assistantResult)
 	if err != nil {
 		slog.Warn("persist assistant message failed", "thread_id", threadID, "err", err)
 		failTurn(assistantContent, "persist assistant message failed")
 		return
 	}
-	costs.setAssistant(assistantMessage)
+	costs.SetAssistant(assistantMessage)
 	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
 		return
 	}
@@ -325,7 +306,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		_ = sendSSEJSON(stream, "thread", updated)
 	}
 
-	// Every call of the turn has finished (persistAssistantTurn waited for the
+	// Every call of the turn has finished (PersistAssistantTurn waited for the
 	// reasoning titles, the thread title ran just above): book the spend and
 	// report it before "done", so the open thread's Σ includes the title.
 	finishCosts()
@@ -393,14 +374,6 @@ func sanitizeCancelSource(source string) string {
 		}
 	}
 	return b.String()
-}
-
-type streamUserError struct {
-	message string
-}
-
-func (e streamUserError) Error() string {
-	return e.message
 }
 
 func sendSSEJSON(stream *sse.Writer, event string, data any) error {

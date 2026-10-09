@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -13,9 +14,9 @@ import (
 	"golang.org/x/text/language/display"
 )
 
-// messageMetricsWithCost is messageMetricsFromTurn plus the turn's summed cost;
+// MessageMetricsWithCost is messageMetricsFromTurn plus the turn's summed cost;
 // priced false leaves it NULL rather than recording a free-looking zero.
-func messageMetricsWithCost(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration, costNanoUSD int64, priced bool) chat.MessageTokenUsage {
+func MessageMetricsWithCost(result llm.StreamResult, usage llm.TokenUsage, duration time.Duration, costNanoUSD int64, priced bool) chat.MessageTokenUsage {
 	metrics := chat.MessageTokenUsage{ReasoningContent: result.ReasoningContent}
 	if result.Model != "" {
 		metrics.Model = strPtr(result.Model)
@@ -52,6 +53,17 @@ func strPtr(value string) *string {
 	return &value
 }
 
+// IsEmptyJSON reports whether a raw JSON field carries no array content worth
+// walking: nil, empty, the literal null, or an empty array.
+func IsEmptyJSON(raw json.RawMessage) bool {
+	switch string(raw) {
+	case "", "null", "[]":
+		return true
+	default:
+		return false
+	}
+}
+
 // classifyFirstTurn classifies the thread's first message. The caller injects
 // the matching system-prompt block on this very turn, which is why it must run
 // before the answer history is built — and why it is bounded like the other turn
@@ -63,7 +75,7 @@ func strPtr(value string) *string {
 // The title is deliberately NOT generated here. It used to be, purely so the two
 // utility calls could share one goroutine pair, and the cost was that the title
 // model only ever saw the bare question — production always passed an empty
-// assistant message. See generateAndSendThreadTitle, which now runs once the
+// assistant message. See GenerateAndSendThreadTitle, which now runs once the
 // answer exists.
 func (s *Engine) classifyFirstTurn(requestCtx context.Context, user auth.User, threadID, userMessage string) string {
 	classifyInference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: threadID, Purpose: "classify", Round: 1}
@@ -79,7 +91,7 @@ func (s *Engine) classifyFirstTurn(requestCtx context.Context, user auth.User, t
 }
 
 // persistThreadCategory stores the category without touching the title, which is
-// written later in the turn by generateAndSendThreadTitle. Best-effort: a failed
+// written later in the turn by GenerateAndSendThreadTitle. Best-effort: a failed
 // write costs a stored label, never the answer.
 func (s *Engine) persistThreadCategory(persistCtx context.Context, user auth.User, threadID, category string) {
 	_, _, _ = s.thread.UpdateThread(persistCtx, user.ID, threadID, chat.UpdateThreadInput{Category: &category})
@@ -90,7 +102,7 @@ func (s *Engine) persistThreadCategory(persistCtx context.Context, user auth.Use
 // prompt stays small enough to keep the call fast.
 const titleSourceLimit = 2000
 
-// generateAndSendThreadTitle titles the thread and emits the updated thread over
+// GenerateAndSendThreadTitle titles the thread and emits the updated thread over
 // SSE. It runs AFTER the answer so the title model sees both the question and the
 // reply: the question carries the intent, the reply carries the facts and the
 // correct spellings, and together they pin down the language far better than a
@@ -101,13 +113,13 @@ const titleSourceLimit = 2000
 // a truncation, or a script drift). The stored title is then left alone rather
 // than replaced by a placeholder, so the thread keeps the message it was created
 // with instead of going blank.
-// generateAndSendThreadTitle names the thread from the turn and announces it on
+// GenerateAndSendThreadTitle names the thread from the turn and announces it on
 // the stream. The title the turn started from (t.thread.Title) is the expected
 // title: the update is a compare-and-set against it, so a rename made while the
 // answer streamed wins and no thread event is sent for the discarded generated
 // title. The model call is bounded by turnGateTimeout; the store writes run on
 // ctx itself.
-func (t *turnRun) generateAndSendThreadTitle(ctx context.Context, assistantMessage string) error {
+func (t *Run) GenerateAndSendThreadTitle(ctx context.Context, assistantMessage string) error {
 	titleInference := llm.InferenceMetadata{UserID: t.user.ID, Username: t.user.Username, ThreadID: t.thread.ID, Purpose: "title", Round: 1}
 	titleCtx, cancelTitle := context.WithTimeout(ctx, turnGateTimeout)
 	defer cancelTitle()
@@ -115,7 +127,7 @@ func (t *turnRun) generateAndSendThreadTitle(ctx context.Context, assistantMessa
 	if runes := []rune(assistantMessage); len(runes) > titleSourceLimit {
 		assistantMessage = string(runes[:titleSourceLimit])
 	}
-	title, err := t.s.llm.GenerateThreadTitle(llm.WithInferenceMetadata(titleCtx, titleInference), t.userMessage.Content, assistantMessage, userResponseLanguage(t.user))
+	title, err := t.e.llm.GenerateThreadTitle(llm.WithInferenceMetadata(titleCtx, titleInference), t.userMessage.Content, assistantMessage, UserResponseLanguage(t.user))
 	if err != nil {
 		return err
 	}
@@ -125,7 +137,7 @@ func (t *turnRun) generateAndSendThreadTitle(ctx context.Context, assistantMessa
 	// Model-written, not user-written: capitalize it here, since the store
 	// leaves a title exactly as it was handed over (a rename must stick).
 	title = chat.CapitalizeThreadTitle(chat.NormalizeThreadTitle(title))
-	thread, updated, err := t.s.thread.SetThreadTitleIfUnchanged(ctx, t.user.ID, t.thread.ID, t.thread.Title, title)
+	thread, updated, err := t.e.thread.SetThreadTitleIfUnchanged(ctx, t.user.ID, t.thread.ID, t.thread.Title, title)
 	if err != nil {
 		return err
 	}
@@ -136,7 +148,7 @@ func (t *turnRun) generateAndSendThreadTitle(ctx context.Context, assistantMessa
 	// refresh its big-picture description (debounced/count-gated, so this is cheap and
 	// fires real work only when the set actually changed). Best-effort, off the hot path.
 	if thread.ProjectID != nil {
-		t.s.memory.RefreshProjectDescription(ctx, t.user, *thread.ProjectID)
+		t.e.memory.RefreshProjectDescription(ctx, t.user, *thread.ProjectID)
 	}
 	return t.stream.Send("thread", thread)
 }
@@ -191,15 +203,17 @@ func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
 	return incognitoSystemPrompt + languageDirective(user.ResponseLanguage) + dateLine
 }
 
-// buildIncognitoHistory assembles the model history for an incognito turn: the
+// BuildIncognitoHistory assembles the model history for an incognito turn: the
 // tool-free incognito system prompt, the client-supplied prior turns, then the new
 // user message. It reads no persisted memory or context (mirroring the "not added to
 // memory" promise on the read side too).
-func buildIncognitoHistory(user auth.User, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+func BuildIncognitoHistory(user auth.User, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	return buildHistory(incognitoSystemPromptForUser(user, time.Now()), messages, newUserMessage)
 }
 
-func shouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
+// ShouldGenerateThreadTitle reports whether a thread still carries the title it
+// was created with, so the turn should name it.
+func ShouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 	if currentTitle == chat.DefaultThreadTitle {
 		return true
 	}
@@ -232,13 +246,13 @@ func languageDirective(responseLanguage string) string {
 	return "\nAnswer in " + languageName(responseLanguage) + ". If the user asks for a different language, or writes their message in a different language, reply in that language instead."
 }
 
-// userResponseLanguage resolves the language a user-facing utility generation
+// UserResponseLanguage resolves the language a user-facing utility generation
 // (thread title, project description, reasoning title, project memory) should be
 // written in. A pinned profile language is returned so the utility matches the
 // chat's answer language. Unset returns "" — no directive, so the utility simply
 // follows the source content's own language (which is the user's), consistent
 // with the chat's unset behavior. A legacy "auto" is treated as unset, defensively.
-func userResponseLanguage(user auth.User) string {
+func UserResponseLanguage(user auth.User) string {
 	if user.ResponseLanguage == "" || strings.EqualFold(user.ResponseLanguage, "auto") {
 		return ""
 	}

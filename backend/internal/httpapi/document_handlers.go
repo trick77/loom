@@ -167,7 +167,7 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 	// the Tika or embedding path and lets shutdown drain it before the
 	// database closes. Attribute its model calls (vision description,
 	// embedding batches): the detached context carries no metadata of its own.
-	s.background.Spawn(withUserAttribution(r.Context(), user, ""), "document_index:"+docID, func(ctx context.Context) {
+	s.background.Spawn(WithUserAttribution(r.Context(), user, ""), "document_index:"+docID, func(ctx context.Context) {
 		_ = s.documents.Index(ctx, user.ID, docID)
 	})
 	doc.Status = rag.StatusPending

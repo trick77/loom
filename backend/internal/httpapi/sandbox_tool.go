@@ -27,14 +27,9 @@ import (
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
-	"github.com/trick77/loom/internal/turn"
 )
 
 const sandboxToolName = "run_python"
-
-// SandboxRunner is turn.SandboxRunner: it runs run_python jobs;
-// *sandbox.Client implements it.
-type SandboxRunner = turn.SandboxRunner
 
 // sandboxGuidancePrompt teaches the model when to delegate to run_python. One
 // general rule on purpose: a list of use cases grows with every missed
@@ -431,7 +426,7 @@ func (s *Engine) persistSandboxFile(ctx context.Context, user auth.User, thread 
 		slog.Warn("sandbox output not persisted", "file", f.Name, "err", err)
 		return artifactResponse{}, "could not be saved"
 	}
-	return artifactResponseFromArtifact(created), ""
+	return ArtifactResponseFromArtifact(created), ""
 }
 
 // sandboxNothingPrinted marks an empty stdout; the UI recognises it.

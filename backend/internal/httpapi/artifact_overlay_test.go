@@ -167,7 +167,7 @@ func TestOverlayLeavesBlocksWithoutArtifactsUntouched(t *testing.T) {
 // The pre-check matches on the encoded form, so it must hold for what the
 // block encoder actually writes: an artifact block always passes it.
 func TestMayEmbedArtifactMatchesEncodedArtifactBlocks(t *testing.T) {
-	raw, err := json.Marshal([]contentBlock{
+	raw, err := json.Marshal([]ContentBlock{
 		{Type: "text", Content: "before"},
 		{Type: "artifact", Artifact: &artifactResponse{ID: "art_1"}},
 	})

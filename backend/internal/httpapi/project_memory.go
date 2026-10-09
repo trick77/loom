@@ -81,7 +81,7 @@ func (s *server) projectContextForThread(ctx context.Context, userID string, thr
 	if n := s.countOtherProjectThreads(ctx, userID, thread); n > 0 {
 		block += fmt.Sprintf(
 			"\nThis project contains %d other thread(s). The project memory above is a lossy digest — to summarize, compile, or compare across the actual threads, call the %s tool to read their full content.",
-			n, projectThreadsToolName)
+			n, ProjectThreadsToolName)
 	}
 	return block
 }

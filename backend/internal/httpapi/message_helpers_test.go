@@ -77,8 +77,8 @@ func TestShouldGenerateThreadTitle_PromptTitleCapitalizedOrVerbatim(t *testing.T
 		"A title the user chose": false,
 	}
 	for currentTitle, want := range cases {
-		if got := shouldGenerateThreadTitle(currentTitle, prompt); got != want {
-			t.Errorf("shouldGenerateThreadTitle(%q, %q) = %v, want %v", currentTitle, prompt, got, want)
+		if got := ShouldGenerateThreadTitle(currentTitle, prompt); got != want {
+			t.Errorf("ShouldGenerateThreadTitle(%q, %q) = %v, want %v", currentTitle, prompt, got, want)
 		}
 	}
 }
@@ -87,10 +87,10 @@ func TestShouldGenerateThreadTitle_PromptTitleCapitalizedOrVerbatim(t *testing.T
 // turn leaves the column NULL rather than storing a free-looking zero.
 func TestMessageMetricsWithCost_UnpricedStaysNil(t *testing.T) {
 	result := llm.StreamResult{Model: "some-model"}
-	if m := messageMetricsWithCost(result, llm.TokenUsage{}, time.Second, 0, false); m.CostNanoUSD != nil {
+	if m := MessageMetricsWithCost(result, llm.TokenUsage{}, time.Second, 0, false); m.CostNanoUSD != nil {
 		t.Fatalf("unpriced CostNanoUSD = %d, want nil", *m.CostNanoUSD)
 	}
-	if m := messageMetricsWithCost(result, llm.TokenUsage{}, time.Second, 4200, true); m.CostNanoUSD == nil || *m.CostNanoUSD != 4200 {
+	if m := MessageMetricsWithCost(result, llm.TokenUsage{}, time.Second, 4200, true); m.CostNanoUSD == nil || *m.CostNanoUSD != 4200 {
 		t.Fatalf("priced CostNanoUSD = %v, want 4200", m.CostNanoUSD)
 	}
 }
@@ -115,7 +115,7 @@ func TestMessageMetricsWithCost_ContextTokensFromFinalCallNotAccumulator(t *test
 	// final call): 6 tool rounds re-counting the growing prompt + helper calls.
 	accumulated := llm.TokenUsage{PromptTokens: 240000, CompletionTokens: 9000, TotalTokens: 249000}
 
-	metrics := messageMetricsWithCost(result, accumulated, 5*time.Second, 0, false)
+	metrics := MessageMetricsWithCost(result, accumulated, 5*time.Second, 0, false)
 
 	if metrics.ContextTokens == nil || *metrics.ContextTokens != 49500 {
 		t.Fatalf("ContextTokens = %v, want 49500 (the final call's total_tokens)", metrics.ContextTokens)
@@ -136,7 +136,7 @@ func TestMessageMetricsWithCost_NoContextTokensWhenFinalCallUsageAbsent(t *testi
 	result := llm.StreamResult{Model: "some-model"} // zero Usage
 	accumulated := llm.TokenUsage{PromptTokens: 1000, CompletionTokens: 200, TotalTokens: 1200}
 
-	metrics := messageMetricsWithCost(result, accumulated, time.Second, 0, false)
+	metrics := MessageMetricsWithCost(result, accumulated, time.Second, 0, false)
 
 	if metrics.ContextTokens != nil {
 		t.Errorf("ContextTokens = %v, want nil when the final call reported no usage", *metrics.ContextTokens)

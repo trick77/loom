@@ -81,8 +81,8 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 }
 
 // turn is testUser's turn in thread, emitting to the fixture's stream.
-func (f sandboxFixture) turn(thread chat.Thread) *turnRun {
-	return &turnRun{s: f.srv, stream: f.stream, user: testUser, thread: thread}
+func (f sandboxFixture) turn(thread chat.Thread) *Run {
+	return &Run{e: f.srv, stream: f.stream, user: testUser, thread: thread}
 }
 
 func runCall(args string) llm.ToolCall {

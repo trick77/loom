@@ -88,7 +88,7 @@ func (s *Engine) conversationSearchDigest(ctx context.Context, userID string, th
 			strings.TrimSpace(displayThreadTitle(chat.Thread{Title: h.ThreadTitle})),
 			h.CreatedAt.Format("2006-01-02"),
 			h.ThreadID,
-			roleLabel(h.Role),
+			RoleLabel(h.Role),
 		)
 		b.WriteString(strings.TrimSpace(h.Snippet))
 		b.WriteString("\n")

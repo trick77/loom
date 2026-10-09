@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/trick77/loom/internal/artifact"
@@ -55,7 +56,7 @@ func (s *Engine) persistArtifactBytes(ctx context.Context, user auth.User, threa
 	}
 	thumbnailRelPath := ""
 	if spec.Thumbnail {
-		thumbnailRelPath = generateThumbnailBestEffort(s.usersDir, user.ID, mimeType, spec.Data, out.VolumeRelPath)
+		thumbnailRelPath = GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, spec.Data, out.VolumeRelPath)
 	}
 	created, err := s.artifacts.Create(ctx, artifact.CreateInput{
 		UserID:           user.ID,
@@ -75,4 +76,33 @@ func (s *Engine) persistArtifactBytes(ctx context.Context, user auth.User, threa
 		return artifact.Artifact{}, fmt.Errorf("persist artifact: %w", err)
 	}
 	return created, nil
+}
+
+// ArtifactResponseFromArtifact is the wire shape of a stored artifact.
+func ArtifactResponseFromArtifact(item artifact.Artifact) artifactResponse {
+	return artifactResponse{
+		ID:              item.ID,
+		DisplayFilename: item.DisplayFilename,
+		MIMEType:        item.MIMEType,
+		SizeBytes:       item.SizeBytes,
+		ProjectID:       item.ProjectID,
+		DownloadURL:     item.DownloadURL,
+		ThumbnailURL:    item.ThumbnailURL,
+	}
+}
+
+// GenerateThumbnailBestEffort writes a sidecar thumbnail for a freshly-created
+// raster image artifact, returning its volume-relative path (empty for non-raster
+// types or on failure). It never propagates an error: a missing thumbnail is
+// backfilled lazily by the thumbnail endpoint on first view.
+func GenerateThumbnailBestEffort(usersDir, userID, mimeType string, src []byte, volumeRelPath string) string {
+	if !artifact.IsThumbnailableMIME(mimeType) {
+		return ""
+	}
+	thumbRel, err := artifact.WriteThumbnail(usersDir, userID, volumeRelPath, src)
+	if err != nil {
+		slog.Warn("generate artifact thumbnail failed", "path", volumeRelPath, "err", err)
+		return ""
+	}
+	return thumbRel
 }

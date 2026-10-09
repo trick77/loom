@@ -19,9 +19,6 @@ const (
 	citationSnippetChars = 320
 )
 
-// citation is shared by the share/read handlers and the turn engine.
-type citation = turn.Citation
-
 // docIndexer assigns each distinct uploaded document a stable [n] marker for one
 // turn. Numbering is per *document*, not per retrieved chunk: several chunks of one
 // file share its number, matching how the UI groups them.

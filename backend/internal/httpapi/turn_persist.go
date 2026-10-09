@@ -10,13 +10,13 @@ import (
 	"github.com/trick77/loom/internal/chat"
 )
 
-// persistAssistantTurn turns a finished loop result into the stored assistant
+// PersistAssistantTurn turns a finished loop result into the stored assistant
 // message: it offers the answer's large code blocks as downloadable files,
 // waits for the background reasoning titles and stamps them onto the trace,
 // merges the knowledge and web citations, and inserts the row. ctx must
 // outlive the request (the caller detaches it): a client that disconnected
 // still gets its answer persisted.
-func (t *turnRun) persistAssistantTurn(ctx context.Context, result *assistantLoopResult) (chat.Message, error) {
+func (t *Run) PersistAssistantTurn(ctx context.Context, result *LoopResult) (chat.Message, error) {
 	artifacts := result.Artifacts
 	if artifacts == nil {
 		artifacts = []artifactResponse{}
@@ -31,7 +31,7 @@ func (t *turnRun) persistAssistantTurn(ctx context.Context, result *assistantLoo
 		// render after the final text: append them as artifact blocks at the END of
 		// the timeline.
 		for i := range extracted {
-			result.Blocks = append(result.Blocks, contentBlock{Type: "artifact", Artifact: &extracted[i]})
+			result.Blocks = append(result.Blocks, ContentBlock{Type: "artifact", Artifact: &extracted[i]})
 		}
 	}
 	artifactsJSON, err := json.Marshal(artifacts)
@@ -40,12 +40,12 @@ func (t *turnRun) persistAssistantTurn(ctx context.Context, result *assistantLoo
 	}
 	// Ensure every background title has landed and been emitted before persisting
 	// the trace; this also guarantees the title SSE events precede assistant_message.
-	t.titles.wait()
-	t.titles.mergeInto(result.ActivityTrace)
+	t.titles.Wait()
+	t.titles.MergeInto(result.ActivityTrace)
 	// The blocks' trace events are separate objects from the flat trace but share
 	// reasoning ids, so stamp the same titles onto them too.
-	t.titles.mergeIntoBlocks(result.Blocks)
-	activityTraceJSON, contentBlocksJSON := marshalTurnJSON(t.thread.ID, result.ActivityTrace, result.Blocks)
+	t.titles.MergeIntoBlocks(result.Blocks)
+	activityTraceJSON, contentBlocksJSON := MarshalTurnJSON(t.thread.ID, result.ActivityTrace, result.Blocks)
 	allSources := t.plan.knowledgeSources
 	if webCitations := webSourceCitations(result.WebSources); len(webCitations) > 0 {
 		// Clone first: appending into the knowledge sources' backing array could
@@ -60,18 +60,18 @@ func (t *turnRun) persistAssistantTurn(ctx context.Context, result *assistantLoo
 		}
 	}
 	turnCost, turnPriced := t.usage.TurnCost()
-	assistantMessage, err := t.s.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, messageMetricsWithCost(result.StreamResult, t.usage.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
+	assistantMessage, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, MessageMetricsWithCost(result.StreamResult, t.usage.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
 	if err != nil {
 		return chat.Message{}, err
 	}
 	return assistantMessage, nil
 }
 
-// marshalTurnJSON encodes a turn's activity trace and content blocks for the
+// MarshalTurnJSON encodes a turn's activity trace and content blocks for the
 // message row. Either failing is logged and stored as an empty array rather
 // than failing the persist: the prose is what matters, the trace is
 // decoration.
-func marshalTurnJSON(threadID string, trace []activityTraceEvent, blocks []contentBlock) (traceJSON, blocksJSON []byte) {
+func MarshalTurnJSON(threadID string, trace []ActivityTraceEvent, blocks []ContentBlock) (traceJSON, blocksJSON []byte) {
 	traceJSON = []byte("[]")
 	if encoded, err := json.Marshal(trace); err != nil {
 		slog.Warn("marshal activity trace failed", "thread_id", threadID, "err", err)
