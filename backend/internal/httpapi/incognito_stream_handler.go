@@ -80,7 +80,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	emitter := sseEmitter{w: stream}
 
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
-	titles := turn.NewReasoningTitleTracker(streamCtx, s.engine, emitter, inference, turn.UserResponseLanguage(user))
+	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, emitter, inference, turn.UserResponseLanguage(user))
 	defer titles.Wait()
 
 	run := s.engine.NewRun(turn.RunConfig{Stream: emitter, Titles: titles, Inference: inference, User: user})
