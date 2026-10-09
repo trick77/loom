@@ -12,6 +12,7 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // projectMemoryScope wires the project memory into the shared memory mechanism.
@@ -81,7 +82,7 @@ func (s *server) projectContextForThread(ctx context.Context, userID string, thr
 	if n := s.countOtherProjectThreads(ctx, userID, thread); n > 0 {
 		block += fmt.Sprintf(
 			"\nThis project contains %d other thread(s). The project memory above is a lossy digest — to summarize, compile, or compare across the actual threads, call the %s tool to read their full content.",
-			n, ProjectThreadsToolName)
+			n, turn.ProjectThreadsToolName)
 	}
 	return block
 }

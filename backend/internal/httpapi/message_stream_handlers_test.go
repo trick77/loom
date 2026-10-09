@@ -20,14 +20,13 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/artifact"
-	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/loom/internal/turn"
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
@@ -225,11 +224,11 @@ func TestStreamMessageSendsReasoningTitleBeforeFirstAnswerDelta(t *testing.T) {
 	}
 }
 
-// A title call that hangs holds the answer for reasoningTitleHold, then the
+// A title call that hangs holds the answer for turn.ReasoningTitleHold, then the
 // answer goes out without it.
 func TestStreamMessageAnswerNotHeldPastReasoningTitleHold(t *testing.T) {
-	defer func(prev time.Duration) { reasoningTitleHold = prev }(reasoningTitleHold)
-	reasoningTitleHold = 50 * time.Millisecond
+	defer func(prev time.Duration) { turn.ReasoningTitleHold = prev }(turn.ReasoningTitleHold)
+	turn.ReasoningTitleHold = 50 * time.Millisecond
 	gate := make(chan struct{})
 	store := &fakeThreadStore{
 		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
@@ -391,9 +390,9 @@ func TestStreamMessageBooksWorkingTitleCost(t *testing.T) {
 func TestStreamMessageSendsReasoningTitleWhileStillReasoning(t *testing.T) {
 	// A cleanup registered first runs last: after srv.Close has waited out the
 	// handler that reads the threshold.
-	prev := reasoningTitleStartBytes
-	t.Cleanup(func() { reasoningTitleStartBytes = prev })
-	reasoningTitleStartBytes = 20
+	prev := turn.ReasoningTitleStartBytes
+	t.Cleanup(func() { turn.ReasoningTitleStartBytes = prev })
+	turn.ReasoningTitleStartBytes = 20
 	hold := make(chan struct{})
 	var release sync.Once
 	seen := make(chan string, 4)
@@ -548,7 +547,7 @@ func TestStreamMessageAlignsReasoningTitlesAcrossRounds(t *testing.T) {
 		t.Fatal("no messages persisted")
 	}
 	last := store.Messages[len(store.Messages)-1]
-	var trace []ActivityTraceEvent
+	var trace []turn.ActivityTraceEvent
 	if err := json.Unmarshal(last.ActivityTrace, &trace); err != nil {
 		t.Fatalf("unmarshal activity trace: %v\n%s", err, last.ActivityTrace)
 	}
@@ -1211,317 +1210,6 @@ func TestStreamMessageAddsImageAttachmentsToLLMHistory(t *testing.T) {
 	}
 }
 
-// TestImageRoutingFor covers the pure mapping from a semantic ImageIntent plus
-// the two image-presence flags to the concrete routing decision. The language
-// understanding that produces the intent lives in the gate's prompt (exercised
-// by the llm package's ClassifyImageIntent test and the end-to-end run), so this
-// test stays deterministic and network-free.
-func TestImageRoutingFor(t *testing.T) {
-	create := llm.ImageIntent{Action: llm.ImageIntentCreate}
-	createText := llm.ImageIntent{Action: llm.ImageIntentCreate, NeedsText: true}
-	edit := llm.ImageIntent{Action: llm.ImageIntentEdit}
-	editText := llm.ImageIntent{Action: llm.ImageIntentEdit, NeedsText: true}
-	none := llm.ImageIntent{Action: llm.ImageIntentNone}
-
-	tests := []struct {
-		name         string
-		intent       llm.ImageIntent
-		attached     bool
-		threadHasImg bool
-		want         imageRouting
-	}{
-		// A create always generates; typography follows needs_text and does not
-		// depend on an image being present.
-		{"create fresh", create, false, false, imageRouting{generate: true}},
-		{"create logo -> typography", createText, false, false, imageRouting{generate: true, typography: true}},
-		{"create ignores prior image", create, false, true, imageRouting{generate: true}},
-
-		// An edit routes only when a source image exists; reuseSource fires only for
-		// the prior-image case (no fresh attachment to act on instead).
-		{"edit, no image -> nothing", edit, false, false, imageRouting{}},
-		{"edit, prior image -> reuse", edit, false, true, imageRouting{generate: true, reuseSource: true}},
-		{"edit, attachment -> no reuse", edit, true, false, imageRouting{generate: true}},
-		{"edit, both -> attachment wins, no reuse", edit, true, true, imageRouting{generate: true}},
-		{"edit typography, prior image", editText, false, true, imageRouting{generate: true, reuseSource: true, typography: true}},
-		// needs_text is meaningless without a source image to act on.
-		{"edit typography, no image -> nothing", editText, false, false, imageRouting{}},
-
-		// none never routes.
-		{"none", none, false, false, imageRouting{}},
-		{"none with attachment", none, true, false, imageRouting{}},
-		{"none with prior image", none, false, true, imageRouting{}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := imageRoutingFor(tt.intent, tt.attached, tt.threadHasImg); got != tt.want {
-				t.Fatalf("imageRoutingFor(%+v, attached=%v, thread=%v) = %+v, want %+v",
-					tt.intent, tt.attached, tt.threadHasImg, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestClassifyImageTurnPreconditions checks the cheap short-circuits that must
-// run before (and instead of) the gate: no image tooling configured, and an
-// empty message both skip the LLM call and route as non-image.
-func TestClassifyImageTurnPreconditions(t *testing.T) {
-	create := llm.ImageIntent{Action: llm.ImageIntentCreate}
-
-	// Image tooling configured + a non-empty message: the gate's intent is mapped.
-	configured := &Engine{
-		artifacts:  fakeArtifactStore{},
-		usersDir:   t.TempDir(),
-		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		llm:        fakeChatClient{ImageIntent: create},
-	}
-	if got := configured.classifyImageTurn(context.Background(), auth.User{ID: "user_1", Username: "jan"}, "thr_1", "zeichne mir einen Fuchs", false, nil); !got.generate {
-		t.Fatalf("classifyImageTurn(create intent) = %+v, want generate=true", got)
-	}
-	// Empty message never routes, even with tooling and a create-returning gate.
-	if got := configured.classifyImageTurn(context.Background(), auth.User{ID: "user_1", Username: "jan"}, "thr_1", "   ", false, nil); got != (imageRouting{}) {
-		t.Fatalf("classifyImageTurn(empty content) = %+v, want zero routing", got)
-	}
-
-	// No image tooling: never routes (and the gate must not be consulted — a nil
-	// llm would panic if it were).
-	noTools := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
-	if got := noTools.classifyImageTurn(context.Background(), auth.User{ID: "user_1", Username: "jan"}, "thr_1", "zeichne mir einen Fuchs", true, nil); got != (imageRouting{}) {
-		t.Fatalf("classifyImageTurn(no image tools) = %+v, want zero routing", got)
-	}
-}
-
-func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
-	usersDir := t.TempDir()
-	userID := "user-1"
-	// Write a real PNG for the in-scope artifact so ResolveExisting + ReadFile succeed.
-	rel := "files/photo.png"
-	abs := filepath.Join(usersDir, userID, rel)
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
-	png := []byte("\x89PNG\r\n\x1a\nthe-original-bytes")
-	if err := os.WriteFile(abs, png, 0o644); err != nil {
-		t.Fatalf("write png: %v", err)
-	}
-	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
-		{ID: "img_ok", UserID: userID, ThreadID: "thr_1", VolumeRelPath: rel, MIMEType: "image/png"},
-		{ID: "img_other_thread", UserID: userID, ThreadID: "thr_2", VolumeRelPath: rel, MIMEType: "image/png"},
-		{ID: "img_bad_mime", UserID: userID, ThreadID: "thr_1", VolumeRelPath: rel, MIMEType: "image/bmp"},
-	}}
-	srv := &Engine{artifacts: store, usersDir: usersDir}
-
-	// Happy path: original bytes are returned for an in-scope, allowed image.
-	src, ok, err := srv.loadEditSourceImage(context.Background(), userID, "img_ok")
-	if err != nil || !ok {
-		t.Fatalf("loadEditSourceImage(img_ok) = ok %v, err %v", ok, err)
-	}
-	if !bytes.Equal(src.Data, png) {
-		t.Fatalf("Data = %q, want original bytes", src.Data)
-	}
-
-	// An image from another of the user's threads is a valid edit source: "Use
-	// in thread" re-references it from a new thread, and the vision path already
-	// accepts it, so the edit path must too or the follow-up edit silently loses
-	// its source. Ownership (the user-scoped lookup) is the real boundary.
-	if _, ok, err := srv.loadEditSourceImage(context.Background(), userID, "img_other_thread"); err != nil || !ok {
-		t.Fatalf("loadEditSourceImage(img_other_thread) = ok %v, err %v, want ok=true", ok, err)
-	}
-
-	// Unsupported MIME, missing, and empty id all degrade to ok=false without an
-	// error so the turn proceeds prompt-only.
-	for _, id := range []string{"img_bad_mime", "img_missing", ""} {
-		_, ok, err := srv.loadEditSourceImage(context.Background(), userID, id)
-		if err != nil || ok {
-			t.Fatalf("loadEditSourceImage(%q) = ok %v, err %v, want ok=false, err=nil", id, ok, err)
-		}
-	}
-}
-
-func TestLatestImageArtifactIDReturnsNewestWithID(t *testing.T) {
-	messages := []chat.Message{
-		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_old","mimeType":"image/png"}]`)},
-		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"doc_1","mimeType":"application/pdf"}]`)},
-		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_new","mimeType":"image/jpeg"}]`)},
-	}
-	if got := latestImageArtifactID(messages); got != "img_new" {
-		t.Fatalf("latestImageArtifactID = %q, want img_new", got)
-	}
-
-	// No image artifacts, or image artifacts missing an id, yield "" — there is
-	// nothing to silently re-attach as the model's vision input.
-	none := []chat.Message{
-		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"doc_1","mimeType":"text/plain"}]`)},
-		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"mimeType":"image/png"}]`)},
-	}
-	if got := latestImageArtifactID(none); got != "" {
-		t.Fatalf("latestImageArtifactID = %q, want empty", got)
-	}
-}
-
-func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
-	srv := &Engine{
-		artifacts: fakeArtifactStore{},
-		usersDir:  t.TempDir(),
-		docTools:  []docgen.Generator{docgen.TextGenerator{}},
-		mcp: fakeMCPService{ToolList: []llm.Tool{
-			{Type: "function", Function: llm.ToolFunction{Name: "create_text_file"}},
-			{Type: "function", Function: llm.ToolFunction{Name: "search__web"}},
-		}},
-	}
-
-	// Gate with the coding category so the docgen tools are offered (this test is
-	// about de-duping an MCP tool against a built-in, not about gating).
-	tools := srv.availableTools(chat.Thread{}, newToolGate(string(classifier.Coding), "", ""))
-
-	var builtInCount, searchCount int
-	for _, tool := range tools {
-		switch tool.Function.Name {
-		case "create_text_file":
-			builtInCount++
-		case "search__web":
-			searchCount++
-		}
-	}
-	if builtInCount != 1 || searchCount != 1 {
-		t.Fatalf("tool counts create_text_file=%d search__web=%d, want 1 and 1", builtInCount, searchCount)
-	}
-}
-
-func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
-	fetchCall := llm.ToolCall{
-		Function: llm.ToolCallFunction{
-			Name:      fetchToolName,
-			Arguments: `{"url":"https://example.com"}`,
-		},
-	}
-
-	t.Run("falls back to obscura when fetch fails", func(t *testing.T) {
-		var navigated bool
-		srv := &Engine{mcp: fakeMCPService{
-			Available: map[string]bool{
-				obscuraNavigateToolName: true,
-				obscuraSnapshotToolName: true,
-			},
-			CallFunc: func(_ context.Context, name string, args map[string]any) (string, error) {
-				switch name {
-				case fetchToolName:
-					return "", errFakeTool
-				case obscuraNavigateToolName:
-					if args["url"] != "https://example.com" {
-						t.Fatalf("navigate url = %v, want https://example.com", args["url"])
-					}
-					navigated = true
-					return "ok", nil
-				case obscuraSnapshotToolName:
-					if !navigated {
-						t.Fatal("snapshot called before navigate")
-					}
-					return "rendered page text", nil
-				}
-				return "", errFakeTool
-			},
-		}}
-
-		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
-
-		if !strings.Contains(got, "rendered page text") {
-			t.Fatalf("output = %q, want obscura snapshot text", got)
-		}
-		// The fallback fetched https://example.com, so its snapshot is annotated
-		// with that source's [n] marker for inline citation.
-		if !strings.HasPrefix(got, "Web source [1]: https://example.com") {
-			t.Fatalf("output = %q, want leading web-source marker", got)
-		}
-	})
-
-	t.Run("skips obscura for a failed PDF extraction", func(t *testing.T) {
-		srv := &Engine{mcp: fakeMCPService{
-			Available: map[string]bool{
-				obscuraNavigateToolName: true,
-				obscuraSnapshotToolName: true,
-			},
-			CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
-				if name == fetchToolName {
-					return "", mcp.PDFExtractionError{Err: errors.New("Failed to extract PDF x: no extractable text")}
-				}
-				t.Fatalf("obscura tool %q called for a PDF extraction failure", name)
-				return "", nil
-			},
-		}}
-
-		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
-
-		if !strings.Contains(got, "no extractable text") {
-			t.Fatalf("output = %q, want the extraction error", got)
-		}
-	})
-
-	// A fetch that ran into its deadline leaves an expired context behind; the
-	// fallback must get its own budget or it can never rescue a timed-out fetch.
-	t.Run("fallback gets its own deadline", func(t *testing.T) {
-		var fetchDeadline, navigateDeadline time.Time
-		srv := &Engine{mcp: fakeMCPService{
-			Available: map[string]bool{
-				obscuraNavigateToolName: true,
-				obscuraSnapshotToolName: true,
-			},
-			CallFunc: func(ctx context.Context, name string, _ map[string]any) (string, error) {
-				switch name {
-				case fetchToolName:
-					fetchDeadline, _ = ctx.Deadline()
-					time.Sleep(2 * time.Millisecond)
-					return "", errFakeTool
-				case obscuraNavigateToolName:
-					navigateDeadline, _ = ctx.Deadline()
-				}
-				return "ok", nil
-			},
-		}}
-
-		srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
-
-		if !navigateDeadline.After(fetchDeadline) {
-			t.Fatalf("navigate deadline %v not after fetch deadline %v", navigateDeadline, fetchDeadline)
-		}
-	})
-
-	t.Run("surfaces fetch failure when obscura is unavailable", func(t *testing.T) {
-		srv := &Engine{mcp: fakeMCPService{Err: errFakeTool}}
-
-		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, fetchCall, 0, newWebSourceRegistryAfter(0))
-
-		if !strings.HasPrefix(got, "tool failed") {
-			t.Fatalf("output = %q, want tool failed prefix", got)
-		}
-	})
-
-	t.Run("does not fall back for non-fetch tools", func(t *testing.T) {
-		var obscuraCalled bool
-		srv := &Engine{mcp: fakeMCPService{
-			Available: map[string]bool{
-				obscuraNavigateToolName: true,
-				obscuraSnapshotToolName: true,
-			},
-			CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
-				if name == obscuraNavigateToolName || name == obscuraSnapshotToolName {
-					obscuraCalled = true
-				}
-				return "", errFakeTool
-			},
-		}}
-		otherCall := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{"query":"x"}`}}
-
-		got := srv.executeToolCall(context.Background(), auth.User{ID: "u1", Username: "u1"}, otherCall, 0, newWebSourceRegistryAfter(0))
-
-		if obscuraCalled {
-			t.Fatal("obscura must not be called for non-fetch tools")
-		}
-		if !strings.HasPrefix(got, "tool failed") {
-			t.Fatalf("output = %q, want tool failed prefix", got)
-		}
-	})
-}
-
 // recordingImageProvider is fakeImageProvider that keeps the request it was
 // given, so a test can assert what the fallback actually asked the provider for.
 type recordingImageProvider struct {
@@ -1747,10 +1435,10 @@ func TestStreamMessageFailedTurnCostLandsOnTheUserMessage(t *testing.T) {
 
 // A reasoning-title call still in flight when the turn fails (it goes to the
 // same dead upstream) must not hold the error back; its cost is booked later.
-// The first answer word waits for the title, but only for reasoningTitleHold.
+// The first answer word waits for the title, but only for turn.ReasoningTitleHold.
 func TestStreamMessageFailedTurnErrorDoesNotWaitForReasoningTitles(t *testing.T) {
-	defer func(prev time.Duration) { reasoningTitleHold = prev }(reasoningTitleHold)
-	reasoningTitleHold = 50 * time.Millisecond
+	defer func(prev time.Duration) { turn.ReasoningTitleHold = prev }(turn.ReasoningTitleHold)
+	turn.ReasoningTitleHold = 50 * time.Millisecond
 	gate := make(chan struct{})
 	store := &fakeThreadStore{
 		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"},
@@ -2148,19 +1836,6 @@ func TestStreamMessageSystemPromptRoutesURLTools(t *testing.T) {
 	}
 }
 
-func TestSystemPromptForUserIncludesCurrentDate(t *testing.T) {
-	now := time.Date(2026, time.June, 19, 10, 30, 0, 0, time.UTC)
-
-	prompt := systemPromptForUser(auth.User{}, now)
-
-	if !strings.Contains(prompt, "The current date is 2026-06-19") {
-		t.Fatalf("system prompt = %q, want current date line", prompt)
-	}
-	if !strings.Contains(prompt, "do not assume an earlier year") {
-		t.Fatalf("system prompt = %q, want search-year guidance", prompt)
-	}
-}
-
 func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 	var history []llm.Message
 	store := &fakeThreadStore{
@@ -2360,43 +2035,6 @@ func TestStreamMessageExecutesToolCallAndResumesAssistantStream(t *testing.T) {
 	}
 	if strings.Contains(trace, `"summary"`) {
 		t.Fatalf("activity trace persisted backend summary, want raw trace only:\n%s", trace)
-	}
-}
-
-func TestActivityTraceFromResultPersistsGenericAndFileToolCalls(t *testing.T) {
-	b := &blockBuilder{}
-	b.addResult(nil, llm.StreamResult{
-		ToolCalls: []llm.ToolCall{
-			{
-				ID:   "call_pdf",
-				Type: "function",
-				Function: llm.ToolCallFunction{
-					Name:      "create_pdf_file",
-					Arguments: `{"filename":"report.pdf"}`,
-				},
-			},
-			{
-				ID:   "call_future",
-				Type: "function",
-				Function: llm.ToolCallFunction{
-					Name:      "acme__transmogrify_asset",
-					Arguments: `{"asset":"draft.pdf"}`,
-				},
-			},
-		},
-	})
-	b.setToolResult("call_pdf", "created report.pdf")
-	b.setToolResult("call_future", "Created draft.pdf")
-	trace := b.flatTrace()
-
-	if len(trace) != 2 {
-		t.Fatalf("len(trace) = %d, want 2: %#v", len(trace), trace)
-	}
-	if trace[0].Name != "create_pdf_file" || trace[0].RawArguments != `{"filename":"report.pdf"}` || trace[0].RawOutput != "created report.pdf" {
-		t.Fatalf("pdf trace = %#v", trace[0])
-	}
-	if trace[1].Name != "acme__transmogrify_asset" || trace[1].RawArguments != `{"asset":"draft.pdf"}` || trace[1].RawOutput != "Created draft.pdf" {
-		t.Fatalf("future tool trace = %#v", trace[1])
 	}
 }
 
@@ -3190,76 +2828,4 @@ func TestPrepareTurnLoadsContextsConcurrently(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "event: assistant_message") {
 		t.Fatalf("status = %d body:\n%s", rec.Code, rec.Body.String())
 	}
-}
-
-func TestStartToolRuns(t *testing.T) {
-	fetch := func(url string) llm.ToolCall {
-		return llm.ToolCall{Function: llm.ToolCallFunction{Name: fetchToolName, Arguments: fmt.Sprintf(`{"url":%q}`, url)}}
-	}
-	search := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}
-
-	t.Run("a lone eligible call stays on the sequential path", func(t *testing.T) {
-		srv := &Engine{mcp: fakeMCPService{Result: "ok"}}
-		runs := srv.startToolRuns(context.Background(), []llm.ToolCall{fetch("https://a.example"), search}, []bool{false, false})
-		if runs[0] != nil || runs[1] != nil {
-			t.Fatalf("runs = %v, want none started", runs)
-		}
-	})
-
-	t.Run("skipped and stateful calls are not started", func(t *testing.T) {
-		srv := &Engine{mcp: fakeMCPService{Result: "ok"}}
-		calls := []llm.ToolCall{fetch("https://a.example"), search, fetch("https://b.example"), fetch("https://c.example")}
-		runs := srv.startToolRuns(context.Background(), calls, []bool{false, false, false, true})
-		if runs[0] == nil || runs[2] == nil || runs[1] != nil || runs[3] != nil {
-			t.Fatalf("runs = %v, want only the two live fetches started", runs)
-		}
-		if got := <-runs[0]; got.err != nil || got.output != "ok" {
-			t.Fatalf("run = %+v, want the tool output", got)
-		}
-		<-runs[2]
-	})
-
-	t.Run("a panicking call fails that call only", func(t *testing.T) {
-		srv := &Engine{mcp: fakeMCPService{CallFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
-			if args["url"] == "https://a.example" {
-				panic("boom")
-			}
-			return "ok", nil
-		}}}
-		runs := srv.startToolRuns(context.Background(), []llm.ToolCall{fetch("https://a.example"), fetch("https://b.example")}, []bool{false, false})
-		if got := <-runs[0]; got.err == nil {
-			t.Fatal("panicking run reported no error")
-		}
-		if got := <-runs[1]; got.err != nil || got.output != "ok" {
-			t.Fatalf("run = %+v, want the tool output", got)
-		}
-	})
-
-	t.Run("a cancelled round releases the calls still waiting for a slot", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		release := make(chan struct{})
-		srv := &Engine{mcp: fakeMCPService{CallFunc: func(context.Context, string, map[string]any) (string, error) {
-			<-release
-			return "ok", nil
-		}}}
-		calls := make([]llm.ToolCall, concurrentToolRuns+1)
-		for i := range calls {
-			calls[i] = fetch(fmt.Sprintf("https://%d.example", i))
-		}
-		runs := srv.startToolRuns(ctx, calls, make([]bool, len(calls)))
-		merged := make(chan toolRun, len(runs))
-		for _, run := range runs {
-			go func() { merged <- <-run }()
-		}
-		cancel()
-		// Every slot holder is still blocked in its call, so the first run to
-		// finish can only be the one that was waiting for a slot.
-		if got := <-merged; !errors.Is(got.err, context.Canceled) {
-			t.Fatalf("first finished run = %+v, want the cancelled waiter", got)
-		}
-		close(release)
-		for range len(runs) - 1 {
-			<-merged
-		}
-	})
 }

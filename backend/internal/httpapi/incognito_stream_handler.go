@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/sse"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // incognitoThreadID is the synthetic id used for the ephemeral incognito thread.
@@ -62,7 +63,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	// answers directly instead of emitting a stripped-to-empty inline tool call.
 	priorMessages := incognitoPriorMessages(body.History)
 	userMessage := chat.Message{Role: chat.RoleUser, Content: body.Content}
-	history := BuildIncognitoHistory(user, priorMessages, userMessage)
+	history := turn.BuildIncognitoHistory(user, priorMessages, userMessage)
 
 	streamCtx, cancelStream := context.WithCancelCause(r.Context())
 	defer cancelStream(nil)
@@ -79,13 +80,13 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	emitter := sseEmitter{w: stream}
 
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
-	titles := NewReasoningTitleTracker(streamCtx, s.engine, emitter, inference, UserResponseLanguage(user))
+	titles := turn.NewReasoningTitleTracker(streamCtx, s.engine, emitter, inference, turn.UserResponseLanguage(user))
 	defer titles.Wait()
 
-	run := s.engine.NewRun(RunConfig{Stream: emitter, Titles: titles, Inference: inference, User: user})
+	run := s.engine.NewRun(turn.RunConfig{Stream: emitter, Titles: titles, Inference: inference, User: user})
 	assistantResult, err := run.RunIncognitoAssistantTurn(streamCtx, history)
 	if err != nil {
-		if StreamCanceled(streamCtx, err) {
+		if turn.StreamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
 			slog.Info("incognito stream canceled",
 				"cancel_source", cancelSource,
@@ -95,7 +96,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 				"reasoning_bytes", len(assistantResult.ReasoningContent))
 			return
 		}
-		message := StreamFailureMessage(err, assistantResult, "incognito", incognitoThreadID)
+		message := turn.StreamFailureMessage(err, assistantResult, "incognito", incognitoThreadID)
 		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
 		return
 	}
@@ -116,7 +117,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	titles.MergeInto(assistantResult.ActivityTrace)
 	titles.MergeIntoBlocks(assistantResult.Blocks)
 
-	activityTraceJSON, contentBlocksJSON := MarshalTurnJSON(incognitoThreadID, assistantResult.ActivityTrace, assistantResult.Blocks)
+	activityTraceJSON, contentBlocksJSON := turn.MarshalTurnJSON(incognitoThreadID, assistantResult.ActivityTrace, assistantResult.Blocks)
 
 	assistantMessage := chat.Message{
 		ID:            "incognito-assistant",
@@ -133,7 +134,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	}
 	// Incognito carries no token accounting, but the turn's cost is on the
 	// stream result and the bubble shows the thread's running total from it.
-	applyMessageMetrics(&assistantMessage, MessageMetricsWithCost(assistantResult.StreamResult, llm.TokenUsage{}, time.Since(turnStart), assistantResult.CostNanoUSD, assistantResult.CostPriced))
+	applyMessageMetrics(&assistantMessage, turn.MessageMetricsWithCost(assistantResult.StreamResult, llm.TokenUsage{}, time.Since(turnStart), assistantResult.CostNanoUSD, assistantResult.CostPriced))
 	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
 		return
 	}

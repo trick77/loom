@@ -81,7 +81,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// on reload instead of the inline wall of text. Their text is already folded
 	// into body.Content, so the model and every content-derived path (title,
 	// classifier, RAG, history) are unchanged; this is render-only metadata.
-	pastedTexts := MarshalPastedTexts(body.PastedTexts)
+	pastedTexts := turn.MarshalPastedTexts(body.PastedTexts)
 	userMessage, err := s.thread.AddMessageWithAttachments(r.Context(), user.ID, threadID, chat.RoleUser, body.Content, sentAttachments, pastedTexts)
 	if err != nil {
 		writeStoreError(w, r, err)
@@ -145,12 +145,12 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// round. The deferred waits keep any title goroutine from writing to the
 	// SSE stream after the handler returns. They run before costs.Settle, so a
 	// working title that outlived the answer still has its cost booked.
-	titles := NewReasoningTitleTracker(streamCtx, s.engine, emitter, inference, UserResponseLanguage(user))
+	titles := turn.NewReasoningTitleTracker(streamCtx, s.engine, emitter, inference, turn.UserResponseLanguage(user))
 	defer titles.Wait()
 	defer titles.WaitWorking()
 	titles.SpawnWorking(userMessage.Content)
 
-	run := s.engine.NewRun(RunConfig{
+	run := s.engine.NewRun(turn.RunConfig{
 		Stream:      emitter,
 		Titles:      titles,
 		Inference:   inference,
@@ -160,7 +160,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		Usage:       usageTotal,
 		Start:       turnStart,
 	})
-	run.Prepare(PrepareInput{
+	run.Prepare(turn.PrepareInput{
 		StreamCtx:             streamCtx,
 		TurnCtx:               turnCtx,
 		ReqCtx:                r.Context(),
@@ -177,7 +177,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// use. Detached from the request context so a canceled or failed turn still
 	// names the thread, as it did when titling ran up front.
 	titleThread := func(assistantMessage string) {
-		if !ShouldGenerateThreadTitle(thread.Title, userMessage.Content) {
+		if !turn.ShouldGenerateThreadTitle(thread.Title, userMessage.Content) {
 			return
 		}
 		// The thread is being deleted, so there is nothing left to name: the title
@@ -220,7 +220,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 
 	assistantResult, err := run.RunAssistantLoop(streamCtx)
 	if err != nil {
-		if StreamCanceled(streamCtx, err) {
+		if turn.StreamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
 			slog.Info("message stream canceled",
 				"thread_id", threadID,
@@ -241,7 +241,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			_ = stream.Send("done", "{}")
 			return
 		}
-		failTurn(assistantResult.Content, StreamFailureMessage(err, assistantResult, "message", threadID))
+		failTurn(assistantResult.Content, turn.StreamFailureMessage(err, assistantResult, "message", threadID))
 		return
 	}
 	assistantContent := assistantResult.Content

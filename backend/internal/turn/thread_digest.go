@@ -1,0 +1,130 @@
+package turn
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/trick77/loom/internal/chat"
+)
+
+// maxRecentMessagesPerThread bounds how many of a thread's most recent messages
+// are loaded for a digest. buildThreadDigestSection only ever keeps the tail that
+// fits the byte budget, so loading the whole transcript (potentially hundreds of
+// messages with large tool-result blobs) would be wasted work — this ceiling
+// keeps the read cheap while still covering the final turns the digest needs.
+const maxRecentMessagesPerThread = 50
+
+// bytesPerToken converts a configured token budget into a byte budget. Digest
+// size is bounded in BYTES (not runes) because the thing it bypasses —
+// capToolOutput — and the model's context envelope are measured in bytes; a
+// rune-based bound would under-count multibyte (CJK/emoji) content by up to ~4x.
+const bytesPerToken = 4
+
+// minPerThreadDigestBytes floors a per-thread share so each thread still carries
+// its conclusion. To keep a multi-thread TOTAL bounded, the thread count is
+// capped so floor × threads cannot exceed the byte budget (see projectThreadsDigest).
+const minPerThreadDigestBytes = 600
+
+// renderThreadDigest renders one owned thread's "Last activity" line followed by
+// its recent user/assistant turns within byteBudget, last-turn-first selection
+// rendered back in chronological order. Shared by read_project_threads (one call
+// per sibling) and read_thread (a single call) — each prints its own "=== … ==="
+// title line first, then delegates the activity header + transcript here so that
+// rendering lives in one place. It never returns an error — the output feeds a
+// tool result — surfacing load failures and empty threads as readable notes.
+func (s *Engine) renderThreadDigest(ctx context.Context, userID string, t chat.Thread, byteBudget int) string {
+	messages, err := s.thread.ListRecentMessages(ctx, userID, t.ID, maxRecentMessagesPerThread)
+	if err != nil {
+		slog.Warn("thread digest: list messages failed", "thread_id", t.ID, "err", err)
+		return threadActivityLine(t) + "(could not load this thread's messages)\n"
+	}
+	return renderThreadDigestMessages(t, messages, byteBudget)
+}
+
+// threadActivityLine is the "Last activity" header of a digest, empty for a
+// thread that never had a message.
+func threadActivityLine(t chat.Thread) string {
+	if t.LastMessageAt == nil {
+		return ""
+	}
+	return fmt.Sprintf("Last activity: %s\n", t.LastMessageAt.Format("2006-01-02"))
+}
+
+// renderThreadDigestMessages renders a thread's digest from messages already
+// loaded (the project tool loads every sibling's tail in one query).
+func renderThreadDigestMessages(t chat.Thread, messages []chat.Message, byteBudget int) string {
+	var b strings.Builder
+	b.WriteString(threadActivityLine(t))
+	section := buildThreadDigestSection(messages, byteBudget)
+	if section == "" {
+		b.WriteString("(no readable messages in this thread)\n")
+		return b.String()
+	}
+	b.WriteString(section)
+	return b.String()
+}
+
+// RoleLabel is how a transcript names the author of a message.
+func RoleLabel(role chat.Role) string {
+	switch role {
+	case chat.RoleAssistant:
+		return "Assistant"
+	default:
+		return "User"
+	}
+}
+
+// displayThreadTitle returns a non-empty label for a thread.
+func displayThreadTitle(t chat.Thread) string {
+	if title := strings.TrimSpace(t.Title); title != "" {
+		return title
+	}
+	return "(untitled thread)"
+}
+
+// buildThreadDigestSection renders one thread's user/assistant turns within a
+// per-thread BYTE budget, last-message-first: research threads put the answer at
+// the END, so we always keep the final turn and backfill earlier turns until the
+// budget is hit. This guarantees each thread's conclusion survives even a tight
+// budget, instead of front-truncating and keeping only the opening question. The
+// kept turns are rendered back in chronological order for readability.
+func buildThreadDigestSection(messages []chat.Message, byteBudget int) string {
+	type digestTurn struct {
+		role string
+		text string
+	}
+	var kept []digestTurn
+	used := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		m := messages[i]
+		if m.Role == chat.RoleTool {
+			continue
+		}
+		text := strings.TrimSpace(m.Content)
+		if text == "" {
+			continue
+		}
+		label := RoleLabel(m.Role)
+		cost := len(label) + len(text) + len(": \n")
+		if used+cost > byteBudget {
+			if len(kept) == 0 {
+				// The final substantive turn alone exceeds the budget. Keep its
+				// tail (the conclusion) rather than dropping the whole thread.
+				kept = append(kept, digestTurn{role: label, text: TruncateTailToBytes(text, byteBudget)})
+			}
+			break
+		}
+		kept = append(kept, digestTurn{role: label, text: text})
+		used += cost
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i := len(kept) - 1; i >= 0; i-- {
+		fmt.Fprintf(&b, "%s: %s\n", kept[i].role, kept[i].text)
+	}
+	return b.String()
+}

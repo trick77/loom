@@ -2,10 +2,14 @@ package turntest
 
 import (
 	"context"
+	"errors"
 
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 )
+
+// ErrTool is the failure a fake tool call returns.
+var ErrTool = errors.New("fake tool failed")
 
 // ToolService is a tool service exposing ToolList; CallTool returns Result and
 // Err unless CallFunc is set.

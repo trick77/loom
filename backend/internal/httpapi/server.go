@@ -91,7 +91,7 @@ type server struct {
 	publicURL             string
 	activeStreams         activeStreamRegistry
 	// engine runs the chat turns the stream handlers start.
-	engine *Engine
+	engine *turn.Engine
 }
 
 // The dependency ports the turn engine shares with the HTTP handlers live in
@@ -120,9 +120,9 @@ func NewBackground(parent context.Context) *Background {
 	return turn.NewBackground(parent)
 }
 
-// recordUsage runs a best-effort usage-counter update; see RecordUsage.
+// recordUsage runs a best-effort usage-counter update; see turn.RecordUsage.
 func (s *server) recordUsage(counter string, fn func() error) {
-	RecordUsage(s.usage, counter, fn)
+	turn.RecordUsage(s.usage, counter, fn)
 }
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.
@@ -175,23 +175,23 @@ func newServer(d Deps) *server {
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
 		publicURL:             d.PublicURL,
 	}
-	s.engine = &Engine{
-		thread:                     d.Thread,
-		usage:                      d.Usage,
-		artifacts:                  d.Artifacts,
-		documents:                  d.Documents,
-		llm:                        d.LLM,
-		mcp:                        d.MCP,
-		docTools:                   d.DocTools,
-		imageTools:                 d.ImageTools,
-		sandbox:                    d.Sandbox,
-		imageDefaultModel:          d.ImageDefaultModel,
-		imageTypographyModel:       d.ImageGenTypographyModel,
-		usersDir:                   d.UsersDir,
-		knowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
-		projectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
-		memory:                     engineMemory{s: s},
-	}
+	s.engine = turn.New(turn.Config{
+		Thread:                     d.Thread,
+		Usage:                      d.Usage,
+		Artifacts:                  d.Artifacts,
+		Documents:                  d.Documents,
+		LLM:                        d.LLM,
+		MCP:                        d.MCP,
+		DocTools:                   d.DocTools,
+		ImageTools:                 d.ImageTools,
+		ImageDefaultModel:          d.ImageDefaultModel,
+		ImageTypographyModel:       d.ImageGenTypographyModel,
+		Sandbox:                    d.Sandbox,
+		UsersDir:                   d.UsersDir,
+		KnowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
+		ProjectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
+		Memory:                     engineMemory{s: s},
+	})
 	return s
 }
 

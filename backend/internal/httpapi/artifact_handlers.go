@@ -14,6 +14,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/imagescale"
+	"github.com/trick77/loom/internal/turn"
 )
 
 const multipartUploadOverheadBytes = 1 << 20
@@ -311,7 +312,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	found.DisplayFilename = displayFilename
-	writeJSON(w, ArtifactResponseFromArtifact(found))
+	writeJSON(w, turn.ArtifactResponseFromArtifact(found))
 }
 
 func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Request) {
@@ -342,13 +343,13 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	// Validate against the explicit image allowlist (PNG/JPG/JPEG/WebP/GIF) rather
 	// than a bare image/* prefix: the model only supports these, so rejecting
 	// everything else here keeps unsupported formats out of the LLM path entirely.
-	canonicalMIME, extension, ok := AllowedImageFormat(header.Filename)
+	canonicalMIME, extension, ok := turn.AllowedImageFormat(header.Filename)
 	if !ok {
 		writeJSONError(w, http.StatusUnsupportedMediaType, "unsupported image format")
 		return
 	}
 	mimeType := header.Header.Get("Content-Type")
-	if !AllowedImageMIME(mimeType) {
+	if !turn.AllowedImageMIME(mimeType) {
 		mimeType = canonicalMIME
 	}
 	if imagescale.TooLarge(file) {
@@ -407,7 +408,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	// composer previews are fast immediately; the bytes were just written to disk.
 	var thumbnailRelPath string
 	if src, rerr := os.ReadFile(output.AbsPath); rerr == nil {
-		thumbnailRelPath = GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, src, output.VolumeRelPath)
+		thumbnailRelPath = turn.GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, src, output.VolumeRelPath)
 	}
 	created, err := s.artifacts.Create(r.Context(), artifact.CreateInput{
 		UserID:           user.ID,
@@ -426,7 +427,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		serverError(w, r, err, "save upload failed")
 		return
 	}
-	writeJSON(w, ArtifactResponseFromArtifact(created))
+	writeJSON(w, turn.ArtifactResponseFromArtifact(created))
 }
 
 func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, error) {

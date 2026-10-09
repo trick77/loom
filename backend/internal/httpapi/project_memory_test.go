@@ -7,32 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 )
-
-func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
-	user := auth.User{ID: "u1", ResponseLanguage: "en"}
-	newMsg := chat.Message{Role: chat.RoleUser, Content: "Hi"}
-
-	without := buildLLMHistory(user, promptBlocks{}, nil, newMsg)
-	if without[0].Role != "system" {
-		t.Fatalf("first message role = %q, want system", without[0].Role)
-	}
-	if strings.Contains(without[0].Content, "Project") {
-		t.Fatalf("system prompt unexpectedly contains project context: %q", without[0].Content)
-	}
-
-	with := buildLLMHistory(user, promptBlocks{project: "Project name: Amsterdam Trip"}, nil, newMsg)
-	if !strings.Contains(with[0].Content, "Project name: Amsterdam Trip") {
-		t.Fatalf("system prompt missing project context: %q", with[0].Content)
-	}
-	// The base system prompt is preserved alongside the injected context.
-	if !strings.HasPrefix(with[0].Content, without[0].Content) {
-		t.Fatalf("project context did not append to base system prompt: %q", with[0].Content)
-	}
-}
 
 func TestRenderProjectContext(t *testing.T) {
 	got := renderProjectContext(

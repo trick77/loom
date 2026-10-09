@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // formatShareTime renders a timestamp as RFC3339 for the public/owner JSON.
@@ -105,7 +106,7 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 			addID(id)
 		}
 
-		hadAttachment := !IsEmptyJSON(msg.Attachments)
+		hadAttachment := !turn.IsEmptyJSON(msg.Attachments)
 
 		sm := shareMessage{
 			ID:            msg.ID,
@@ -121,7 +122,7 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 		// Skip a message that contributes nothing visible (e.g. an image-only upload
 		// whose file we stripped and that left no caption). Keep it if it had an
 		// attachment marker so the transcript still notes something was sent.
-		if sm.Content == "" && IsEmptyJSON(sm.Artifacts) && IsEmptyJSON(sm.ContentBlocks) && !hadAttachment {
+		if sm.Content == "" && turn.IsEmptyJSON(sm.Artifacts) && turn.IsEmptyJSON(sm.ContentBlocks) && !hadAttachment {
 			continue
 		}
 
@@ -137,7 +138,7 @@ func buildShareSnapshot(shareID, title, author string, msgs []chat.Message) (sha
 // rewriteArtifactArrayForShare rewrites every artifact object's download/thumbnail
 // URL to the public share-scoped path and returns the referenced ids.
 func rewriteArtifactArrayForShare(shareID string, raw json.RawMessage) (json.RawMessage, []string, error) {
-	if IsEmptyJSON(raw) {
+	if turn.IsEmptyJSON(raw) {
 		return json.RawMessage("[]"), nil, nil
 	}
 	var objs []map[string]json.RawMessage
@@ -178,7 +179,7 @@ func rewriteContentBlocksForShare(shareID string, raw json.RawMessage, content s
 		return json.Marshal([]map[string]string{{"type": "text", "content": content}})
 	}
 
-	if IsEmptyJSON(raw) {
+	if turn.IsEmptyJSON(raw) {
 		out, err := textBlock()
 		return out, nil, err
 	}

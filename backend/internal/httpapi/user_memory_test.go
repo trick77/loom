@@ -11,6 +11,85 @@ import (
 	"github.com/trick77/loom/internal/llm"
 )
 
+func TestUserContextForUser_RendersBothBlocksIndependently(t *testing.T) {
+	// Directives present but derived memory empty: the directives block must still
+	// be injected (the old code returned "" whenever memory was blank).
+	fake := &fakeThreadStore{
+		UserDirectives: []chat.UserDirective{{ID: "dir_0", Content: "Always use metric"}},
+	}
+	s := &server{thread: fake}
+	out := s.userContextForUser(context.Background(), "alice")
+	if !strings.Contains(out, "Standing instructions") || !strings.Contains(out, "Always use metric") {
+		t.Fatalf("directives block missing when memory is empty:\n%s", out)
+	}
+	if !strings.Contains(out, "dir_0") {
+		t.Fatalf("directive id should be injected so the model can edit it:\n%s", out)
+	}
+	if strings.Contains(out, "Personal context about the user") {
+		t.Fatalf("derived block should be absent when memory is empty:\n%s", out)
+	}
+
+	// Derived memory present but no directives: only the derived block.
+	fake2 := &fakeThreadStore{UserMemory: chat.UserMemory{Content: "## Work context\n- Backend dev"}}
+	s2 := &server{thread: fake2}
+	out2 := s2.userContextForUser(context.Background(), "alice")
+	if !strings.Contains(out2, "Personal context about the user") || !strings.Contains(out2, "Backend dev") {
+		t.Fatalf("derived block missing:\n%s", out2)
+	}
+	if strings.Contains(out2, "Standing instructions") {
+		t.Fatalf("directives block should be absent when there are none:\n%s", out2)
+	}
+}
+
+func TestUserMemoryScope_ExclusionsFeedDirectiveContent(t *testing.T) {
+	// The dedup source: the user scope must surface directive CONTENT (no ids) so
+	// the generator can avoid restating a standing instruction in derived memory.
+	fake := &fakeThreadStore{
+		UserDirectives: []chat.UserDirective{
+			{ID: "dir_0", Content: "Always use metric"},
+			{ID: "dir_1", Content: "Call me Jan"},
+		},
+	}
+	s := &server{thread: fake}
+	scope := s.userMemoryScope(testUser)
+	if scope.exclusions == nil {
+		t.Fatal("user scope must set an exclusions hook")
+	}
+	out, err := scope.exclusions(context.Background())
+	if err != nil {
+		t.Fatalf("exclusions() error: %v", err)
+	}
+	if !strings.Contains(out, "Always use metric") || !strings.Contains(out, "Call me Jan") {
+		t.Fatalf("exclusions missing directive content:\n%s", out)
+	}
+	if strings.Contains(out, "dir_0") {
+		t.Fatalf("exclusions should carry content only, not ids:\n%s", out)
+	}
+}
+
+func TestProjectMemoryScope_HasNoExclusions(t *testing.T) {
+	// Project memory must be unaffected by the dedup plumbing.
+	s := &server{thread: &fakeThreadStore{}}
+	scope := s.projectMemoryScope(testUser, chat.Project{ID: "p1", Name: "P"})
+	if scope.exclusions != nil {
+		t.Fatal("project scope must not set an exclusions hook")
+	}
+}
+
+func TestUserContextForUser_DirectivesOutrankDerived(t *testing.T) {
+	fake := &fakeThreadStore{
+		UserDirectives: []chat.UserDirective{{ID: "dir_0", Content: "Be terse"}},
+		UserMemory:     chat.UserMemory{Content: "## Work context\n- Backend dev"},
+	}
+	s := &server{thread: fake}
+	out := s.userContextForUser(context.Background(), "alice")
+	di := strings.Index(out, "Standing instructions")
+	mi := strings.Index(out, "Personal context about the user")
+	if di < 0 || mi < 0 || di > mi {
+		t.Fatalf("directives block must come before the derived block (di=%d, mi=%d):\n%s", di, mi, out)
+	}
+}
+
 func TestRenderUserContext(t *testing.T) {
 	got := renderUserContext("- Works at Acme\n- Lives in Zurich")
 	for _, want := range []string{"Works at Acme", "Lives in Zurich"} {

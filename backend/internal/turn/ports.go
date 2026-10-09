@@ -81,7 +81,7 @@ type ThreadStore interface {
 }
 
 // UsageStore records per-user lifetime usage counters. All methods are
-// best-effort from the caller's side; see httpapi's server.recordUsage.
+// best-effort from the caller's side; see RecordUsage.
 type UsageStore interface {
 	AddTokens(context.Context, string, usage.TokenDelta) error
 	IncWebSearch(context.Context, string) error
