@@ -5,6 +5,7 @@ import {
   composeContent,
   draftScopeKey,
   getDraft,
+  restagedDrafts,
   setDraftPastedTexts,
   setDraftText,
   type ComposerDrafts,
@@ -85,4 +86,41 @@ test("content folds the trimmed draft together with its pastes", () => {
   ).toBe("only");
 
   expect(composeContent({ text: "", pastedTexts: [] })).toBe("");
+});
+
+test("restaging an empty message changes nothing", () => {
+  const drafts: ComposerDrafts = {
+    "thread:a": { text: "kept", pastedTexts: [] },
+  };
+
+  expect(restagedDrafts(drafts, "thread:a", "  ")).toBeNull();
+  expect(restagedDrafts(drafts, "thread:a", "", [])).toBeNull();
+});
+
+test("restaging loads a sent message back into its scope", () => {
+  const drafts: ComposerDrafts = {
+    "thread:b": { text: "other", pastedTexts: [] },
+  };
+
+  const next = restagedDrafts(drafts, "thread:a", "again");
+
+  expect(next).not.toBeNull();
+  expect(getDraft(next!, "thread:a")).toEqual({
+    text: "again",
+    pastedTexts: [],
+  });
+  expect(getDraft(next!, "thread:b").text).toBe("other");
+});
+
+test("restaging turns pasted blocks back into chips", () => {
+  const next = restagedDrafts({}, "thread:a", "see below", [
+    { text: "first\nsecond", lineCount: 2 },
+  ]);
+
+  expect(getDraft(next!, "thread:a")).toEqual({
+    text: "see below",
+    pastedTexts: [
+      { id: expect.any(String), text: "first\nsecond", lineCount: 2 },
+    ],
+  });
 });

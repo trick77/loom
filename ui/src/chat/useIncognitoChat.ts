@@ -1,11 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { streamIncognitoMessage, type MessagePastedText } from "../api";
 import {
   clearDraft,
   INCOGNITO_DRAFT_SCOPE,
-  restageDraft,
+  isEmptyMessage,
+  restagedDrafts,
   setDraft as setScopedDraft,
   type ComposerDrafts,
 } from "./composerDrafts";
@@ -55,6 +56,7 @@ export function useIncognitoChat({
   const [incognitoMessages, setIncognitoMessages] = useState<
     MessageWithActivityTrace[]
   >([]);
+  const sendingRef = useRef(false);
 
   const enterIncognito = useCallback(() => {
     // Incognito starts clean: it takes over the whole surface, so it gets its own
@@ -93,6 +95,10 @@ export function useIncognitoChat({
     restore?: { draft: string; pastedTexts: PastedText[] },
   ) {
     if (isStreaming(runs, INCOGNITO_RUN_KEY)) return;
+    // `runs` is this render's snapshot: a second send before the re-render would
+    // still see it idle, so the ref is the synchronous guard.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setDrafts((current) => clearDraft(current, INCOGNITO_DRAFT_SCOPE));
     setSendError("");
     const history = incognitoMessages
@@ -166,6 +172,7 @@ export function useIncognitoChat({
         (message) => patchStreamRun(INCOGNITO_RUN_KEY, { error: message }),
       );
     } finally {
+      sendingRef.current = false;
       endStreamRun(INCOGNITO_RUN_KEY, {
         keepFailedTurnVisible,
         controller: abortController,
@@ -174,14 +181,19 @@ export function useIncognitoChat({
   }
 
   const handleIncognitoRetry = useCallback(
-    (content: string, pastedTexts?: MessagePastedText[]) =>
-      restageDraft(
-        setDrafts,
-        requestComposerFocus,
-        INCOGNITO_DRAFT_SCOPE,
-        content,
-        pastedTexts,
-      ),
+    (content: string, pastedTexts?: MessagePastedText[]) => {
+      if (isEmptyMessage(content, pastedTexts)) return;
+      setDrafts(
+        (current) =>
+          restagedDrafts(
+            current,
+            INCOGNITO_DRAFT_SCOPE,
+            content,
+            pastedTexts,
+          ) ?? current,
+      );
+      requestComposerFocus();
+    },
     [requestComposerFocus, setDrafts],
   );
 

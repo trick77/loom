@@ -118,25 +118,29 @@ export function clearDraft(
 
 /**
  * Retry: load a sent message back into `scope` for the user to edit and send
- * manually, then focus the composer. Collapsed pastes are re-staged as chips (not
- * the folded inline text), so a resend keeps the same collapse. An empty message
- * changes nothing.
+ * manually. Collapsed pastes are re-staged as chips (not the folded inline text),
+ * so a resend keeps the same collapse. Null for an empty message, which changes
+ * nothing.
  */
-export function restageDraft(
-  setDrafts: (update: (current: ComposerDrafts) => ComposerDrafts) => void,
-  requestFocus: () => void,
+export function restagedDrafts(
+  drafts: ComposerDrafts,
   scope: DraftScope,
   content: string,
   pastedTexts: PastedTextBlock[] = [],
-): void {
-  if (content.trim() === "" && pastedTexts.length === 0) return;
-  setDrafts((current) =>
-    setDraft(current, scope, {
-      text: content,
-      pastedTexts: pastedTexts.map(pastedTextFromBlock),
-    }),
-  );
-  requestFocus();
+): ComposerDrafts | null {
+  if (isEmptyMessage(content, pastedTexts)) return null;
+  return setDraft(drafts, scope, {
+    text: content,
+    pastedTexts: pastedTexts.map(pastedTextFromBlock),
+  });
+}
+
+/** A message with no text and no pastes: nothing to restage. */
+export function isEmptyMessage(
+  content: string,
+  pastedTexts: PastedTextBlock[] = [],
+): boolean {
+  return content.trim() === "" && pastedTexts.length === 0;
 }
 
 /** Merge the trimmed draft with its staged pastes into the outgoing content. */

@@ -42,7 +42,35 @@ test("a json body keeps the caller's own headers", async () => {
 
   expect(fetchMock).toHaveBeenLastCalledWith("/api/x", {
     method: "POST",
-    headers: { "X-Custom": "1", "Content-Type": "application/json" },
+    headers: { "x-custom": "1", "Content-Type": "application/json" },
+    body: JSON.stringify({ a: 1 }),
+  });
+
+  await request("/api/x", "failed", {
+    method: "POST",
+    headers: new Headers({ "X-Custom": "1" }),
+    json: { a: 1 },
+  });
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/x", {
+    method: "POST",
+    headers: { "x-custom": "1", "Content-Type": "application/json" },
+    body: JSON.stringify({ a: 1 }),
+  });
+});
+
+test("a json body replaces the caller's own content type", async () => {
+  const fetchMock = vi.fn(async () => Response.json({ ok: true }));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await request("/api/x", "failed", {
+    method: "POST",
+    headers: { "content-type": "text/plain" },
+    json: { a: 1 },
+  });
+
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/x", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ a: 1 }),
   });
 });

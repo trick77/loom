@@ -63,23 +63,22 @@ export async function request(
   tolerate: number[] = [],
 ): Promise<Response> {
   const { json, ...init } = options ?? {};
+  // Keeps fetch's single-argument form, which the tests and callers rely on.
   const response = await (options === undefined
     ? fetch(url)
-    : fetch(
-        url,
-        json === undefined
-          ? init
-          : {
-              ...init,
-              headers: {
-                ...(init.headers as Record<string, string> | undefined),
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify(json),
-            },
-      ));
+    : fetch(url, json === undefined ? init : withJSONBody(init, json)));
   await expectOK(response, errorMessage, tolerate);
   return response;
+}
+
+// withJSONBody normalizes the caller's headers (a record, a Headers instance or
+// tuples; keys come out lowercase) so its own content type cannot survive next
+// to ours.
+function withJSONBody(init: RequestInit, json: unknown): RequestInit {
+  const headers = Object.fromEntries(new Headers(init.headers));
+  delete headers["content-type"];
+  headers["Content-Type"] = "application/json";
+  return { ...init, headers, body: JSON.stringify(json) };
 }
 
 // requestJSON is request plus decoding the JSON answer.

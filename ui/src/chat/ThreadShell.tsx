@@ -39,7 +39,8 @@ import {
   composeContent,
   draftScopeKey,
   getDraft,
-  restageDraft,
+  isEmptyMessage,
+  restagedDrafts,
   setDraft as setScopedDraft,
   threadDraftScope,
   type DraftScope,
@@ -404,8 +405,9 @@ export function ThreadShell({
     ],
   );
 
-  // Escape goes to the last surface registered: the thread menu (which can open
-  // inside the mobile drawer) registers after the drawer, so it closes first.
+  // Escape goes to the most recently activated handler: the thread menu opens
+  // inside an already open mobile drawer, so it closes first. Declaration order
+  // only breaks a tie when both activate in the same commit.
   useEscapeKey(closeMobileSidebar, {
     active: mobileSidebarOpen,
   });
@@ -806,14 +808,12 @@ export function ThreadShell({
   const hasActiveThread = activeThread !== null;
   const handleRetry = useCallback(
     (content: string, pastedTexts?: MessagePastedText[]) => {
-      if (!hasActiveThread) return;
-      restageDraft(
-        setDrafts,
-        requestComposerFocus,
-        draftScope,
-        content,
-        pastedTexts,
+      if (!hasActiveThread || isEmptyMessage(content, pastedTexts)) return;
+      setDrafts(
+        (current) =>
+          restagedDrafts(current, draftScope, content, pastedTexts) ?? current,
       );
+      requestComposerFocus();
     },
     [draftScope, hasActiveThread, requestComposerFocus, setDrafts],
   );
@@ -1179,8 +1179,9 @@ export function ThreadShell({
     const draftText = draft.text.trim();
     const content = composeContent(draft);
     if (content === "") return;
+    // Like handleSend: no send, and no slash command, while the turn streams.
+    if (activeThreadIsStreaming) return;
     if (runSlashCommand(draftText)) return;
-    // sendIncognitoContent ignores a send while the incognito turn streams.
     await sendIncognitoContent(content, true, {
       draft: draftText,
       pastedTexts: draft.pastedTexts,

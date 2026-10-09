@@ -216,6 +216,31 @@ test("a send while the incognito turn is streaming is ignored", async () => {
   });
 });
 
+test("two sends in the same render start only one turn", async () => {
+  let finishFirst = () => {};
+  api.streamIncognitoMessage.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishFirst = resolve;
+      }),
+  );
+  const { hook } = setup();
+
+  let sends: Promise<void>[] = [];
+  act(() => {
+    sends = [
+      hook.result.current.chat.sendIncognitoContent("one", true),
+      hook.result.current.chat.sendIncognitoContent("two", true),
+    ];
+  });
+
+  expect(api.streamIncognitoMessage).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    finishFirst();
+    await Promise.all(sends);
+  });
+});
+
 test("an aborted send ends quietly", async () => {
   const { hook, runs } = setup();
   api.streamIncognitoMessage.mockRejectedValue(
