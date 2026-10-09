@@ -32,20 +32,13 @@ const (
 	toolFailedPrefix          = "tool failed"
 )
 
-// toolCallCapPerRound reports how many times a given tool may run in one round.
-// fetch/obscura are very inexpensive (an HTTP read / a headless page load), so
-// they get a higher cap than the conservative default that guards pricier tools.
+// toolCallCapPerRound reports how many times a given tool may run in one round
+// (see toolSpec.capPerRound).
 func toolCallCapPerRound(name string) int {
-	switch name {
-	case fetchToolName, obscuraNavigateToolName, obscuraSnapshotToolName:
-		return cheapToolCallsPerRound
-	case sandboxToolName:
-		// Each job can hold a sandbox slot for up to a minute; a round that
-		// wants more is better split across rounds.
-		return sandboxToolCallsPerRound
-	default:
-		return maxToolCallsPerRound
+	if limit := toolPolicy(name).capPerRound; limit > 0 {
+		return limit
 	}
+	return maxToolCallsPerRound
 }
 
 // LoopResult is what the assistant loop produced: the final answer call's
@@ -201,7 +194,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			// by imageGenerated, not the per-round cap, so it must never fall through
 			// to the "reissue it next round" deferral message (which would be wrong —
 			// a reissued image call is only skipped again).
-			if call.Function.Name == "generate_image" && imageGenerated {
+			if call.Function.Name == imagegen.ToolName && imageGenerated {
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
 			} else if deferred[i] {
 				cap := toolCallCapPerRound(call.Function.Name)
@@ -219,7 +212,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 						artifacts = append(artifacts, response)
 						b.addArtifact(response)
 					}
-					if len(created) > 0 && call.Function.Name == "generate_image" {
+					if len(created) > 0 && call.Function.Name == imagegen.ToolName {
 						imageGenerated = true
 					}
 				} else if runs[i] != nil {
@@ -355,7 +348,7 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 	var call llm.ToolCall
 	var compiled bool
 	for _, candidate := range result.ToolCalls {
-		if candidate.Function.Name == "generate_image" {
+		if candidate.Function.Name == imagegen.ToolName {
 			call, compiled = candidate, true
 			break
 		}
@@ -459,7 +452,7 @@ func fallbackImageToolCall(userPrompt string) (llm.ToolCall, bool) {
 	return llm.ToolCall{
 		ID:       "fallback_generate_image",
 		Type:     "function",
-		Function: llm.ToolCallFunction{Name: "generate_image", Arguments: string(args)},
+		Function: llm.ToolCallFunction{Name: imagegen.ToolName, Arguments: string(args)},
 	}, true
 }
 

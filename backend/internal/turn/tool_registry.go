@@ -2,6 +2,7 @@ package turn
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/trick77/loom/internal/artifact"
@@ -12,16 +13,27 @@ import (
 )
 
 // toolSpec is everything the engine knows about one tool. A built-in has a
-// schema and a run; adding one is adding an entry here.
+// schema and a run; adding one is adding an entry here. An MCP tool's entry
+// carries only the round policy: its server supplies the schema and runs it.
 type toolSpec struct {
 	name string
-	// schema builds the definition offered to the model.
+	// schema builds the definition offered to the model; nil for an MCP tool.
 	schema func() llm.Tool
 	// offered reports whether the turn gets the tool; nil means always.
 	offered func(e *Engine, thread chat.Thread, gate toolGate) bool
 	// run executes a call and returns the model-facing output and the
-	// artifacts it created.
+	// artifacts it created; nil for an MCP tool.
 	run toolRunFunc
+	// capPerRound bounds how many calls of the tool one round runs; 0 means
+	// maxToolCallsPerRound.
+	capPerRound int
+	// concurrent marks a stateless web read whose calls in a round may
+	// overlap (see startToolRuns).
+	concurrent bool
+	// counter names the usage counter count bumps after a successful MCP
+	// call; count nil counts nothing. Built-ins count themselves.
+	counter string
+	count   func(u UsageStore, ctx context.Context, userID string) error
 }
 
 type toolRunFunc func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response)
@@ -92,6 +104,61 @@ var sandboxToolSpec = toolSpec{
 	run: func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response) {
 		return t.e.runSandboxTool(ctx, t.stream, t.user, t.thread, call)
 	},
+	// Each job can hold a sandbox slot for up to a minute; a round that
+	// wants more is better split across rounds.
+	capPerRound: sandboxToolCallsPerRound,
+}
+
+// mcpTools is the policy for the MCP tools loom knows by name. fetch and
+// obscura are very inexpensive (an HTTP read, a headless page load), so they
+// get a higher cap than the default that guards pricier tools. An obscura page
+// load counts per navigate; the fetch->obscura fallback navigates outside the
+// tool loop and counts itself (see fetchObscuraFallback).
+var mcpTools = []toolSpec{
+	{
+		name:        fetchToolName,
+		capPerRound: cheapToolCallsPerRound,
+		concurrent:  true,
+		counter:     "web_fetch",
+		count:       UsageStore.IncWebFetch,
+	},
+	{
+		name:       tavilySearchExposedName,
+		concurrent: true,
+		counter:    "web_search",
+		count:      UsageStore.IncWebSearch,
+	},
+	{
+		name:        obscuraNavigateToolName,
+		capPerRound: cheapToolCallsPerRound,
+		counter:     "obscura_fetch",
+		count:       UsageStore.IncObscuraFetch,
+	},
+	{name: obscuraSnapshotToolName, capPerRound: cheapToolCallsPerRound},
+}
+
+// fixedTools indexes the tools whose names loom knows up front, for the round
+// policy. Generated-file and image tools take the defaults.
+var fixedTools = indexTools(slices.Concat(coreTools, []toolSpec{sandboxToolSpec}, mcpTools))
+
+// toolPolicy returns the spec that holds name's round policy; a tool loom
+// does not know by name gets the zero spec, i.e. the defaults.
+func toolPolicy(name string) toolSpec {
+	if spec := fixedTools[name]; spec != nil {
+		return *spec
+	}
+	return toolSpec{}
+}
+
+// indexTools maps each spec by name; on a duplicate the first wins.
+func indexTools(tools []toolSpec) map[string]*toolSpec {
+	byName := make(map[string]*toolSpec, len(tools))
+	for i := range tools {
+		if _, exists := byName[tools[i].name]; !exists {
+			byName[tools[i].name] = &tools[i]
+		}
+	}
+	return byName
 }
 
 // docToolSpec offers a file generator. They are the biggest built-in schema
@@ -131,12 +198,12 @@ func imageToolSpec(gen imagegen.Tool) toolSpec {
 	}
 }
 
-// registry returns every tool in offer order and the same specs by name. It
-// is built once, on first use, so an Engine literal works like one from New.
-// On a duplicate name the first spec wins.
+// registry returns this engine's built-ins in offer order and the same specs
+// by name. It is built once, on first use, so an Engine literal works like
+// one from New. On a duplicate name the first spec wins.
 func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 	s.toolsOnce.Do(func() {
-		tools := append([]toolSpec(nil), coreTools...)
+		tools := slices.Clone(coreTools)
 		for _, gen := range s.docTools {
 			tools = append(tools, docToolSpec(gen))
 		}
@@ -144,13 +211,7 @@ func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 		for _, gen := range s.imageTools {
 			tools = append(tools, imageToolSpec(gen))
 		}
-		byName := make(map[string]*toolSpec, len(tools))
-		for i := range tools {
-			if _, exists := byName[tools[i].name]; !exists {
-				byName[tools[i].name] = &tools[i]
-			}
-		}
-		s.tools, s.toolsByName = tools, byName
+		s.tools, s.toolsByName = tools, indexTools(tools)
 	})
 	return s.tools, s.toolsByName
 }

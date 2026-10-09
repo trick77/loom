@@ -91,7 +91,7 @@ const concurrentToolRuns = 4
 // round's sequence: obscura drives one shared browser, the built-in tools
 // write per-turn state.
 func runsConcurrently(name string) bool {
-	return name == fetchToolName || name == tavilySearchExposedName
+	return toolPolicy(name).concurrent
 }
 
 // startToolRuns starts the network half of every call in the round that may
@@ -141,19 +141,17 @@ func (s *Engine) startToolRuns(ctx context.Context, calls []llm.ToolCall, skippe
 }
 
 // countToolCall increments the per-user counter for a successfully completed
-// tool call. An obscura page load is counted per browser_navigate (one fetch =
-// one navigated page); this covers the model driving obscura directly. The
-// deterministic fetch->obscura fallback navigates obscura outside this path, so
-// it counts itself in fetchObscuraFallback — there is no double count.
+// MCP tool call (see toolSpec.count). An obscura page load is counted per
+// browser_navigate (one fetch = one navigated page); this covers the model
+// driving obscura directly. The deterministic fetch->obscura fallback navigates
+// obscura outside this path, so it counts itself in fetchObscuraFallback —
+// there is no double count.
 func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName string) {
-	switch toolName {
-	case tavilySearchExposedName:
-		usage.Record(s.usage, "web_search", func() error { return s.usage.IncWebSearch(ctx, user.ID) })
-	case fetchToolName:
-		usage.Record(s.usage, "web_fetch", func() error { return s.usage.IncWebFetch(ctx, user.ID) })
-	case obscuraNavigateToolName:
-		usage.Record(s.usage, "obscura_fetch", func() error { return s.usage.IncObscuraFetch(ctx, user.ID) })
+	spec := toolPolicy(toolName)
+	if spec.count == nil {
+		return
 	}
+	usage.Record(s.usage, spec.counter, func() error { return spec.count(s.usage, ctx, user.ID) })
 }
 
 // Tool names involved in the deterministic fetch->obscura fallback. fetch is the
@@ -254,7 +252,7 @@ func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
 
 func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 	for _, tool := range tools {
-		if tool.Function.Name == "generate_image" {
+		if tool.Function.Name == imagegen.ToolName {
 			selected := tool
 			return &selected
 		}

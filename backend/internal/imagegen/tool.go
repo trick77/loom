@@ -57,9 +57,12 @@ func NewTool(provider Provider) Tool {
 	return Tool{provider: provider}
 }
 
+// ToolName is the image generation tool's name for LLM tool use.
+const ToolName = "generate_image"
+
 // ToolName returns the name of the tool for LLM tool use.
 func (t Tool) ToolName() string {
-	return "generate_image"
+	return ToolName
 }
 
 // Schema returns the tool schema describing the tool's interface to LLMs.
