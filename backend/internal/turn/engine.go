@@ -40,8 +40,8 @@ type Engine struct {
 	// turnGateTimeout bounds the gate calls; zero means the default (see
 	// gateTimeout).
 	turnGateTimeout time.Duration
-	// toolsOnce guards the tool registry: tools in offer order, toolsByName
-	// the same specs by name (see registry).
+	// toolsOnce guards the tool registry: the built-ins in offer order, and
+	// toolsByName every spec loom knows, MCP policies included (see registry).
 	toolsOnce   sync.Once
 	tools       []toolSpec
 	toolsByName map[string]*toolSpec

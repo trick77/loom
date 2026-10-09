@@ -143,14 +143,12 @@ var mcpPolicies = []toolSpec{
 	{name: obscuraSnapshotToolName, capPerRound: cheapToolCallsPerRound},
 }
 
-// fixedTools indexes the tools whose names loom knows up front, for the round
-// policy. Generated-file and image tools take the defaults.
-var fixedTools = indexTools(slices.Concat(coreTools, []toolSpec{sandboxToolSpec}, mcpPolicies))
-
-// toolPolicy returns the spec that holds name's round policy; a tool loom
-// does not know by name gets the zero spec, i.e. the defaults.
-func toolPolicy(name string) toolSpec {
-	if spec := fixedTools[name]; spec != nil {
+// toolPolicy returns the spec that holds name's round policy: this engine's
+// built-in of that name, else the MCP policy. A tool loom does not know by
+// name gets the zero spec, i.e. the defaults.
+func (s *Engine) toolPolicy(name string) toolSpec {
+	_, byName := s.registry()
+	if spec := byName[name]; spec != nil {
 		return *spec
 	}
 	return toolSpec{}
@@ -208,10 +206,10 @@ func imageToolSpec(gen imagegen.Tool) toolSpec {
 	}
 }
 
-// registry returns this engine's built-ins in offer order and the same specs
-// by name. It is built once, on first use, so an Engine literal works like
-// one from New; so is each built-in's definition. On a duplicate name the
-// first spec wins.
+// registry returns this engine's built-ins in offer order, and by name every
+// spec loom knows: those built-ins, then the MCP policies. It is built once,
+// on first use, so an Engine literal works like one from New; so is each
+// built-in's definition. On a duplicate name the first spec wins.
 func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 	s.toolsOnce.Do(func() {
 		tools := slices.Clone(coreTools)
@@ -225,7 +223,7 @@ func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 		for i := range tools {
 			tools[i].tool = tools[i].schema()
 		}
-		s.tools, s.toolsByName = tools, indexTools(tools)
+		s.tools, s.toolsByName = tools, indexTools(slices.Concat(tools, mcpPolicies))
 	})
 	return s.tools, s.toolsByName
 }

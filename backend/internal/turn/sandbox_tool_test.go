@@ -401,7 +401,7 @@ func TestSandboxToolSchema(t *testing.T) {
 			t.Fatalf("schema lacks %s: %s", want, raw)
 		}
 	}
-	if toolCallCapPerRound(sandboxToolName) != sandboxToolCallsPerRound {
+	if (&Engine{}).toolCallCapPerRound(sandboxToolName) != sandboxToolCallsPerRound {
 		t.Fatal("per-round cap")
 	}
 }

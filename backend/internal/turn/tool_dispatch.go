@@ -90,8 +90,8 @@ const concurrentToolRuns = 4
 // are independent of one another. Everything else keeps its place in the
 // round's sequence: obscura drives one shared browser, the built-in tools
 // write per-turn state.
-func runsConcurrently(name string) bool {
-	return toolPolicy(name).concurrent
+func (s *Engine) runsConcurrently(name string) bool {
+	return s.toolPolicy(name).concurrent
 }
 
 // startToolRuns starts the network half of every call in the round that may
@@ -104,7 +104,7 @@ func (s *Engine) startToolRuns(ctx context.Context, calls []llm.ToolCall, skippe
 	runs := make([]<-chan toolRun, len(calls))
 	eligible := 0
 	for i, call := range calls {
-		if !skipped[i] && runsConcurrently(call.Function.Name) {
+		if !skipped[i] && s.runsConcurrently(call.Function.Name) {
 			eligible++
 		}
 	}
@@ -113,7 +113,7 @@ func (s *Engine) startToolRuns(ctx context.Context, calls []llm.ToolCall, skippe
 	}
 	slots := make(chan struct{}, concurrentToolRuns)
 	for i, call := range calls {
-		if skipped[i] || !runsConcurrently(call.Function.Name) {
+		if skipped[i] || !s.runsConcurrently(call.Function.Name) {
 			continue
 		}
 		done := make(chan toolRun, 1)
@@ -147,7 +147,7 @@ func (s *Engine) startToolRuns(ctx context.Context, calls []llm.ToolCall, skippe
 // obscura outside this path, so it counts itself in fetchObscuraFallback —
 // there is no double count.
 func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName string) {
-	counter := toolPolicy(toolName).counts
+	counter := s.toolPolicy(toolName).counts
 	if counter == nil {
 		return
 	}

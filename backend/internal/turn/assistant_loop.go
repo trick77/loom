@@ -34,8 +34,8 @@ const (
 
 // toolCallCapPerRound reports how many times a given tool may run in one round
 // (see toolSpec.capPerRound).
-func toolCallCapPerRound(name string) int {
-	if limit := toolPolicy(name).capPerRound; limit > 0 {
+func (s *Engine) toolCallCapPerRound(name string) int {
+	if limit := s.toolPolicy(name).capPerRound; limit > 0 {
 		return limit
 	}
 	return maxToolCallsPerRound
@@ -181,7 +181,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		deferred := make([]bool, len(result.ToolCalls))
 		for i, call := range result.ToolCalls {
 			perToolCount[call.Function.Name]++
-			deferred[i] = perToolCount[call.Function.Name] > toolCallCapPerRound(call.Function.Name)
+			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
 		}
 		// The round's independent web reads start now and overlap; everything
 		// below still handles the calls one at a time, in the model's order.
@@ -197,7 +197,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			if call.Function.Name == imagegen.ToolName && imageGenerated {
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
 			} else if deferred[i] {
-				cap := toolCallCapPerRound(call.Function.Name)
+				cap := t.e.toolCallCapPerRound(call.Function.Name)
 				// The instruction rides with the deferral in history so the model sees
 				// it on every exit path — including when it concludes with prose without
 				// reissuing (which never reaches the forced-final directive below).

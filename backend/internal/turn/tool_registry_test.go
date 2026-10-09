@@ -203,14 +203,14 @@ func TestToolPolicyPerName(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := toolCallCapPerRound(tc.name); got != tc.cap {
-				t.Errorf("cap = %d, want %d", got, tc.cap)
-			}
-			if got := runsConcurrently(tc.name); got != tc.concurrent {
-				t.Errorf("concurrent = %v, want %v", got, tc.concurrent)
-			}
 			u := &countingUsage{counts: map[string]int{}}
 			e := &Engine{usage: u, docTools: allDocTools(), imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})}}
+			if got := e.toolCallCapPerRound(tc.name); got != tc.cap {
+				t.Errorf("cap = %d, want %d", got, tc.cap)
+			}
+			if got := e.runsConcurrently(tc.name); got != tc.concurrent {
+				t.Errorf("concurrent = %v, want %v", got, tc.concurrent)
+			}
 			e.countToolCall(context.Background(), testUser, tc.name)
 			want := map[string]int{}
 			if tc.counter != "" {
@@ -220,6 +220,32 @@ func TestToolPolicyPerName(t *testing.T) {
 				t.Errorf("counters = %v, want %v", u.counts, want)
 			}
 		})
+	}
+}
+
+// The round policy comes from the engine's registry, so one set on a docgen
+// or image spec takes effect like one on a core tool.
+func TestToolPolicyFollowsGeneratorSpecs(t *testing.T) {
+	u := &countingUsage{counts: map[string]int{}}
+	e := &Engine{usage: u, docTools: allDocTools(), imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})}}
+	_, byName := e.registry()
+	byName["create_pdf_file"].capPerRound = 2
+	byName["create_pdf_file"].concurrent = true
+	byName[imagegen.ToolName].capPerRound = 1
+	byName[imagegen.ToolName].counts = &usageCounter{"image_gen", UsageStore.IncImageGen}
+
+	if got := e.toolCallCapPerRound("create_pdf_file"); got != 2 {
+		t.Errorf("create_pdf_file cap = %d, want 2", got)
+	}
+	if !e.runsConcurrently("create_pdf_file") {
+		t.Error("create_pdf_file not concurrent")
+	}
+	if got := e.toolCallCapPerRound(imagegen.ToolName); got != 1 {
+		t.Errorf("%s cap = %d, want 1", imagegen.ToolName, got)
+	}
+	e.countToolCall(context.Background(), testUser, imagegen.ToolName)
+	if want := map[string]int{"image_gen": 1}; !reflect.DeepEqual(u.counts, want) {
+		t.Errorf("counters = %v, want %v", u.counts, want)
 	}
 }
 
