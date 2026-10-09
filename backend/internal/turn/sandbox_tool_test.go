@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
@@ -189,7 +190,7 @@ func TestRunSandboxToolPassesRejectionReason(t *testing.T) {
 
 func TestFormatSandboxResultPutsStdoutLast(t *testing.T) {
 	out := formatSandboxResult(sandbox.Result{ExitCode: 1, Stdout: strings.Repeat("x", 40<<10), Stderr: "KeyError"},
-		[]ArtifactResponse{{DisplayFilename: "chart.png", SizeBytes: 3}}, []string{"x.svg: file type not allowed"}, time.Minute)
+		[]artifact.Response{{DisplayFilename: "chart.png", SizeBytes: 3}}, []string{"x.svg: file type not allowed"}, time.Minute)
 	capped := capToolOutput(out)
 	for _, want := range []string{"exit_code: 1", "created artifact chart.png", "x.svg: file type not allowed", "KeyError"} {
 		if !strings.Contains(capped, want) {

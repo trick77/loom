@@ -3,6 +3,7 @@ package turn
 import (
 	"strings"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/llm"
 )
 
@@ -15,7 +16,7 @@ type ContentBlock struct {
 	Type     string               `json:"type"`
 	Content  string               `json:"content,omitempty"`
 	Events   []ActivityTraceEvent `json:"events,omitempty"`
-	Artifact *ArtifactResponse    `json:"artifact,omitempty"`
+	Artifact *artifact.Response   `json:"artifact,omitempty"`
 }
 
 // blockBuilder accumulates the chronological content blocks of a single
@@ -59,7 +60,7 @@ func (b *blockBuilder) prose() string {
 }
 
 // addArtifact appends an artifact block at the position the artifact was produced.
-func (b *blockBuilder) addArtifact(a ArtifactResponse) {
+func (b *blockBuilder) addArtifact(a artifact.Response) {
 	b.blocks = append(b.blocks, ContentBlock{Type: "artifact", Artifact: &a})
 }
 
@@ -141,7 +142,7 @@ func (b *blockBuilder) addTraceOnlyResult(titles *ReasoningTitleTracker, result 
 // result assembles the loop's outcome from what the builder collected: the
 // flat trace and the ordered blocks travel with every return, whatever else
 // the turn produced.
-func (b *blockBuilder) result(stream llm.StreamResult, artifacts []ArtifactResponse, toolError string) LoopResult {
+func (b *blockBuilder) result(stream llm.StreamResult, artifacts []artifact.Response, toolError string) LoopResult {
 	return LoopResult{
 		StreamResult:  stream,
 		Artifacts:     artifacts,

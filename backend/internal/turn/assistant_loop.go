@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 )
@@ -51,7 +52,7 @@ func toolCallCapPerRound(name string) int {
 // result plus everything the turn gathered on the way to it.
 type LoopResult struct {
 	llm.StreamResult
-	Artifacts     []ArtifactResponse
+	Artifacts     []artifact.Response
 	ToolError     string
 	ActivityTrace []ActivityTraceEvent
 	Blocks        []ContentBlock
@@ -94,7 +95,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// round budget is exhausted, the forced final answer flags the leftover work so
 	// the user can ask to continue (a fresh turn has a fresh round budget).
 	lastRoundDeferred := false
-	var artifacts []ArtifactResponse
+	var artifacts []artifact.Response
 	// reg accumulates web-search/fetch sources across rounds, assigning each a
 	// stable [n] index the model cites inline, continuing after any documents
 	// numbered before the loop. A snapshot is pushed to the browser after every
@@ -210,7 +211,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				output = fmt.Sprintf("Deferred: at most %d %s call(s) run per round, so this call was not run. Reissue it in a later round to process it. If you finish answering before it runs, tell the user that not everything was processed and offer to continue.", cap, call.Function.Name)
 				lastRoundDeferred = true
 			} else {
-				var created []ArtifactResponse
+				var created []artifact.Response
 				var handled bool
 				output, created, handled = t.executeBuiltInTool(ctx, call)
 				if handled {
@@ -423,7 +424,7 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 	return b.result(final, artifacts, ""), err
 }
 
-func fallbackArtifactResponse(response ArtifactResponse) string {
+func fallbackArtifactResponse(response artifact.Response) string {
 	if strings.TrimSpace(response.DisplayFilename) == "" {
 		return "Created the artifact."
 	}
@@ -480,7 +481,7 @@ func persistInterruptedPartial(result llm.StreamResult, err error) bool {
 // persisted content, so a stop after a tool created a file does not drop the
 // file from the transcript. A stall gets no such fallback: it is the upstream
 // failing, and the user has to see that.
-func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, artifacts []ArtifactResponse) bool {
+func (b *blockBuilder) keepInterrupted(result *llm.StreamResult, err error, artifacts []artifact.Response) bool {
 	if strings.TrimSpace(result.Content) != "" || !errors.Is(err, context.Canceled) {
 		return persistInterruptedPartial(*result, err)
 	}

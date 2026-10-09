@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 )
 
@@ -19,7 +20,7 @@ import (
 func (t *Run) PersistAssistantTurn(ctx context.Context, result *LoopResult) (chat.Message, error) {
 	artifacts := result.Artifacts
 	if artifacts == nil {
-		artifacts = []ArtifactResponse{}
+		artifacts = []artifact.Response{}
 	}
 	// Offer substantial inline code/XML blocks as downloadable files. This is a
 	// deterministic, code-driven pass over the finished answer — the model emits

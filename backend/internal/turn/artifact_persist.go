@@ -76,16 +76,3 @@ func (s *Engine) persistArtifactBytes(ctx context.Context, user auth.User, threa
 	}
 	return created, nil
 }
-
-// ArtifactResponseFromArtifact is the wire shape of a stored artifact.
-func ArtifactResponseFromArtifact(item artifact.Artifact) ArtifactResponse {
-	return ArtifactResponse{
-		ID:              item.ID,
-		DisplayFilename: item.DisplayFilename,
-		MIMEType:        item.MIMEType,
-		SizeBytes:       item.SizeBytes,
-		ProjectID:       item.ProjectID,
-		DownloadURL:     item.DownloadURL,
-		ThumbnailURL:    item.ThumbnailURL,
-	}
-}

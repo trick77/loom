@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/llm"
 )
 
@@ -61,7 +62,7 @@ func TestBlockBuilderInterleavesChronologically(t *testing.T) {
 	})
 	// The tool returns and produces an artifact.
 	b.setToolResult("call_1", "fetched ok")
-	b.addArtifact(ArtifactResponse{ID: "art_1", DisplayFilename: "report.pdf"})
+	b.addArtifact(artifact.Response{ID: "art_1", DisplayFilename: "report.pdf"})
 	// Final round: just prose, no reasoning/tools.
 	b.addResult(nil, llm.StreamResult{Content: "Here is the final answer."})
 

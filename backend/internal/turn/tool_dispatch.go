@@ -317,7 +317,7 @@ func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
 // executeBuiltInTool runs a tool loom implements itself. It returns the
 // model-facing output, the artifacts the call created (run_python can write
 // several) and whether the name was a built-in at all.
-func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string, []ArtifactResponse, bool) {
+func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string, []artifact.Response, bool) {
 	if call.Function.Name == ProjectThreadsToolName {
 		return t.e.projectThreadsDigest(ctx, t.user.ID, t.thread), nil, true
 	}
@@ -343,11 +343,11 @@ func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string
 	return output, oneArtifact(resp), true
 }
 
-func oneArtifact(resp *ArtifactResponse) []ArtifactResponse {
+func oneArtifact(resp *artifact.Response) []artifact.Response {
 	if resp == nil {
 		return nil
 	}
-	return []ArtifactResponse{*resp}
+	return []artifact.Response{*resp}
 }
 
 // runDocGenerator executes a file-generating built-in tool (create_pdf_file,
@@ -357,7 +357,7 @@ func oneArtifact(resp *ArtifactResponse) []ArtifactResponse {
 // server-side failures invisible. The deferred log fixes that: every outcome is
 // recorded with the tool name, argument size, a truncated argument preview and
 // the result, so the next failure is diagnosable from the logs.
-func (t *Run) runDocGenerator(ctx context.Context, call llm.ToolCall, generator docgen.Generator) (output string, resp *ArtifactResponse) {
+func (t *Run) runDocGenerator(ctx context.Context, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifact.Response) {
 	start := time.Now()
 	defer func() {
 		attrs := []any{
@@ -402,7 +402,7 @@ func (t *Run) runDocGenerator(ctx context.Context, call llm.ToolCall, generator 
 	if err != nil {
 		return capToolOutput("tool failed: " + err.Error()), nil
 	}
-	response := ArtifactResponseFromArtifact(created)
+	response := created.Response()
 	_ = t.stream.SendJSON("artifact", response)
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
@@ -442,7 +442,7 @@ func (s *Engine) resolveThreadImageModel(ctx context.Context, userID string, thr
 
 // executeImageTool runs an image tool call with the turn's edit source and
 // typography routing.
-func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*ArtifactResponse, string, bool) {
+func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*artifact.Response, string, bool) {
 	generator := t.e.imageTool(call.Function.Name)
 	if generator == nil {
 		return nil, "", false
@@ -522,7 +522,7 @@ func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*Artifac
 	if err != nil {
 		return nil, capToolOutput("tool failed: " + err.Error()), true
 	}
-	response := ArtifactResponseFromArtifact(created)
+	response := created.Response()
 	response.Model = meta.Model
 	response.Provider = meta.Provider
 	response.Width = meta.Width

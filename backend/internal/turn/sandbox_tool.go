@@ -256,7 +256,7 @@ func countIn(inputs, of []sandboxInput) int {
 // the job, persist the files it wrote as artifacts and report back to the
 // model. A failing program is a normal result; only an infrastructure problem
 // returns "tool failed".
-func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall) (output string, created []ArtifactResponse) {
+func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall) (output string, created []artifact.Response) {
 	start := time.Now()
 	defer func() {
 		attrs := []any{
@@ -397,24 +397,24 @@ func (s *Engine) readSandboxInput(userID string, doc rag.Document, budget int) (
 // persistSandboxFile stores one output file as an artifact of the thread. The
 // sidecar already filtered names and types; this is the second check, at the
 // point where the bytes enter the user's volume.
-func (s *Engine) persistSandboxFile(ctx context.Context, user auth.User, thread chat.Thread, f sandbox.File) (ArtifactResponse, string) {
+func (s *Engine) persistSandboxFile(ctx context.Context, user auth.User, thread chat.Thread, f sandbox.File) (artifact.Response, string) {
 	ext := strings.ToLower(filepath.Ext(f.Name))
 	if !sandboxOutputExt[ext] || strings.ContainsAny(f.Name, `/\`) {
-		return ArtifactResponse{}, "file type not allowed"
+		return artifact.Response{}, "file type not allowed"
 	}
 	if len(f.Data) == 0 {
-		return ArtifactResponse{}, "empty file"
+		return artifact.Response{}, "empty file"
 	}
 	if len(f.Data) > artifact.MaxArtifactSizeBytes {
-		return ArtifactResponse{}, "too large"
+		return artifact.Response{}, "too large"
 	}
 	if ext == ".png" {
 		cfg, format, err := image.DecodeConfig(bytes.NewReader(f.Data))
 		if err != nil || format != "png" {
-			return ArtifactResponse{}, "not a valid PNG"
+			return artifact.Response{}, "not a valid PNG"
 		}
 		if cfg.Width > maxSandboxImageSide || cfg.Height > maxSandboxImageSide {
-			return ArtifactResponse{}, fmt.Sprintf("image larger than %d px on a side", maxSandboxImageSide)
+			return artifact.Response{}, fmt.Sprintf("image larger than %d px on a side", maxSandboxImageSide)
 		}
 	}
 	created, err := s.persistArtifactBytes(ctx, user, thread, artifactSpec{
@@ -425,9 +425,9 @@ func (s *Engine) persistSandboxFile(ctx context.Context, user auth.User, thread 
 	})
 	if err != nil {
 		slog.Warn("sandbox output not persisted", "file", f.Name, "err", err)
-		return ArtifactResponse{}, "could not be saved"
+		return artifact.Response{}, "could not be saved"
 	}
-	return ArtifactResponseFromArtifact(created), ""
+	return created.Response(), ""
 }
 
 // sandboxNothingPrinted marks an empty stdout; the UI recognises it.
@@ -435,7 +435,7 @@ const sandboxNothingPrinted = "(nothing printed)"
 
 // formatSandboxResult is what the model reads back. The UI parses the first
 // line ("exit_code: N") to mark a failed run.
-func formatSandboxResult(res sandbox.Result, created []ArtifactResponse, notes []string, timeout time.Duration) string {
+func formatSandboxResult(res sandbox.Result, created []artifact.Response, notes []string, timeout time.Duration) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "exit_code: %d\n", res.ExitCode)
 	if res.TimedOut {

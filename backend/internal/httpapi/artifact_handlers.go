@@ -14,7 +14,6 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/imagescale"
-	"github.com/trick77/loom/internal/turn"
 )
 
 const multipartUploadOverheadBytes = 1 << 20
@@ -312,7 +311,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	found.DisplayFilename = displayFilename
-	writeJSON(w, turn.ArtifactResponseFromArtifact(found))
+	writeJSON(w, found.Response())
 }
 
 func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Request) {
@@ -427,7 +426,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		serverError(w, r, err, "save upload failed")
 		return
 	}
-	writeJSON(w, turn.ArtifactResponseFromArtifact(created))
+	writeJSON(w, created.Response())
 }
 
 func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, error) {

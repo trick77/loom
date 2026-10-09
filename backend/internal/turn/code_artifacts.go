@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/trick77/loom/internal/artifact"
 )
 
 // Code/XML blocks below these bounds are treated as illustrative snippets and
@@ -69,14 +71,14 @@ var (
 // When the model already produced an explicit (non-image) file this turn, the
 // user asked for a save directly and we suppress auto-extraction so the same
 // code is not duplicated as a second download.
-func (t *Run) extractCodeArtifacts(ctx context.Context, content string, existing []ArtifactResponse) []ArtifactResponse {
+func (t *Run) extractCodeArtifacts(ctx context.Context, content string, existing []artifact.Response) []artifact.Response {
 	for _, a := range existing {
 		if !strings.HasPrefix(a.MIMEType, "image/") {
 			return nil
 		}
 	}
 
-	var created []ArtifactResponse
+	var created []artifact.Response
 	for _, q := range qualifyingCodeBlocks(content) {
 		response, err := t.createCodeArtifact(ctx, q)
 		if err != nil {
@@ -141,16 +143,16 @@ func isDownloadWorthyCode(body string) bool {
 	return strings.Count(body, "\n")+1 >= codeArtifactMinLines
 }
 
-func (t *Run) createCodeArtifact(ctx context.Context, q qualifiedBlock) (ArtifactResponse, error) {
+func (t *Run) createCodeArtifact(ctx context.Context, q qualifiedBlock) (artifact.Response, error) {
 	created, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
 		DisplayFilename: q.filename,
 		Extension:       q.extension,
 		Data:            []byte(q.block.body),
 	})
 	if err != nil {
-		return ArtifactResponse{}, err
+		return artifact.Response{}, err
 	}
-	return ArtifactResponseFromArtifact(created), nil
+	return created.Response(), nil
 }
 
 // codeArtifactFilename derives a meaningful name from the nearest heading above

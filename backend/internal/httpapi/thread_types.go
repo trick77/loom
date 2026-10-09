@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/turn"
 )
 
 type createProjectRequest struct {
@@ -158,7 +158,7 @@ type renameArtifactRequest struct {
 }
 
 // artifactResponse is shared by the read handlers and the turn engine.
-type artifactResponse = turn.ArtifactResponse
+type artifactResponse = artifact.Response
 
 type artifactListResponse struct {
 	Items      []artifactListItemResponse `json:"items"`
