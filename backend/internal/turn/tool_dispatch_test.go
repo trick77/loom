@@ -63,6 +63,17 @@ func (failingImageProvider) Generate(context.Context, imagegen.GenerateRequest) 
 // A call runs the built-in only when this turn offered that built-in under
 // the name; otherwise it goes to MCP. Built-ins still win when both are
 // offered.
+// With no MCP servers configured, a call to a name the turn did not offer as a
+// built-in reaches runToolCall with a nil service; it fails as a tool error
+// instead of crashing the turn.
+func TestRunToolCallWithoutMCPServiceFailsTheCall(t *testing.T) {
+	call := llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: "create_text_file", Arguments: `{}`}}
+	run := (&Engine{}).runToolCall(context.Background(), call)
+	if run.err == nil {
+		t.Fatalf("runToolCall() err = nil, want a tool error without an MCP service")
+	}
+}
+
 func TestExecuteBuiltInToolFollowsWhatWasOffered(t *testing.T) {
 	docgenOn := newToolGate(string(classifier.Coding), "", "")
 	docgenOff := newToolGate(string(classifier.General), string(classifier.General), "just chatting")

@@ -37,6 +37,10 @@ func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	if err != nil {
 		return toolRun{argsErr: err}
 	}
+	// No MCP servers configured: the call names a tool this turn never offered.
+	if s.mcp == nil {
+		return toolRun{arguments: arguments, err: fmt.Errorf("unknown tool %q", call.Function.Name)}
+	}
 	// Ask Tavily for each result's favicon regardless of what the model requested,
 	// so the sources sidebar can show real icons. Harmless if the model already set it.
 	if call.Function.Name == tavilySearchExposedName {
