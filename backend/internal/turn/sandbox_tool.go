@@ -310,7 +310,7 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 			notes = append(notes, f.Name+": "+why)
 			continue
 		}
-		_ = stream.Send("artifact", resp)
+		_ = stream.SendJSON("artifact", resp)
 		created = append(created, resp)
 	}
 	notes = append(notes, res.Dropped...)

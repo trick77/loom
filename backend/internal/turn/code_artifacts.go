@@ -83,7 +83,7 @@ func (t *Run) extractCodeArtifacts(ctx context.Context, content string, existing
 			slog.Warn("auto code artifact failed", "thread_id", t.thread.ID, "filename", q.filename, "err", err)
 			continue
 		}
-		_ = t.stream.Send("artifact", response)
+		_ = t.stream.SendJSON("artifact", response)
 		created = append(created, response)
 	}
 	return created

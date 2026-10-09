@@ -77,13 +77,12 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	}
 	defer recoverToStream(stream, r)
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
-	emitter := sseEmitter{w: stream}
 
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
-	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, emitter, inference, turn.UserResponseLanguage(user))
+	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, turn.UserResponseLanguage(user))
 	defer titles.Wait()
 
-	assistantResult, err := s.engine.RunIncognitoTurn(streamCtx, turn.IncognitoConfig{Stream: emitter, Titles: titles, Inference: inference}, history)
+	assistantResult, err := s.engine.RunIncognitoTurn(streamCtx, turn.IncognitoConfig{Stream: stream, Titles: titles, Inference: inference}, history)
 	if err != nil {
 		if turn.StreamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
@@ -96,7 +95,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 			return
 		}
 		message := turn.StreamFailureMessage(err, assistantResult, "incognito", incognitoThreadID)
-		_ = emitter.Send("error", map[string]string{"error": message})
+		_ = stream.SendJSON("error", map[string]string{"error": message})
 		return
 	}
 
@@ -105,7 +104,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		slog.Warn("empty incognito assistant response",
 			"content_bytes", len(assistantResult.Content),
 			"reasoning_bytes", len(assistantResult.ReasoningContent))
-		_ = emitter.Send("error", map[string]string{"error": "empty assistant response"})
+		_ = stream.SendJSON("error", map[string]string{"error": "empty assistant response"})
 		return
 	}
 
@@ -134,10 +133,10 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	// Incognito carries no token accounting, but the turn's cost is on the
 	// stream result and the bubble shows the thread's running total from it.
 	applyMessageMetrics(&assistantMessage, turn.MessageMetricsWithCost(assistantResult.StreamResult, llm.TokenUsage{}, time.Since(turnStart), assistantResult.CostNanoUSD, assistantResult.CostPriced))
-	if err := emitter.Send("assistant_message", assistantMessage); err != nil {
+	if err := stream.SendJSON("assistant_message", assistantMessage); err != nil {
 		return
 	}
-	_ = emitter.Send("done", struct{}{})
+	_ = stream.SendJSON("done", struct{}{})
 }
 
 // maxIncognitoHistoryBytes caps the combined size of the client-supplied prior

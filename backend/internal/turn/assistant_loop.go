@@ -227,7 +227,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 					output = t.finishToolCall(ctx, call, round, reg, t.e.runToolCall(ctx, call))
 				}
 			}
-			if err := t.stream.Send("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+			if err := t.stream.SendJSON("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				cancelRuns()
 				return LoopResult{}, err
 			}
@@ -254,7 +254,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		// the result (above), and stream.Send is sequential — so the snapshot
 		// always reaches the browser before the deltas that reference it.
 		if reg.len() > 0 {
-			if err := t.stream.Send("web_sources", WebSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
+			if err := t.stream.SendJSON("web_sources", WebSourcesResponse{Sources: webSourceCitations(reg.all())}); err != nil {
 				return LoopResult{}, err
 			}
 		}
@@ -374,7 +374,7 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 		// streamed call would be, or the tool_result below refers to a step that
 		// does not exist on either side.
 		b.addTraceEvent(toolCallEvent(call))
-		if err := t.stream.Send("tool_call", ToolCallResponse{
+		if err := t.stream.SendJSON("tool_call", ToolCallResponse{
 			ID:        call.ID,
 			Name:      call.Function.Name,
 			Arguments: call.Function.Arguments,
@@ -390,7 +390,7 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 	if !handled {
 		output = capToolOutput("tool failed: generate_image is not available")
 	}
-	if err := t.stream.Send("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
+	if err := t.stream.SendJSON("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 		return LoopResult{}, err
 	}
 	b.setToolResult(call.ID, output)
@@ -613,7 +613,7 @@ func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reaso
 	}
 	return t.e.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
-			if err := t.stream.Send("assistant_reasoning_delta", StreamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
+			if err := t.stream.SendJSON("assistant_reasoning_delta", StreamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
 				return err
 			}
 			// The buffer only feeds the title, so it stops growing once that is spawned.
@@ -627,18 +627,18 @@ func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reaso
 		}
 		if event.ToolPending {
 			spawnTitle()
-			return t.stream.Send("tool_pending", struct{}{})
+			return t.stream.SendJSON("tool_pending", struct{}{})
 		}
 		if event.Delta != "" && streamContent {
 			spawnTitle()
 			if err := awaitTitle(); err != nil {
 				return err
 			}
-			return t.stream.Send("assistant_delta", StreamDeltaResponse{Content: event.Delta})
+			return t.stream.SendJSON("assistant_delta", StreamDeltaResponse{Content: event.Delta})
 		}
 		if event.ToolCall.ID != "" || event.ToolCall.Function.Name != "" {
 			spawnTitle()
-			return t.stream.Send("tool_call", ToolCallResponse{
+			return t.stream.SendJSON("tool_call", ToolCallResponse{
 				ID:        event.ToolCall.ID,
 				Name:      event.ToolCall.Function.Name,
 				Arguments: event.ToolCall.Function.Arguments,

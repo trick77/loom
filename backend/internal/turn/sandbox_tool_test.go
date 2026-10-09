@@ -76,7 +76,7 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 		usage:     stubUsageStore{},
 		artifacts: fakeArtifactStore{},
 	}
-	return sandboxFixture{srv: srv, box: box, thread: thread, body: rec, stream: sseEmitter{w: stream}}
+	return sandboxFixture{srv: srv, box: box, thread: thread, body: rec, stream: stream}
 }
 
 // turn is testUser's turn in thread, emitting to the fixture's stream.

@@ -401,7 +401,7 @@ func (t *Run) runDocGenerator(ctx context.Context, call llm.ToolCall, generator 
 		return capToolOutput("tool failed: " + err.Error()), nil
 	}
 	response := ArtifactResponseFromArtifact(created)
-	_ = t.stream.Send("artifact", response)
+	_ = t.stream.SendJSON("artifact", response)
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
 }
 
@@ -527,7 +527,7 @@ func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*Artifac
 	response.Height = meta.Height
 	response.DurationMs = meta.DurationMs
 	RecordUsage(t.e.usage, "image_gen", func() error { return t.e.usage.IncImageGen(ctx, t.user.ID) })
-	_ = t.stream.Send("artifact", response)
+	_ = t.stream.SendJSON("artifact", response)
 	return &response, fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), true
 }
 

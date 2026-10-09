@@ -135,14 +135,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// notably while a model serializes a large tool-call argument server-side and
 	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
-	emitter := sseEmitter{w: stream}
 	// Book what the turn spent on every exit path. Deferred ahead of
 	// titles.Wait below so it runs after it: the reasoning-title calls must have
 	// finished before the turn's cost is read. The success path settles
 	// explicitly before "done"; this is then a no-op.
 	costs := s.engine.NewCostSettler(user, userMessage.ID, usageTotal)
 	defer costs.Settle(context.WithoutCancel(r.Context()))
-	if err := emitter.Send("user_message", userMessage); err != nil {
+	if err := stream.SendJSON("user_message", userMessage); err != nil {
 		return
 	}
 
@@ -151,13 +150,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// round. The deferred waits keep any title goroutine from writing to the
 	// SSE stream after the handler returns. They run before costs.Settle, so a
 	// working title that outlived the answer still has its cost booked.
-	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, emitter, inference, turn.UserResponseLanguage(user))
+	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, turn.UserResponseLanguage(user))
 	defer titles.Wait()
 	defer titles.WaitWorking()
 	titles.SpawnWorking(userMessage.Content)
 
 	run := s.engine.Prepare(turn.RunConfig{
-		Stream:      emitter,
+		Stream:      stream,
 		Titles:      titles,
 		User:        user,
 		Thread:      thread,
@@ -204,7 +203,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// the client, ahead of the terminal event it stops reading at.
 	finishCosts := func() {
 		titles.Wait()
-		costs.SettleAndReport(context.WithoutCancel(r.Context()), emitter)
+		costs.SettleAndReport(context.WithoutCancel(r.Context()), stream)
 	}
 	// failTurn ends a turn that has no answer to persist. The spend so far is
 	// reported just before the error event (the client stops reading at it),
@@ -216,8 +215,8 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// reason: they go to the same upstream. Their cost, like the title's, is
 	// picked up by the deferred settle.
 	failTurn := func(titleSource, message string) {
-		costs.SettleAndReport(context.WithoutCancel(r.Context()), emitter)
-		_ = emitter.Send("error", map[string]string{"error": message})
+		costs.SettleAndReport(context.WithoutCancel(r.Context()), stream)
+		_ = stream.SendJSON("error", map[string]string{"error": message})
 		titleThread(titleSource)
 	}
 
@@ -241,7 +240,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 			// itself (the thread open in a second tab) would otherwise read an
 			// unterminated stream as a dropped connection. The write fails
 			// harmlessly when the client is the one that went away.
-			_ = emitter.Send("done", struct{}{})
+			_ = stream.SendJSON("done", struct{}{})
 			return
 		}
 		failTurn(assistantResult.Content, turn.StreamFailureMessage(err, assistantResult, "message", threadID))
@@ -281,7 +280,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	costs.SetAssistant(assistantMessage)
-	if err := emitter.Send("assistant_message", assistantMessage); err != nil {
+	if err := stream.SendJSON("assistant_message", assistantMessage); err != nil {
 		return
 	}
 
@@ -306,7 +305,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// failed/not-found fetch skips the event — the DB order is already correct for
 	// the next refetch.
 	if updated, found, getErr := s.thread.GetThread(persistCtx, user.ID, threadID); getErr == nil && found {
-		_ = emitter.Send("thread", updated)
+		_ = stream.SendJSON("thread", updated)
 	}
 
 	// Every call of the turn has finished (PersistAssistantTurn waited for the
@@ -322,7 +321,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// MemoryWorker sweep so it does not fire on every turn.
 	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread)
 
-	_ = emitter.Send("done", struct{}{})
+	_ = stream.SendJSON("done", struct{}{})
 }
 
 func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request) {
@@ -408,6 +407,6 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 func recoverToStream(stream *sse.Writer, r *http.Request) {
 	if p := recover(); p != nil {
 		slog.Error("panic recovered mid-stream", "err", p, "path", r.URL.Path, "stack", string(debug.Stack()))
-		_ = sseEmitter{w: stream}.Send("error", map[string]string{"error": "internal server error"})
+		_ = stream.SendJSON("error", map[string]string{"error": "internal server error"})
 	}
 }

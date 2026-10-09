@@ -229,7 +229,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		fileToolGuidance = fileToolGuardrailPrompt
 	}
 	if len(knowledgeSources) > 0 {
-		_ = t.stream.Send("knowledge_sources", map[string]any{"sources": knowledgeSources})
+		_ = t.stream.SendJSON("knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
 	history := buildLLMHistory(t.user, promptBlocks{
 		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance),

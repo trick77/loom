@@ -138,7 +138,7 @@ func (t *Run) GenerateAndSendThreadTitle(ctx context.Context, assistantMessage s
 	if thread.ProjectID != nil {
 		t.e.memory.RefreshProjectDescription(ctx, t.user, *thread.ProjectID)
 	}
-	return t.stream.Send("thread", thread)
+	return t.stream.SendJSON("thread", thread)
 }
 
 // promptBlocks are the context blocks appended to a turn's system prompt.

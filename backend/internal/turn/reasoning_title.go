@@ -114,7 +114,7 @@ func (t *ReasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan stru
 		t.mu.Lock()
 		t.titles[reasoningID] = title
 		t.mu.Unlock()
-		_ = t.stream.Send("assistant_reasoning_title", ReasoningTitleResponse{ID: reasoningID, Title: title})
+		_ = t.stream.SendJSON("assistant_reasoning_title", ReasoningTitleResponse{ID: reasoningID, Title: title})
 	}()
 	return done
 }
@@ -146,7 +146,7 @@ func (t *ReasoningTitleTracker) SpawnWorking(userMessage string) {
 		if err != nil || strings.TrimSpace(title) == "" {
 			return
 		}
-		_ = t.stream.Send("assistant_working_title", WorkingTitleResponse{Title: title})
+		_ = t.stream.SendJSON("assistant_working_title", WorkingTitleResponse{Title: title})
 	}()
 }
 

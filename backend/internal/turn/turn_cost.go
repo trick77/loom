@@ -77,7 +77,7 @@ func (c *CostSettler) SettleAndReport(ctx context.Context, stream Emitter) {
 	booked := c.booked
 	c.mu.Unlock()
 	if booked.ID != "" {
-		_ = stream.Send("message_cost", booked)
+		_ = stream.SendJSON("message_cost", booked)
 	}
 }
 

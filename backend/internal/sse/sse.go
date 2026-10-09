@@ -3,6 +3,7 @@ package sse
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -45,6 +46,16 @@ func (s *Writer) Send(event, data string) error {
 	s.flusher.Flush()
 	s.lastActivity = time.Now()
 	return nil
+}
+
+// SendJSON writes one event whose data is data encoded as JSON. A value that
+// does not encode returns the error and writes nothing.
+func (s *Writer) SendJSON(event string, data any) error {
+	payload, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	return s.Send(event, string(payload))
 }
 
 // Heartbeat keeps the connection alive through idle proxies while the stream is

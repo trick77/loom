@@ -2,7 +2,6 @@ package turn
 
 import (
 	"context"
-	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -33,20 +32,6 @@ var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, Res
 
 var errFakeTool = turntest.ErrTool
 
-// sseEmitter writes a turn's events to an *sse.Writer, as the HTTP layer
-// does, so a test can read them back from the recorded body.
-type sseEmitter struct {
-	w *sse.Writer
-}
-
-func (e sseEmitter) Send(event string, data any) error {
-	payload, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-	return e.w.Send(event, string(payload))
-}
-
 // turnOutcome is what a test reads back from a driven turn: the SSE body its
 // events produced and the assistant loop's result and error.
 type turnOutcome struct {
@@ -64,11 +49,10 @@ func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content str
 	cfg.Thread = store
 	e := New(cfg)
 	rec := httptest.NewRecorder()
-	w, err := sse.NewWriter(rec)
+	stream, err := sse.NewWriter(rec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stream := sseEmitter{w: w}
 	usage := llm.NewUsageAccumulator()
 	inference := llm.InferenceMetadata{UserID: testUser.ID, Username: testUser.Username, ThreadID: store.Thread.ID}
 	ctx := llm.WithInferenceMetadata(llm.WithUsageAccumulator(context.Background(), usage), inference)
