@@ -1655,15 +1655,6 @@ func TestStreamCancelDetailsClassifiesCancellationSource(t *testing.T) {
 		}
 	})
 
-	t.Run("request context", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		source, reason := streamCancelDetails(ctx)
-		if source != "request_context" || reason != context.Canceled.Error() {
-			t.Fatalf("details = %q %q, want request context", source, reason)
-		}
-	})
-
 	t.Run("deadline", func(t *testing.T) {
 		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
 		defer cancel()

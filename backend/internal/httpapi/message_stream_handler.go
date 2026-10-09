@@ -128,7 +128,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// The turn writes its events into the hub, never to a client directly.
 	stream := newTurnHub()
 	unregisterStream := s.activeStreams.register(user.ID, threadID, cancelStream, stream)
-	defer unregisterStream()
+	// endTurn ends the turn for every client: followers drain the hub and
+	// return, and the thread no longer reports a running turn. Idempotent.
+	endTurn := func() {
+		stream.close()
+		unregisterStream()
+	}
+	defer endTurn()
 
 	writer, err := sse.NewWriter(w)
 	if err != nil {
@@ -146,10 +152,13 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	following := make(chan struct{})
 	go func() {
 		defer close(following)
-		stream.follow(r.Context(), writer)
+		stream.follow(r.Context(), writer, false)
 	}()
+	// The turn is over before the sending client is waited for: a client that
+	// stopped reading must not keep it registered, which would hold a thread
+	// delete and report the thread as still answering.
 	defer func() {
-		stream.close()
+		endTurn()
 		<-following
 	}()
 	// From here on the 200 is committed, so a panic must end the stream with an
@@ -359,8 +368,10 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		writeNotFound(w)
 		return
 	}
-	// 409 when no stream is registered yet (the turn is still being set up):
-	// the client then drops its fetch, which cancels that turn instead.
+	// 409 when no stream is registered yet (the turn is still being set up).
+	// The turn runs detached from the client, so the client dropping its fetch
+	// does not end it: the registry keeps the stop and applies it when the
+	// turn registers.
 	if !s.activeStreams.stop(user.ID, threadID, stopCause(r.URL.Query().Get("source"))) {
 		writeJSONError(w, http.StatusConflict, "no active stream")
 		return
@@ -371,9 +382,7 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 // stopCause builds the cancellation cause for an explicit client stop. It always
 // wraps errStreamStopRequested (so cancel_source stays "stop_endpoint"), and folds
 // the client-declared UI trigger — "stop_button", "escape", "new_send" — into the
-// cause message so it surfaces in the canceled log's reason field. Attribution is
-// reliable because the client awaits this stop request before aborting its fetch,
-// so this cause wins the WithCancelCause race over the raw request-context cancel.
+// cause message so it surfaces in the canceled log's reason field.
 func stopCause(source string) error {
 	source = sanitizeCancelSource(source)
 	if source == "" {
@@ -419,7 +428,7 @@ func (s *server) handleAttachStreamMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer writer.Heartbeat(r.Context(), streamHeartbeatInterval)()
-	hub.follow(r.Context(), writer)
+	hub.follow(r.Context(), writer, true)
 }
 
 // detachedFromClient returns a context with parent's values that a dropped
@@ -446,8 +455,6 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 		source = "thread_deleted"
 	case errors.Is(cause, errStreamSuperseded):
 		source = "superseded_stream"
-	case errors.Is(cause, context.Canceled):
-		source = "request_context"
 	case errors.Is(cause, context.DeadlineExceeded):
 		source = "deadline"
 	}

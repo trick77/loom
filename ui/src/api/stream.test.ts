@@ -240,6 +240,17 @@ describe("attachStream", () => {
     expect(h.onAssistantMessage).toHaveBeenCalled();
   });
 
+  test("a network failure on the request is an interruption", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Load failed")),
+    );
+
+    await expect(attachStream("t1", handlers())).rejects.toBeInstanceOf(
+      StreamInterruptedError,
+    );
+  });
+
   test("reports a turn that already finished", async () => {
     vi.stubGlobal(
       "fetch",

@@ -196,3 +196,59 @@ test("opening a thread whose answer is still being written follows it live", asy
   // The replayed user message folds into the loaded one.
   expect(screen.getAllByText("Hi")).toHaveLength(1);
 });
+
+// The connection can drop after the server stored the question but before the
+// first event arrived. The question is on the server and the turn runs there:
+// that is no failed send.
+test("a drop before the first event follows the turn the server started", async () => {
+  let threadLoads = 0;
+  const fetchMock = shellFetch({
+    thread: () => {
+      threadLoads += 1;
+      return Response.json({
+        thread,
+        streaming: threadLoads > 1,
+        messages:
+          threadLoads === 1
+            ? []
+            : [
+                {
+                  id: "m1",
+                  threadId: "t1",
+                  role: "user",
+                  content: "Hi",
+                  createdAt: "2026-05-30T00:00:00Z",
+                },
+              ],
+      });
+    },
+    stream: () => {
+      throw new TypeError("Load failed");
+    },
+    attach: () => sse([userMessage, ...answerEvents("Made it")]),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await sendHi();
+
+  expect(await screen.findByText("Made it")).toBeInTheDocument();
+  expect(screen.queryByText(/failed to send/i)).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("");
+  expect(screen.getAllByText("Hi")).toHaveLength(1);
+});
+
+test("a send that never reached the server still fails as before", async () => {
+  const fetchMock = shellFetch({
+    thread: () => Response.json({ thread, messages: [] }),
+    stream: () => {
+      throw new TypeError("Load failed");
+    },
+    attach: () => new Response(null, { status: 204 }),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  await sendHi();
+
+  expect(await screen.findByText(/failed to send/i)).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Hi");
+});

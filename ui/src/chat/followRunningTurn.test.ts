@@ -115,6 +115,51 @@ describe("followRunningTurn", () => {
     expect(fetchMock).toHaveBeenCalledTimes(MAX_ATTACH_ATTEMPTS);
   });
 
+  // A bug in a handler is no dropped connection: retrying it for 45s and
+  // then reporting an interruption would hide it.
+  test("a handler that throws is not retried", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(finishedTurn));
+    vi.stubGlobal("fetch", fetchMock);
+    const bug = new TypeError("cannot read properties of undefined");
+
+    await expect(
+      followRunningTurn({
+        threadId: "t1",
+        signal: new AbortController().signal,
+        handlers: () => ({
+          ...handlers(),
+          onDelta: () => {
+            throw bug;
+          },
+        }),
+        retryDelayMs: 0,
+      }),
+    ).rejects.toBe(bug);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Every attach that worked gives the next drop a fresh budget: a long turn
+  // on a phone that is backgrounded again and again must not run out.
+  test("an attach that streamed resets the retry budget", async () => {
+    const dropped = () =>
+      sseResponse(['event: assistant_delta\ndata: {"content":"a"}\n\n']);
+    const fetchMock = vi.fn();
+    for (let i = 0; i < MAX_ATTACH_ATTEMPTS + 2; i++)
+      fetchMock.mockResolvedValueOnce(dropped());
+    fetchMock.mockResolvedValueOnce(sseResponse(finishedTurn));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      followRunningTurn({
+        threadId: "t1",
+        signal: new AbortController().signal,
+        handlers,
+        retryDelayMs: 0,
+      }),
+    ).resolves.toBe("attached");
+    expect(fetchMock).toHaveBeenCalledTimes(MAX_ATTACH_ATTEMPTS + 3);
+  });
+
   test("reports a turn that finished meanwhile", async () => {
     vi.stubGlobal(
       "fetch",

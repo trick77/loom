@@ -111,10 +111,19 @@ export async function attachStream(
   handlers: StreamHandlers,
   signal?: AbortSignal,
 ): Promise<"attached" | "finished"> {
-  const response = await fetch(
-    `/api/threads/${encodeURIComponent(threadId)}/messages:attach`,
-    { method: "GET", signal },
-  );
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/threads/${encodeURIComponent(threadId)}/messages:attach`,
+      { method: "GET", signal },
+    );
+  } catch (error) {
+    // fetch rejects with a TypeError when the network is down: the same
+    // dropped connection as a stream cut mid-turn.
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new StreamInterruptedError();
+  }
   if (response.status === 204) return "finished";
   await readSSEStream(await expectStreamResponse(response), handlers);
   return "attached";

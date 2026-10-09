@@ -67,7 +67,7 @@ import {
   type ComposerAttachment,
 } from "./useDocumentAttachments";
 import { rehydrateLoadedMessage, useThreadData } from "./useThreadData";
-import { followRunningTurn } from "./followRunningTurn";
+import { followRunningTurn, whenReachable } from "./followRunningTurn";
 import { useProjectActions } from "./useProjectActions";
 import { useThreadActions } from "./useThreadActions";
 import { ThreadPanel } from "./ThreadPanel";
@@ -896,6 +896,9 @@ export function ThreadShell({
     let userMessageConfirmed = false;
     // The stream dropped and the run is following the turn again.
     let reattaching = false;
+    // The transcript before this send: a dropped send is checked against it
+    // for a question the server stored after all.
+    const knownMessageIDs = new Set(messages.map((message) => message.id));
     // The thread this run belongs to, known up front for an existing thread and
     // filled in below for one created by this send. Whether the user is still
     // looking at it decides the writes into `messages`, which is a single array
@@ -1135,14 +1138,27 @@ export function ThreadShell({
           },
         );
       } catch (error) {
-        // The connection dropped after the server took the message, typically
-        // a phone freezing the tab: the turn is still running there, so follow
-        // it again instead of failing the send.
+        // The connection dropped, typically a phone freezing the tab. Once the
+        // server has the message the turn runs there, so follow it again
+        // instead of failing the send. A drop before the server confirmed it
+        // (fetch rejects with a TypeError) may still have stored it: ask.
+        const dropped =
+          error instanceof StreamInterruptedError ||
+          (error instanceof TypeError && !userMessageConfirmed);
         if (
-          !(error instanceof StreamInterruptedError) ||
-          !userMessageConfirmed ||
+          !dropped ||
           abortController.signal.aborted ||
           stopRequested(abortController)
+        )
+          throw error;
+        if (
+          !userMessageConfirmed &&
+          !(await sentMessageReachedServer(
+            threadIDForRun,
+            abortController.signal,
+            content,
+            knownMessageIDs,
+          ))
         )
           throw error;
         reattaching = true;
@@ -1239,6 +1255,29 @@ export function ThreadShell({
       setMessages(response.messages.map(rehydrateLoadedMessage));
   }
 
+  // sentMessageReachedServer reports whether the thread holds a new user
+  // message with this content: a send whose connection dropped before the
+  // server confirmed it may have been stored all the same.
+  async function sentMessageReachedServer(
+    threadID: string,
+    signal: AbortSignal,
+    content: string,
+    knownMessageIDs: Set<string>,
+  ): Promise<boolean> {
+    await whenReachable(signal);
+    try {
+      const response = await getThread(threadID);
+      return response.messages.some(
+        (message) =>
+          message.role === "user" &&
+          !knownMessageIDs.has(message.id) &&
+          message.content === content.trim(),
+      );
+    } catch {
+      return false;
+    }
+  }
+
   // attachToRunningTurn picks up a turn found running when its thread loads: a
   // reload, or a phone that discarded the tab mid-answer. A run this tab already
   // has on the thread is left alone.
@@ -1270,6 +1309,10 @@ export function ThreadShell({
         onThread: (updatedThread) => {
           if (isCurrentThread()) setActiveThread(updatedThread);
           setThreads((current) => upsertThreadById(current, updatedThread));
+          // A project page listing this thread shows the new title too.
+          setProjectThreads((current) =>
+            replaceThreadById(current, updatedThread),
+          );
         },
       });
     let failed = false;

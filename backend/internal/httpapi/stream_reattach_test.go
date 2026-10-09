@@ -68,11 +68,13 @@ func (r *firstWriteRecorder) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// sseEventNames lists the event names in an SSE body, in order.
+// sseEventNames lists the event names in an SSE body, in order, with
+// consecutive repeats collapsed: a reattach merges runs of deltas.
 func sseEventNames(body string) []string {
 	var names []string
 	for line := range strings.SplitSeq(body, "\n") {
-		if name, ok := strings.CutPrefix(line, "event: "); ok {
+		name, ok := strings.CutPrefix(line, "event: ")
+		if ok && (len(names) == 0 || names[len(names)-1] != name) {
 			names = append(names, name)
 		}
 	}
@@ -245,4 +247,89 @@ func TestStreamMessageTurnStopsWhenTheServerShutsDown(t *testing.T) {
 	if !errors.Is(llmClient.cancelCause, errShutdown) {
 		t.Fatalf("cancel cause = %v, want the shutdown cause", llmClient.cancelCause)
 	}
+}
+
+// A stop that arrives while the turn is still being set up finds nothing
+// registered. It must still end that turn: the client's dropped fetch no
+// longer does.
+func TestActiveStreamRegistryAppliesAStopThatArrivedBeforeRegister(t *testing.T) {
+	var registry activeStreamRegistry
+	if registry.stop("user_1", "thr_1", errStreamStopRequested) {
+		t.Fatal("stop() = true with nothing registered")
+	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	unregister := registry.register("user_1", "thr_1", cancel, nil)
+	defer unregister()
+	if !errors.Is(context.Cause(ctx), errStreamStopRequested) {
+		t.Fatalf("cause = %v, want the early stop", context.Cause(ctx))
+	}
+
+	// Consumed once: the next turn on the thread runs.
+	next, cancelNext := context.WithCancelCause(context.Background())
+	defer cancelNext(nil)
+	unregisterNext := registry.register("user_1", "thr_1", cancelNext, nil)
+	defer unregisterNext()
+	if next.Err() != nil {
+		t.Fatal("a consumed early stop cancelled the next turn")
+	}
+}
+
+func TestActiveStreamRegistryIgnoresAStaleEarlyStop(t *testing.T) {
+	start := time.Unix(0, 0)
+	registry := activeStreamRegistry{now: func() time.Time { return start }}
+	registry.stop("user_1", "thr_1", errStreamStopRequested)
+	registry.now = func() time.Time { return start.Add(earlyStopWindow + time.Second) }
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	unregister := registry.register("user_1", "thr_1", cancel, nil)
+	defer unregister()
+	if ctx.Err() != nil {
+		t.Fatal("a stale early stop cancelled a later turn")
+	}
+}
+
+// The handler must not hold the turn registered while the sending client's
+// writes stall: the turn is over, and a delete waiting on it must not time out.
+func TestStreamMessageUnregistersBeforeWaitingOnAStalledClient(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{}})
+
+	rec := &stallingRecorder{ResponseRecorder: httptest.NewRecorder(), release: make(chan struct{})}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`))
+	}()
+	// The turn finishes on its own while the client is stuck on its first
+	// write; from then on nothing is running on the thread.
+	deadline := time.Now().Add(2 * time.Second)
+	streaming := func() bool {
+		r := httptest.NewRecorder()
+		srv.ServeHTTP(r, authenticatedRequest(http.MethodGet, "/api/threads/thr_1/messages:attach", ""))
+		return r.Code != http.StatusNoContent
+	}
+	for streaming() {
+		if time.Now().After(deadline) {
+			close(rec.release)
+			t.Fatal("the finished turn stayed registered behind a stalled client")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(rec.release)
+	waitClosed(t, done, "the stream handler")
+	if store.AssistantContent != "Hello" {
+		t.Fatalf("assistant content = %q, want the saved answer", store.AssistantContent)
+	}
+}
+
+// stallingRecorder blocks every body write until release closes: a client
+// whose connection is open but no longer reading.
+type stallingRecorder struct {
+	*httptest.ResponseRecorder
+	release chan struct{}
+}
+
+func (r *stallingRecorder) Write(p []byte) (int, error) {
+	<-r.release
+	return r.ResponseRecorder.Write(p)
 }

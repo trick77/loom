@@ -49,7 +49,7 @@ func TestTurnHubReplaysTheLogThenFollowsLive(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		hub.follow(context.Background(), w)
+		hub.follow(context.Background(), w, false)
 	}()
 
 	_ = hub.SendJSON("delta", "lo")
@@ -79,7 +79,7 @@ func TestTurnHubFollowAfterCloseReplaysEverything(t *testing.T) {
 	_ = hub.SendJSON("delta", "b")
 
 	w := &recordingEventWriter{}
-	hub.follow(context.Background(), w)
+	hub.follow(context.Background(), w, false)
 	if got := w.got(); got != `delta "a"` {
 		t.Fatalf("events = %s, want only the event before close", got)
 	}
@@ -93,7 +93,7 @@ func TestTurnHubFailedWriteStopsOnlyThatFollower(t *testing.T) {
 	live := &recordingEventWriter{}
 	var wg sync.WaitGroup
 	for _, w := range []*recordingEventWriter{gone, live} {
-		wg.Go(func() { hub.follow(context.Background(), w) })
+		wg.Go(func() { hub.follow(context.Background(), w, false) })
 	}
 	for _, delta := range []string{"a", "b", "c"} {
 		if err := hub.SendJSON("delta", delta); err != nil {
@@ -117,13 +117,52 @@ func TestTurnHubFollowStopsWhenItsContextEnds(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		hub.follow(ctx, &recordingEventWriter{})
+		hub.follow(ctx, &recordingEventWriter{}, false)
 	}()
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("follow did not return after its context ended")
+	}
+}
+
+// A replay merges consecutive deltas: a long turn is thousands of tiny events,
+// and the client would otherwise dispatch every one of them.
+func TestTurnHubReplayMergesConsecutiveDeltas(t *testing.T) {
+	hub := newTurnHub()
+	_ = hub.SendJSON("assistant_reasoning_delta", map[string]string{"content": "thin"})
+	_ = hub.SendJSON("assistant_reasoning_delta", map[string]string{"content": "king"})
+	_ = hub.SendJSON("assistant_delta", map[string]string{"content": "Hel"})
+	_ = hub.SendJSON("assistant_delta", map[string]string{"content": "lo"})
+	_ = hub.SendJSON("done", struct{}{})
+	hub.close()
+
+	w := &recordingEventWriter{}
+	hub.follow(context.Background(), w, true)
+	want := `assistant_reasoning_delta {"content":"thinking"}|assistant_delta {"content":"Hello"}|done {}`
+	if got := w.got(); got != want {
+		t.Fatalf("events = %s, want %s", got, want)
+	}
+}
+
+// A backlog goes out in bounded writes, each under its own write deadline, so
+// a slow link still gets through a long turn.
+func TestTurnHubReplaySplitsALargeBacklog(t *testing.T) {
+	hub := newTurnHub()
+	chunk := strings.Repeat("x", maxReplayWriteBytes/2)
+	for range 4 {
+		_ = hub.SendJSON("tool_result", map[string]string{"output": chunk})
+	}
+	hub.close()
+
+	w := &recordingEventWriter{}
+	hub.follow(context.Background(), w, false)
+	if len(w.writes) < 2 {
+		t.Fatalf("backlog went out in %d write(s), want it split", len(w.writes))
+	}
+	if got := strings.Count(w.got(), "tool_result"); got != 4 {
+		t.Fatalf("replayed %d events, want 4", got)
 	}
 }
 

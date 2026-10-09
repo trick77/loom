@@ -393,6 +393,29 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 type activeStreamRegistry struct {
 	mu      sync.Mutex
 	streams map[activeStreamKey]*activeStream
+	// earlyStops holds a stop that found nothing registered: the turn is still
+	// being set up. The turn runs detached from its client, so the client's
+	// dropped fetch no longer ends it; register applies the stop instead.
+	earlyStops map[activeStreamKey]earlyStop
+	// now is time.Now; tests replace it.
+	now func() time.Time
+}
+
+// earlyStop is a stop waiting for its turn to register.
+type earlyStop struct {
+	cause error
+	at    time.Time
+}
+
+// earlyStopWindow bounds how long an early stop waits for its turn. Setup
+// takes seconds at most; an older stop belongs to no turn still coming.
+const earlyStopWindow = 30 * time.Second
+
+func (r *activeStreamRegistry) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
 }
 
 type activeStreamKey struct {
@@ -422,7 +445,12 @@ func (r *activeStreamRegistry) register(userID, threadID string, cancel context.
 		previous.cancel(errStreamSuperseded)
 	}
 	r.streams[key] = stream
+	early, hasEarly := r.earlyStops[key]
+	delete(r.earlyStops, key)
 	r.mu.Unlock()
+	if hasEarly && r.clock().Sub(early.at) < earlyStopWindow {
+		cancel(early.cause)
+	}
 	return func() {
 		r.mu.Lock()
 		if r.streams[key] == stream {
@@ -451,6 +479,12 @@ func (r *activeStreamRegistry) stop(userID, threadID string, cause error) bool {
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	r.mu.Lock()
 	stream := r.streams[key]
+	if stream == nil {
+		if r.earlyStops == nil {
+			r.earlyStops = make(map[activeStreamKey]earlyStop)
+		}
+		r.earlyStops[key] = earlyStop{cause: cause, at: r.clock()}
+	}
 	r.mu.Unlock()
 	if stream == nil {
 		return false
