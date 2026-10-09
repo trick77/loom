@@ -14,6 +14,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
+	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/usage"
@@ -499,7 +500,7 @@ func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall) (*Artifac
 	// stays as a backstop for any dispatch path that reaches here on a context
 	// without metadata — otherwise the image model would be the one call in a turn
 	// whose log line cannot be tied back to a user or thread.
-	meta, err := generator.Generate(WithUserAttribution(ctx, t.user, t.thread.ID), req, &buffer)
+	meta, err := generator.Generate(inference.WithAttribution(ctx, t.user.ID, t.user.Username, t.thread.ID), req, &buffer)
 	if err != nil {
 		output := capToolOutput("tool failed: " + err.Error())
 		slog.Warn("image tool failed",

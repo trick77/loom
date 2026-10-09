@@ -56,6 +56,28 @@ func MetadataFromContext(ctx context.Context) Metadata {
 	return metadata
 }
 
+// WithAttribution fills in the user/thread attribution a model call logs
+// under, without disturbing anything already on the context. A chat turn
+// attributes itself up front (see httpapi's handleStreamMessage), so this is
+// for the model calls that reach a client from somewhere else: the detached
+// ingest goroutine, which runs on a context carrying no metadata at all, and
+// the image tool, whose dispatch context is not one of the attributed chat
+// contexts. Existing values win, so a caller that already set a purpose or a
+// round keeps it.
+func WithAttribution(ctx context.Context, userID, username, threadID string) context.Context {
+	metadata := MetadataFromContext(ctx)
+	if metadata.UserID == "" {
+		metadata.UserID = userID
+	}
+	if metadata.Username == "" {
+		metadata.Username = username
+	}
+	if metadata.ThreadID == "" {
+		metadata.ThreadID = threadID
+	}
+	return WithMetadata(ctx, metadata)
+}
+
 // WithPurpose re-tags the context's metadata for a specific call, keeping the
 // user/thread attribution already on it. Used where one request makes model
 // calls of several kinds (e.g. a chat turn that also embeds a RAG query).
