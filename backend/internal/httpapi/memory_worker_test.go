@@ -30,6 +30,15 @@ func TestEditMemory_RefusedWhileARefreshRuns(t *testing.T) {
 	if store.projectMemory.Content != "- X" {
 		t.Fatalf("memory = %q, want untouched while the refresh holds it", store.projectMemory.Content)
 	}
+	// A second refresh that would otherwise be due skips instead of racing it.
+	store.projectMessageCount = 5
+	store.messages = []chat.Message{{Role: chat.RoleUser, Content: "hi"}}
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, scope, 0); err != nil {
+		t.Fatalf("refreshMemoryIfDue() error = %v, want nil (skipped)", err)
+	}
+	if store.projectMemory.Content != "- X" {
+		t.Fatalf("memory = %q, want untouched by a refresh that found the lock held", store.projectMemory.Content)
+	}
 }
 
 // TestRefreshMemoryIfDue_DebounceSkipsFreshMemory proves the staleness gate: a
