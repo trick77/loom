@@ -96,7 +96,7 @@ func (c *CostSettler) rollUp(ctx context.Context) {
 		return
 	}
 	c.rolledUsage, c.rolledCost = total, cost
-	RecordUsage(c.e.usage, "tokens", func() error {
+	usage.Record(c.e.usage, "tokens", func() error {
 		return c.e.usage.AddTokens(ctx, c.user.ID, delta)
 	})
 

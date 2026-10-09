@@ -27,6 +27,7 @@ import (
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
+	"github.com/trick77/loom/internal/usage"
 )
 
 const sandboxToolName = "run_python"
@@ -301,7 +302,7 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 		}
 		return "tool failed: the Python sandbox is unavailable; answer without it", nil
 	}
-	RecordUsage(s.usage, "code_run", func() error { return s.usage.IncCodeRun(ctx, user.ID) })
+	usage.Record(s.usage, "code_run", func() error { return s.usage.IncCodeRun(ctx, user.ID) })
 
 	var notes []string
 	for _, f := range res.Files {

@@ -49,7 +49,7 @@ type ThreadStore interface {
 
 // UsageStore records the lifetime usage counters a turn bumps: its tokens and
 // the tool calls that count. All methods are best-effort from the caller's
-// side; see RecordUsage.
+// side; see usage.Record.
 type UsageStore interface {
 	AddTokens(context.Context, string, usage.TokenDelta) error
 	IncWebSearch(context.Context, string) error

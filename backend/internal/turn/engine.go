@@ -2,7 +2,6 @@ package turn
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
@@ -130,16 +129,3 @@ type noMemory struct{}
 func (noMemory) UserContext(context.Context, string) string                   { return "" }
 func (noMemory) ProjectContext(context.Context, string, chat.Thread) string   { return "" }
 func (noMemory) RefreshProjectDescription(context.Context, auth.User, string) {}
-
-// RecordUsage runs a best-effort usage-counter update; the engine and the HTTP
-// handlers both count through it. A nil store (e.g. in tests) skips fn, and any
-// write error is logged and swallowed so counting never fails the underlying
-// request. counter is a short label used only for logging.
-func RecordUsage(store UsageStore, counter string, fn func() error) {
-	if store == nil {
-		return
-	}
-	if err := fn(); err != nil {
-		slog.Warn("usage counter update failed", "counter", counter, "err", err)
-	}
-}
