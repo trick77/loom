@@ -67,7 +67,8 @@ type Config struct {
 	// ProjectSummaryTokenBudget bounds the cross-thread digest returned by the
 	// read_project_threads tool.
 	ProjectSummaryTokenBudget int
-	// Memory supplies the user and project context; required.
+	// Memory supplies the user and project context; nil means none, as for a
+	// user with no memory stored.
 	Memory Memory
 	// ReasoningTitleHold bounds how long the first answer word waits for its
 	// round's reasoning title; ReasoningTitleStartBytes is how much reasoning
@@ -82,6 +83,10 @@ type Config struct {
 
 // New builds an Engine from c.
 func New(c Config) *Engine {
+	memory := c.Memory
+	if memory == nil {
+		memory = noMemory{}
+	}
 	return &Engine{
 		thread:                     c.Thread,
 		usage:                      c.Usage,
@@ -97,7 +102,7 @@ func New(c Config) *Engine {
 		usersDir:                   c.UsersDir,
 		knowledgeInlineTokenBudget: c.KnowledgeInlineTokenBudget,
 		projectSummaryTokenBudget:  c.ProjectSummaryTokenBudget,
-		memory:                     c.Memory,
+		memory:                     memory,
 		reasoningTitleHold:         c.ReasoningTitleHold,
 		reasoningTitleStartBytes:   c.ReasoningTitleStartBytes,
 		turnGateTimeout:            c.TurnGateTimeout,
@@ -117,6 +122,14 @@ type Memory interface {
 	// background after a turn titled one of its threads. It returns at once.
 	RefreshProjectDescription(ctx context.Context, user auth.User, projectID string)
 }
+
+// noMemory is a Memory with no user or project context, as for a user with
+// none stored. New uses it when Config.Memory is nil.
+type noMemory struct{}
+
+func (noMemory) UserContext(context.Context, string) string                   { return "" }
+func (noMemory) ProjectContext(context.Context, string, chat.Thread) string   { return "" }
+func (noMemory) RefreshProjectDescription(context.Context, auth.User, string) {}
 
 // RecordUsage runs a best-effort usage-counter update; the engine and the HTTP
 // handlers both count through it. A nil store (e.g. in tests) skips fn, and any

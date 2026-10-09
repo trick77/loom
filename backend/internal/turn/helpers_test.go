@@ -47,14 +47,6 @@ func (e sseEmitter) Send(event string, data any) error {
 	return e.w.Send(event, string(payload))
 }
 
-// noMemory is a Memory with no user or project context, as for a user with
-// none stored.
-type noMemory struct{}
-
-func (noMemory) UserContext(context.Context, string) string                   { return "" }
-func (noMemory) ProjectContext(context.Context, string, chat.Thread) string   { return "" }
-func (noMemory) RefreshProjectDescription(context.Context, auth.User, string) {}
-
 // turnOutcome is what a test reads back from a driven turn: the SSE body its
 // events produced and the assistant loop's result and error.
 type turnOutcome struct {
@@ -66,14 +58,10 @@ type turnOutcome struct {
 // runStoredTurn drives testUser's turn on store's thread the way the stream
 // handler does: it stores the user message, prepares the turn, runs the
 // assistant loop and persists an answer the handler would persist. The
-// turn's events are recorded as SSE. cfg.Thread is set to store, and a nil
-// cfg.Memory to noMemory.
+// turn's events are recorded as SSE. cfg.Thread is set to store.
 func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content string) turnOutcome {
 	t.Helper()
 	cfg.Thread = store
-	if cfg.Memory == nil {
-		cfg.Memory = noMemory{}
-	}
 	e := New(cfg)
 	rec := httptest.NewRecorder()
 	w, err := sse.NewWriter(rec)
