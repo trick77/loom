@@ -113,12 +113,12 @@ var sandboxToolSpec = toolSpec{
 	capPerRound: sandboxToolCallsPerRound,
 }
 
-// mcpTools is the policy for the MCP tools loom knows by name. fetch and
+// mcpPolicies are the policies of the MCP tools loom knows by name. fetch and
 // obscura are very inexpensive (an HTTP read, a headless page load), so they
 // get a higher cap than the default that guards pricier tools. An obscura page
 // load counts per navigate; the fetch->obscura fallback navigates outside the
 // tool loop and counts itself (see fetchObscuraFallback).
-var mcpTools = []toolSpec{
+var mcpPolicies = []toolSpec{
 	{
 		name:        fetchToolName,
 		capPerRound: cheapToolCallsPerRound,
@@ -143,7 +143,7 @@ var mcpTools = []toolSpec{
 
 // fixedTools indexes the tools whose names loom knows up front, for the round
 // policy. Generated-file and image tools take the defaults.
-var fixedTools = indexTools(slices.Concat(coreTools, []toolSpec{sandboxToolSpec}, mcpTools))
+var fixedTools = indexTools(slices.Concat(coreTools, []toolSpec{sandboxToolSpec}, mcpPolicies))
 
 // toolPolicy returns the spec that holds name's round policy; a tool loom
 // does not know by name gets the zero spec, i.e. the defaults.

@@ -59,7 +59,7 @@ func (s *Engine) gateTimeout() time.Duration {
 // the normal, non-image path instead of holding up the answer. inf attributes
 // the gate call to the turn's user and thread.
 func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadata, content string, hasAttachedImage bool, priorMessages []chat.Message) imageRouting {
-	if len(s.imageTools) == 0 || s.artifacts == nil || strings.TrimSpace(s.usersDir) == "" {
+	if len(s.imageTools) == 0 || !s.canStoreArtifacts() {
 		return imageRouting{}
 	}
 	// An empty message never routes to the image tool (matching the old
