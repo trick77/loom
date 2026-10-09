@@ -12,7 +12,7 @@ import (
 // This is the RAG upload allowlist. Document formats are extracted to text by
 // Tika (no OCR); image formats bypass Tika and are described by the vision model
 // at ingest (see rag.Ingester.extractContent), their MIME strings kept identical
-// to httpapi/image_allowlist.go. Keep in sync with the frontend file-chooser `accept`.
+// to artifact/image_formats.go. Keep in sync with the frontend file-chooser `accept`.
 var allowedFormats = map[string]string{
 	".pdf":  "application/pdf",
 	".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

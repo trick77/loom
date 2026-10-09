@@ -3,12 +3,32 @@ package usage_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
 	"github.com/trick77/loom/internal/store"
 	"github.com/trick77/loom/internal/usage"
 )
+
+// Record skips a missing store and swallows a failed write.
+func TestRecordSkipsANilStoreAndSwallowsErrors(t *testing.T) {
+	var missing usage.Counters
+	usage.Record(missing, "nil_store", func() error {
+		t.Fatal("fn ran without a store")
+		return nil
+	})
+
+	s, _ := newTestStore(t)
+	ran := false
+	usage.Record(s, "failing", func() error {
+		ran = true
+		return errors.New("db down")
+	})
+	if !ran {
+		t.Fatal("fn did not run with a store")
+	}
+}
 
 // newTestStore opens a real migrated database (so the test exercises migration
 // 0005 and the foreign key to users) and seeds one user the counters can target.

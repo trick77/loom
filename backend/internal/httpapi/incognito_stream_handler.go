@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/sse"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // incognitoThreadID is the synthetic id used for the ephemeral incognito thread.
@@ -26,7 +27,7 @@ const incognitoThreadID = "incognito"
 // It is deliberately a stripped-down sibling of handleStreamMessage: no
 // GetThread/ListMessages/AddMessage*, no title generation, no attachments, no
 // RAG/knowledge, no memory refresh. Tools are disabled entirely (see
-// runIncognitoAssistantTurn) so no tool can write to the DB or disk.
+// turn.Engine.RunIncognitoTurn) so no tool can write to the DB or disk.
 func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok {
@@ -62,7 +63,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	// answers directly instead of emitting a stripped-to-empty inline tool call.
 	priorMessages := incognitoPriorMessages(body.History)
 	userMessage := chat.Message{Role: chat.RoleUser, Content: body.Content}
-	history := buildIncognitoHistory(user, priorMessages, userMessage)
+	history := turn.BuildIncognitoHistory(user, priorMessages, userMessage)
 
 	streamCtx, cancelStream := context.WithCancelCause(r.Context())
 	defer cancelStream(nil)
@@ -78,12 +79,12 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
 
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
-	titles := newReasoningTitleTracker(streamCtx, s, stream, inference, userResponseLanguage(user))
-	defer titles.wait()
+	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, user.ResponseLanguageName())
+	defer titles.Wait()
 
-	assistantResult, err := s.runIncognitoAssistantTurn(streamCtx, stream, titles, history, inference)
+	assistantResult, err := s.engine.RunIncognitoTurn(streamCtx, turn.IncognitoConfig{Stream: stream, Titles: titles, Inference: inference}, history)
 	if err != nil {
-		if streamCanceled(streamCtx, err) {
+		if turn.StreamCanceled(streamCtx, err) {
 			cancelSource, cancelReason := streamCancelDetails(streamCtx)
 			slog.Info("incognito stream canceled",
 				"cancel_source", cancelSource,
@@ -93,8 +94,8 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 				"reasoning_bytes", len(assistantResult.ReasoningContent))
 			return
 		}
-		message := streamFailureMessage(err, assistantResult, "incognito", incognitoThreadID)
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": message})
+		message := turn.StreamFailureMessage(err, assistantResult, "incognito", incognitoThreadID)
+		_ = stream.SendJSON("error", map[string]string{"error": message})
 		return
 	}
 
@@ -103,18 +104,18 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		slog.Warn("empty incognito assistant response",
 			"content_bytes", len(assistantResult.Content),
 			"reasoning_bytes", len(assistantResult.ReasoningContent))
-		_ = sendSSEJSON(stream, "error", map[string]string{"error": "empty assistant response"})
+		_ = stream.SendJSON("error", map[string]string{"error": "empty assistant response"})
 		return
 	}
 
 	// Ensure background reasoning titles land before the trace/blocks are emitted,
 	// mirroring the persisted path — but here the "message" is assembled in memory
 	// and never stored.
-	titles.wait()
-	titles.mergeInto(assistantResult.ActivityTrace)
-	titles.mergeIntoBlocks(assistantResult.Blocks)
+	titles.Wait()
+	titles.MergeInto(assistantResult.ActivityTrace)
+	titles.MergeIntoBlocks(assistantResult.Blocks)
 
-	activityTraceJSON, contentBlocksJSON := marshalTurnJSON(incognitoThreadID, assistantResult.ActivityTrace, assistantResult.Blocks)
+	activityTraceJSON, contentBlocksJSON := turn.MarshalTurnJSON(incognitoThreadID, assistantResult.ActivityTrace, assistantResult.Blocks)
 
 	assistantMessage := chat.Message{
 		ID:            "incognito-assistant",
@@ -131,11 +132,11 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	}
 	// Incognito carries no token accounting, but the turn's cost is on the
 	// stream result and the bubble shows the thread's running total from it.
-	applyMessageMetrics(&assistantMessage, messageMetricsWithCost(assistantResult.StreamResult, llm.TokenUsage{}, time.Since(turnStart), assistantResult.CostNanoUSD, assistantResult.CostPriced))
-	if err := sendSSEJSON(stream, "assistant_message", assistantMessage); err != nil {
+	applyMessageMetrics(&assistantMessage, turn.MessageMetricsWithCost(assistantResult.StreamResult, llm.TokenUsage{}, time.Since(turnStart), assistantResult.CostNanoUSD, assistantResult.CostPriced))
+	if err := stream.SendJSON("assistant_message", assistantMessage); err != nil {
 		return
 	}
-	_ = stream.Send("done", "{}")
+	_ = stream.SendJSON("done", struct{}{})
 }
 
 // maxIncognitoHistoryBytes caps the combined size of the client-supplied prior

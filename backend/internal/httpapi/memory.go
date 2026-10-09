@@ -140,7 +140,7 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 		}
 	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
-	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt, userResponseLanguage(user))
+	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt, user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}
@@ -173,7 +173,7 @@ func (s *server) editMemory(ctx context.Context, user auth.User, scope memorySco
 	// markdown). ApplyMemoryEdit's own user message supplies the authoritative
 	// "apply only this instruction, leave the rest unchanged" framing that
 	// overrides the prompt's summarize-from-conversation wording.
-	edited, err := s.llm.ApplyMemoryEdit(llm.WithInferenceMetadata(ctx, inference), scope.header, current, instruction, scope.systemPrompt, userResponseLanguage(user))
+	edited, err := s.llm.ApplyMemoryEdit(llm.WithInferenceMetadata(ctx, inference), scope.header, current, instruction, scope.systemPrompt, user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}
@@ -214,18 +214,9 @@ func transcriptFromMessages(messages []chat.Message) string {
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
 		}
-		b.WriteString(roleLabel(m.Role))
+		b.WriteString(m.Role.TranscriptLabel())
 		b.WriteString(": ")
 		b.WriteString(content)
 	}
 	return b.String()
-}
-
-func roleLabel(role chat.Role) string {
-	switch role {
-	case chat.RoleAssistant:
-		return "Assistant"
-	default:
-		return "User"
-	}
 }

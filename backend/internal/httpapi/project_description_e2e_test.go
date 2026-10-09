@@ -60,8 +60,8 @@ func TestRefreshProjectDescription_GeneratedThroughRealClient(t *testing.T) {
 
 	projectID := "proj_japan"
 	store := &fakeThreadStore{
-		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Japan Trip", Description: ""},
-		projectThreadTitles: []string{"Where to stay in Kyoto", "Day trips from Osaka", "Best ramen spots"},
+		Project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Japan Trip", Description: ""},
+		ProjectThreadTitles: []string{"Where to stay in Kyoto", "Day trips from Osaka", "Best ramen spots"},
 	}
 	s := &server{thread: store, llm: client}
 
@@ -69,13 +69,13 @@ func TestRefreshProjectDescription_GeneratedThroughRealClient(t *testing.T) {
 		t.Fatalf("refreshProjectDescriptionIfDue() error: %v", err)
 	}
 
-	if !store.projectDescriptionChanged {
+	if !store.ProjectDescriptionChanged {
 		t.Fatal("project description was not persisted")
 	}
-	if store.project.Description != wantDescription {
-		t.Fatalf("description = %q, want %q", store.project.Description, wantDescription)
+	if store.Project.Description != wantDescription {
+		t.Fatalf("description = %q, want %q", store.Project.Description, wantDescription)
 	}
-	if store.project.DescriptionSourceThreadCount != 3 {
-		t.Fatalf("DescriptionSourceThreadCount = %d, want 3 (the titled-thread count)", store.project.DescriptionSourceThreadCount)
+	if store.Project.DescriptionSourceThreadCount != 3 {
+		t.Fatalf("DescriptionSourceThreadCount = %d, want 3 (the titled-thread count)", store.Project.DescriptionSourceThreadCount)
 	}
 }

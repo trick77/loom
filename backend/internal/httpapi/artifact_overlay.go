@@ -74,7 +74,7 @@ func collectArtifactIDs(messages []chat.Message) ([]string, error) {
 }
 
 func overlayArtifactArray(raw json.RawMessage, byID map[string]artifact.Artifact) (json.RawMessage, error) {
-	if isEmptyJSON(raw) {
+	if chat.IsEmptyJSON(raw) {
 		return raw, nil
 	}
 	var objs []map[string]json.RawMessage
@@ -98,7 +98,7 @@ var artifactKey = []byte(`"artifact"`)
 // a text block is escaped (\"artifact\") and does not match; a false positive
 // would only take the full path.
 func mayEmbedArtifact(raw json.RawMessage) bool {
-	return !isEmptyJSON(raw) && bytes.Contains(raw, artifactKey)
+	return !chat.IsEmptyJSON(raw) && bytes.Contains(raw, artifactKey)
 }
 
 func overlayContentBlocks(raw json.RawMessage, byID map[string]artifact.Artifact) (json.RawMessage, error) {
@@ -160,7 +160,7 @@ var (
 )
 
 func decodeArtifactObjects(raw json.RawMessage) ([]map[string]json.RawMessage, error) {
-	if isEmptyJSON(raw) {
+	if chat.IsEmptyJSON(raw) {
 		return nil, nil
 	}
 	var objs []map[string]json.RawMessage
@@ -218,15 +218,4 @@ func blockType(block map[string]json.RawMessage) string {
 		return ""
 	}
 	return blockType
-}
-
-// isEmptyJSON reports whether a raw JSON field carries no array content worth
-// walking: nil, empty, the literal null, or an empty array.
-func isEmptyJSON(raw json.RawMessage) bool {
-	switch string(raw) {
-	case "", "null", "[]":
-		return true
-	default:
-		return false
-	}
 }

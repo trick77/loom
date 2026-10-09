@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 )
 
 // DBTX is the minimal database surface the store needs (satisfied by *sql.DB).
@@ -47,6 +48,25 @@ type Totals struct {
 	CostNanoUSD     int64 `json:"costNanoUsd"`
 	ThreadsCreated  int   `json:"threadsCreated"`
 	ProjectsCreated int   `json:"projectsCreated"`
+}
+
+// Counters is the least a usage counter store offers; *Store implements it,
+// and so does every wider store interface a caller holds.
+type Counters interface {
+	AddTokens(ctx context.Context, userID string, d TokenDelta) error
+}
+
+// Record runs a best-effort usage-counter update through fn. A nil store
+// (e.g. in tests) skips fn, and any write error is logged and swallowed so
+// counting never fails the underlying request. counter is a short label used
+// only for logging.
+func Record(store Counters, counter string, fn func() error) {
+	if store == nil {
+		return
+	}
+	if err := fn(); err != nil {
+		slog.Warn("usage counter update failed", "counter", counter, "err", err)
+	}
 }
 
 // Store tracks per-user lifetime usage counters in the database.

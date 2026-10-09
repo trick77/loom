@@ -11,11 +11,13 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/loom/internal/usage"
 )
 
@@ -66,42 +68,45 @@ type Deps struct {
 	ProjectSummaryTokenBudget int
 	// Background owns the goroutines that outlive a request (post-turn memory
 	// refreshes). nil means a group nobody stops, which is what tests want.
-	Background *Background
+	Background *background.Group
+	// ReasoningTitleHold and ReasoningTitleStartBytes tune the reasoning title
+	// timing (see turn.Config); zero keeps the defaults, tests shorten them.
+	ReasoningTitleHold       time.Duration
+	ReasoningTitleStartBytes int
 }
 
 type server struct {
-	version                    string
-	model                      llm.ModelInfo
-	background                 *Background
-	inflight                   inflightKeys
-	oidc                       OIDCService
-	auth                       *auth.Middleware
-	sessions                   SessionService
-	sessionTTL                 time.Duration
-	users                      UserService
-	thread                     ThreadStore
-	usage                      UsageStore
-	artifacts                  ArtifactStore
-	documents                  DocumentService
-	llm                        ChatClient
-	mcp                        ToolService
-	docTools                   []docgen.Generator
-	imageTools                 []imagegen.Tool
-	sandbox                    SandboxRunner
-	imageDefaultModel          string
-	imageTypographyModel       string
-	usersDir                   string
-	faviconCacheDir            string
-	faviconClient              *http.Client             // nil → faviconDefaultClient (overridden in tests)
-	faviconService             func(host string) string // nil → Google's favicon service (overridden in tests)
-	oidcAdminGroup             string
-	devAuthClaims              auth.Claims
-	postLogoutRedirectURL      string
-	publicURL                  string
-	knowledgeInlineTokenBudget int
-	projectSummaryTokenBudget  int
-	activeStreams              activeStreamRegistry
+	version               string
+	model                 llm.ModelInfo
+	background            *background.Group
+	inflight              inflightKeys
+	oidc                  OIDCService
+	auth                  *auth.Middleware
+	sessions              SessionService
+	sessionTTL            time.Duration
+	users                 UserService
+	thread                ThreadStore
+	usage                 UsageStore
+	artifacts             ArtifactStore
+	documents             DocumentService
+	llm                   ChatClient
+	mcp                   ToolService
+	usersDir              string
+	faviconCacheDir       string
+	faviconClient         *http.Client             // nil → faviconDefaultClient (overridden in tests)
+	faviconService        func(host string) string // nil → Google's favicon service (overridden in tests)
+	oidcAdminGroup        string
+	devAuthClaims         auth.Claims
+	postLogoutRedirectURL string
+	publicURL             string
+	activeStreams         activeStreamRegistry
+	// engine runs the chat turns the stream handlers start.
+	engine *turn.Engine
 }
+
+// The stores and services below are the HTTP layer's full dependencies. Each
+// also satisfies the narrower port of the same name in package turn, which
+// holds only what a chat turn calls; newServer hands them to the engine.
 
 // ThreadStore is the thread persistence dependency used by the HTTP handlers;
 // chat.Store satisfies it.
@@ -169,7 +174,7 @@ type ThreadStore interface {
 }
 
 // UsageStore records per-user lifetime usage counters. All methods are
-// best-effort from the caller's side; see server.recordUsage.
+// best-effort from the caller's side; see usage.Record.
 type UsageStore interface {
 	AddTokens(context.Context, string, usage.TokenDelta) error
 	IncWebSearch(context.Context, string) error
@@ -180,18 +185,6 @@ type UsageStore interface {
 	IncThreadCreated(context.Context, string) error
 	IncProjectCreated(context.Context, string) error
 	Get(context.Context, string) (usage.Totals, error)
-}
-
-// recordUsage runs a best-effort usage-counter update. A nil store (e.g. in
-// tests) or any write error is logged and swallowed so counting never fails the
-// underlying request. counter is a short label used only for logging.
-func (s *server) recordUsage(counter string, fn func() error) {
-	if s.usage == nil {
-		return
-	}
-	if err := fn(); err != nil {
-		slog.Warn("usage counter update failed", "counter", counter, "err", err)
-	}
 }
 
 // ArtifactStore persists and looks up generated artifact metadata.
@@ -208,7 +201,8 @@ type ArtifactStore interface {
 	ListForProject(context.Context, string, string) ([]artifact.Artifact, error)
 }
 
-// ChatClient is the LLM dependency used by chat stream handlers.
+// ChatClient is the LLM dependency used by chat stream handlers and the memory
+// refreshes.
 type ChatClient interface {
 	StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error)
 	GenerateThreadTitle(context.Context, string, string, string) (string, error)
@@ -229,6 +223,10 @@ type ToolService interface {
 	HasTool(string) bool
 	ServerStatus(context.Context) []mcp.ServerStatus
 }
+
+// SandboxRunner runs run_python jobs; *sandbox.Client implements it. The
+// handlers need nothing beyond the engine's port, so it is the same type.
+type SandboxRunner = turn.SandboxRunner
 
 // OIDCService is the auth handler dependency for OIDC redirects and callbacks.
 type OIDCService interface {
@@ -254,39 +252,52 @@ type UserService interface {
 
 // newServer builds the server struct from its dependencies.
 func newServer(d Deps) *server {
-	background := d.Background
-	if background == nil {
-		background = NewBackground(context.Background())
+	bg := d.Background
+	if bg == nil {
+		bg = background.New(context.Background())
 	}
-	return &server{
-		background:                 background,
-		version:                    d.Version,
-		model:                      d.Model,
-		oidc:                       d.OIDC,
-		auth:                       d.Auth,
-		sessions:                   d.Sessions,
-		sessionTTL:                 d.SessionTTL,
-		users:                      d.Users,
-		thread:                     d.Thread,
-		usage:                      d.Usage,
-		artifacts:                  d.Artifacts,
-		documents:                  d.Documents,
-		llm:                        d.LLM,
-		mcp:                        d.MCP,
-		docTools:                   d.DocTools,
-		imageTools:                 d.ImageTools,
-		sandbox:                    d.Sandbox,
-		imageDefaultModel:          d.ImageDefaultModel,
-		imageTypographyModel:       d.ImageGenTypographyModel,
-		usersDir:                   d.UsersDir,
-		faviconCacheDir:            faviconCacheDirFor(d.UsersDir),
-		oidcAdminGroup:             d.OIDCAdminGroup,
-		devAuthClaims:              d.DevAuthClaims,
-		postLogoutRedirectURL:      d.PostLogoutRedirectURL,
-		publicURL:                  d.PublicURL,
-		knowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
-		projectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
+	s := &server{
+		background:            bg,
+		version:               d.Version,
+		model:                 d.Model,
+		oidc:                  d.OIDC,
+		auth:                  d.Auth,
+		sessions:              d.Sessions,
+		sessionTTL:            d.SessionTTL,
+		users:                 d.Users,
+		thread:                d.Thread,
+		usage:                 d.Usage,
+		artifacts:             d.Artifacts,
+		documents:             d.Documents,
+		llm:                   d.LLM,
+		mcp:                   d.MCP,
+		usersDir:              d.UsersDir,
+		faviconCacheDir:       faviconCacheDirFor(d.UsersDir),
+		oidcAdminGroup:        d.OIDCAdminGroup,
+		devAuthClaims:         d.DevAuthClaims,
+		postLogoutRedirectURL: d.PostLogoutRedirectURL,
+		publicURL:             d.PublicURL,
 	}
+	s.engine = turn.New(turn.Config{
+		Thread:                     d.Thread,
+		Usage:                      d.Usage,
+		Artifacts:                  d.Artifacts,
+		Documents:                  d.Documents,
+		LLM:                        d.LLM,
+		MCP:                        d.MCP,
+		DocTools:                   d.DocTools,
+		ImageTools:                 d.ImageTools,
+		ImageDefaultModel:          d.ImageDefaultModel,
+		ImageTypographyModel:       d.ImageGenTypographyModel,
+		Sandbox:                    d.Sandbox,
+		UsersDir:                   d.UsersDir,
+		KnowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
+		ProjectSummaryTokenBudget:  d.ProjectSummaryTokenBudget,
+		Memory:                     engineMemory{s: s},
+		ReasoningTitleHold:         d.ReasoningTitleHold,
+		ReasoningTitleStartBytes:   d.ReasoningTitleStartBytes,
+	})
+	return s
 }
 
 // NewWithMemoryWorker returns the HTTP handler and the background memory worker

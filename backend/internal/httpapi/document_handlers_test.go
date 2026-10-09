@@ -12,93 +12,10 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/rag"
 )
-
-type fakeDocumentService struct {
-	uploaded           documents.UploadInput
-	uploadErr          error
-	doc                rag.Document
-	fullText           string
-	fullTextErr        error
-	deletedThreadData  []string
-	deletedProjectData []string
-	deleteDataErr      error
-	// artifactsInUse is what ArtifactIDsForThreadArtifactsInUse returns, i.e. the
-	// thread artifacts that still back a surviving document.
-	artifactsInUse      []string
-	artifactsInUseErr   error
-	inUseQueriedThreads []string
-	// fullTextEntered, when set, is signalled (non-blocking) when FullText runs.
-	fullTextEntered chan struct{}
-	deleteErr       error
-	// backingArtifactID is the artifact behind the one document this fake knows;
-	// DeleteForArtifact records the artifacts it deleted a document for.
-	backingArtifactID  string
-	deletedForArtifact []string
-	// indexCalls, when set, receives the id of every document Index runs for.
-	indexCalls chan string
-}
-
-func (f *fakeDocumentService) Upload(_ context.Context, in documents.UploadInput) (rag.Document, artifact.Artifact, error) {
-	f.uploaded = in
-	if f.uploadErr != nil {
-		return rag.Document{}, artifact.Artifact{}, f.uploadErr
-	}
-	return f.doc, artifact.Artifact{}, nil
-}
-func (f *fakeDocumentService) List(context.Context, string, *string) ([]rag.Document, error) {
-	return []rag.Document{f.doc}, nil
-}
-func (f *fakeDocumentService) Get(context.Context, string, string) (rag.Document, bool, error) {
-	return f.doc, true, nil
-}
-func (f *fakeDocumentService) FullText(context.Context, string, string) (string, error) {
-	if f.fullTextEntered != nil {
-		select {
-		case f.fullTextEntered <- struct{}{}:
-		default:
-		}
-	}
-	return f.fullText, f.fullTextErr
-}
-func (f *fakeDocumentService) Index(_ context.Context, _, documentID string) error {
-	if f.indexCalls != nil {
-		f.indexCalls <- documentID
-	}
-	return nil
-}
-func (f *fakeDocumentService) Delete(context.Context, string, string) error { return f.deleteErr }
-func (f *fakeDocumentService) DeleteForArtifact(_ context.Context, _ string, artifactID string) (bool, error) {
-	if f.backingArtifactID == "" || artifactID != f.backingArtifactID {
-		return false, nil
-	}
-	f.deletedForArtifact = append(f.deletedForArtifact, artifactID)
-	return true, f.deleteErr
-}
-func (f *fakeDocumentService) DeleteThreadData(_ context.Context, _ string, threadID string) error {
-	f.deletedThreadData = append(f.deletedThreadData, threadID)
-	return f.deleteDataErr
-}
-func (f *fakeDocumentService) ArtifactIDsForThreadArtifactsInUse(_ context.Context, _ string, threadID string) ([]string, error) {
-	f.inUseQueriedThreads = append(f.inUseQueriedThreads, threadID)
-	return f.artifactsInUse, f.artifactsInUseErr
-}
-func (f *fakeDocumentService) DeleteProjectData(_ context.Context, _ string, projectID string) error {
-	f.deletedProjectData = append(f.deletedProjectData, projectID)
-	return f.deleteDataErr
-}
-func (f *fakeDocumentService) Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error) {
-	return nil, nil
-}
-func (f *fakeDocumentService) DocumentsInScope(context.Context, string, *string, *string, int) ([]rag.Document, error) {
-	return []rag.Document{f.doc}, nil
-}
-
-func (f *fakeDocumentService) IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error) {
-	return nil, nil
-}
 
 func multipartUpload(t *testing.T, filename, content string, fields map[string]string) *http.Request {
 	t.Helper()
@@ -120,7 +37,7 @@ func multipartUpload(t *testing.T, filename, content string, fields map[string]s
 }
 
 func TestHandleUploadDocument_success(t *testing.T) {
-	svc := &fakeDocumentService{doc: rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusPending}}
+	svc := &fakeDocumentService{Doc: rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusPending}}
 	server := newAuthenticatedServer(t, Deps{Documents: svc})
 
 	rec := httptest.NewRecorder()
@@ -129,16 +46,16 @@ func TestHandleUploadDocument_success(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
-	if svc.uploaded.Filename != "a.pdf" {
-		t.Errorf("forwarded filename = %q, want a.pdf", svc.uploaded.Filename)
+	if svc.Uploaded.Filename != "a.pdf" {
+		t.Errorf("forwarded filename = %q, want a.pdf", svc.Uploaded.Filename)
 	}
-	if svc.uploaded.ProjectID == nil || *svc.uploaded.ProjectID != "p1" {
-		t.Errorf("forwarded projectId = %v, want p1", svc.uploaded.ProjectID)
+	if svc.Uploaded.ProjectID == nil || *svc.Uploaded.ProjectID != "p1" {
+		t.Errorf("forwarded projectId = %v, want p1", svc.Uploaded.ProjectID)
 	}
 }
 
 func TestHandleUploadDocument_unsupportedFormat(t *testing.T) {
-	svc := &fakeDocumentService{uploadErr: documents.ErrUnsupportedFormat}
+	svc := &fakeDocumentService{UploadErr: documents.ErrUnsupportedFormat}
 	server := newAuthenticatedServer(t, Deps{Documents: svc})
 
 	rec := httptest.NewRecorder()
@@ -150,7 +67,7 @@ func TestHandleUploadDocument_unsupportedFormat(t *testing.T) {
 }
 
 func TestHandleUploadDocument_chatDocumentLimit(t *testing.T) {
-	svc := &fakeDocumentService{uploadErr: documents.ErrThreadDocumentLimit}
+	svc := &fakeDocumentService{UploadErr: documents.ErrThreadDocumentLimit}
 	server := newAuthenticatedServer(t, Deps{Documents: svc})
 
 	rec := httptest.NewRecorder()
@@ -165,7 +82,7 @@ func TestHandleUploadDocument_payloadTooLarge(t *testing.T) {
 	// Content over the limit is enforced in documents.Upload (which returns
 	// ErrTooLarge); the handler must map that to 413 so the client reports a size
 	// error. The request body itself stays within the handler's MaxBytesReader.
-	svc := &fakeDocumentService{uploadErr: documents.ErrTooLarge}
+	svc := &fakeDocumentService{UploadErr: documents.ErrTooLarge}
 	server := newAuthenticatedServer(t, Deps{Documents: svc})
 
 	rec := httptest.NewRecorder()
@@ -248,8 +165,8 @@ func TestToDocumentResponse_setsDownloadURLFromArtifact(t *testing.T) {
 // keeps polling.
 func TestHandleDeleteDocument_conflictWhileIndexing(t *testing.T) {
 	svc := &fakeDocumentService{
-		doc:       rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusExtracting},
-		deleteErr: documents.ErrIndexInProgress,
+		Doc:       rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusExtracting},
+		DeleteErr: documents.ErrIndexInProgress,
 	}
 	server := newAuthenticatedServer(t, Deps{Documents: svc})
 	for _, req := range []*http.Request{
@@ -267,10 +184,10 @@ func TestHandleDeleteDocument_conflictWhileIndexing(t *testing.T) {
 // in it is recovered and shutdown drains it before the database closes.
 func TestHandleIndexDocument_runsIngestInBackgroundGroup(t *testing.T) {
 	svc := &fakeDocumentService{
-		doc:        rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusPending},
-		indexCalls: make(chan string, 1),
+		Doc:        rag.Document{ID: "d1", Filename: "a.pdf", Status: rag.StatusPending},
+		IndexCalls: make(chan string, 1),
 	}
-	bg := NewBackground(context.Background())
+	bg := background.New(context.Background())
 	server := newAuthenticatedServer(t, Deps{Documents: svc, Background: bg})
 	rec := httptest.NewRecorder()
 	server.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/documents/d1/index", ""))
@@ -281,7 +198,7 @@ func TestHandleIndexDocument_runsIngestInBackgroundGroup(t *testing.T) {
 		t.Fatalf("Stop() error = %v (the ingest was not tracked by the group)", err)
 	}
 	select {
-	case id := <-svc.indexCalls:
+	case id := <-svc.IndexCalls:
 		if id != "d1" {
 			t.Fatalf("indexed %q, want d1", id)
 		}

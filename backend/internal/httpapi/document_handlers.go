@@ -9,11 +9,13 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/documents"
+	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/rag"
 )
 
 // DocumentService is the RAG document dependency used by document handlers. It is
-// nil when embeddings are not configured, which disables the feature (404).
+// nil when embeddings are not configured, which disables the feature (404). It
+// also satisfies turn.DocumentService, the slice a chat turn reads.
 type DocumentService interface {
 	Upload(context.Context, documents.UploadInput) (rag.Document, artifact.Artifact, error)
 	List(context.Context, string, *string) ([]rag.Document, error)
@@ -180,7 +182,7 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 	// the Tika or embedding path and lets shutdown drain it before the
 	// database closes. Attribute its model calls (vision description,
 	// embedding batches): the detached context carries no metadata of its own.
-	s.background.Spawn(withUserAttribution(r.Context(), user, ""), "document_index:"+docID, func(ctx context.Context) {
+	s.background.Spawn(inference.WithAttribution(r.Context(), user.ID, user.Username, ""), "document_index:"+docID, func(ctx context.Context) {
 		_ = s.documents.Index(ctx, user.ID, docID)
 	})
 	doc.Status = rag.StatusPending

@@ -7,32 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 )
-
-func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
-	user := auth.User{ID: "u1", ResponseLanguage: "en"}
-	newMsg := chat.Message{Role: chat.RoleUser, Content: "Hi"}
-
-	without := buildLLMHistory(user, "", "", "", "", "", "", nil, newMsg)
-	if without[0].Role != "system" {
-		t.Fatalf("first message role = %q, want system", without[0].Role)
-	}
-	if strings.Contains(without[0].Content, "Project") {
-		t.Fatalf("system prompt unexpectedly contains project context: %q", without[0].Content)
-	}
-
-	with := buildLLMHistory(user, "", "", "", "Project name: Amsterdam Trip", "", "", nil, newMsg)
-	if !strings.Contains(with[0].Content, "Project name: Amsterdam Trip") {
-		t.Fatalf("system prompt missing project context: %q", with[0].Content)
-	}
-	// The base system prompt is preserved alongside the injected context.
-	if !strings.HasPrefix(with[0].Content, without[0].Content) {
-		t.Fatalf("project context did not append to base system prompt: %q", with[0].Content)
-	}
-}
 
 func TestRenderProjectContext(t *testing.T) {
 	got := renderProjectContext(
@@ -59,13 +36,13 @@ func TestStreamMessageInjectsProjectMemory(t *testing.T) {
 	projectID := "proj_1"
 	var capturedHistory []llm.Message
 	store := &fakeThreadStore{
-		thread:        chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Flights"},
-		project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip", Description: "Family trip planning"},
-		projectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "Travel month: May"},
+		Thread:        chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID, Title: "Flights"},
+		Project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip", Description: "Family trip planning"},
+		ProjectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "Travel month: May"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{history: &capturedHistory},
+		LLM:    fakeChatClient{History: &capturedHistory},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"What should I pack?"}`)
@@ -91,11 +68,11 @@ func TestStreamMessageInjectsProjectMemory(t *testing.T) {
 func TestStreamMessageOmitsProjectContextForProjectlessThread(t *testing.T) {
 	var capturedHistory []llm.Message
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Loose chat"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Loose chat"},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{history: &capturedHistory},
+		LLM:    fakeChatClient{History: &capturedHistory},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -115,14 +92,14 @@ func TestStreamMessageOmitsProjectContextForProjectlessThread(t *testing.T) {
 func TestRefreshMemory_ProjectScopeGeneratesAndStores(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		Project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
 	}
-	s := &server{thread: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
+	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "Travel month: May"}}
 
 	err := s.refreshMemory(
 		context.Background(),
 		testUser,
-		s.projectMemoryScope(testUser, store.project),
+		s.projectMemoryScope(testUser, store.Project),
 		"",
 		[]chat.Message{{Role: chat.RoleUser, Content: "When should we go?"}},
 		7,
@@ -130,11 +107,11 @@ func TestRefreshMemory_ProjectScopeGeneratesAndStores(t *testing.T) {
 	if err != nil {
 		t.Fatalf("refreshMemory() error: %v", err)
 	}
-	if store.projectMemory.Content != "Travel month: May" {
-		t.Fatalf("stored content = %q, want generated memory", store.projectMemory.Content)
+	if store.ProjectMemory.Content != "Travel month: May" {
+		t.Fatalf("stored content = %q, want generated memory", store.ProjectMemory.Content)
 	}
-	if store.projectMemory.SourceMessageCount != 7 {
-		t.Fatalf("stored source count = %d, want 7", store.projectMemory.SourceMessageCount)
+	if store.ProjectMemory.SourceMessageCount != 7 {
+		t.Fatalf("stored source count = %d, want 7", store.ProjectMemory.SourceMessageCount)
 	}
 }
 
@@ -143,17 +120,17 @@ func TestRefreshMemory_ProjectScopeGeneratesAndStores(t *testing.T) {
 func TestRefreshProjectMemoryIfDue_NoNewMessagesIsNoOp(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		projectMessageCount: 0,
-		messages:            []chat.Message{{Role: chat.RoleUser, Content: "When?"}},
+		Project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		ProjectMessageCount: 0,
+		Messages:            []chat.Message{{Role: chat.RoleUser, Content: "When?"}},
 	}
-	s := &server{thread: store, llm: fakeChatClient{projectMemory: "must not be stored"}}
+	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "must not be stored"}}
 
 	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
 	}
-	if store.projectMemory.Content != "" {
-		t.Fatalf("memory = %q, want no refresh with zero new messages", store.projectMemory.Content)
+	if store.ProjectMemory.Content != "" {
+		t.Fatalf("memory = %q, want no refresh with zero new messages", store.ProjectMemory.Content)
 	}
 }
 
@@ -163,20 +140,20 @@ func TestRefreshProjectMemoryIfDue_NoNewMessagesIsNoOp(t *testing.T) {
 func TestRefreshProjectMemoryIfDue_AnyNewMessageRefreshes(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		projectMessageCount: 1,
-		messages:            []chat.Message{{Role: chat.RoleUser, Content: "Traveling in May"}},
+		Project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		ProjectMessageCount: 1,
+		Messages:            []chat.Message{{Role: chat.RoleUser, Content: "Traveling in May"}},
 	}
-	s := &server{thread: store, llm: fakeChatClient{projectMemory: "Travel month: May"}}
+	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "Travel month: May"}}
 
 	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
 	}
-	if store.projectMemory.Content != "Travel month: May" {
-		t.Fatalf("memory = %q, want refreshed content", store.projectMemory.Content)
+	if store.ProjectMemory.Content != "Travel month: May" {
+		t.Fatalf("memory = %q, want refreshed content", store.ProjectMemory.Content)
 	}
-	if store.projectMemory.SourceMessageCount != 1 {
-		t.Fatalf("source count = %d, want 1", store.projectMemory.SourceMessageCount)
+	if store.ProjectMemory.SourceMessageCount != 1 {
+		t.Fatalf("source count = %d, want 1", store.ProjectMemory.SourceMessageCount)
 	}
 }
 
@@ -185,12 +162,12 @@ func TestRefreshProjectMemoryIfDue_AnyNewMessageRefreshes(t *testing.T) {
 func TestEditProjectMemory_AppliesAndReturns(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		projectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "- Travel month: May", SourceMessageCount: 5},
+		Project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		ProjectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "- Travel month: May", SourceMessageCount: 5},
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
-		LLM:    fakeChatClient{editedMemory: "- Travel month: June"},
+		LLM:    fakeChatClient{EditedMemory: "- Travel month: June"},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":"We moved the trip to June"}`)
@@ -203,11 +180,11 @@ func TestEditProjectMemory_AppliesAndReturns(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "June") {
 		t.Fatalf("response missing edited memory:\n%s", rec.Body.String())
 	}
-	if store.projectMemory.Content != "- Travel month: June" {
-		t.Fatalf("stored content = %q, want edited memory", store.projectMemory.Content)
+	if store.ProjectMemory.Content != "- Travel month: June" {
+		t.Fatalf("stored content = %q, want edited memory", store.ProjectMemory.Content)
 	}
-	if store.projectMemory.SourceMessageCount != 5 {
-		t.Fatalf("source count = %d, want 5 (gate undisturbed)", store.projectMemory.SourceMessageCount)
+	if store.ProjectMemory.SourceMessageCount != 5 {
+		t.Fatalf("source count = %d, want 5 (gate undisturbed)", store.ProjectMemory.SourceMessageCount)
 	}
 }
 
@@ -216,10 +193,10 @@ func TestEditProjectMemory_AppliesAndReturns(t *testing.T) {
 func TestEditProjectMemory_EmptyResultEmptiesMemory(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		projectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "- Old fact", SourceMessageCount: 6},
+		Project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		ProjectMemory: chat.ProjectMemory{ProjectID: projectID, Content: "- Old fact", SourceMessageCount: 6},
 	}
-	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{editedMemory: ""}})
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{EditedMemory: ""}})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":"Forget everything"}`)
 
@@ -228,11 +205,11 @@ func TestEditProjectMemory_EmptyResultEmptiesMemory(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
-	if store.projectMemory.Content != "" {
-		t.Fatalf("stored content = %q, want emptied", store.projectMemory.Content)
+	if store.ProjectMemory.Content != "" {
+		t.Fatalf("stored content = %q, want emptied", store.ProjectMemory.Content)
 	}
-	if store.projectMemory.SourceMessageCount != 6 {
-		t.Fatalf("source count = %d, want 6 (gate undisturbed)", store.projectMemory.SourceMessageCount)
+	if store.ProjectMemory.SourceMessageCount != 6 {
+		t.Fatalf("source count = %d, want 6 (gate undisturbed)", store.ProjectMemory.SourceMessageCount)
 	}
 }
 
@@ -242,9 +219,9 @@ func TestEditProjectMemory_EmptyResultEmptiesMemory(t *testing.T) {
 // edit must 404 and never upsert.
 func TestEditProjectMemory_UnownedProjectIs404(t *testing.T) {
 	store := &fakeThreadStore{
-		project: chat.Project{ID: "someone_elses", UserID: "other_user", Name: "Theirs"},
+		Project: chat.Project{ID: "someone_elses", UserID: "other_user", Name: "Theirs"},
 	}
-	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{editedMemory: "must not be stored"}})
+	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{EditedMemory: "must not be stored"}})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":"Remember X"}`)
 
@@ -253,14 +230,14 @@ func TestEditProjectMemory_UnownedProjectIs404(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
-	if store.projectMemory.Content != "" {
-		t.Fatalf("memory upserted for an unowned project: %q", store.projectMemory.Content)
+	if store.ProjectMemory.Content != "" {
+		t.Fatalf("memory upserted for an unowned project: %q", store.ProjectMemory.Content)
 	}
 }
 
 func TestEditProjectMemory_EmptyInstructionIsBadRequest(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeThreadStore{project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"}}
+	store := &fakeThreadStore{Project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{}})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":""}`)
@@ -274,7 +251,7 @@ func TestEditProjectMemory_EmptyInstructionIsBadRequest(t *testing.T) {
 
 func TestEditProjectMemory_NoLLMIsServiceUnavailable(t *testing.T) {
 	projectID := "proj_1"
-	store := &fakeThreadStore{project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"}}
+	store := &fakeThreadStore{Project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/projects/proj_1/memory:edit", `{"instruction":"We moved the trip to June"}`)

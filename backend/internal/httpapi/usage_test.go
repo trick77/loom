@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,40 +11,15 @@ import (
 	"github.com/trick77/loom/internal/usage"
 )
 
-type stubUsageStore struct{ totals usage.Totals }
-
-// recordingUsageStore captures the lifetime token rollups a turn writes, so a
-// test can assert which helper calls were still inside the accumulator when it
-// was read.
-type recordingUsageStore struct {
-	stubUsageStore
-	deltas []usage.TokenDelta
-}
-
-func (s *recordingUsageStore) AddTokens(_ context.Context, _ string, delta usage.TokenDelta) error {
-	s.deltas = append(s.deltas, delta)
-	return nil
-}
-
-func (s stubUsageStore) AddTokens(context.Context, string, usage.TokenDelta) error { return nil }
-func (s stubUsageStore) IncWebSearch(context.Context, string) error                { return nil }
-func (s stubUsageStore) IncWebFetch(context.Context, string) error                 { return nil }
-func (s stubUsageStore) IncObscuraFetch(context.Context, string) error             { return nil }
-func (s stubUsageStore) IncImageGen(context.Context, string) error                 { return nil }
-func (s stubUsageStore) IncCodeRun(context.Context, string) error                  { return nil }
-func (s stubUsageStore) IncThreadCreated(context.Context, string) error            { return nil }
-func (s stubUsageStore) IncProjectCreated(context.Context, string) error           { return nil }
-func (s stubUsageStore) Get(context.Context, string) (usage.Totals, error)         { return s.totals, nil }
-
 func TestHandleGetUsage_returnsTotalsAndMemoryStats(t *testing.T) {
 	updated := time.Date(2026, 6, 26, 8, 30, 0, 0, time.UTC)
 	threadStore := &fakeThreadStore{
-		userMemory:       chat.UserMemory{Content: "hello", SourceMessageCount: 184, UpdatedAt: &updated},
-		userMessageCount: 210,
+		UserMemory:       chat.UserMemory{Content: "hello", SourceMessageCount: 184, UpdatedAt: &updated},
+		UserMessageCount: 210,
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: threadStore,
-		Usage:  stubUsageStore{totals: usage.Totals{TotalTokens: 42, EmbeddingTokens: 12, EmbeddingRequests: 2, WebSearches: 3}},
+		Usage:  stubUsageStore{Totals: usage.Totals{TotalTokens: 42, EmbeddingTokens: 12, EmbeddingRequests: 2, WebSearches: 3}},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/me/usage", "")
@@ -88,7 +62,7 @@ func TestHandleGetUsage_returnsTotalsAndMemoryStats(t *testing.T) {
 // TestHandleGetUsage_neverGeneratedMemory proves a user with no memory yet reports
 // zeroed memory stats and a null updated-at (not a zero timestamp).
 func TestHandleGetUsage_neverGeneratedMemory(t *testing.T) {
-	threadStore := &fakeThreadStore{userMessageCount: 7} // no userMemory → GetUserMemory ok=false
+	threadStore := &fakeThreadStore{UserMessageCount: 7} // no userMemory → GetUserMemory ok=false
 	srv := newAuthenticatedServer(t, Deps{Thread: threadStore, Usage: stubUsageStore{}})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodGet, "/api/me/usage", "")

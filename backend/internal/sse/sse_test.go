@@ -31,6 +31,28 @@ func TestWriter_writesEventAndData(t *testing.T) {
 	}
 }
 
+func TestWriter_SendJSONEncodesThePayload(t *testing.T) {
+	rec := httptest.NewRecorder()
+	w, err := NewWriter(rec)
+	if err != nil {
+		t.Fatalf("NewWriter error: %v", err)
+	}
+
+	if err := w.SendJSON("error", map[string]string{"error": "a <b> & c"}); err != nil {
+		t.Fatalf("SendJSON error: %v", err)
+	}
+	if got, want := rec.Body.String(), "event: error\ndata: {\"error\":\"a \\u003cb\\u003e \\u0026 c\"}\n\n"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+
+	if err := w.SendJSON("bad", make(chan int)); err == nil {
+		t.Error("SendJSON of an unencodable value returned no error")
+	}
+	if strings.Contains(rec.Body.String(), "event: bad") {
+		t.Errorf("an unencodable value still wrote an event: %q", rec.Body.String())
+	}
+}
+
 func TestWriter_setsAntiBufferingHeader(t *testing.T) {
 	rec := httptest.NewRecorder()
 

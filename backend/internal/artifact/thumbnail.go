@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -109,6 +110,22 @@ func WriteThumbnail(usersDir, userID, volumeRelPath string, src []byte) (string,
 		return "", err
 	}
 	return relPath, nil
+}
+
+// GenerateThumbnailBestEffort writes a sidecar thumbnail for a freshly-created
+// raster image artifact, returning its volume-relative path (empty for non-raster
+// types or on failure). It never propagates an error: a missing thumbnail is
+// backfilled lazily by the thumbnail endpoint on first view.
+func GenerateThumbnailBestEffort(usersDir, userID, mimeType string, src []byte, volumeRelPath string) string {
+	if !IsThumbnailableMIME(mimeType) {
+		return ""
+	}
+	thumbRel, err := WriteThumbnail(usersDir, userID, volumeRelPath, src)
+	if err != nil {
+		slog.Warn("generate artifact thumbnail failed", "path", volumeRelPath, "err", err)
+		return ""
+	}
+	return thumbRel
 }
 
 // RemoveThumbnail best-effort deletes the sidecar thumbnail for an artifact. It is

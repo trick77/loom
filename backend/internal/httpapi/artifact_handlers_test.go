@@ -23,7 +23,7 @@ import (
 
 func TestListArtifactsReturnsCurrentUsersArtifacts(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
-		Artifacts: fakeArtifactStore{artifacts: []artifact.Artifact{
+		Artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{
 			{
 				ID:              "art_1",
 				UserID:          "user_1",
@@ -83,7 +83,7 @@ func TestUploadImageAttachmentEnforcesThreadImageLimit(t *testing.T) {
 		})
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Artifacts: fakeArtifactStore{artifacts: items},
+		Artifacts: fakeArtifactStore{Artifacts: items},
 	})
 
 	body, contentType := multipartUploadBody(t, "file", "next.png", "image/png", []byte("png"))
@@ -188,8 +188,8 @@ func TestDeleteArtifactRemovesOwnArtifactRowAndFile(t *testing.T) {
 
 	deleted := []string{}
 	store := fakeArtifactStore{
-		deleted: &deleted,
-		artifacts: []artifact.Artifact{
+		Deleted: &deleted,
+		Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png"},
 		},
 	}
@@ -215,12 +215,12 @@ func TestDeleteArtifactRemovesOwnArtifactRowAndFile(t *testing.T) {
 func TestDeleteArtifactDeletesTheDocumentItBacks(t *testing.T) {
 	deleted := []string{}
 	store := fakeArtifactStore{
-		deleted: &deleted,
-		artifacts: []artifact.Artifact{
+		Deleted: &deleted,
+		Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: "user_1", VolumeRelPath: "files/uploads/a.pdf", DisplayFilename: "a.pdf", MIMEType: "application/pdf"},
 		},
 	}
-	docs := &fakeDocumentService{backingArtifactID: "art_1"}
+	docs := &fakeDocumentService{BackingArtifactID: "art_1"}
 	server := newAuthenticatedServer(t, Deps{Artifacts: store, Documents: docs, UsersDir: t.TempDir()})
 
 	rec := httptest.NewRecorder()
@@ -229,16 +229,16 @@ func TestDeleteArtifactDeletesTheDocumentItBacks(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	if len(docs.deletedForArtifact) != 1 || docs.deletedForArtifact[0] != "art_1" {
-		t.Fatalf("document deletes = %v, want the one backed by art_1", docs.deletedForArtifact)
+	if len(docs.DeletedForArtifact) != 1 || docs.DeletedForArtifact[0] != "art_1" {
+		t.Fatalf("document deletes = %v, want the one backed by art_1", docs.DeletedForArtifact)
 	}
 }
 
 func TestDeleteArtifactRejectsAnotherUsersArtifact(t *testing.T) {
 	deleted := []string{}
 	store := fakeArtifactStore{
-		deleted: &deleted,
-		artifacts: []artifact.Artifact{
+		Deleted: &deleted,
+		Artifacts: []artifact.Artifact{
 			{ID: "art_2", UserID: "user_2", VolumeRelPath: "art_2.png", DisplayFilename: "b.png"},
 		},
 	}
@@ -256,7 +256,7 @@ func TestDeleteArtifactRejectsAnotherUsersArtifact(t *testing.T) {
 }
 
 func TestRenameArtifactUpdatesNameForOwner(t *testing.T) {
-	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "art_1", UserID: "user_1", DisplayFilename: "old.md", MIMEType: "text/markdown"},
 	}}
 	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
@@ -277,7 +277,7 @@ func TestRenameArtifactUpdatesNameForOwner(t *testing.T) {
 }
 
 func TestRenameArtifactLocksOriginalExtension(t *testing.T) {
-	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "art_1", UserID: "user_1", DisplayFilename: "report.md", MIMEType: "text/markdown"},
 	}}
 	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
@@ -299,7 +299,7 @@ func TestRenameArtifactLocksOriginalExtension(t *testing.T) {
 }
 
 func TestRenameArtifactRejectsBadInput(t *testing.T) {
-	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "art_1", UserID: "user_1", DisplayFilename: "a.md"},
 		{ID: "art_2", UserID: "user_2", DisplayFilename: "b.md"},
 	}}
@@ -378,7 +378,7 @@ func TestThumbnailArtifactGeneratesServesAndBackfills(t *testing.T) {
 	if err := os.WriteFile(absFile, pngFileBytes(t, 400, 300), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png", SizeBytes: 1234},
 	}}
 	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: usersDir})
@@ -419,13 +419,13 @@ func TestThumbnailArtifactGeneratesServesAndBackfills(t *testing.T) {
 		t.Fatalf("thumbnail sidecar not written: %v", err)
 	}
 	// ...and the relpath was backfilled onto the row for future requests.
-	if got := store.artifacts[0].ThumbnailRelPath; got != wantThumbRel {
+	if got := store.Artifacts[0].ThumbnailRelPath; got != wantThumbRel {
 		t.Fatalf("ThumbnailRelPath = %q, want %q (lazy backfill persisted)", got, wantThumbRel)
 	}
 }
 
 func TestThumbnailArtifactNonImageReturns404(t *testing.T) {
-	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "doc_1", UserID: "user_1", VolumeRelPath: "files/outputs/doc.txt", DisplayFilename: "doc.txt", MIMEType: "text/plain; charset=utf-8"},
 	}}
 	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
@@ -439,7 +439,7 @@ func TestThumbnailArtifactNonImageReturns404(t *testing.T) {
 }
 
 func TestThumbnailArtifactSvgReturns404(t *testing.T) {
-	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "svg_1", UserID: "user_1", VolumeRelPath: "files/outputs/diagram.svg", DisplayFilename: "diagram.svg", MIMEType: "image/svg+xml; charset=utf-8"},
 	}}
 	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: t.TempDir()})
@@ -465,7 +465,7 @@ func TestDownloadArtifactSetsImmutableCacheHeaders(t *testing.T) {
 	if err := os.WriteFile(absFile, []byte("png-bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	store := fakeArtifactStore{artifacts: []artifact.Artifact{
+	store := fakeArtifactStore{Artifacts: []artifact.Artifact{
 		{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png", SizeBytes: 9},
 	}}
 	server := newAuthenticatedServer(t, Deps{Artifacts: store, UsersDir: usersDir})
@@ -516,8 +516,8 @@ func TestDeleteArtifactRemovesThumbnailSidecar(t *testing.T) {
 	}
 	deleted := []string{}
 	store := fakeArtifactStore{
-		deleted: &deleted,
-		artifacts: []artifact.Artifact{
+		Deleted: &deleted,
+		Artifacts: []artifact.Artifact{
 			{ID: "art_1", UserID: "user_1", VolumeRelPath: relPath, DisplayFilename: "a.png", MIMEType: "image/png", ThumbnailRelPath: thumbRel},
 		},
 	}

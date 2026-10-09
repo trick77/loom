@@ -75,21 +75,7 @@ func renderUserDirectives(directives []chat.UserDirective) string {
 	if len(directives) == 0 {
 		return ""
 	}
-	return "Standing instructions the user has explicitly asked you to follow. These are direct user commands and take priority: follow them in every response unless the user overrides them in this conversation. Each line shows the instruction's id — pass it to the forget/update instruction tools when the user asks to change one. Do not repeat these back unprompted.\n" + renderDirectiveLines(directives)
-}
-
-// renderDirectiveLines renders directives as "- [id] text" bullet lines, the
-// form both the system prompt and the tool digests use.
-func renderDirectiveLines(directives []chat.UserDirective) string {
-	var b strings.Builder
-	for _, d := range directives {
-		b.WriteString("- [")
-		b.WriteString(d.ID)
-		b.WriteString("] ")
-		b.WriteString(strings.TrimSpace(d.Content))
-		b.WriteString("\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return "Standing instructions the user has explicitly asked you to follow. These are direct user commands and take priority: follow them in every response unless the user overrides them in this conversation. Each line shows the instruction's id — pass it to the forget/update instruction tools when the user asks to change one. Do not repeat these back unprompted.\n" + chat.RenderDirectiveLines(directives)
 }
 
 // renderUserContext builds the system-prompt block describing what is known about
@@ -132,4 +118,22 @@ func (s *server) handleGetUserMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, memory)
+}
+
+// handleGetUserDirectives backs the read-only Memories-page directives view. There
+// is no create/update/delete endpoint — those go through the chat tools.
+func (s *server) handleGetUserDirectives(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !requireThreadStore(w, s) {
+		return
+	}
+	directives, err := s.thread.ListUserDirectives(r.Context(), user.ID)
+	if err != nil {
+		serverError(w, r, err, "list user directives failed")
+		return
+	}
+	if directives == nil {
+		directives = []chat.UserDirective{}
+	}
+	writeJSON(w, directives)
 }

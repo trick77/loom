@@ -17,6 +17,16 @@ const (
 	RoleTool Role = "tool"
 )
 
+// TranscriptLabel is how a transcript names the author of a message.
+func (r Role) TranscriptLabel() string {
+	switch r {
+	case RoleAssistant:
+		return "Assistant"
+	default:
+		return "User"
+	}
+}
+
 // DefaultThreadTitle is the placeholder title for newly created threads, shown
 // until the title-generation model produces a real title on the first message.
 const DefaultThreadTitle = "New thread"
@@ -189,6 +199,17 @@ type Message struct {
 	Model           *string   `json:"model,omitempty"`
 	ReasoningEffort *string   `json:"reasoningEffort,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
+}
+
+// IsEmptyJSON reports whether a raw JSON field of a Message carries no array
+// content worth walking: nil, empty, the literal null, or an empty array.
+func IsEmptyJSON(raw json.RawMessage) bool {
+	switch string(raw) {
+	case "", "null", "[]":
+		return true
+	default:
+		return false
+	}
 }
 
 // MessageAttachment is one image or document a user sent with a message. It is

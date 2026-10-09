@@ -17,6 +17,7 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/config"
 	"github.com/trick77/loom/internal/docgen"
@@ -280,9 +281,9 @@ func run() error {
 
 	// Post-turn refreshes outlive their request; serve() drains this group before
 	// the deferred db.Close above runs.
-	background := httpapi.NewBackground(context.Background())
+	bg := background.New(context.Background())
 	deps := httpapi.Deps{
-		Background:                 background,
+		Background:                 bg,
 		Version:                    version,
 		Model:                      chatModelInfo(cfg),
 		Static:                     web.SPAHandler(),
@@ -322,7 +323,7 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return serve(ctx, srv, ln, background, memoryWorker.Run, func(ctx context.Context) {
+	return serve(ctx, srv, ln, bg, memoryWorker.Run, func(ctx context.Context) {
 		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
 	}, sandboxWatch, reembed)
 }
@@ -372,7 +373,7 @@ var errServerShuttingDown = errors.New("server shutting down")
 //
 // workers are the long-running sweeps (memory refresh, session janitor,
 // re-embed); they stop when ctx does.
-func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *httpapi.Background, workers ...func(context.Context)) error {
+func serve(ctx context.Context, srv *http.Server, ln net.Listener, bg *background.Group, workers ...func(context.Context)) error {
 	baseCtx, cancelBase := context.WithCancelCause(context.Background())
 	defer cancelBase(nil)
 	srv.BaseContext = func(net.Listener) context.Context { return baseCtx }
@@ -436,7 +437,7 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, background *h
 	}
 	stopWorkers()
 	drainBy = time.Now().Add(shutdownTimeout)
-	if err := background.Stop(shutdownTimeout); err != nil {
+	if err := bg.Stop(shutdownTimeout); err != nil {
 		slog.Warn("background tasks did not drain", "err", err)
 	}
 	return nil

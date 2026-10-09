@@ -18,10 +18,10 @@ import (
 // truncated round with a clear, user-facing cause.
 func TestStreamMessageStopsOnTruncatedToolCall(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{
 				ToolCalls: []llm.ToolCall{{
 					ID:   "call_1",
@@ -42,11 +42,11 @@ func TestStreamMessageStopsOnTruncatedToolCall(t *testing.T) {
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{
+			ToolList: []llm.Tool{{
 				Type:     "function",
 				Function: llm.ToolFunction{Name: "search__web", Description: "Search", Parameters: map[string]any{"type": "object"}},
 			}},
-			result: "search result",
+			Result: "search result",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -62,12 +62,12 @@ func TestStreamMessageStopsOnTruncatedToolCall(t *testing.T) {
 		t.Fatalf("truncated tool call surfaced as generic 'stream failed':\n%s", body)
 	}
 	// The loop must stop at round 1: exactly one model call, no replayed round.
-	if len(llmClient.histories) != 1 {
-		t.Fatalf("model called %d times, want exactly 1 (no round 2 on truncation)", len(llmClient.histories))
+	if len(llmClient.Histories) != 1 {
+		t.Fatalf("model called %d times, want exactly 1 (no round 2 on truncation)", len(llmClient.Histories))
 	}
 	// Only the user message persists; the broken assistant turn is discarded.
-	if len(store.messages) != 1 || store.messages[0].Role != chat.RoleUser {
-		t.Fatalf("persisted messages = %#v, want only the user message", store.messages)
+	if len(store.Messages) != 1 || store.Messages[0].Role != chat.RoleUser {
+		t.Fatalf("persisted messages = %#v, want only the user message", store.Messages)
 	}
 }
 
@@ -77,23 +77,23 @@ func TestStreamMessageStopsOnTruncatedToolCall(t *testing.T) {
 // which runs with thinking off and so cannot spend its budget the same way.
 func TestStreamMessageRecoversFromReasoningOnlyTruncation(t *testing.T) {
 	store := &fakeThreadStore{
-		thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing"},
 	}
 	llmClient := &fakeToolChatClient{
-		results: []llm.StreamResult{
+		Results: []llm.StreamResult{
 			{ReasoningContent: "thinking at length", FinishReason: "length"},
 		},
-		plain: "The actual answer.",
+		Plain: "The actual answer.",
 	}
 	srv := newAuthenticatedServer(t, Deps{
 		Thread: store,
 		LLM:    llmClient,
 		MCP: fakeMCPService{
-			tools: []llm.Tool{{
+			ToolList: []llm.Tool{{
 				Type:     "function",
 				Function: llm.ToolFunction{Name: "search__web", Description: "Search", Parameters: map[string]any{"type": "object"}},
 			}},
-			result: "search result",
+			Result: "search result",
 		},
 	})
 	rec := httptest.NewRecorder()
@@ -105,13 +105,13 @@ func TestStreamMessageRecoversFromReasoningOnlyTruncation(t *testing.T) {
 	if strings.Contains(body, "empty assistant response") {
 		t.Fatalf("reasoning-only truncation surfaced as an empty response:\n%s", body)
 	}
-	if len(llmClient.histories) != 2 {
-		t.Fatalf("model called %d times, want 2 (truncated round + forced final)", len(llmClient.histories))
+	if len(llmClient.Histories) != 2 {
+		t.Fatalf("model called %d times, want 2 (truncated round + forced final)", len(llmClient.Histories))
 	}
-	if len(llmClient.tools[1]) != 0 {
-		t.Fatalf("forced final offered %d tools, want none", len(llmClient.tools[1]))
+	if len(llmClient.Tools[1]) != 0 {
+		t.Fatalf("forced final offered %d tools, want none", len(llmClient.Tools[1]))
 	}
-	if len(store.messages) != 2 || store.messages[1].Content != "The actual answer." {
-		t.Fatalf("persisted messages = %#v, want the forced final answer", store.messages)
+	if len(store.Messages) != 2 || store.Messages[1].Content != "The actual answer." {
+		t.Fatalf("persisted messages = %#v, want the forced final answer", store.Messages)
 	}
 }

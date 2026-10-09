@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 )
 
@@ -152,48 +153,12 @@ type incognitoHistoryEntry struct {
 	Content string `json:"content"`
 }
 
-type streamDeltaResponse struct {
-	Content string `json:"content"`
-}
-
-type toolCallResponse struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-}
-
-type toolResultResponse struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Content string `json:"content"`
-}
-
-// webSourcesResponse carries the full set of web sources gathered so far in the
-// turn, re-sent after every tool round so the browser can resolve inline [n]
-// markers while the answer is still streaming. Mirrors the knowledge_sources
-// event's shape.
-type webSourcesResponse struct {
-	Sources []citation `json:"sources"`
-}
-
 type renameArtifactRequest struct {
 	DisplayFilename string `json:"displayFilename"`
 }
 
-type artifactResponse struct {
-	ID              string  `json:"id"`
-	DisplayFilename string  `json:"displayFilename"`
-	MIMEType        string  `json:"mimeType"`
-	SizeBytes       int64   `json:"sizeBytes"`
-	ProjectID       *string `json:"projectId,omitempty"`
-	DownloadURL     string  `json:"downloadUrl"`
-	ThumbnailURL    string  `json:"thumbnailUrl,omitempty"`
-	Model           string  `json:"model,omitempty"`
-	Provider        string  `json:"provider,omitempty"`
-	Width           int     `json:"width,omitempty"`
-	Height          int     `json:"height,omitempty"`
-	DurationMs      int64   `json:"durationMs,omitempty"`
-}
+// artifactResponse is shared by the read handlers and the turn engine.
+type artifactResponse = artifact.Response
 
 type artifactListResponse struct {
 	Items      []artifactListItemResponse `json:"items"`

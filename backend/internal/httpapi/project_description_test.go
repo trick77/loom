@@ -15,13 +15,13 @@ import (
 func TestRefreshProjectDescriptionIfDue_GeneratesFromTitlesOnCountChange(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Japan Trip", Description: ""},
-		projectThreadTitles: []string{"Kyoto stays", "Osaka food"},
+		Project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Japan Trip", Description: ""},
+		ProjectThreadTitles: []string{"Kyoto stays", "Osaka food"},
 	}
 	descCalls := 0
 	s := &server{thread: store, llm: fakeChatClient{
-		projectDescription:      "Planning a Japan trip across Kyoto and Osaka.",
-		projectDescriptionCalls: &descCalls,
+		ProjectDescription:      "Planning a Japan trip across Kyoto and Osaka.",
+		ProjectDescriptionCalls: &descCalls,
 	}}
 
 	if err := s.refreshProjectDescriptionIfDue(context.Background(), testUser, projectID); err != nil {
@@ -30,11 +30,11 @@ func TestRefreshProjectDescriptionIfDue_GeneratesFromTitlesOnCountChange(t *test
 	if descCalls != 1 {
 		t.Fatalf("GenerateProjectDescription called %d times, want 1", descCalls)
 	}
-	if !store.projectDescriptionChanged || store.project.Description != "Planning a Japan trip across Kyoto and Osaka." {
-		t.Fatalf("description = %q, want generated from titles", store.project.Description)
+	if !store.ProjectDescriptionChanged || store.Project.Description != "Planning a Japan trip across Kyoto and Osaka." {
+		t.Fatalf("description = %q, want generated from titles", store.Project.Description)
 	}
-	if store.project.DescriptionSourceThreadCount != 2 {
-		t.Fatalf("DescriptionSourceThreadCount = %d, want 2", store.project.DescriptionSourceThreadCount)
+	if store.Project.DescriptionSourceThreadCount != 2 {
+		t.Fatalf("DescriptionSourceThreadCount = %d, want 2", store.Project.DescriptionSourceThreadCount)
 	}
 }
 
@@ -42,18 +42,18 @@ func TestRefreshProjectDescriptionIfDue_NoCountChangeIsNoOp(t *testing.T) {
 	projectID := "proj_1"
 	old := time.Now().Add(-time.Hour) // debounce window elapsed, so only the count gate matters
 	store := &fakeThreadStore{
-		project: chat.Project{
+		Project: chat.Project{
 			ID: projectID, UserID: testUser.ID, Name: "Japan Trip",
 			Description:                  "Existing summary.",
 			DescriptionSourceThreadCount: 2,
 			AutoDescriptionGeneratedAt:   &old,
 		},
-		projectThreadTitles: []string{"Kyoto stays", "Osaka food"}, // count still 2
+		ProjectThreadTitles: []string{"Kyoto stays", "Osaka food"}, // count still 2
 	}
 	descCalls := 0
 	s := &server{thread: store, llm: fakeChatClient{
-		projectDescription:      "Must not be used.",
-		projectDescriptionCalls: &descCalls,
+		ProjectDescription:      "Must not be used.",
+		ProjectDescriptionCalls: &descCalls,
 	}}
 
 	if err := s.refreshProjectDescriptionIfDue(context.Background(), testUser, projectID); err != nil {
@@ -62,7 +62,7 @@ func TestRefreshProjectDescriptionIfDue_NoCountChangeIsNoOp(t *testing.T) {
 	if descCalls != 0 {
 		t.Fatalf("GenerateProjectDescription called %d times, want 0 (titled-thread count unchanged)", descCalls)
 	}
-	if store.projectDescriptionChanged {
+	if store.ProjectDescriptionChanged {
 		t.Fatal("description regenerated despite unchanged titled-thread count")
 	}
 }
@@ -71,18 +71,18 @@ func TestRefreshProjectDescriptionIfDue_DebouncedWithinWindow(t *testing.T) {
 	projectID := "proj_1"
 	recent := time.Now().Add(-time.Minute) // well within memoryProjectDebounce
 	store := &fakeThreadStore{
-		project: chat.Project{
+		Project: chat.Project{
 			ID: projectID, UserID: testUser.ID, Name: "Japan Trip",
 			Description:                  "Existing summary.",
 			DescriptionSourceThreadCount: 2,
 			AutoDescriptionGeneratedAt:   &recent,
 		},
-		projectThreadTitles: []string{"Kyoto stays", "Osaka food", "Tokyo museums"}, // count grew to 3
+		ProjectThreadTitles: []string{"Kyoto stays", "Osaka food", "Tokyo museums"}, // count grew to 3
 	}
 	descCalls := 0
 	s := &server{thread: store, llm: fakeChatClient{
-		projectDescription:      "Must not be used yet.",
-		projectDescriptionCalls: &descCalls,
+		ProjectDescription:      "Must not be used yet.",
+		ProjectDescriptionCalls: &descCalls,
 	}}
 
 	if err := s.refreshProjectDescriptionIfDue(context.Background(), testUser, projectID); err != nil {
@@ -91,7 +91,7 @@ func TestRefreshProjectDescriptionIfDue_DebouncedWithinWindow(t *testing.T) {
 	if descCalls != 0 {
 		t.Fatalf("GenerateProjectDescription called %d times, want 0 (debounced within %s)", descCalls, memoryProjectDebounce)
 	}
-	if store.projectDescriptionChanged {
+	if store.ProjectDescriptionChanged {
 		t.Fatal("description regenerated within the debounce window")
 	}
 }
@@ -100,44 +100,44 @@ func TestRefreshProjectDescriptionIfDue_RegeneratesAfterDebounceWhenCountGrew(t 
 	projectID := "proj_1"
 	old := time.Now().Add(-2 * memoryProjectDebounce) // debounce elapsed
 	store := &fakeThreadStore{
-		project: chat.Project{
+		Project: chat.Project{
 			ID: projectID, UserID: testUser.ID, Name: "Japan Trip",
 			Description:                  "Old summary of two threads.",
 			DescriptionSourceThreadCount: 2,
 			AutoDescriptionGeneratedAt:   &old,
 		},
-		projectThreadTitles: []string{"Kyoto stays", "Osaka food", "Tokyo museums"}, // grew to 3
+		ProjectThreadTitles: []string{"Kyoto stays", "Osaka food", "Tokyo museums"}, // grew to 3
 	}
-	s := &server{thread: store, llm: fakeChatClient{projectDescription: "Japan trip spanning Kyoto, Osaka, and Tokyo."}}
+	s := &server{thread: store, llm: fakeChatClient{ProjectDescription: "Japan trip spanning Kyoto, Osaka, and Tokyo."}}
 
 	if err := s.refreshProjectDescriptionIfDue(context.Background(), testUser, projectID); err != nil {
 		t.Fatalf("refreshProjectDescriptionIfDue() error: %v", err)
 	}
-	if !store.projectDescriptionChanged {
+	if !store.ProjectDescriptionChanged {
 		t.Fatal("description was not regenerated after debounce elapsed with a grown thread count")
 	}
-	if store.project.Description != "Japan trip spanning Kyoto, Osaka, and Tokyo." {
-		t.Fatalf("description = %q, want regenerated", store.project.Description)
+	if store.Project.Description != "Japan trip spanning Kyoto, Osaka, and Tokyo." {
+		t.Fatalf("description = %q, want regenerated", store.Project.Description)
 	}
-	if store.project.DescriptionSourceThreadCount != 3 {
-		t.Fatalf("DescriptionSourceThreadCount = %d, want 3", store.project.DescriptionSourceThreadCount)
+	if store.Project.DescriptionSourceThreadCount != 3 {
+		t.Fatalf("DescriptionSourceThreadCount = %d, want 3", store.Project.DescriptionSourceThreadCount)
 	}
 }
 
 func TestRefreshProjectDescriptionIfDue_SkipsUserEditedDescription(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		project: chat.Project{
+		Project: chat.Project{
 			ID: projectID, UserID: testUser.ID, Name: "Japan Trip",
 			Description:           "Hand-written, do not touch.",
 			DescriptionUserEdited: true,
 		},
-		projectThreadTitles: []string{"Kyoto stays", "Osaka food", "Tokyo museums"},
+		ProjectThreadTitles: []string{"Kyoto stays", "Osaka food", "Tokyo museums"},
 	}
 	descCalls := 0
 	s := &server{thread: store, llm: fakeChatClient{
-		projectDescription:      "Must not be used.",
-		projectDescriptionCalls: &descCalls,
+		ProjectDescription:      "Must not be used.",
+		ProjectDescriptionCalls: &descCalls,
 	}}
 
 	if err := s.refreshProjectDescriptionIfDue(context.Background(), testUser, projectID); err != nil {
@@ -146,21 +146,21 @@ func TestRefreshProjectDescriptionIfDue_SkipsUserEditedDescription(t *testing.T)
 	if descCalls != 0 {
 		t.Fatalf("GenerateProjectDescription called %d times for a user-edited description, want 0", descCalls)
 	}
-	if store.projectDescriptionChanged || store.project.Description != "Hand-written, do not touch." {
-		t.Fatalf("user-edited description was modified: %q", store.project.Description)
+	if store.ProjectDescriptionChanged || store.Project.Description != "Hand-written, do not touch." {
+		t.Fatalf("user-edited description was modified: %q", store.Project.Description)
 	}
 }
 
 func TestRefreshProjectDescriptionIfDue_NoTitledThreadsIsNoOp(t *testing.T) {
 	projectID := "proj_1"
 	store := &fakeThreadStore{
-		project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Empty"},
-		projectThreadTitles: nil, // no meaningfully-titled threads yet
+		Project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Empty"},
+		ProjectThreadTitles: nil, // no meaningfully-titled threads yet
 	}
 	descCalls := 0
 	s := &server{thread: store, llm: fakeChatClient{
-		projectDescription:      "Must not be used.",
-		projectDescriptionCalls: &descCalls,
+		ProjectDescription:      "Must not be used.",
+		ProjectDescriptionCalls: &descCalls,
 	}}
 
 	if err := s.refreshProjectDescriptionIfDue(context.Background(), testUser, projectID); err != nil {
@@ -169,7 +169,7 @@ func TestRefreshProjectDescriptionIfDue_NoTitledThreadsIsNoOp(t *testing.T) {
 	if descCalls != 0 {
 		t.Fatalf("GenerateProjectDescription called %d times with no titled threads, want 0", descCalls)
 	}
-	if store.projectDescriptionChanged {
+	if store.ProjectDescriptionChanged {
 		t.Fatal("description generated for a project with no titled threads")
 	}
 }
