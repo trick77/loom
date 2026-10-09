@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/turn"
 )
 
 const (
@@ -18,31 +19,8 @@ const (
 	citationSnippetChars = 320
 )
 
-// citation mirrors AnythingLLM's source model: one entry per retrieved chunk
-// (filename = document title, snippet = matched text, score = similarity). The
-// frontend groups these by filename for display ("combine like sources").
-type citation struct {
-	DocumentID string  `json:"documentId"`
-	Filename   string  `json:"filename"`
-	Snippet    string  `json:"snippet"`
-	Score      float64 `json:"score"`
-	// Full marks a source whose entire document was injected (not a retrieved
-	// excerpt), so the UI can label it "full document" instead of "N excerpts".
-	Full bool `json:"full,omitempty"`
-	// URL and Index are set for web-search citations (Tavily/fetch/obscura): URL
-	// is the source link and Index is the [n] marker the model cites inline. RAG
-	// document citations leave both zero-valued. The frontend distinguishes a web
-	// source by the presence of url. For web citations Filename holds the display
-	// label (the site name), not a document filename.
-	URL   string `json:"url,omitempty"`
-	Index int    `json:"index,omitempty"`
-	// Title and Favicon are web-citation extras for the sources sidebar: Title is
-	// the page/article title (Snippet carries what the source delivered), Favicon
-	// is a source-provided icon URL when available (the frontend otherwise derives
-	// one). Empty for RAG document citations.
-	Title   string `json:"title,omitempty"`
-	Favicon string `json:"favicon,omitempty"`
-}
+// citation is shared by the share/read handlers and the turn engine.
+type citation = turn.Citation
 
 // docIndexer assigns each distinct uploaded document a stable [n] marker for one
 // turn. Numbering is per *document*, not per retrieved chunk: several chunks of one
@@ -156,5 +134,5 @@ func snippet(text string) string {
 	if len(text) <= citationSnippetChars {
 		return text
 	}
-	return strings.TrimSpace(truncateBytesOnRuneBoundary(text, citationSnippetChars)) + "…"
+	return strings.TrimSpace(turn.TruncateBytesOnRuneBoundary(text, citationSnippetChars)) + "…"
 }

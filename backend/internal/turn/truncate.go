@@ -1,15 +1,15 @@
-package httpapi
+package turn
 
 import "unicode/utf8"
 
-// truncationEllipsis marks a cut in text shown to the model or the user.
-const truncationEllipsis = "…"
+// TruncationEllipsis marks a cut in text shown to the model or the user.
+const TruncationEllipsis = "…"
 
-// truncateBytesOnRuneBoundary keeps at most max bytes from the start of s,
+// TruncateBytesOnRuneBoundary keeps at most max bytes from the start of s,
 // never splitting a multi-byte character. It is the one primitive every
 // head-side cut in this package builds on; the byte-slice-and-hope versions
 // it replaces each handled the boundary differently, one of them wrongly.
-func truncateBytesOnRuneBoundary(s string, max int) string {
+func TruncateBytesOnRuneBoundary(s string, max int) string {
 	if max <= 0 {
 		return ""
 	}
@@ -23,17 +23,17 @@ func truncateBytesOnRuneBoundary(s string, max int) string {
 	return s[:cut]
 }
 
-// truncateTailToBytes keeps the END of s within byteBudget bytes, prefixed
+// TruncateTailToBytes keeps the END of s within byteBudget bytes, prefixed
 // with an ellipsis, cutting on a rune boundary: the conversation tail is what
 // a digest wants, not its opening.
-func truncateTailToBytes(s string, byteBudget int) string {
+func TruncateTailToBytes(s string, byteBudget int) string {
 	if len(s) <= byteBudget {
 		return s
 	}
-	avail := max(byteBudget-len(truncationEllipsis), 0)
+	avail := max(byteBudget-len(TruncationEllipsis), 0)
 	start := len(s) - avail
 	for start < len(s) && !utf8.RuneStart(s[start]) {
 		start++
 	}
-	return truncationEllipsis + s[start:]
+	return TruncationEllipsis + s[start:]
 }

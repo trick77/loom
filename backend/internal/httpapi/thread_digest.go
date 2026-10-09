@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // maxRecentMessagesPerThread bounds how many of a thread's most recent messages
@@ -81,11 +82,11 @@ func displayThreadTitle(t chat.Thread) string {
 // budget, instead of front-truncating and keeping only the opening question. The
 // kept turns are rendered back in chronological order for readability.
 func buildThreadDigestSection(messages []chat.Message, byteBudget int) string {
-	type turn struct {
+	type digestTurn struct {
 		role string
 		text string
 	}
-	var kept []turn
+	var kept []digestTurn
 	used := 0
 	for i := len(messages) - 1; i >= 0; i-- {
 		m := messages[i]
@@ -102,11 +103,11 @@ func buildThreadDigestSection(messages []chat.Message, byteBudget int) string {
 			if len(kept) == 0 {
 				// The final substantive turn alone exceeds the budget. Keep its
 				// tail (the conclusion) rather than dropping the whole thread.
-				kept = append(kept, turn{role: label, text: truncateTailToBytes(text, byteBudget)})
+				kept = append(kept, digestTurn{role: label, text: turn.TruncateTailToBytes(text, byteBudget)})
 			}
 			break
 		}
-		kept = append(kept, turn{role: label, text: text})
+		kept = append(kept, digestTurn{role: label, text: text})
 		used += cost
 	}
 	if len(kept) == 0 {

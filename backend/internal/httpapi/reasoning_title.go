@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // reasoningTitleTimeout bounds a single background title call. wait() blocks the
@@ -79,7 +80,7 @@ func (t *reasoningTitleTracker) spawn(reasoningID, reasoning string) <-chan stru
 		defer close(done)
 		// Outside the handler chain the recovery middleware can't catch a panic
 		// here, and one would take the process down mid-stream.
-		defer logPanic("reasoning_title")
+		defer turn.LogPanic("reasoning_title")
 		inf := t.inf
 		inf.Purpose = "reasoning_title"
 		// Bound the call so a hung title request can never delay delivery of the
@@ -117,7 +118,7 @@ func (t *reasoningTitleTracker) spawnWorking(userMessage string) {
 	t.working.Add(1)
 	go func() {
 		defer t.working.Done()
-		defer logPanic("working_title")
+		defer turn.LogPanic("working_title")
 		inf := t.inf
 		inf.Purpose = "working_title"
 		ctx, cancel := context.WithTimeout(t.ctx, reasoningTitleTimeout)

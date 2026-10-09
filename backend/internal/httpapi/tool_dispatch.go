@@ -16,6 +16,7 @@ import (
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // toolRun is the outcome of an MCP tool call's network half: everything
@@ -583,7 +584,7 @@ func capToolOutput(output string) string {
 	if len(output) <= maxToolResultContentBytes {
 		return output
 	}
-	return truncateBytesOnRuneBoundary(output, maxToolResultContentBytes)
+	return turn.TruncateBytesOnRuneBoundary(output, maxToolResultContentBytes)
 }
 
 // summarizeForLog trims a value (e.g. tool arguments) to a length that is safe
@@ -594,7 +595,7 @@ func summarizeForLog(value string) string {
 	if len(value) <= maxLen {
 		return value
 	}
-	return truncateBytesOnRuneBoundary(value, maxLen) + truncationEllipsis
+	return turn.TruncateBytesOnRuneBoundary(value, maxLen) + turn.TruncationEllipsis
 }
 
 func parseToolArguments(raw string) (map[string]any, error) {

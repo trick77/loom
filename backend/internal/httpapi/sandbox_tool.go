@@ -27,16 +27,14 @@ import (
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
+	"github.com/trick77/loom/internal/turn"
 )
 
 const sandboxToolName = "run_python"
 
-// SandboxRunner runs run_python jobs; *sandbox.Client implements it.
-type SandboxRunner interface {
-	Available() bool
-	Timeout() time.Duration
-	Run(context.Context, sandbox.Request) (sandbox.Result, error)
-}
+// SandboxRunner is turn.SandboxRunner: it runs run_python jobs;
+// *sandbox.Client implements it.
+type SandboxRunner = turn.SandboxRunner
 
 // sandboxGuidancePrompt teaches the model when to delegate to run_python. One
 // general rule on purpose: a list of use cases grows with every missed

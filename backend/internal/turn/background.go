@@ -1,4 +1,4 @@
-package httpapi
+package turn
 
 import (
 	"context"
@@ -49,7 +49,7 @@ func (b *Background) Spawn(parent context.Context, label string, fn func(ctx con
 		defer b.wg.Done()
 		defer stop()
 		defer cancel()
-		defer logPanic(label)
+		defer LogPanic(label)
 		fn(ctx)
 	}()
 }
@@ -87,10 +87,10 @@ func (b *Background) Stop(timeout time.Duration) error {
 // stopCancelGrace is how long Stop waits for the tasks it had to cancel.
 const stopCancelGrace = 2 * time.Second
 
-// logPanic is deferred by goroutines that run outside the HTTP handler chain,
+// LogPanic is deferred by goroutines that run outside the HTTP handler chain,
 // where the recovery middleware cannot catch a panic. It must be the deferred
 // function itself (recover only works when called directly from one).
-func logPanic(label string) {
+func LogPanic(label string) {
 	if r := recover(); r != nil {
 		slog.Error("recovered from panic in background task", "task", label, "panic", r, "stack", string(debug.Stack()))
 	}

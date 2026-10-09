@@ -10,25 +10,12 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/loom/internal/turn"
 )
 
-// DocumentService is the RAG document dependency used by document handlers. It is
+// DocumentService is turn.DocumentService: the RAG document dependency. It is
 // nil when embeddings are not configured, which disables the feature (404).
-type DocumentService interface {
-	Upload(context.Context, documents.UploadInput) (rag.Document, artifact.Artifact, error)
-	List(context.Context, string, *string) ([]rag.Document, error)
-	Get(context.Context, string, string) (rag.Document, bool, error)
-	FullText(context.Context, string, string) (string, error)
-	Index(context.Context, string, string) error
-	Delete(context.Context, string, string) error
-	DeleteForArtifact(context.Context, string, string) (bool, error)
-	DeleteThreadData(context.Context, string, string) error
-	ArtifactIDsForThreadArtifactsInUse(context.Context, string, string) ([]string, error)
-	DeleteProjectData(context.Context, string, string) error
-	Retrieve(context.Context, string, *string, *string, string, int) ([]rag.RetrievedChunk, error)
-	IndexedDocsInScope(context.Context, string, *string, *string) ([]rag.IndexedDoc, error)
-	DocumentsInScope(context.Context, string, *string, *string, int) ([]rag.Document, error)
-}
+type DocumentService = turn.DocumentService
 
 type documentResponse struct {
 	ID          string    `json:"id"`

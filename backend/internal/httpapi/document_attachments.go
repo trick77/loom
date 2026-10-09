@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/turn"
 )
 
 const (
@@ -110,7 +111,7 @@ func (s *server) documentInlineContext(ctx context.Context, userID string, threa
 		// attached document, even before background indexing makes RAG available.
 		// Reserve room for the header, the truncation marker, and the closing tag.
 		avail := inlineDocByteBudget - b.Len() - len(header) - len(inlineTruncationMarker) - len(inlineDocsClosingTag)
-		head := truncateBytesOnRuneBoundary(text, avail)
+		head := turn.TruncateBytesOnRuneBoundary(text, avail)
 		if head == "" {
 			// The budget is already exhausted by earlier documents; skip this one
 			// without taking its marker.

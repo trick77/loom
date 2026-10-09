@@ -9,6 +9,8 @@ import (
 	"unicode"
 
 	"golang.org/x/net/publicsuffix"
+
+	"github.com/trick77/loom/internal/turn"
 )
 
 // webSource is one web source gathered during an assistant turn: a stable Index
@@ -106,11 +108,11 @@ func snippetFromText(s string) string {
 		return s
 	}
 	// Trim to the cap on a rune boundary, then back off to the last space.
-	cut := truncateBytesOnRuneBoundary(s, maxSourceSnippetChars)
+	cut := turn.TruncateBytesOnRuneBoundary(s, maxSourceSnippetChars)
 	if sp := strings.LastIndexByte(cut, ' '); sp > maxSourceSnippetChars/2 {
 		cut = cut[:sp]
 	}
-	return strings.TrimSpace(cut) + truncationEllipsis
+	return strings.TrimSpace(cut) + turn.TruncationEllipsis
 }
 
 func (r *webSourceRegistry) all() []webSource { return r.sources }

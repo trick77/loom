@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // finalSynthesisNotesBudgetTokens caps the research notes folded into the forced
@@ -147,9 +148,9 @@ func truncateHead(s string, keep int) string {
 	}
 	body := keep - len(truncationMarker)
 	if body <= 0 {
-		return truncateBytesOnRuneBoundary(s, keep)
+		return turn.TruncateBytesOnRuneBoundary(s, keep)
 	}
-	return truncateBytesOnRuneBoundary(s, body) + truncationMarker
+	return turn.TruncateBytesOnRuneBoundary(s, body) + truncationMarker
 }
 
 // webSourceIndexBlock renders the complete list of gathered sources as a compact
