@@ -47,7 +47,7 @@ type ServerConfig struct {
 	// server is relevant to (e.g. ["coding"]). When non-empty, the server's tools
 	// are injected into the prompt only for turns whose active category set
 	// includes one of these values; an empty list is category-neutral and always
-	// injected. Values are opaque strings here — the httpapi layer maps them to
+	// injected. Values are opaque strings here — the turn engine maps them to
 	// its classifier categories — so an unrecognized value simply never matches
 	// and hides the server. See Service.ToolsFor.
 	Categories []string `json:"categories"`
@@ -118,7 +118,7 @@ func FetchServerConfig(pdf PDFExtractor) ServerConfig {
 // ObscuraServerConfig builds the config for the headless-browser sidecar. The
 // Tools allowlist deliberately exposes only navigate + snapshot: those are the
 // two tools the deterministic fetch->obscura fallback drives (see
-// obscuraNavigateToolName/obscuraSnapshotToolName in the httpapi package), and
+// obscuraNavigateToolName/obscuraSnapshotToolName in the turn package), and
 // they cover read-style browsing. The full obscura surface (~20 interactive
 // browser tools: click/type/form-fill/evaluate/...) is not injected — it would
 // dominate the prompt's tool budget on every turn and Loom's flows do not drive

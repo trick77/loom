@@ -586,6 +586,8 @@ func TestStreamMessageUsesFallbackWhenForcedFinalAnswerIsEmpty(t *testing.T) {
 			{Content: ""}, // round 2: no text, no tool calls -> forces tool-free final answer
 		},
 		Plain: "", // every tool-free call (final + retry) returns empty, as if the inline XML was stripped
+		// A writing turn is offered the file tools the model calls.
+		ClassifyResult: string(classifier.WritingEditing),
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
@@ -646,6 +648,8 @@ func TestStreamMessageExecutesBuiltInArtifactTool(t *testing.T) {
 			},
 			{Content: "Created notes.md."},
 		},
+		// A writing turn is offered the file tools the model calls.
+		ClassifyResult: string(classifier.WritingEditing),
 	}
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,

@@ -32,20 +32,13 @@ const (
 	toolFailedPrefix          = "tool failed"
 )
 
-// toolCallCapPerRound reports how many times a given tool may run in one round.
-// fetch/obscura are very inexpensive (an HTTP read / a headless page load), so
-// they get a higher cap than the conservative default that guards pricier tools.
-func toolCallCapPerRound(name string) int {
-	switch name {
-	case fetchToolName, obscuraNavigateToolName, obscuraSnapshotToolName:
-		return cheapToolCallsPerRound
-	case sandboxToolName:
-		// Each job can hold a sandbox slot for up to a minute; a round that
-		// wants more is better split across rounds.
-		return sandboxToolCallsPerRound
-	default:
-		return maxToolCallsPerRound
+// toolCallCapPerRound reports how many times a given tool may run in one round
+// (see toolSpec.capPerRound).
+func (s *Engine) toolCallCapPerRound(name string) int {
+	if limit := s.toolPolicy(name).capPerRound; limit > 0 {
+		return limit
 	}
+	return maxToolCallsPerRound
 }
 
 // LoopResult is what the assistant loop produced: the final answer call's
@@ -67,7 +60,8 @@ type LoopResult struct {
 // rounds run out.
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
 	history := t.plan.history
-	tools := t.e.availableTools(t.thread, t.plan.gate)
+	tools, offered := t.e.offerTools(t.thread, t.plan.gate)
+	t.offered = offered
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)
@@ -188,7 +182,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		deferred := make([]bool, len(result.ToolCalls))
 		for i, call := range result.ToolCalls {
 			perToolCount[call.Function.Name]++
-			deferred[i] = perToolCount[call.Function.Name] > toolCallCapPerRound(call.Function.Name)
+			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
 		}
 		// The round's independent web reads start now and overlap; everything
 		// below still handles the calls one at a time, in the model's order.
@@ -201,10 +195,10 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			// by imageGenerated, not the per-round cap, so it must never fall through
 			// to the "reissue it next round" deferral message (which would be wrong —
 			// a reissued image call is only skipped again).
-			if call.Function.Name == "generate_image" && imageGenerated {
+			if call.Function.Name == imagegen.ToolName && imageGenerated {
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
 			} else if deferred[i] {
-				cap := toolCallCapPerRound(call.Function.Name)
+				cap := t.e.toolCallCapPerRound(call.Function.Name)
 				// The instruction rides with the deferral in history so the model sees
 				// it on every exit path — including when it concludes with prose without
 				// reissuing (which never reaches the forced-final directive below).
@@ -219,7 +213,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 						artifacts = append(artifacts, response)
 						b.addArtifact(response)
 					}
-					if len(created) > 0 && call.Function.Name == "generate_image" {
+					if len(created) > 0 && call.Function.Name == imagegen.ToolName {
 						imageGenerated = true
 					}
 				} else if runs[i] != nil {
@@ -355,7 +349,7 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 	var call llm.ToolCall
 	var compiled bool
 	for _, candidate := range result.ToolCalls {
-		if candidate.Function.Name == "generate_image" {
+		if candidate.Function.Name == imagegen.ToolName {
 			call, compiled = candidate, true
 			break
 		}
@@ -459,7 +453,7 @@ func fallbackImageToolCall(userPrompt string) (llm.ToolCall, bool) {
 	return llm.ToolCall{
 		ID:       "fallback_generate_image",
 		Type:     "function",
-		Function: llm.ToolCallFunction{Name: "generate_image", Arguments: string(args)},
+		Function: llm.ToolCallFunction{Name: imagegen.ToolName, Arguments: string(args)},
 	}, true
 }
 

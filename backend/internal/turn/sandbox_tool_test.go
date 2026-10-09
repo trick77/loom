@@ -80,9 +80,12 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 	return sandboxFixture{srv: srv, box: box, thread: thread, body: rec, stream: stream}
 }
 
-// turn is testUser's turn in thread, emitting to the fixture's stream.
+// turn is testUser's turn in thread, emitting to the fixture's stream, with
+// run_python offered as the gate offers it while the sidecar is healthy.
 func (f sandboxFixture) turn(thread chat.Thread) *Run {
-	return &Run{e: f.srv, stream: f.stream, user: testUser, thread: thread}
+	run := offeredRun(f.srv, thread, toolGate{category: "general", sandbox: true})
+	run.stream = f.stream
+	return run
 }
 
 func runCall(args string) llm.ToolCall {
@@ -401,7 +404,7 @@ func TestSandboxToolSchema(t *testing.T) {
 			t.Fatalf("schema lacks %s: %s", want, raw)
 		}
 	}
-	if toolCallCapPerRound(sandboxToolName) != sandboxToolCallsPerRound {
+	if (&Engine{}).toolCallCapPerRound(sandboxToolName) != sandboxToolCallsPerRound {
 		t.Fatal("per-round cap")
 	}
 }

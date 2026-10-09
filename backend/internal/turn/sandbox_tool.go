@@ -67,7 +67,7 @@ var sandboxOutputExt = map[string]bool{".png": true, ".csv": true, ".xlsx": true
 // sidecar is optional: unconfigured or failing its health probe, the tool and
 // its guidance simply stay out of the prompt.
 func (s *Engine) sandboxOffered() bool {
-	return s.sandbox != nil && s.sandbox.Available() && s.artifacts != nil && strings.TrimSpace(s.usersDir) != ""
+	return s.sandbox != nil && s.sandbox.Available() && s.canStoreArtifacts()
 }
 
 func sandboxTool() llm.Tool {
