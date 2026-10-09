@@ -168,19 +168,5 @@ func renderDirectivesList(directives []chat.UserDirective) string {
 	if len(directives) == 0 {
 		return "(none)"
 	}
-	return RenderDirectiveLines(directives)
-}
-
-// RenderDirectiveLines renders directives as "- [id] text" bullet lines, the
-// form both the system prompt and the tool digests use.
-func RenderDirectiveLines(directives []chat.UserDirective) string {
-	var b strings.Builder
-	for _, d := range directives {
-		b.WriteString("- [")
-		b.WriteString(d.ID)
-		b.WriteString("] ")
-		b.WriteString(strings.TrimSpace(d.Content))
-		b.WriteString("\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
+	return chat.RenderDirectiveLines(directives)
 }

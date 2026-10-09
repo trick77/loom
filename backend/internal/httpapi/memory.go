@@ -215,7 +215,7 @@ func transcriptFromMessages(messages []chat.Message) string {
 		if b.Len() > 0 {
 			b.WriteString("\n\n")
 		}
-		b.WriteString(turn.RoleLabel(m.Role))
+		b.WriteString(m.Role.TranscriptLabel())
 		b.WriteString(": ")
 		b.WriteString(content)
 	}

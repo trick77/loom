@@ -17,6 +17,16 @@ const (
 	RoleTool Role = "tool"
 )
 
+// TranscriptLabel is how a transcript names the author of a message.
+func (r Role) TranscriptLabel() string {
+	switch r {
+	case RoleAssistant:
+		return "Assistant"
+	default:
+		return "User"
+	}
+}
+
 // DefaultThreadTitle is the placeholder title for newly created threads, shown
 // until the title-generation model produces a real title on the first message.
 const DefaultThreadTitle = "New thread"

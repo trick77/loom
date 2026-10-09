@@ -17,6 +17,20 @@ import (
 // chat tool can tell the model (and the user) to remove or shorten one first.
 var ErrDirectivesBudgetExceeded = errors.New("directives budget exceeded")
 
+// RenderDirectiveLines renders directives as "- [id] text" bullet lines, the
+// form both the system prompt and the tool digests use.
+func RenderDirectiveLines(directives []UserDirective) string {
+	var b strings.Builder
+	for _, d := range directives {
+		b.WriteString("- [")
+		b.WriteString(d.ID)
+		b.WriteString("] ")
+		b.WriteString(strings.TrimSpace(d.Content))
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // ListUserDirectives returns the user's standing instructions in stable insertion
 // order.
 func (s *Store) ListUserDirectives(ctx context.Context, userID string) ([]UserDirective, error) {

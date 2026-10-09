@@ -10,7 +10,6 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/turn"
 )
 
 // userMemoryScope wires the user memory into the shared memory mechanism. Unlike
@@ -76,7 +75,7 @@ func renderUserDirectives(directives []chat.UserDirective) string {
 	if len(directives) == 0 {
 		return ""
 	}
-	return "Standing instructions the user has explicitly asked you to follow. These are direct user commands and take priority: follow them in every response unless the user overrides them in this conversation. Each line shows the instruction's id — pass it to the forget/update instruction tools when the user asks to change one. Do not repeat these back unprompted.\n" + turn.RenderDirectiveLines(directives)
+	return "Standing instructions the user has explicitly asked you to follow. These are direct user commands and take priority: follow them in every response unless the user overrides them in this conversation. Each line shows the instruction's id — pass it to the forget/update instruction tools when the user asks to change one. Do not repeat these back unprompted.\n" + chat.RenderDirectiveLines(directives)
 }
 
 // renderUserContext builds the system-prompt block describing what is known about

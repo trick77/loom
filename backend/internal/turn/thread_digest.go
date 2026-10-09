@@ -66,16 +66,6 @@ func renderThreadDigestMessages(t chat.Thread, messages []chat.Message, byteBudg
 	return b.String()
 }
 
-// RoleLabel is how a transcript names the author of a message.
-func RoleLabel(role chat.Role) string {
-	switch role {
-	case chat.RoleAssistant:
-		return "Assistant"
-	default:
-		return "User"
-	}
-}
-
 // displayThreadTitle returns a non-empty label for a thread.
 func displayThreadTitle(t chat.Thread) string {
 	if title := strings.TrimSpace(t.Title); title != "" {
@@ -106,7 +96,7 @@ func buildThreadDigestSection(messages []chat.Message, byteBudget int) string {
 		if text == "" {
 			continue
 		}
-		label := RoleLabel(m.Role)
+		label := m.Role.TranscriptLabel()
 		cost := len(label) + len(text) + len(": \n")
 		if used+cost > byteBudget {
 			if len(kept) == 0 {
