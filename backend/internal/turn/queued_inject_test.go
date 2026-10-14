@@ -104,7 +104,7 @@ func TestQueuedMessageIsPickedUpAfterAToolRound(t *testing.T) {
 	// Reasoning ids continue across the split, so a title cannot land on the
 	// other segment's reasoning.
 	var finalTrace []ActivityTraceEvent
-	if err := json.Unmarshal(json.RawMessage(store.Messages[3].ActivityTrace), &finalTrace); err != nil {
+	if err := json.Unmarshal(store.Messages[3].ActivityTrace, &finalTrace); err != nil {
 		t.Fatal(err)
 	}
 	if len(finalTrace) == 0 || finalTrace[0].ID != "reasoning-2" {
