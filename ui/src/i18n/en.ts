@@ -71,6 +71,7 @@ export const en = {
     addAttachment: "Add attachment",
     sendMessage: "Send message",
     stopResponse: "Stop response",
+    queueMessage: "Queue message",
     removeAttachment: "Remove {{filename}}",
     pastedText: "Pasted text",
     pastedBadge: "Pasted",
@@ -111,6 +112,9 @@ export const en = {
     removeFromProject: "Remove from project",
     addToProject: "Add to project",
     stopFailed: "Message failed to stop.",
+    queued: "Queued",
+    queuedHint: "Answered after the current step",
+    removeQueued: "Take back queued message",
     streamInterrupted:
       "The connection dropped before the answer finished. What arrived is shown above.",
     messageTooLarge: "This message is too large to send.",

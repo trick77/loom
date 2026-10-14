@@ -118,6 +118,17 @@ export type MessagePastedText = {
   lineCount: number;
 };
 
+// QueuedMessage is a message sent while the thread's turn was running, waiting
+// for that turn to pick it up (mirrors the backend chat.QueuedMessage).
+export type QueuedMessage = {
+  id: string;
+  threadId: string;
+  content: string;
+  pastedTexts: MessagePastedText[];
+  clientMessageId: string;
+  createdAt: string;
+};
+
 export type Artifact = {
   id: string;
   threadId?: string;
@@ -240,6 +251,8 @@ export type ThreadResponse = {
   share?: ShareInfo;
   /** An answer is still being written; the client reattaches to it. */
   streaming?: boolean;
+  /** Messages sent while a turn ran, waiting for it; oldest first. */
+  queuedMessages?: QueuedMessage[];
 };
 
 // ShareInfo is the owner-facing share state for a thread.

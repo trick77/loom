@@ -118,12 +118,32 @@ export function createTurnHandlers(opts: {
       flushQueued = false;
       opts.onAssistantMessage(message, liveBlocks);
       // The persisted message now carries the blocks; the run's live copy is
-      // done with.
+      // done with. A follow-up turn on the same stream starts from nothing.
+      liveBlocks = [];
       opts.patch({
         blocks: [],
         sources: [],
         toolPending: false,
         workingTitle: "",
+      });
+    },
+    // A segment settles like a message, but the turn goes on: its sources
+    // keep their numbers for the rest of the answer.
+    onAssistantSegment: (message) => {
+      flushQueued = false;
+      opts.onAssistantMessage(message, liveBlocks);
+      liveBlocks = [];
+      opts.patch({ blocks: [], toolPending: false });
+    },
+    onTurnError: (error) => {
+      flushQueued = false;
+      liveBlocks = [];
+      opts.patch({
+        blocks: [],
+        sources: [],
+        toolPending: false,
+        workingTitle: "",
+        error,
       });
     },
     onMessageCost: (event) => opts.onMessageCost?.(event),

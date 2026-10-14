@@ -15,6 +15,7 @@
 import type { RouteState } from "./routing";
 import {
   pastedTextFromBlock,
+  stripPastedBlocks,
   type PastedText,
   type PastedTextBlock,
 } from "./pastedText";
@@ -132,6 +133,36 @@ export function restagedDrafts(
   return setDraft(drafts, scope, {
     text: content,
     pastedTexts: pastedTexts.map(pastedTextFromBlock),
+  });
+}
+
+/**
+ * Queued messages handed back (a stop, a cancelled queue entry) go back into
+ * `scope` after whatever the user is typing there: their typed text appended,
+ * their pastes re-staged as chips.
+ */
+export function restoreQueuedDrafts(
+  drafts: ComposerDrafts,
+  scope: DraftScope,
+  messages: { content: string; pastedTexts: PastedTextBlock[] }[],
+): ComposerDrafts {
+  if (messages.length === 0) return drafts;
+  const current = getDraft(drafts, scope);
+  const texts = current.text.trim() === "" ? [] : [current.text];
+  const pasted = [...current.pastedTexts];
+  for (const message of messages) {
+    const { text, matched } = stripPastedBlocks(
+      message.content,
+      message.pastedTexts,
+    );
+    if (text.trim() !== "") texts.push(text);
+    message.pastedTexts.forEach((block, index) => {
+      if (matched[index]) pasted.push(pastedTextFromBlock(block));
+    });
+  }
+  return setDraft(drafts, scope, {
+    text: texts.join("\n\n"),
+    pastedTexts: pasted,
   });
 }
 

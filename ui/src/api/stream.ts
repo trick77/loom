@@ -20,6 +20,12 @@ export type StreamHandlers = {
   // answer is prepared; shown until the first reasoning title replaces it.
   onWorkingTitle?(title: string): void;
   onAssistantMessage(message: Message): void;
+  // The part of the answer so far, stored as its own message because the turn
+  // is picking up a message the user queued. The stream goes on.
+  onAssistantSegment?(message: Message): void;
+  // A turn failed but the stream goes on with a follow-up turn for the
+  // messages queued behind it.
+  onTurnError?(error: string): void;
   // A message's settled cost. The turn's last calls (the thread title) finish
   // after assistant_message went out, and a failed turn books its spend on the
   // user message; this is how the open thread's Σ learns either.
@@ -318,6 +324,12 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers): boolean {
     case "assistant_message":
       handlers.onAssistantMessage(payload as Message);
       return true;
+    case "assistant_segment":
+      handlers.onAssistantSegment?.(payload as Message);
+      break;
+    case "turn_error":
+      handlers.onTurnError?.((payload as { error?: string }).error ?? "");
+      break;
     case "message_cost":
       handlers.onMessageCost?.(payload as MessageCostEvent);
       break;

@@ -1,5 +1,12 @@
 import { request, requestJSON } from "./http";
-import type { Page, Thread, ThreadContentHit, ThreadResponse } from "./types";
+import type {
+  MessagePastedText,
+  Page,
+  QueuedMessage,
+  Thread,
+  ThreadContentHit,
+  ThreadResponse,
+} from "./types";
 
 const threadUrl = (threadId: string) =>
   `/api/threads/${encodeURIComponent(threadId)}`;
@@ -148,12 +155,13 @@ const stopMessageTimeoutMs = 4000;
 // from the client, so this is the only way to stop it: dropping the stream
 // fetch does not. source labels the UI action ("stop_button", "escape") for the
 // server's logs. sendId names the send whose turn to end; a stop that arrives
-// before that turn registers is kept for it, and resolves false (409).
+// before that turn registers is kept for it, and resolves stopped false (409).
+// A stop hands back the messages queued behind the turn (queued).
 export async function stopMessage(
   threadId: string,
   source?: string,
   sendId?: string,
-): Promise<boolean> {
+): Promise<{ stopped: boolean; queued: QueuedMessage[] }> {
   const params: string[] = [];
   if (source) params.push(`source=${encodeURIComponent(source)}`);
   if (sendId) params.push(`sendId=${encodeURIComponent(sendId)}`);
@@ -167,5 +175,46 @@ export async function stopMessage(
     },
     [409],
   );
-  return response.status !== 409;
+  if (response.status === 409) return { stopped: false, queued: [] };
+  if (response.status !== 200) return { stopped: true, queued: [] };
+  const body = (await response.json()) as { queued?: QueuedMessage[] };
+  return { stopped: true, queued: body.queued ?? [] };
+}
+
+// queueMessage sends a message while the thread's turn runs. The server
+// stores it and the turn picks it up at its next tool boundary or answers it
+// in a follow-up turn; with no turn running, it starts one.
+export async function queueMessage(
+  threadId: string,
+  content: string,
+  clientMessageId: string,
+  pastedTexts: MessagePastedText[] = [],
+): Promise<void> {
+  await request(
+    `${threadUrl(threadId)}/messages:queue`,
+    "failed to queue message",
+    {
+      method: "POST",
+      json: {
+        content,
+        clientMessageId,
+        ...(pastedTexts.length > 0 ? { pastedTexts } : {}),
+      },
+    },
+  );
+}
+
+// deleteQueuedMessage takes a queued message back. False when it is gone:
+// the turn picked it up meanwhile.
+export async function deleteQueuedMessage(
+  threadId: string,
+  clientMessageId: string,
+): Promise<boolean> {
+  const response = await request(
+    `${threadUrl(threadId)}/messages:queue/${encodeURIComponent(clientMessageId)}`,
+    "failed to remove queued message",
+    { method: "DELETE" },
+    [404],
+  );
+  return response.status !== 404;
 }
