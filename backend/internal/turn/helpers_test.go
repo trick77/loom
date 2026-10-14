@@ -46,6 +46,13 @@ type turnOutcome struct {
 // turn's events are recorded as SSE. cfg.Thread is set to store.
 func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content string) turnOutcome {
 	t.Helper()
+	return runStoredTurnWithInbox(t, cfg, store, content, nil)
+}
+
+// runStoredTurnWithInbox is runStoredTurn with the turn reading queued
+// messages from inbox.
+func runStoredTurnWithInbox(t *testing.T, cfg Config, store *fakeThreadStore, content string, inbox Inbox) turnOutcome {
+	t.Helper()
 	cfg.Thread = store
 	e := New(cfg)
 	rec := httptest.NewRecorder()
@@ -74,6 +81,7 @@ func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content str
 		UserMessage: userMessage,
 		Usage:       usage,
 		Start:       time.Now(),
+		Inbox:       inbox,
 	}, PrepareInput{
 		StreamCtx:     ctx,
 		TurnCtx:       ctx,

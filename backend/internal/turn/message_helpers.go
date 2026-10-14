@@ -166,6 +166,11 @@ func buildHistory(systemContent string, messages []chat.Message, newUserMessage 
 	for _, message := range messages {
 		switch message.Role {
 		case chat.RoleUser, chat.RoleAssistant:
+			// A prose-less assistant row is the tool-only part of a turn split
+			// for a queued message: there is nothing to replay.
+			if strings.TrimSpace(message.Content) == "" {
+				continue
+			}
 			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
 		}
 	}

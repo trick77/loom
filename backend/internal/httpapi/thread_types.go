@@ -109,6 +109,8 @@ type getThreadResponse struct {
 	// Streaming: an answer is still being written. A reloaded page reattaches
 	// to it (messages:attach) instead of showing the question unanswered.
 	Streaming bool `json:"streaming,omitempty"`
+	// QueuedMessages were sent while a turn ran and wait for it, oldest first.
+	QueuedMessages []chat.QueuedMessage `json:"queuedMessages"`
 }
 
 // shareSummary is the owner-facing share state attached to a thread response and

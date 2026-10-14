@@ -64,25 +64,55 @@ type messageInsert struct {
 }
 
 func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, error) {
+	if ok, err := s.threadExists(ctx, in.userID, in.threadID); err != nil {
+		return Message{}, err
+	} else if !ok {
+		return Message{}, ErrThreadNotFound
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, fmt.Errorf("begin message transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	messageID, err := insertMessageTx(ctx, tx, in)
+	if err != nil {
+		return Message{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Message{}, fmt.Errorf("commit message transaction: %w", err)
+	}
+
+	message, ok, err := s.getMessage(ctx, in.userID, messageID)
+	if err != nil {
+		return Message{}, err
+	}
+	if !ok {
+		return Message{}, errors.New("inserted message not found")
+	}
+	return message, nil
+}
+
+// insertMessageTx validates and writes one message inside tx, bumping the
+// thread's and project's activity timestamps. The caller has checked that the
+// thread belongs to the user.
+func insertMessageTx(ctx context.Context, tx execer, in messageInsert) (string, error) {
 	userID, threadID, role, content := in.userID, in.threadID, in.role, in.content
 	usage := in.usage
 	artifacts, activityTrace, citations, attachments := in.artifacts, in.activityTrace, in.citations, in.attachments
 	contentBlocks := in.contentBlocks
 	pastedTexts := in.pastedTexts
 	if role != RoleUser && role != RoleAssistant && role != RoleTool {
-		return Message{}, fmt.Errorf("invalid message role %q", role)
+		return "", fmt.Errorf("invalid message role %q", role)
 	}
 	content = strings.TrimSpace(content)
-	if content == "" {
-		return Message{}, validation("message content is required")
+	// An assistant row may be prose-less: the part of a turn that ran before a
+	// queued message was picked up is often tool activity only, kept in its
+	// content blocks.
+	if content == "" && (role != RoleAssistant || IsEmptyJSON(contentBlocks)) {
+		return "", validation("message content is required")
 	}
 	if len(content) > maxContentLengthForRole(role) {
-		return Message{}, validation("message content is too long")
-	}
-	if ok, err := s.threadExists(ctx, userID, threadID); err != nil {
-		return Message{}, err
-	} else if !ok {
-		return Message{}, ErrThreadNotFound
+		return "", validation("message content is too long")
 	}
 	jsonColumns := []struct {
 		name string
@@ -98,19 +128,13 @@ func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, e
 	for _, column := range jsonColumns {
 		normalized, err := normalizeJSONArray(column.name, *column.raw)
 		if err != nil {
-			return Message{}, err
+			return "", err
 		}
 		*column.raw = normalized
 	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Message{}, fmt.Errorf("begin message transaction: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	messageID := sqlutil.NewID()
-	_, err = tx.ExecContext(ctx, `
+	_, err := tx.ExecContext(ctx, `
 INSERT INTO messages (
     id,
     thread_id,
@@ -163,7 +187,7 @@ VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
 		in.clientMessageID,
 	)
 	if err != nil {
-		return Message{}, fmt.Errorf("insert message: %w", err)
+		return "", fmt.Errorf("insert message: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx, `
@@ -174,7 +198,7 @@ WHERE user_id = ? AND id = ?`,
 		userID, messageID, userID, threadID,
 	)
 	if err != nil {
-		return Message{}, fmt.Errorf("update thread message timestamp: %w", err)
+		return "", fmt.Errorf("update thread message timestamp: %w", err)
 	}
 
 	// A new message is user activity in the owning project: bump its
@@ -189,20 +213,9 @@ WHERE user_id = ? AND id = (
 		userID, userID, threadID,
 	)
 	if err != nil {
-		return Message{}, fmt.Errorf("update project activity timestamp: %w", err)
+		return "", fmt.Errorf("update project activity timestamp: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return Message{}, fmt.Errorf("commit message transaction: %w", err)
-	}
-
-	message, ok, err := s.getMessage(ctx, userID, messageID)
-	if err != nil {
-		return Message{}, err
-	}
-	if !ok {
-		return Message{}, errors.New("inserted message not found")
-	}
-	return message, nil
+	return messageID, nil
 }
 
 // ListRecentMessages returns at most limit of a thread's most recent messages,

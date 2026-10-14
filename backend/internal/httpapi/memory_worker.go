@@ -22,6 +22,12 @@ type MemoryWorker struct {
 	s *server
 }
 
+// ResumeQueuedTurns answers the messages a restart left queued; see
+// resumeQueuedTurns. A boot task: it returns once their turns are started.
+func (w *MemoryWorker) ResumeQueuedTurns(ctx context.Context) {
+	w.s.resumeQueuedTurns(ctx)
+}
+
 // Run sweeps every memoryBatchInterval until ctx is cancelled. Intended to be
 // launched in its own goroutine at server startup with the process-lifetime
 // context, so it stops cleanly on shutdown.

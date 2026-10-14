@@ -329,7 +329,7 @@ func run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, func(ctx context.Context) {
+	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, func(ctx context.Context) {
 		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
 	}, sandboxWatch, reembed)
 }

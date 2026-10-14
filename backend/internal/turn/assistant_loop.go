@@ -254,6 +254,19 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			}
 		}
 		toolRan = true
+		// A message the user queued while this round ran is picked up here,
+		// between the tool results and the next model call, never mid-tool.
+		// It answers in a fresh segment with a full round budget.
+		if picked := t.pickUpQueued(ctx, history[:initialHistoryLen], history[initialHistoryLen:], b, artifacts, reg.all()); picked.split {
+			b = &blockBuilder{reasoningBase: b.reasoningCount()}
+			artifacts = nil
+			if picked.history != nil {
+				history = picked.history
+				initialHistoryLen = len(history)
+				round = 0
+				continue
+			}
+		}
 		if round == maxToolRounds {
 			slog.Info("forcing final answer", "reason", "rounds_exhausted", "round", round)
 		}

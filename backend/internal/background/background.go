@@ -34,13 +34,14 @@ func New(parent context.Context) *Group {
 // Spawn runs fn on its own goroutine. Its context keeps parent's values (the
 // authenticated user, inference metadata) but not parent's cancellation: the
 // request that spawned the task ending must not abort it, the group stopping
-// must. A panic in fn is recovered and logged under label.
-func (b *Group) Spawn(parent context.Context, label string, fn func(ctx context.Context)) {
+// must. A panic in fn is recovered and logged under label. False when the
+// group is stopping and fn was dropped without running.
+func (b *Group) Spawn(parent context.Context, label string, fn func(ctx context.Context)) bool {
 	b.mu.Lock()
 	if b.stopped {
 		b.mu.Unlock()
 		slog.Warn("background task dropped: shutting down", "task", label)
-		return
+		return false
 	}
 	b.wg.Add(1)
 	b.mu.Unlock()
@@ -53,6 +54,7 @@ func (b *Group) Spawn(parent context.Context, label string, fn func(ctx context.
 		defer LogPanic(label)
 		fn(ctx)
 	}()
+	return true
 }
 
 // Stop cancels every task and waits up to timeout for them to finish. A task

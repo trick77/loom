@@ -47,25 +47,56 @@ func (t *Run) PersistAssistantTurn(ctx context.Context, result *LoopResult) (cha
 	// reasoning ids, so stamp the same titles onto them too.
 	t.titles.MergeIntoBlocks(result.Blocks)
 	activityTraceJSON, contentBlocksJSON := MarshalTurnJSON(t.thread.ID, result.ActivityTrace, result.Blocks)
-	allSources := t.plan.knowledgeSources
-	if webCitations := webSourceCitations(result.WebSources); len(webCitations) > 0 {
-		// Clone first: appending into the knowledge sources' backing array could
-		// clobber it if it had spare capacity. It's not read after this today, but
-		// the copy keeps the merge self-contained.
-		allSources = append(append([]Citation(nil), t.plan.knowledgeSources...), webCitations...)
-	}
-	citationsJSON := json.RawMessage("[]")
-	if len(allSources) > 0 {
-		if encoded, marshalErr := json.Marshal(allSources); marshalErr == nil {
-			citationsJSON = encoded
-		}
-	}
 	turnCost, turnPriced := t.acc.TurnCost()
-	assistantMessage, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, MessageMetricsWithCost(result.StreamResult, t.acc.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, citationsJSON, contentBlocksJSON)
+	assistantMessage, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, MessageMetricsWithCost(result.StreamResult, t.acc.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, t.citationsJSON(result.WebSources), contentBlocksJSON)
 	if err != nil {
 		return chat.Message{}, err
 	}
 	return assistantMessage, nil
+}
+
+// persistSegment stores what the turn produced so far as an assistant message
+// of its own and emits it as assistant_segment: the turn is about to pick up
+// a queued message, which goes after it in the transcript. The segment books
+// no tokens or cost; the turn's whole spend stays on its final message.
+func (t *Run) persistSegment(ctx context.Context, b *blockBuilder, artifacts []artifact.Response, sources []webSource) (chat.Message, error) {
+	if artifacts == nil {
+		artifacts = []artifact.Response{}
+	}
+	artifactsJSON, err := json.Marshal(artifacts)
+	if err != nil {
+		return chat.Message{}, fmt.Errorf("marshal artifacts: %w", err)
+	}
+	t.titles.Wait()
+	trace := b.flatTrace()
+	t.titles.MergeInto(trace)
+	t.titles.MergeIntoBlocks(b.blocks)
+	traceJSON, blocksJSON := MarshalTurnJSON(t.thread.ID, trace, b.blocks)
+	segment, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, b.prose(), chat.MessageTokenUsage{}, artifactsJSON, traceJSON, t.citationsJSON(sources), blocksJSON)
+	if err != nil {
+		return chat.Message{}, err
+	}
+	if err := t.stream.SendJSON("assistant_segment", segment); err != nil {
+		return chat.Message{}, err
+	}
+	return segment, nil
+}
+
+// citationsJSON merges the turn's knowledge sources and the given web sources
+// into the message's citations column.
+func (t *Run) citationsJSON(web []webSource) json.RawMessage {
+	allSources := t.plan.knowledgeSources
+	if webCitations := webSourceCitations(web); len(webCitations) > 0 {
+		// Clone first: appending into the knowledge sources' backing array could
+		// clobber it if it had spare capacity.
+		allSources = append(append([]Citation(nil), t.plan.knowledgeSources...), webCitations...)
+	}
+	if len(allSources) > 0 {
+		if encoded, err := json.Marshal(allSources); err == nil {
+			return encoded
+		}
+	}
+	return json.RawMessage("[]")
 }
 
 // MarshalTurnJSON encodes a turn's activity trace and content blocks for the

@@ -152,10 +152,16 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "get thread share failed")
 		return
 	}
+	queued, err := s.thread.ListQueued(r.Context(), user.ID, threadID)
+	if err != nil {
+		serverError(w, r, err, "list queued messages failed")
+		return
+	}
 	resp := getThreadResponse{
-		Thread:    thread,
-		Messages:  messages,
-		Streaming: s.activeStreams.lookup(user.ID, threadID) != nil,
+		Thread:         thread,
+		Messages:       messages,
+		Streaming:      s.activeStreams.lookup(user.ID, threadID) != nil,
+		QueuedMessages: queued,
 	}
 	if hasShare {
 		summary := s.shareSummaryOf(share)

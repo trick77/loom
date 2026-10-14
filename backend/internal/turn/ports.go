@@ -47,6 +47,15 @@ type ThreadStore interface {
 	ReplaceUserDirective(context.Context, string, string, string) (chat.UserDirective, bool, error)
 }
 
+// Inbox hands a running turn the messages the user queued on its thread while
+// it ran. Consume stores them as the thread's next user messages and returns
+// them; it is called only right after HasQueued said there were some, and may
+// still return none (the user took them back in between).
+type Inbox interface {
+	HasQueued(context.Context) (bool, error)
+	Consume(context.Context) ([]chat.Message, error)
+}
+
 // UsageStore records the lifetime usage counters a turn bumps: its tokens and
 // the tool calls that count. All methods are best-effort from the caller's
 // side; see usage.Record.
