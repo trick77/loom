@@ -2210,6 +2210,43 @@ test("a message sent while the answer streams is queued, then picked up", async 
   expect(texts).toEqual(["Hi", "Looked it up.", "And then?", "Both answered."]);
 });
 
+test("a failed follow-up turn neither restores the answered send nor loses the queue", async () => {
+  const chat = queueingChatFetch();
+  vi.stubGlobal("fetch", chat.fetchMock);
+
+  await sendThenQueue("And then?");
+  await waitFor(() => expect(chat.queued).toHaveLength(1));
+  chat.push("assistant_message", {
+    id: "a1",
+    threadId: "t1",
+    role: "assistant",
+    content: "First answer.",
+    createdAt: "2026-05-30T00:00:01Z",
+  });
+  // The server could not start the follow-up and hands the message back.
+  chat.push("queue_returned", {
+    queued: [
+      {
+        id: "q1",
+        threadId: "t1",
+        content: "And then?",
+        pastedTexts: [],
+        clientMessageId: chat.queued[0].clientMessageId,
+        createdAt: "2026-05-30T00:00:02Z",
+      },
+    ],
+  });
+  chat.push("error", { error: "upstream down" });
+  chat.end();
+
+  await screen.findByText("upstream down");
+  expect(screen.getByText("First answer.")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("And then?");
+  expect(
+    screen.queryByRole("list", { name: "Queued" }),
+  ).not.toBeInTheDocument();
+});
+
 test("stopping hands the queued messages back to the composer", async () => {
   const chat = queueingChatFetch([
     {

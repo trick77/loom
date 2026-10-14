@@ -25,6 +25,7 @@ import {
   type ContentBlock,
   type Message,
   type MessagePastedText,
+  type QueuedMessage,
   type Project,
   type ShareInfo,
   type Thread,
@@ -1007,6 +1008,9 @@ export function ThreadShell({
     let userMessageConfirmed = false;
     // The stream dropped and the run is following the turn again.
     let reattaching = false;
+    // This send has its answer. A failure later on the same stream belongs to
+    // a follow-up turn for queued messages, not to this send.
+    let answered = false;
     // The thread this run belongs to, known up front for an existing thread and
     // filled in below for one created by this send. Whether the user is still
     // looking at it decides the writes into `messages`, which is a single array
@@ -1173,6 +1177,7 @@ export function ThreadShell({
             );
           },
           onAssistantMessage: (message, liveBlocks) => {
+            answered = true;
             if (isCurrentThread()) {
               setMessages((current) =>
                 foldAssistantMessage(current, message, liveBlocks),
@@ -1182,6 +1187,7 @@ export function ThreadShell({
             // live copies now rather than at endRun — the stream reader yields
             // between chunks, so waiting would flash the turn twice.
           },
+          onQueueReturned: (queued) => returnQueued(threadIDForRun, queued),
           onMessageCost: (event) => {
             if (isCurrentThread()) {
               setMessages((current) => applyMessageCost(current, event));
@@ -1321,8 +1327,9 @@ export function ThreadShell({
         setMessages((current) => current.filter((item) => item.id !== staleID));
       }
       // A failed reattach leaves the question on the server, where the turn
-      // may still finish: restoring it would invite a duplicate send.
-      if (options.restoreDraftOnError && !reattaching) {
+      // may still finish: restoring it would invite a duplicate send. An
+      // answered send has nothing to restore: what failed was a follow-up.
+      if (options.restoreDraftOnError && !reattaching && !answered) {
         setDrafts((current) =>
           setScopedDraft(current, restoreScope, {
             text: options.restoreDraft ?? content,
@@ -1365,6 +1372,16 @@ export function ThreadShell({
     patchStreamRun(threadRunKey(threadID), { error: "" });
     if (onScreen)
       setMessages((current) => reconcileUserMessage(current, null, message));
+  }
+
+  // returnQueued puts queued messages the server could not answer back into
+  // the thread's composer.
+  function returnQueued(threadID: string, queued: QueuedMessage[]) {
+    for (const message of queued)
+      removeQueued(threadID, message.clientMessageId);
+    setDrafts((current) =>
+      restoreQueuedDrafts(current, threadDraftScope(threadID), queued),
+    );
   }
 
   // resumeRunningTurn follows a turn that is still running on the server. The
@@ -1434,6 +1451,7 @@ export function ThreadShell({
         patch: (next) => patchStreamRun(runKey, next),
         onUserMessage: (message) =>
           confirmQueuedMessage(thread.id, message, isCurrentThread()),
+        onQueueReturned: (queued) => returnQueued(thread.id, queued),
         onAssistantMessage: (message, liveBlocks) => {
           if (isCurrentThread())
             setMessages((current) =>

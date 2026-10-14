@@ -178,6 +178,34 @@ test("segments and turn errors do not end the stream", async () => {
   expect(handlers.onAssistantMessage).toHaveBeenCalledWith({ id: "a2" });
 });
 
+test("a drop during a follow-up turn is an interruption, not a finish", async () => {
+  const encoder = new TextEncoder();
+  const chunks = [
+    'event: user_message\ndata: {"id":"u1"}\n\n' +
+      'event: assistant_message\ndata: {"id":"a1"}\n\n' +
+      'event: user_message\ndata: {"id":"u2","clientMessageId":"send-2"}\n\n',
+  ];
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks.shift();
+      if (chunk === undefined) controller.error(new TypeError("Load failed"));
+      else controller.enqueue(encoder.encode(chunk));
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(body, { status: 200 })),
+  );
+  await expect(
+    streamMessage("t1", "Hi", {
+      onUserMessage: vi.fn(),
+      onDelta: vi.fn(),
+      onAssistantMessage: vi.fn(),
+      onThread: vi.fn(),
+    }),
+  ).rejects.toThrow("stream interrupted");
+});
+
 test("handed-back messages go after the draft, pastes as chips", () => {
   const scope = threadDraftScope("t1");
   const paste = { text: "x".repeat(10), lineCount: 1 };

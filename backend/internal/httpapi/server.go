@@ -410,6 +410,8 @@ type activeStreamRegistry struct {
 	// instead. Keyed by the send id, a stop can only ever end the turn of the
 	// send it was meant for.
 	earlyStops map[earlyStopKey]earlyStop
+	// queueLocks are the per-thread queue locks; see queueLock.
+	queueLocks map[activeStreamKey]*sync.Mutex
 	// now is time.Now; tests replace it.
 	now func() time.Time
 }
@@ -456,15 +458,18 @@ type activeStream struct {
 	key    activeStreamKey
 	cancel context.CancelCauseFunc
 	// sendID is the client's id for the send that started the turn; "" when
-	// the client sent none.
+	// the client sent none or the queue started it.
 	sendID string
 	// hub carries the turn's events to the clients that reattach to it.
 	hub *turnHub
-	// finishing is set, under the registry lock, once the stream will run no
-	// further turn: its last look at the queue found nothing, or it was
-	// stopped or superseded. A message queued from then on starts a stream of
-	// its own instead of waiting for this one.
+	// finishing is set once the stream will run no further turn: its last
+	// look at the queue found nothing, or it was stopped or superseded.
+	// handedOff follows once its turns have fully ended and it passed what is
+	// queued to a stream of its own. A message queued while a stream is
+	// finishing but not handed off yet waits for that hand-off, so it never
+	// runs beside a stopped turn that is still unwinding. Both under mu.
 	finishing bool
+	handedOff bool
 	// done is closed once the stream handler has returned. stopAndWait blocks on
 	// it so a caller that needs the turn to be really finished — the thread delete
 	// path, which must not race the turn's remaining writes — can wait for it.
@@ -524,18 +529,48 @@ func (r *activeStreamRegistry) registerLocked(key activeStreamKey, sendID string
 	}
 }
 
-// enqueue runs insert, which stores a queued message, under the lock that
-// decides whether the thread's running stream will still pick it up. When no
-// stream will, it registers a new one with cancel and hub and returns it;
-// the caller then drives that stream. nil means the running stream has it.
-func (r *activeStreamRegistry) enqueue(userID, threadID string, insert func() error, cancel context.CancelCauseFunc, hub *turnHub) (*activeStream, func(), error) {
-	key := activeStreamKey{userID: userID, threadID: threadID}
+// queueLock returns the thread's queue lock. It serializes everything that
+// reads or moves the thread's queued messages against a decision about who
+// answers them: enqueue, a stream's last look, consume, the stop's drain and
+// the hand-off. It is per thread, so the database work done under it never
+// holds up the registry for other threads.
+func (r *activeStreamRegistry) queueLock(key activeStreamKey) *sync.Mutex {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.queueLocks == nil {
+		r.queueLocks = make(map[activeStreamKey]*sync.Mutex)
+	}
+	lock := r.queueLocks[key]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		r.queueLocks[key] = lock
+	}
+	return lock
+}
+
+// withQueueLock runs fn under the thread's queue lock.
+func (r *activeStreamRegistry) withQueueLock(userID, threadID string, fn func()) {
+	lock := r.queueLock(activeStreamKey{userID: userID, threadID: threadID})
+	lock.Lock()
+	defer lock.Unlock()
+	fn()
+}
+
+// enqueue runs insert, which stores a queued message, under the thread's
+// queue lock. When no stream will pick the message up, it registers a new one
+// with cancel and hub and returns it; the caller then drives that stream. nil
+// means a stream has it: the running one, or one finishing that hands it off.
+func (r *activeStreamRegistry) enqueue(userID, threadID string, insert func() error, cancel context.CancelCauseFunc, hub *turnHub) (*activeStream, func(), error) {
+	key := activeStreamKey{userID: userID, threadID: threadID}
+	lock := r.queueLock(key)
+	lock.Lock()
+	defer lock.Unlock()
 	if err := insert(); err != nil {
 		return nil, nil, err
 	}
-	if current := r.streams[key]; current != nil && !current.finishing {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current := r.streams[key]; current != nil && !current.handedOff {
 		return nil, nil, nil
 	}
 	stream, unregister := r.registerLocked(key, "", cancel, hub)
@@ -551,17 +586,67 @@ func (r *activeStreamRegistry) isFinishing(stream *activeStream) bool {
 
 // finishIfIdle is a stream's look at the queue between turns. It reports
 // true, and marks the stream finishing, when the stream is to end: it was
-// stopped, superseded or canceled, or hasQueued finds nothing. Under the same
-// lock as enqueue, so no message can be accepted for a stream after its last
-// look.
+// stopped, superseded or canceled, or hasQueued finds nothing. Under the
+// queue lock, so no message is accepted between the look and the decision.
 func (r *activeStreamRegistry) finishIfIdle(stream *activeStream, canceled bool, hasQueued func() bool) bool {
+	lock := r.queueLock(stream.key)
+	lock.Lock()
+	defer lock.Unlock()
+	r.mu.Lock()
+	if stream.finishing || canceled || r.streams[stream.key] != stream {
+		stream.finishing = true
+		r.mu.Unlock()
+		return true
+	}
+	r.mu.Unlock()
+	has := hasQueued()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if stream.finishing || canceled || r.streams[stream.key] != stream || !hasQueued() {
+	// A stop may have come in during the look.
+	if !has || stream.finishing {
 		stream.finishing = true
 		return true
 	}
 	return false
+}
+
+// consume runs fn, which moves the queued messages into the thread, unless
+// the stream was stopped: a stop hands them back instead (see the stop
+// handler's drain, under the same lock).
+func (r *activeStreamRegistry) consume(stream *activeStream, fn func() ([]chat.Message, error)) ([]chat.Message, error) {
+	lock := r.queueLock(stream.key)
+	lock.Lock()
+	defer lock.Unlock()
+	if r.isFinishing(stream) {
+		return nil, nil
+	}
+	return fn()
+}
+
+// handOff is a finished stream's last act, after its turns have fully ended:
+// what was queued meanwhile goes to a stream of its own, which start
+// registers (with registerHandOff) and drives. Nothing starts when a newer
+// stream owns the thread; it reads the queue itself.
+func (r *activeStreamRegistry) handOff(stream *activeStream, hasQueued func() bool, start func()) {
+	lock := r.queueLock(stream.key)
+	lock.Lock()
+	defer lock.Unlock()
+	r.mu.Lock()
+	stream.finishing = true
+	stream.handedOff = true
+	current := r.streams[stream.key] == stream
+	r.mu.Unlock()
+	if current && hasQueued() {
+		start()
+	}
+}
+
+// registerHandOff registers the stream a hand-off starts. The caller holds
+// the thread's queue lock (see handOff).
+func (r *activeStreamRegistry) registerHandOff(userID, threadID string, cancel context.CancelCauseFunc, hub *turnHub) (*activeStream, func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.registerLocked(activeStreamKey{userID: userID, threadID: threadID}, "", cancel, hub)
 }
 
 // lookup returns the hub of the user's running turn on the thread, or nil when
@@ -583,7 +668,9 @@ func (r *activeStreamRegistry) stop(userID, threadID, sendID string, cause error
 	key := activeStreamKey{userID: userID, threadID: threadID}
 	r.mu.Lock()
 	stream := r.streams[key]
-	if stream != nil && sendID != "" && stream.sendID != sendID {
+	// A stream the queue started has no send of its own: the client
+	// following the thread stops it with whatever send it knows.
+	if stream != nil && sendID != "" && stream.sendID != "" && stream.sendID != sendID {
 		stream = nil
 	}
 	if stream == nil && sendID != "" {

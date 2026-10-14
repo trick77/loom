@@ -131,6 +131,42 @@ func TestNoQueuedMessageLeavesTheTurnWhole(t *testing.T) {
 	}
 }
 
+// endlessInbox always has another message queued.
+type endlessInbox struct {
+	store    *fakeThreadStore
+	consumed int
+}
+
+func (*endlessInbox) HasQueued(context.Context) (bool, error) { return true, nil }
+
+func (f *endlessInbox) Consume(ctx context.Context) ([]chat.Message, error) {
+	f.consumed++
+	m, err := f.store.AddMessageWithAttachments(ctx, testUser.ID, f.store.Thread.ID, chat.RoleUser, "more", nil, nil, "send-q")
+	return []chat.Message{m}, err
+}
+
+// Queueing on every tool round cannot keep one turn alive without end: past
+// maxQueuedPickups the turn keeps its budget and the rest waits.
+func TestQueuedPickupsPerTurnAreCapped(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	results := make([]llm.StreamResult, 0, 40)
+	for range 39 {
+		results = append(results, llm.StreamResult{ToolCalls: []llm.ToolCall{{ID: "call", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}})
+	}
+	llmClient := &fakeToolChatClient{Results: append(results, llm.StreamResult{Content: "done"}), Plain: "final"}
+	inbox := &endlessInbox{store: store}
+	out := runStoredTurnWithInbox(t, Config{LLM: llmClient, MCP: searchTool()}, store, "Go", inbox)
+	if out.err != nil {
+		t.Fatal(out.err)
+	}
+	if inbox.consumed != maxQueuedPickups {
+		t.Fatalf("pickups = %d, want %d", inbox.consumed, maxQueuedPickups)
+	}
+	if calls := len(llmClient.Histories); calls > (maxQueuedPickups+1)*maxToolRounds+1 {
+		t.Fatalf("model calls = %d, the round budget was not kept", calls)
+	}
+}
+
 // A model that answers without tools never reaches a boundary: the queued
 // message waits for a follow-up turn.
 func TestQueuedMessageWaitsWhenTheModelAnswersWithoutTools(t *testing.T) {

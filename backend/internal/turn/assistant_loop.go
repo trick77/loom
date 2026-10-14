@@ -20,7 +20,10 @@ const (
 	// (e.g. fetching source after source) otherwise burns rounds — and wall-clock —
 	// without converging. Enough for genuine multi-step research, low enough to stop
 	// a spiral.
-	maxToolRounds        = 6
+	maxToolRounds = 6
+	// maxQueuedPickups caps how often one turn picks up queued messages at a
+	// tool boundary, each with a fresh round budget.
+	maxQueuedPickups     = 2
 	maxToolCallsPerRound = 8 // default cap for how many times one tool may run in a single round
 	// cheapToolCallsPerRound is the higher per-round cap for the inexpensive
 	// fetch/obscura tools: a single paste can carry a dozen links, and fetching
@@ -79,6 +82,8 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	}
 
 	toolRan := false
+	// pickups counts the queued messages batches picked up at tool boundaries.
+	pickups := 0
 	// One generated image per turn, regardless of format: the model sometimes
 	// emits several generate_image calls (across rounds or within one round).
 	// Only the first that produces an artifact runs; the rest are skipped with a
@@ -256,15 +261,23 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		toolRan = true
 		// A message the user queued while this round ran is picked up here,
 		// between the tool results and the next model call, never mid-tool.
-		// It answers in a fresh segment with a full round budget.
-		if picked := t.pickUpQueued(ctx, history[:initialHistoryLen], history[initialHistoryLen:], b, artifacts, reg.all()); picked.split {
-			b = &blockBuilder{reasoningBase: b.reasoningCount()}
-			artifacts = nil
-			if picked.history != nil {
-				history = picked.history
-				initialHistoryLen = len(history)
-				round = 0
-				continue
+		// It answers in a fresh segment with a full round budget, and gets its
+		// own image. Past maxQueuedPickups the turn keeps its budget and what
+		// is queued waits for a follow-up turn, so queueing cannot keep one
+		// turn alive without end.
+		if pickups < maxQueuedPickups {
+			if picked := t.pickUpQueued(ctx, history[:initialHistoryLen], history[initialHistoryLen:], b, artifacts, reg.all()); picked.split {
+				b = &blockBuilder{reasoningBase: b.reasoningCount()}
+				artifacts = nil
+				if picked.history != nil {
+					pickups++
+					history = picked.history
+					initialHistoryLen = len(history)
+					imageGenerated = false
+					lastRoundDeferred = false
+					round = 0
+					continue
+				}
 			}
 		}
 		if round == maxToolRounds {

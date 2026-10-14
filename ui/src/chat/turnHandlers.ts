@@ -2,6 +2,7 @@ import type {
   Citation,
   Message,
   MessageCostEvent,
+  QueuedMessage,
   StreamHandlers,
   Thread,
 } from "../api";
@@ -64,6 +65,7 @@ export function createTurnHandlers(opts: {
   onAssistantMessage: (message: Message, liveBlocks: ContentBlock[]) => void;
   onMessageCost?: (event: MessageCostEvent) => void;
   onThread?: (thread: Thread) => void;
+  onQueueReturned?: (queued: QueuedMessage[]) => void;
 }): { handlers: StreamHandlers; liveBlocks: () => ContentBlock[] } {
   let liveBlocks: ContentBlock[] = [];
   // One network chunk dispatches many events; every one used to write the run,
@@ -148,6 +150,7 @@ export function createTurnHandlers(opts: {
     },
     onMessageCost: (event) => opts.onMessageCost?.(event),
     onThread: (thread) => opts.onThread?.(thread),
+    onQueueReturned: (queued) => opts.onQueueReturned?.(queued),
   };
   return { handlers, liveBlocks: () => liveBlocks };
 }

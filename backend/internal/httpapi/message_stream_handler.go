@@ -169,8 +169,14 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 	}
 	// Stopping hands the messages queued behind the turn back to the user,
 	// who wanted control back, instead of answering them. The stream was
-	// marked finishing first, so nothing queued from here on waits for it.
-	queued, err := s.thread.DrainQueued(context.WithoutCancel(r.Context()), user.ID, threadID)
+	// marked finishing first, and the drain shares the queue lock with every
+	// consume, so a message is either picked up before the stop or handed
+	// back, never lost in between. What is queued after the drain is answered
+	// once the stopped turn has ended (see handOff).
+	var queued []chat.QueuedMessage
+	s.activeStreams.withQueueLock(user.ID, threadID, func() {
+		queued, err = s.thread.DrainQueued(context.WithoutCancel(r.Context()), user.ID, threadID)
+	})
 	if err != nil {
 		slog.Warn("drain queued messages failed", "thread_id", threadID, "err", err)
 	}

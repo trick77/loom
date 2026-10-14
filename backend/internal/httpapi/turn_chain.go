@@ -31,6 +31,9 @@ type turnChain struct {
 	streamCtx context.Context
 	// finished is set once the terminal event went out.
 	finished bool
+	// noHandOff keeps the end from starting a stream for the queue: the
+	// server is shutting down, or the queue could not be read.
+	noHandOff bool
 }
 
 // turnInput is one turn's question and what the model gets with it.
@@ -56,15 +59,30 @@ func (s *server) startTurnChain(c *turnChain, first *turnInput, cancel context.C
 		endLive()
 		close(finished)
 	}
-	if !s.background.Spawn(c.liveCtx, "turn:"+c.threadID, func(context.Context) {
+	if !s.background.Spawn(c.liveCtx, "turn:"+c.threadID, func(groupCtx context.Context) {
 		defer end()
+		// The background group giving up on its tasks at shutdown ends the
+		// turn too, so it does not write past the database's close.
+		stopWithGroup := context.AfterFunc(groupCtx, func() { cancel(context.Cause(groupCtx)) })
+		defer stopWithGroup()
 		c.run(first)
 	}) {
 		// Shutting down: the queued messages wait for the next boot.
-		_ = c.hub.SendJSON("done", struct{}{})
+		c.noHandOff = true
+		c.endWith("done", struct{}{})
 		end()
 	}
 	return finished
+}
+
+// startHandOffChain starts the stream that answers what a finished stream
+// handed off. Called by handOff, under the thread's queue lock.
+func (s *server) startHandOffChain(parent context.Context, user auth.User, threadID string) {
+	liveCtx, endLive := s.detachedFromClient(parent)
+	streamCtx, cancelStream := context.WithCancelCause(liveCtx)
+	hub := newTurnHub()
+	entry, unregister := s.activeStreams.registerHandOff(user.ID, threadID, cancelStream, hub)
+	s.startTurnChain(&turnChain{s: s, user: user, threadID: threadID, stream: entry, hub: hub, liveCtx: liveCtx, streamCtx: streamCtx}, nil, cancelStream, unregister, endLive)
 }
 
 // run answers first, then whatever was queued, until a look at the queue
@@ -74,9 +92,7 @@ func (c *turnChain) run(first *turnInput) {
 		if p := recover(); p != nil {
 			slog.Error("panic recovered mid-stream", "err", p, "thread_id", c.threadID, "stack", string(debug.Stack()))
 			c.s.activeStreams.finishIfIdle(c.stream, true, nil)
-			if !c.finished {
-				_ = c.hub.SendJSON("error", map[string]string{"error": "internal server error"})
-			}
+			c.endWith("error", map[string]string{"error": "internal server error"})
 		}
 	}()
 	in := first
@@ -88,38 +104,78 @@ func (c *turnChain) run(first *turnInput) {
 			}
 		}
 		if c.finish() {
-			_ = c.hub.SendJSON("done", struct{}{})
+			c.endWith("done", struct{}{})
 			return
 		}
 		next, err := c.nextFromQueue()
 		if err != nil {
 			slog.Warn("start follow-up turn failed", "thread_id", c.threadID, "err", err)
-			c.s.activeStreams.finishIfIdle(c.stream, true, nil)
-			_ = c.hub.SendJSON("done", struct{}{})
+			c.returnQueue()
+			c.endWith("done", struct{}{})
 			return
 		}
-		// nil: the queue emptied meanwhile; the next look ends the chain.
+		// nil: the queue emptied (or was stopped) meanwhile; the next look
+		// ends the chain.
 		in = next
 	}
 }
 
+// endWith ends the stream: what was queued since the last look goes to a
+// stream of its own, then the terminal event goes out. The hand-off comes
+// first, so a client that attaches once it reads the event finds that stream.
+func (c *turnChain) endWith(event string, data any) {
+	if c.finished {
+		return
+	}
+	c.finished = true
+	hasQueued := c.hasQueued
+	if c.noHandOff {
+		hasQueued = func() bool { return false }
+	}
+	c.s.activeStreams.handOff(c.stream, hasQueued, func() {
+		c.s.startHandOffChain(c.liveCtx, c.user, c.threadID)
+	})
+	_ = c.hub.SendJSON(event, data)
+}
+
+// returnQueue hands the queued messages back to the client when the chain
+// cannot answer them, rather than leaving them for a later, unrelated turn.
+// When even that fails they stay queued, for the next boot.
+func (c *turnChain) returnQueue() {
+	c.s.activeStreams.finishIfIdle(c.stream, true, nil)
+	var queued []chat.QueuedMessage
+	var err error
+	c.s.activeStreams.withQueueLock(c.user.ID, c.threadID, func() {
+		queued, err = c.s.thread.DrainQueued(context.WithoutCancel(c.liveCtx), c.user.ID, c.threadID)
+	})
+	if err != nil {
+		slog.Warn("return queued messages failed", "thread_id", c.threadID, "err", err)
+		c.noHandOff = true
+		return
+	}
+	if len(queued) > 0 {
+		_ = c.hub.SendJSON("queue_returned", stopStreamResponse{Queued: queued})
+	}
+}
+
+func (c *turnChain) hasQueued() bool {
+	has, err := c.s.thread.HasQueued(context.WithoutCancel(c.liveCtx), c.user.ID, c.threadID)
+	if err != nil {
+		slog.Warn("check queued messages failed", "thread_id", c.threadID, "err", err)
+	}
+	return has
+}
+
 // finish is the chain's look at the queue between turns; see finishIfIdle.
 func (c *turnChain) finish() bool {
-	return c.s.activeStreams.finishIfIdle(c.stream, c.streamCtx.Err() != nil, func() bool {
-		has, err := c.s.thread.HasQueued(context.WithoutCancel(c.liveCtx), c.user.ID, c.threadID)
-		if err != nil {
-			slog.Warn("check queued messages failed", "thread_id", c.threadID, "err", err)
-		}
-		return has
-	})
+	return c.s.activeStreams.finishIfIdle(c.stream, c.streamCtx.Err() != nil, c.hasQueued)
 }
 
 // fail reports a turn that has no answer. With more queued, the chain goes
 // on and the failure is reported without ending the stream.
 func (c *turnChain) fail(message string) {
 	if c.finish() {
-		c.finished = true
-		_ = c.hub.SendJSON("error", map[string]string{"error": message})
+		c.endWith("error", map[string]string{"error": message})
 		return
 	}
 	_ = c.hub.SendJSON("turn_error", map[string]string{"error": message})
@@ -140,10 +196,15 @@ func (c *turnChain) nextFromQueue() (*turnInput, error) {
 	if err != nil {
 		return nil, err
 	}
-	consumed, err := c.s.thread.ConsumeQueued(ctx, c.user.ID, c.threadID)
+	consumed, err := c.s.activeStreams.consume(c.stream, func() ([]chat.Message, error) {
+		return c.s.thread.ConsumeQueued(ctx, c.user.ID, c.threadID)
+	})
 	if err != nil || len(consumed) == 0 {
 		return nil, err
 	}
+	// The turns before this one are stored: a client reattaching from here
+	// on loads them with the thread and replays only this one.
+	c.hub.startReplayHere()
 	for _, m := range consumed {
 		_ = c.hub.SendJSON("user_message", m)
 	}
@@ -167,7 +228,9 @@ func (q queueInbox) HasQueued(ctx context.Context) (bool, error) {
 }
 
 func (q queueInbox) Consume(ctx context.Context) ([]chat.Message, error) {
-	return q.c.s.thread.ConsumeQueued(ctx, q.c.user.ID, q.c.threadID)
+	return q.c.s.activeStreams.consume(q.c.stream, func() ([]chat.Message, error) {
+		return q.c.s.thread.ConsumeQueued(ctx, q.c.user.ID, q.c.threadID)
+	})
 }
 
 // runTurn answers one question into the hub, up to and including its
