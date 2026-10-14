@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/sse"
 )
@@ -48,8 +49,42 @@ func TestMessageQueuedAfterAStopRunsOnceTheStoppedTurnEnded(t *testing.T) {
 	for _, m := range store.Messages {
 		order = append(order, string(m.Role)+":"+m.Content)
 	}
-	if strings.Join(order, "|") != "user:Hi|user:Second|assistant:Hello" {
+	// The stopped turn's partial answer is stored before the message queued
+	// after the stop.
+	if strings.Join(order, "|") != "user:Hi|assistant:Partial|user:Second|assistant:Hello" {
 		t.Fatalf("transcript = %v", order)
+	}
+}
+
+// A hand-off during shutdown cannot start a stream; it must not hang on the
+// queue lock it holds.
+func TestHandOffDuringShutdownDoesNotHang(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID}}
+	if _, err := store.EnqueueMessage(context.Background(), testUser.ID, "thr_1", "left", nil, "send-1"); err != nil {
+		t.Fatal(err)
+	}
+	bg := background.New(context.Background())
+	// Stopped: Spawn refuses every task from here on.
+	_ = bg.Stop(0)
+	s := newServer(Deps{Thread: store, LLM: fakeChatClient{}, Background: bg})
+	ctx, cancel := context.WithCancelCause(context.Background())
+	defer cancel(nil)
+	hub := newTurnHub()
+	stream, _ := s.activeStreams.registerStream(testUser.ID, "thr_1", "", cancel, hub)
+	c := &turnChain{s: s, user: testUser, threadID: "thr_1", stream: stream, hub: hub, liveCtx: ctx, streamCtx: ctx}
+
+	ended := make(chan struct{})
+	go func() {
+		c.endWith("done", struct{}{})
+		close(ended)
+	}()
+	select {
+	case <-ended:
+	case <-time.After(2 * time.Second):
+		t.Fatal("hand-off hung during shutdown")
+	}
+	if len(store.Queue.Snapshot()) != 1 {
+		t.Fatal("the queued message must stay for the next boot")
 	}
 }
 

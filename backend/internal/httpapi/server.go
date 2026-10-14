@@ -641,6 +641,15 @@ func (r *activeStreamRegistry) handOff(stream *activeStream, hasQueued func() bo
 	}
 }
 
+// abandon ends a stream that never ran, without a hand-off: the server is
+// shutting down. Registry lock only, so it is safe inside a hand-off.
+func (r *activeStreamRegistry) abandon(stream *activeStream) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stream.finishing = true
+	stream.handedOff = true
+}
+
 // registerHandOff registers the stream a hand-off starts. The caller holds
 // the thread's queue lock (see handOff).
 func (r *activeStreamRegistry) registerHandOff(userID, threadID string, cancel context.CancelCauseFunc, hub *turnHub) (*activeStream, func()) {

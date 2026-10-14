@@ -32,7 +32,7 @@ type turnChain struct {
 	// finished is set once the terminal event went out.
 	finished bool
 	// noHandOff keeps the end from starting a stream for the queue: the
-	// server is shutting down, or the queue could not be read.
+	// queue could not be read.
 	noHandOff bool
 }
 
@@ -67,9 +67,12 @@ func (s *server) startTurnChain(c *turnChain, first *turnInput, cancel context.C
 		defer stopWithGroup()
 		c.run(first)
 	}) {
-		// Shutting down: the queued messages wait for the next boot.
-		c.noHandOff = true
-		c.endWith("done", struct{}{})
+		// Shutting down: the queued messages wait for the next boot. Not
+		// through endWith: this may run inside a hand-off, which holds the
+		// thread's queue lock.
+		s.activeStreams.abandon(c.stream)
+		c.finished = true
+		_ = c.hub.SendJSON("done", struct{}{})
 		end()
 	}
 	return finished

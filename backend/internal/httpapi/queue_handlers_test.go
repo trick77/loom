@@ -29,11 +29,18 @@ func newGatedChatClient() gatedChatClient {
 
 func (c gatedChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	if c.calls.Add(1) == 1 {
+		// Some of the answer streams before the hold, so a stop keeps a
+		// partial answer.
+		if onEvent != nil {
+			if err := onEvent(llm.StreamEvent{Delta: "Partial"}); err != nil {
+				return llm.StreamResult{}, err
+			}
+		}
 		close(c.entered)
 		select {
 		case <-c.release:
 		case <-ctx.Done():
-			return llm.StreamResult{}, ctx.Err()
+			return llm.StreamResult{Content: "Partial"}, ctx.Err()
 		}
 	}
 	return c.fakeChatClient.StreamChatWithTools(ctx, history, tools, onEvent)
