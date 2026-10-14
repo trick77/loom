@@ -4,6 +4,7 @@ import type {
   Citation,
   Message,
   MessagePastedText,
+  QueuedMessage,
   Thread,
   ToolCallEvent,
   ToolResultEvent,
@@ -20,6 +21,14 @@ export type StreamHandlers = {
   // answer is prepared; shown until the first reasoning title replaces it.
   onWorkingTitle?(title: string): void;
   onAssistantMessage(message: Message): void;
+  // The part of the answer so far, stored as its own message because the turn
+  // is picking up a message the user queued. The stream goes on.
+  onAssistantSegment?(message: Message): void;
+  // A turn failed but the stream goes on with a follow-up turn for the
+  // messages queued behind it.
+  onTurnError?(error: string): void;
+  // The server could not answer the queued messages and hands them back.
+  onQueueReturned?(queued: QueuedMessage[]): void;
   // A message's settled cost. The turn's last calls (the thread title) finish
   // after assistant_message went out, and a failed turn books its spend on the
   // user message; this is how the open thread's Σ learns either.
@@ -213,7 +222,11 @@ async function readSSEStream(
   let buffer = "";
   let settled = false;
   const dispatch = (rawEvent: string) => {
-    if (dispatchSSEEvent(rawEvent, handlers)) settled = true;
+    const outcome = dispatchSSEEvent(rawEvent, handlers);
+    // A follow-up turn on the same stream opens with its user message: until
+    // it settles in turn, a drop is an interruption again.
+    if (outcome === "reopened") settled = false;
+    else if (outcome) settled = true;
   };
   try {
     for (;;) {
@@ -284,8 +297,11 @@ function drainSSEBuffer(
 }
 
 // dispatchSSEEvent routes one event to its handler and reports whether it was
-// a terminal event for the turn.
-function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers): boolean {
+// a terminal event for the turn, or a user message opening a turn.
+function dispatchSSEEvent(
+  rawEvent: string,
+  handlers: StreamHandlers,
+): boolean | "reopened" {
   let event = "";
   const dataLines: string[] = [];
   for (const line of rawEvent.split("\n")) {
@@ -302,6 +318,11 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers): boolean {
   switch (event) {
     case "user_message":
       handlers.onUserMessage(payload as Message);
+      return "reopened";
+    case "queue_returned":
+      handlers.onQueueReturned?.(
+        (payload as { queued?: QueuedMessage[] }).queued ?? [],
+      );
       break;
     case "assistant_delta":
       handlers.onDelta((payload as { content: string }).content);
@@ -318,6 +339,12 @@ function dispatchSSEEvent(rawEvent: string, handlers: StreamHandlers): boolean {
     case "assistant_message":
       handlers.onAssistantMessage(payload as Message);
       return true;
+    case "assistant_segment":
+      handlers.onAssistantSegment?.(payload as Message);
+      break;
+    case "turn_error":
+      handlers.onTurnError?.((payload as { error?: string }).error ?? "");
+      break;
     case "message_cost":
       handlers.onMessageCost?.(payload as MessageCostEvent);
       break;

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/sse"
 	"github.com/trick77/loom/internal/turn"
 )
@@ -104,258 +103,40 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// liveCtx ends only on shutdown; stop, supersede and delete cancel streamCtx
 	// through activeStreams.
 	liveCtx, endLive := s.detachedFromClient(r.Context())
-	defer endLive()
 	streamCtx, cancelStream := context.WithCancelCause(liveCtx)
-	defer cancelStream(nil)
-	// Sum token usage across every model call this turn makes — answer turns, tool
-	// rounds, and the background reasoning/thread-title helpers — so the persisted
-	// per-message stats reflect the whole turn, not just the final answer call.
-	// turnStart times the full turn wall-clock for the same reason.
-	usageTotal := llm.NewUsageAccumulator()
-	streamCtx = llm.WithUsageAccumulator(streamCtx, usageTotal)
-	// Attribute the whole turn up front, so the model calls that hang off its
-	// edges — the RAG query embedding, a live vision description for an attached
-	// image, the image tool — log under the same user/thread as the chat calls.
-	// The per-call metadata attached below (purposes, rounds, reasoning effort)
-	// builds on this; without it those edge calls logged anonymously. The
-	// reasoning titles below log under it too.
-	inference := llm.InferenceMetadata{
-		UserID:   user.ID,
-		Username: user.Username,
-		ThreadID: threadID,
-	}
-	streamCtx = llm.WithInferenceMetadata(streamCtx, inference)
-	// The prompt-assembly helpers below run on liveCtx rather than streamCtx, so
-	// they need the same attribution attached separately — and the accumulator,
-	// so their calls (the RAG query embedding) count in the turn.
-	turnCtx := llm.WithUsageAccumulator(llm.WithInferenceMetadata(liveCtx, inference), usageTotal)
-	turnStart := time.Now()
 	// The turn writes its events into the hub, never to a client directly.
-	stream := newTurnHub()
-	unregisterStream := s.activeStreams.register(user.ID, threadID, body.ClientMessageID, cancelStream, stream)
-	// endTurn ends the turn for every client: followers drain the hub and
-	// return, and the thread no longer reports a running turn. Idempotent.
-	endTurn := func() {
-		stream.close()
-		unregisterStream()
-	}
-	defer endTurn()
-
+	hub := newTurnHub()
+	entry, unregister := s.activeStreams.registerStream(user.ID, threadID, body.ClientMessageID, cancelStream, hub)
 	writer, err := sse.NewWriter(w)
 	if err != nil {
 		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
+		cancelStream(nil)
+		unregister()
+		hub.close()
+		endLive()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	_ = hub.SendJSON("user_message", userMessage)
+	chain := &turnChain{s: s, user: user, threadID: threadID, stream: entry, hub: hub, liveCtx: liveCtx, streamCtx: streamCtx}
+	finished := s.startTurnChain(chain, &turnInput{
+		thread:      thread,
+		userMessage: userMessage,
+		prior:       priorMessages,
+		imageIDs:    body.ImageAttachmentIDs,
+		documentIDs: body.DocumentAttachmentIDs,
+		imageParts:  imageParts,
+	}, cancelStream, unregister, endLive)
 	// Keep the connection alive through idle proxies during long silent gaps —
 	// notably while a model serializes a large tool-call argument server-side and
 	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
 	defer writer.Heartbeat(r.Context(), streamHeartbeatInterval)()
-	// The sending client follows the hub like a reattaching one. The handler
-	// waits for it, as w is only valid until the handler returns; sse's write
-	// deadline bounds a client that stopped reading.
-	following := make(chan struct{})
-	go func() {
-		defer close(following)
-		stream.follow(r.Context(), writer, false)
-	}()
-	// The turn is over before the sending client is waited for: a client that
-	// stopped reading must not keep it registered, which would hold a thread
-	// delete and report the thread as still answering.
-	defer func() {
-		endTurn()
-		<-following
-	}()
-	// From here on the 200 is committed, so a panic must end the stream with an
-	// error event rather than reach the recovery middleware, which can no longer
-	// answer with a 500.
-	defer recoverToStream(stream, r)
-	// Book what the turn spent on every exit path. Deferred ahead of
-	// titles.Wait below so it runs after it: the reasoning-title calls must have
-	// finished before the turn's cost is read. The success path settles
-	// explicitly before "done"; this is then a no-op.
-	costs := s.engine.NewCostSettler(user, userMessage.ID, usageTotal)
-	defer costs.Settle(context.WithoutCancel(r.Context()))
-	if err := stream.SendJSON("user_message", userMessage); err != nil {
-		return
-	}
-
-	// Background sweep-line generation: the working title from the question
-	// right away, alongside the pre-answer gates, then one title per reasoning
-	// round. The deferred waits keep any title goroutine from writing to the
-	// SSE stream after the handler returns. They run before costs.Settle, so a
-	// working title that outlived the answer still has its cost booked.
-	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, user.ResponseLanguageName())
-	defer titles.Wait()
-	defer titles.WaitWorking()
-	titles.SpawnWorking(userMessage.Content)
-
-	run := s.engine.Prepare(turn.RunConfig{
-		Stream:      stream,
-		Titles:      titles,
-		User:        user,
-		Thread:      thread,
-		UserMessage: userMessage,
-		Usage:       usageTotal,
-		Start:       turnStart,
-	}, turn.PrepareInput{
-		StreamCtx:             streamCtx,
-		TurnCtx:               turnCtx,
-		ReqCtx:                liveCtx,
-		ImageAttachmentIDs:    body.ImageAttachmentIDs,
-		DocumentAttachmentIDs: body.DocumentAttachmentIDs,
-		PriorMessages:         priorMessages,
-		ImageParts:            imageParts,
-	})
-	// titleThread names an as-yet-untitled thread. It runs after the answer so the
-	// title model can see the reply, not just the question — passing an empty
-	// assistantMessage reproduces the input-only titling this handler did for
-	// every turn before, and is what the paths below that never produce an answer
-	// use. Detached from the request context so a canceled or failed turn still
-	// names the thread, as it did when titling ran up front.
-	titleThread := func(assistantMessage string) {
-		if !turn.ShouldGenerateThreadTitle(thread.Title, userMessage.Content) {
-			return
-		}
-		// The thread is being deleted, so there is nothing left to name: the title
-		// call would spend tokens on a model round whose UpdateThread then no-ops on
-		// the missing thread. It also runs inline on a detached context, which would
-		// hold the deleting request in its bounded wait for several seconds.
-		if errors.Is(context.Cause(streamCtx), errStreamThreadDeleted) {
-			return
-		}
-		// Derived from streamCtx, not r.Context(): streamCtx carries the turn's
-		// usage accumulator, so the title call's tokens land in both the
-		// per-message stats and the lifetime rollup. WithoutCancel keeps that
-		// value while letting the call outlive a client disconnect.
-		titleCtx := context.WithoutCancel(streamCtx)
-		if err := run.GenerateAndSendThreadTitle(titleCtx, assistantMessage); err != nil {
-			slog.Warn("thread title generation failed", "thread_id", threadID, "error", err)
-		}
-	}
-
-	// finishCosts books the turn's spend once every call has finished and tells
-	// the client, ahead of the terminal event it stops reading at.
-	finishCosts := func() {
-		titles.Wait()
-		costs.SettleAndReport(context.WithoutCancel(r.Context()), stream)
-	}
-	// failTurn ends a turn that has no answer to persist. The spend so far is
-	// reported just before the error event (the client stops reading at it),
-	// and the error goes out at once: when the upstream is down the title call
-	// fails too, and waiting for it would hold the error for its whole
-	// timeout. The title's own cost is booked by the deferred settle, onto
-	// the message, visible from the next load.
-	// It does not wait for in-flight reasoning titles either, for the same
-	// reason: they go to the same upstream. Their cost, like the title's, is
-	// picked up by the deferred settle.
-	failTurn := func(titleSource, message string) {
-		costs.SettleAndReport(context.WithoutCancel(r.Context()), stream)
-		_ = stream.SendJSON("error", map[string]string{"error": message})
-		titleThread(titleSource)
-	}
-
-	assistantResult, err := run.RunAssistantLoop(streamCtx)
-	if err != nil {
-		if turn.StreamCanceled(streamCtx, err) {
-			cancelSource, cancelReason := streamCancelDetails(streamCtx)
-			slog.Info("message stream canceled",
-				"thread_id", threadID,
-				"cancel_source", cancelSource,
-				"reason", cancelReason,
-				"err", err,
-				"content_bytes", len(assistantResult.Content),
-				"reasoning_bytes", len(assistantResult.ReasoningContent),
-				"tool_calls", len(assistantResult.ToolCalls))
-			// Whatever streamed before the cancel is still the best title source
-			// available; it is simply shorter than a completed answer.
-			titleThread(assistantResult.Content)
-			finishCosts()
-			// End the stream deliberately. A client that did not issue the stop
-			// itself (the thread open in a second tab) would otherwise read an
-			// unterminated stream as a dropped connection.
-			_ = stream.SendJSON("done", struct{}{})
-			return
-		}
-		failTurn(assistantResult.Content, turn.StreamFailureMessage(err, assistantResult, "message", threadID))
-		return
-	}
-	assistantContent := assistantResult.Content
-	if run.ImageRequired() && len(assistantResult.Artifacts) == 0 {
-		message := "image generation was not completed"
-		if strings.TrimSpace(assistantResult.ToolError) != "" {
-			message = assistantResult.ToolError
-		}
-		slog.Warn("image request completed without image artifact",
-			"thread_id", threadID,
-			"content_bytes", len(assistantResult.Content),
-			"tool_calls", len(assistantResult.ToolCalls),
-			"tool_error", assistantResult.ToolError)
-		failTurn(assistantContent, message)
-		return
-	}
-	if strings.TrimSpace(assistantContent) == "" {
-		slog.Warn("empty assistant response",
-			"thread_id", threadID,
-			"content_bytes", len(assistantResult.Content),
-			"reasoning_bytes", len(assistantResult.ReasoningContent),
-			"tool_calls", len(assistantResult.ToolCalls))
-		// assistantContent is empty here by definition, so this titles from the
-		// question alone — exactly what every turn did before the reordering.
-		failTurn(assistantContent, "empty assistant response")
-		return
-	}
-
-	persistCtx := context.WithoutCancel(r.Context())
-	assistantMessage, err := run.PersistAssistantTurn(persistCtx, &assistantResult)
-	if err != nil {
-		slog.Warn("persist assistant message failed", "thread_id", threadID, "err", err)
-		failTurn(assistantContent, "persist assistant message failed")
-		return
-	}
-	costs.SetAssistant(assistantMessage)
-	if err := stream.SendJSON("assistant_message", assistantMessage); err != nil {
-		return
-	}
-
-	// Name the thread now that the answer exists. This is the whole point of the
-	// ordering: the reply supplies the facts, the correct spellings and a strong
-	// signal of the language the turn was actually conducted in — a bare question
-	// supplies none of that, and the title model used to guess from it alone.
-	//
-	// Deliberately after the answer is persisted and delivered, not before: this
-	// call is bounded by the turn gate timeout, and a slow short-gate endpoint would
-	// otherwise hold the just-streamed answer unpersisted — and the UI in its
-	// streaming state — for up to that long. The cost is that the title call's
-	// tokens miss the per-message stats; its cost is added onto the message and
-	// its tokens reach the lifetime rollup when the turn settles below.
-	titleThread(assistantContent)
-
-	// Bump the thread to the top of the sidebar live. last_message_at was just
-	// updated by the assistant message; the frontend reorders on this event
-	// (ThreadShell onThread -> upsertThread). On newly-titled threads a thread event
-	// was just sent by titleThread above; re-sending is idempotent (upsertThread
-	// moves to top) and now carries the final last_message_at. Best-effort: a
-	// failed/not-found fetch skips the event — the DB order is already correct for
-	// the next refetch.
-	if updated, found, getErr := s.thread.GetThread(persistCtx, user.ID, threadID); getErr == nil && found {
-		_ = stream.SendJSON("thread", updated)
-	}
-
-	// Every call of the turn has finished (PersistAssistantTurn waited for the
-	// reasoning titles, the thread title ran just above): book the spend and
-	// report it before "done", so the open thread's Σ includes the title.
-	finishCosts()
-
-	// Best-effort, debounced background refresh of the project's shared memory so
-	// sibling chats stay aware of this turn (at most once per memoryProjectDebounce).
-	// Detaches from the request context so it survives the handler returning. This
-	// also one-shot fills an empty project description (see refreshMemory). User
-	// memory is intentionally NOT refreshed here — it is handled by the once-a-day
-	// MemoryWorker sweep so it does not fire on every turn.
-	s.maybeRefreshProjectMemoryAsync(r.Context(), user, thread)
-
-	_ = stream.SendJSON("done", struct{}{})
+	// The sending client follows the hub like a reattaching one, until the
+	// chain ends the stream or the client goes away. The handler then waits
+	// for the chain, so a send's request is open as long as its turns run:
+	// the server's graceful shutdown waits for them as before.
+	hub.follow(r.Context(), writer, false)
+	<-finished
 }
 
 func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request) {
@@ -386,7 +167,29 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusConflict, "no active stream")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	// Stopping hands the messages queued behind the turn back to the user,
+	// who wanted control back, instead of answering them. The stream was
+	// marked finishing first, and the drain shares the queue lock with every
+	// consume, so a message is either picked up before the stop or handed
+	// back, never lost in between. What is queued after the drain is answered
+	// once the stopped turn has ended (see handOff).
+	var queued []chat.QueuedMessage
+	s.activeStreams.withQueueLock(user.ID, threadID, func() {
+		queued, err = s.thread.DrainQueued(context.WithoutCancel(r.Context()), user.ID, threadID)
+	})
+	if err != nil {
+		slog.Warn("drain queued messages failed", "thread_id", threadID, "err", err)
+	}
+	if len(queued) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, stopStreamResponse{Queued: queued})
+}
+
+// stopStreamResponse carries the queued messages a stop handed back.
+type stopStreamResponse struct {
+	Queued []chat.QueuedMessage `json:"queued"`
 }
 
 // validSendID accepts "" (no id) or a client send id: up to 64 characters of

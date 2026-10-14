@@ -18,7 +18,11 @@ import (
 type turnHub struct {
 	mu     sync.Mutex
 	events []sse.Event
-	closed bool
+	// replayFrom is where a reattaching client starts: the latest follow-up
+	// turn of a chain. The turns before it are stored, and a reattaching
+	// client loads them with the thread.
+	replayFrom int
+	closed     bool
 	// changed is closed and replaced on every append and on close, waking the
 	// followers.
 	changed chan struct{}
@@ -51,6 +55,14 @@ func (h *turnHub) SendJSON(event string, data any) error {
 	return nil
 }
 
+// startReplayHere makes the next event the first one a reattaching client
+// gets.
+func (h *turnHub) startReplayHere() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.replayFrom = len(h.events)
+}
+
 // close ends the turn: followers drain the log and return.
 func (h *turnHub) close() {
 	h.mu.Lock()
@@ -80,6 +92,11 @@ var mergedDeltaEvents = map[string]bool{
 // the sending client sees the deltas as the model produced them.
 func (h *turnHub) follow(ctx context.Context, w eventWriter, merge bool) {
 	next := 0
+	if merge {
+		h.mu.Lock()
+		next = h.replayFrom
+		h.mu.Unlock()
+	}
 	for {
 		h.mu.Lock()
 		pending := h.events[next:]

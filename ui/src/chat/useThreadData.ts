@@ -7,6 +7,7 @@ import {
   listThreads,
   type LoadedMessage,
   type Project,
+  type QueuedMessage,
   type ShareInfo,
   type Thread,
 } from "../api";
@@ -23,6 +24,7 @@ export function useThreadData({
   handleActionError,
   onSessionExpired,
   onRunningTurn,
+  onQueuedMessages,
 }: {
   // Only ever called on unmount: route changes deliberately leave running turns
   // alone, so switching threads no longer touches stream state at all.
@@ -37,6 +39,8 @@ export function useThreadData({
   // A thread opened while its answer is still being written: a reload, or a
   // phone that discarded the tab mid-answer.
   onRunningTurn(thread: Thread): void;
+  // The messages queued on a thread just opened, as the server holds them.
+  onQueuedMessages?(threadID: string, queued: QueuedMessage[]): void;
 }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -102,6 +106,7 @@ export function useThreadData({
           activeThreadIDRef.current = response.thread.id;
           setMessages(response.messages.map(rehydrateLoadedMessage));
           setLoadError("");
+          onQueuedMessages?.(response.thread.id, response.queuedMessages ?? []);
           if (response.streaming === true) onRunningTurn(response.thread);
         })
         .catch((error: unknown) => {
@@ -123,7 +128,7 @@ export function useThreadData({
         active = false;
       };
     },
-    [activeThreadIDRef, handleActionError, onRunningTurn],
+    [activeThreadIDRef, handleActionError, onRunningTurn, onQueuedMessages],
   );
 
   const loadProjectThreads = useCallback(

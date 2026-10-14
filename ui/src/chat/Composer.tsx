@@ -31,6 +31,7 @@ export function Composer({
   variant,
   draft,
   isSending,
+  canQueue = false,
   sendDisabled = false,
   placeholder,
   autoFocus = false,
@@ -50,6 +51,10 @@ export function Composer({
   variant: "start" | "thread";
   draft: string;
   isSending: boolean;
+  // While the answer streams, a send queues behind it instead of being
+  // blocked; stop gets its own button. Queued messages carry text and pastes
+  // only, so staged attachments hold the send back.
+  canQueue?: boolean;
   sendDisabled?: boolean;
   placeholder: string;
   autoFocus?: boolean;
@@ -105,8 +110,15 @@ export function Composer({
   // A paste-only message (empty textarea but a staged "Pasted" chip) is sendable.
   const hasContent = draft.trim() !== "" || pastedTexts.length > 0;
   const hasStagedRow = attachments.length > 0 || pastedTexts.length > 0;
-  const canSend = !isSending && !sendDisabled && hasContent;
-  const actionButtonClass = isSending
+  const queueing = isSending && canQueue;
+  const canSend =
+    !sendDisabled &&
+    hasContent &&
+    (!isSending || (canQueue && attachments.length === 0));
+  // The submit button stops the answer, unless a send can queue: then stop is
+  // a button of its own and submit sends.
+  const submitStops = isSending && !canQueue;
+  const actionButtonClass = submitStops
     ? "bg-[#3a3a37] hover:bg-[#4b4a46]"
     : "bg-accent hover:bg-accent-strong disabled:bg-accent";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -164,11 +176,11 @@ export function Composer({
       className={`ui-composer relative flex flex-col rounded-[20px] border ${incognito ? "border-dashed border-[#5a5852]" : "border-[#4b4a46]"} bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
       onSubmit={(event) => {
         event.preventDefault();
-        if (isSending) {
+        if (submitStops) {
           onStop();
           return;
         }
-        if (sendDisabled) return;
+        if (sendDisabled || (queueing && !canSend)) return;
         onSend();
       }}
     >
@@ -281,7 +293,7 @@ export function Composer({
               // A fully typed command submits (runSlashCommand fires downstream);
               // a partial one first completes to the highlighted command.
               if (matchSlashCommand(draft) !== null) {
-                if (!isSending && !sendDisabled) onSend();
+                if (isSending ? queueing && canSend : !sendDisabled) onSend();
               } else {
                 onDraftChange(`/${suggestions[activeIndex].name}`);
               }
@@ -290,7 +302,7 @@ export function Composer({
           }
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
-            if (!isSending && !sendDisabled) onSend();
+            if (isSending ? queueing && canSend : !sendDisabled) onSend();
           }
         }}
       />
@@ -357,15 +369,36 @@ export function Composer({
           <span className="mr-2 hidden select-none text-[13px] leading-none text-[#aaa79e] sm:inline">
             {modelInfo?.displayName}
           </span>
+          {queueing && (
+            <button
+              className="ml-2 grid h-7 w-7 place-items-center rounded-md bg-[#3a3a37] text-[#eeeae2] transition-colors hover:bg-[#4b4a46]"
+              type="button"
+              aria-label={t("composer.stopResponse")}
+              onClick={() => onStop()}
+            >
+              <svg
+                className={sendIconClass}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                fill="currentColor"
+              >
+                <rect x="5.5" y="5.5" width="13" height="13" rx="2" />
+              </svg>
+            </button>
+          )}
           <button
             className={`ui-composer-send ml-2 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
-            disabled={!isSending && !canSend}
+            disabled={!submitStops && !canSend}
             type="submit"
             aria-label={
-              isSending ? t("composer.stopResponse") : t("composer.sendMessage")
+              submitStops
+                ? t("composer.stopResponse")
+                : queueing
+                  ? t("composer.queueMessage")
+                  : t("composer.sendMessage")
             }
           >
-            {isSending ? (
+            {submitStops ? (
               <svg
                 className={sendIconClass}
                 viewBox="0 0 24 24"

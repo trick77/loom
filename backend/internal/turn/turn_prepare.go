@@ -37,6 +37,9 @@ type Run struct {
 	// acc sums every model call of the turn; start times its wall clock.
 	acc   *llm.UsageAccumulator
 	start time.Time
+	// inbox is where the turn picks up queued messages; nil when nothing can
+	// queue.
+	inbox Inbox
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.
@@ -51,6 +54,9 @@ type RunConfig struct {
 	// Usage sums every model call of the turn; Start times its wall clock.
 	Usage *llm.UsageAccumulator
 	Start time.Time
+	// Inbox, when set, lets the turn pick up the messages the user queues
+	// while it runs (see Inbox).
+	Inbox Inbox
 }
 
 // PrepareInput is what the prompt-assembly phase of a persisted turn works from.
@@ -106,6 +112,7 @@ func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
 		userMessage: c.UserMessage,
 		acc:         c.Usage,
 		start:       c.Start,
+		inbox:       c.Inbox,
 	}
 	t.plan = t.prepare(in)
 	return t

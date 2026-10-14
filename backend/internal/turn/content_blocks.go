@@ -1,6 +1,7 @@
 package turn
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/trick77/loom/internal/artifact"
@@ -24,6 +25,10 @@ type ContentBlock struct {
 // trace block (one collapsible panel); a prose text block breaks that run.
 type blockBuilder struct {
 	blocks []ContentBlock
+	// reasoningBase is how many reasoning ids earlier segments of the turn
+	// used: the ids stay unique across a split, as the reasoning titles are
+	// keyed by them for the whole turn.
+	reasoningBase int
 }
 
 // addTraceEvent appends a reasoning or tool event to the trailing trace block,
@@ -104,7 +109,12 @@ func (b *blockBuilder) flatTrace() []ActivityTraceEvent {
 // nextReasoningID is the id addResult will assign to the next reasoning event,
 // computed over the flat trace so it matches the legacy numbering.
 func (b *blockBuilder) nextReasoningID() string {
-	return nextReasoningID(b.flatTrace())
+	return fmt.Sprintf("reasoning-%d", b.reasoningCount()+1)
+}
+
+// reasoningCount is how many reasoning ids the turn has used so far.
+func (b *blockBuilder) reasoningCount() int {
+	return b.reasoningBase + countActivityTraceReasoning(b.flatTrace())
 }
 
 // addResult appends a turn's result to the timeline at block granularity,

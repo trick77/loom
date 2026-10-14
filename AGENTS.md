@@ -15,7 +15,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - `make fe-lint` — frontend lint (oxlint: rules-of-hooks, exhaustive-deps, unused vars)
 - `make model-names` — fails on a model/vendor name outside `.env.example` (CI runs it)
 - `make coverage-gate` — 75% on changed lines + project floors; needs `pip install diff-cover==10.3.0`.
-- `make fe-build` — build the SPA into `backend/web/dist` (embedded by Go)
+- `make fe-build` — build the SPA into `ui/dist` (the image copies it into `backend/web/dist`)
 - `make build` — full build → `bin/loom` (CGO_ENABLED=0)
 - `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_AUTH_MODE`; `make dev` sets both)
 - `docker compose up --build` — full stack (copy `.env.example` → `.env` and fill it first)
@@ -64,9 +64,16 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - Vite + React + TS + Tailwind, **direction A (Warm Editorial)**: tokens are `--ui-*` CSS variables in
   `ui/src/index.css`; use the themed classes (`bg-bg`, `bg-panel`, `text-ink`, `text-muted`,
   `bg-accent`, `rounded-ui`, `font-serif`/`font-sans`). Anthropic fonts are self-hosted there.
-- `npm run build` empties `backend/web/dist` and overwrites the tracked placeholder `index.html`.
-  Do NOT commit built assets — only that placeholder is tracked; restore it
-  (`git checkout -- backend/web/dist/index.html`) after a local build.
+- `npm run build` writes `ui/dist`; Go embeds `backend/web/dist` (only placeholder `index.html`
+  tracked). Local binary with the SPA: copy `ui/dist/.` in, build, then
+  `git checkout -- backend/web/dist/index.html`. Never commit built assets.
+
+## Queued messages
+- Sent during a running turn → `queued_messages`, moved into `messages` only by `ConsumeQueued`
+  (one tx, rowid = pickup time). Enqueue, consume, stop's drain and hand-off run under the
+  thread's queue lock (`activeStreamRegistry`), never the global registry lock: a review found
+  lost/orphaned messages in every unlocked path. Stop hands queued text back; stopped stream
+  hands the rest to a new stream only after its turn ended.
 
 ## Security invariants (must hold in every feature)
 - Every DB query is scoped by `user_id`; no cross-user access to any resource.

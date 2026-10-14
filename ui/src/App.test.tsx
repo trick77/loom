@@ -2093,6 +2093,185 @@ test("turns the send button into a stop button while the assistant is running", 
   });
 });
 
+// queueingChatFetch serves a thread whose answer stays open until the test
+// pushes more events, and records what was queued.
+function queueingChatFetch(stopQueued: unknown[] = []) {
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const queued: { content: string; clientMessageId: string }[] = [];
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [threadFixture()], nextCursor: null });
+      if (url === "/api/threads/t1")
+        return Response.json({ thread: threadFixture(), messages: [] });
+      if (url === "/api/threads/t1/messages:attach")
+        return new Response(null, { status: 204 });
+      if (url === "/api/threads/t1/messages:queue" && init?.method === "POST") {
+        queued.push(JSON.parse(String(init.body)));
+        return new Response(null, { status: 202 });
+      }
+      if (url.startsWith("/api/threads/t1/messages:stop")) {
+        controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+        controller?.close();
+        return Response.json({ queued: stopQueued });
+      }
+      if (
+        url === "/api/threads/t1/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        const stream = new ReadableStream<Uint8Array>({
+          start(c) {
+            controller = c;
+            c.enqueue(
+              encoder.encode(
+                'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"Hi","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+              ),
+            );
+          },
+        });
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  const push = (event: string, data: unknown) =>
+    controller?.enqueue(
+      encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
+    );
+  const end = () => {
+    push("done", {});
+    controller?.close();
+  };
+  return { fetchMock, queued, push, end };
+}
+
+async function sendThenQueue(second: string) {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Existing chat" }));
+  const input = await screen.findByPlaceholderText(/message/i);
+  fireEvent.change(input, { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await screen.findByRole("button", { name: "Stop response" });
+  fireEvent.change(input, { target: { value: second } });
+  fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+}
+
+test("a message sent while the answer streams is queued, then picked up", async () => {
+  const chat = queueingChatFetch();
+  vi.stubGlobal("fetch", chat.fetchMock);
+
+  await sendThenQueue("And then?");
+
+  const queuedList = await screen.findByRole("list", { name: "Queued" });
+  expect(within(queuedList).getByText("And then?")).toBeInTheDocument();
+  await waitFor(() => expect(chat.queued).toHaveLength(1));
+  const sendId = chat.queued[0].clientMessageId;
+  expect(chat.queued[0].content).toBe("And then?");
+
+  // The turn picks it up at a tool boundary: the answer so far settles as a
+  // segment, then the queued message arrives as sent.
+  chat.push("assistant_segment", {
+    id: "s1",
+    threadId: "t1",
+    role: "assistant",
+    content: "Looked it up.",
+    createdAt: "2026-05-30T00:00:01Z",
+  });
+  chat.push("user_message", {
+    id: "m2",
+    threadId: "t1",
+    role: "user",
+    content: "And then?",
+    clientMessageId: sendId,
+    createdAt: "2026-05-30T00:00:02Z",
+  });
+  chat.push("assistant_message", {
+    id: "a1",
+    threadId: "t1",
+    role: "assistant",
+    content: "Both answered.",
+    createdAt: "2026-05-30T00:00:03Z",
+  });
+  chat.end();
+
+  await screen.findByText("Both answered.");
+  expect(
+    screen.queryByRole("list", { name: "Queued" }),
+  ).not.toBeInTheDocument();
+  const transcript = screen.getByRole("region", { name: /transcript/i });
+  const texts = within(transcript)
+    .getAllByText(/^(Hi|Looked it up\.|And then\?|Both answered\.)$/)
+    .map((node) => node.textContent);
+  expect(texts).toEqual(["Hi", "Looked it up.", "And then?", "Both answered."]);
+});
+
+test("a failed follow-up turn neither restores the answered send nor loses the queue", async () => {
+  const chat = queueingChatFetch();
+  vi.stubGlobal("fetch", chat.fetchMock);
+
+  await sendThenQueue("And then?");
+  await waitFor(() => expect(chat.queued).toHaveLength(1));
+  chat.push("assistant_message", {
+    id: "a1",
+    threadId: "t1",
+    role: "assistant",
+    content: "First answer.",
+    createdAt: "2026-05-30T00:00:01Z",
+  });
+  // The server could not start the follow-up and hands the message back.
+  chat.push("queue_returned", {
+    queued: [
+      {
+        id: "q1",
+        threadId: "t1",
+        content: "And then?",
+        pastedTexts: [],
+        clientMessageId: chat.queued[0].clientMessageId,
+        createdAt: "2026-05-30T00:00:02Z",
+      },
+    ],
+  });
+  chat.push("error", { error: "upstream down" });
+  chat.end();
+
+  await screen.findByText("upstream down");
+  expect(screen.getByText("First answer.")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText(/message/i)).toHaveValue("And then?");
+  expect(
+    screen.queryByRole("list", { name: "Queued" }),
+  ).not.toBeInTheDocument();
+});
+
+test("stopping hands the queued messages back to the composer", async () => {
+  const chat = queueingChatFetch([
+    {
+      id: "q1",
+      threadId: "t1",
+      content: "Never mind",
+      pastedTexts: [],
+      clientMessageId: "send-x",
+      createdAt: "2026-05-30T00:00:00Z",
+    },
+  ]);
+  vi.stubGlobal("fetch", chat.fetchMock);
+
+  await sendThenQueue("Never mind");
+  await waitFor(() => expect(chat.queued).toHaveLength(1));
+  fireEvent.click(screen.getByRole("button", { name: "Stop response" }));
+
+  await waitFor(() =>
+    expect(screen.getByPlaceholderText(/message/i)).toHaveValue("Never mind"),
+  );
+  expect(
+    screen.queryByRole("list", { name: "Queued" }),
+  ).not.toBeInTheDocument();
+});
+
 test("Escape stops the active assistant response", async () => {
   const fetchMock = stoppingChatFetch();
   vi.stubGlobal("fetch", fetchMock);

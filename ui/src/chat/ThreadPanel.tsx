@@ -37,6 +37,8 @@ import { WindowFileDrop } from "./WindowFileDrop";
 import { WorkingDot } from "./WorkingDot";
 import { threadCostPrefix } from "../metrics";
 import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
+import { QueuedMessages } from "./QueuedMessages";
+import type { QueuedBubble } from "./useQueuedMessages";
 
 export function ThreadPanel({
   thread,
@@ -61,6 +63,8 @@ export function ThreadPanel({
   onSend,
   onStop,
   onRetry,
+  queuedMessages = [],
+  onCancelQueued,
   focusSignal,
   onOpenProject,
   onDeleteThread,
@@ -93,6 +97,9 @@ export function ThreadPanel({
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onRetry(content: string, pastedTexts?: MessagePastedText[]): void;
+  /** Messages sent while the answer streams, waiting for the turn. */
+  queuedMessages?: QueuedBubble[];
+  onCancelQueued?(message: QueuedBubble): void;
   // Bumped by the parent when a retry loads a message into the composer, to refocus it.
   focusSignal?: number;
   onOpenProject(project: Project): void;
@@ -603,6 +610,10 @@ export function ThreadPanel({
                 and its sidebar arrive once, with the settled message. */}
             {working && <WorkingDot />}
             {sendError !== "" && <ErrorText>{sendError}</ErrorText>}
+            <QueuedMessages
+              messages={queuedMessages}
+              onCancel={(message) => onCancelQueued?.(message)}
+            />
           </div>
           <div
             aria-label={t("thread.composerDock")}
@@ -620,6 +631,7 @@ export function ThreadPanel({
                 draft={draft}
                 focusSignal={focusSignal}
                 isSending={isSending}
+                canQueue={thread !== null}
                 sendDisabled={imageUploadPending}
                 placeholder={t("thread.messagePlaceholder")}
                 onDraftChange={onDraftChange}

@@ -20,7 +20,9 @@ type ThreadStore struct {
 	AssistantContent    string
 	AssistantContextErr error
 	// UserClientMessageID is the send id the last user message was stored with.
-	UserClientMessageID       string
+	UserClientMessageID string
+	// Queue holds the messages queued on Thread.
+	Queue                     MessageQueue
 	LastCitations             json.RawMessage
 	LastContentBlocks         json.RawMessage
 	LastAttachments           json.RawMessage
@@ -243,15 +245,16 @@ func (f *ThreadStore) AddMessageWithAttachments(_ context.Context, _ string, thr
 	f.LastAttachments = attachments
 	f.LastPastedTexts = pastedTexts
 	message := chat.Message{
-		ID:            "msg_1",
-		ThreadID:      threadID,
-		Role:          role,
-		Content:       content,
-		Artifacts:     json.RawMessage("[]"),
-		ActivityTrace: json.RawMessage("[]"),
-		Citations:     json.RawMessage("[]"),
-		Attachments:   attachments,
-		PastedTexts:   pastedTexts,
+		ID:              "msg_1",
+		ThreadID:        threadID,
+		Role:            role,
+		Content:         content,
+		Artifacts:       json.RawMessage("[]"),
+		ActivityTrace:   json.RawMessage("[]"),
+		Citations:       json.RawMessage("[]"),
+		Attachments:     attachments,
+		PastedTexts:     pastedTexts,
+		ClientMessageID: clientMessageID,
 	}
 	f.Messages = append(f.Messages, message)
 	return message, nil

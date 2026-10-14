@@ -74,6 +74,7 @@ export const de = {
     addAttachment: "Anhang hinzufügen",
     sendMessage: "Nachricht senden",
     stopResponse: "Antwort stoppen",
+    queueMessage: "Nachricht einreihen",
     removeAttachment: "{{filename}} entfernen",
     pastedText: "Eingefügter Text",
     pastedBadge: "Eingefügt",
@@ -114,6 +115,9 @@ export const de = {
     removeFromProject: "Aus Projekt entfernen",
     addToProject: "Zu Projekt hinzufügen",
     stopFailed: "Nachricht konnte nicht gestoppt werden.",
+    queued: "Eingereiht",
+    queuedHint: "Wird nach dem aktuellen Schritt beantwortet",
+    removeQueued: "Eingereihte Nachricht zurücknehmen",
     streamInterrupted:
       "Die Verbindung ist abgebrochen, bevor die Antwort fertig war. Was angekommen ist, steht oben.",
     messageTooLarge: "Diese Nachricht ist zu gross zum Senden.",

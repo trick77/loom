@@ -10,6 +10,8 @@ import {
   searchThreadContent,
   setThreadStarred,
   stopMessage,
+  queueMessage,
+  deleteQueuedMessage,
   updateThread,
 } from "./threads";
 
@@ -311,7 +313,10 @@ describe("stopMessage", () => {
   test("posts without a source query when none is given", async () => {
     const fetchMock = stubFetch(new Response(null, { status: 204 }));
 
-    await expect(stopMessage("t1")).resolves.toBe(true);
+    await expect(stopMessage("t1")).resolves.toEqual({
+      stopped: true,
+      queued: [],
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/threads/t1/messages:stop",
       expect.objectContaining({ method: "POST" }),
@@ -343,7 +348,55 @@ describe("stopMessage", () => {
   test("resolves false when no stream was registered yet", async () => {
     stubFetch(Response.json({ error: "no active stream" }, { status: 409 }));
 
-    await expect(stopMessage("t1")).resolves.toBe(false);
+    await expect(stopMessage("t1")).resolves.toEqual({
+      stopped: false,
+      queued: [],
+    });
+  });
+
+  test("hands back the messages queued behind the turn", async () => {
+    const queued = [
+      {
+        id: "q1",
+        threadId: "t1",
+        content: "later",
+        pastedTexts: [],
+        clientMessageId: "send-2",
+        createdAt: "2026-01-01T00:00:00Z",
+      },
+    ];
+    stubFetch(Response.json({ queued }));
+
+    await expect(stopMessage("t1")).resolves.toEqual({
+      stopped: true,
+      queued,
+    });
+  });
+});
+
+describe("queueMessage", () => {
+  test("posts the message with its send id", async () => {
+    const fetchMock = stubFetch(new Response(null, { status: 202 }));
+
+    await queueMessage("t1", "and then?", "send-2");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:queue",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          content: "and then?",
+          clientMessageId: "send-2",
+        }),
+      }),
+    );
+  });
+
+  test("reports a deleted queued message, and false when it is gone", async () => {
+    stubFetch(new Response(null, { status: 204 }));
+    await expect(deleteQueuedMessage("t1", "send-2")).resolves.toBe(true);
+    stubFetch(Response.json({ error: "not found" }, { status: 404 }));
+    await expect(deleteQueuedMessage("t1", "send-2")).resolves.toBe(false);
   });
 
   test("throws AuthExpiredError on 401", async () => {

@@ -1,8 +1,6 @@
 package turn
 
 import (
-	"fmt"
-
 	"github.com/trick77/loom/internal/llm"
 )
 
@@ -38,13 +36,6 @@ func toolCallEvent(call llm.ToolCall) ActivityTraceEvent {
 		Status:       "running",
 		RawArguments: call.Function.Arguments,
 	}
-}
-
-// nextReasoningID is the id blockBuilder.addResult will assign to the next
-// reasoning event appended to this trace. Computed up front so a title can be
-// spawned at the reasoning->content boundary mid-turn, before the turn returns.
-func nextReasoningID(events []ActivityTraceEvent) string {
-	return fmt.Sprintf("reasoning-%d", countActivityTraceReasoning(events)+1)
 }
 
 func countActivityTraceReasoning(events []ActivityTraceEvent) int {

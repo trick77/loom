@@ -14,7 +14,9 @@ import {
   DEFAULT_THREAD_TITLE,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   createThread,
+  deleteQueuedMessage,
   getThread,
+  queueMessage,
   setProjectStarred,
   setThreadStarred,
   stopMessage,
@@ -23,6 +25,7 @@ import {
   type ContentBlock,
   type Message,
   type MessagePastedText,
+  type QueuedMessage,
   type Project,
   type ShareInfo,
   type Thread,
@@ -45,6 +48,7 @@ import {
   getDraft,
   isEmptyMessage,
   restagedDrafts,
+  restoreQueuedDrafts,
   setDraft as setScopedDraft,
   threadDraftScope,
   type DraftScope,
@@ -93,6 +97,7 @@ import { isWithinUploadSizeLimit } from "./attachmentFiles";
 import { useComposerDrafts } from "./useComposerDrafts";
 import { applyMessageCost } from "../metrics";
 import { createTurnHandlers, newTempID } from "./turnHandlers";
+import { useQueuedMessages, type QueuedBubble } from "./useQueuedMessages";
 
 // The secondary views and the settings modal load on first use rather than
 // with the chat: a user who never opens the artifact library never pays for it.
@@ -268,7 +273,19 @@ export function ThreadShell({
   const activeThreadIDRef = useRef<string | null>(null);
   // Set further down, once the state it closes over exists; read only from the
   // thread load, which runs after the first render.
-  const attachToRunningTurnRef = useRef<(thread: Thread) => void>(() => {});
+  const attachToRunningTurnRef = useRef<(thread: Pick<Thread, "id">) => void>(
+    () => {},
+  );
+  // Messages sent while a thread's turn runs, per thread (see
+  // useQueuedMessages.ts).
+  const {
+    queued: queuedByThread,
+    add: addQueued,
+    remove: removeQueued,
+    replace: replaceQueued,
+    clear: clearQueued,
+    has: hasQueued,
+  } = useQueuedMessages();
 
   // translateStreamError names the two transport failures the user can act on
   // in their own language; every other error keeps its own text (a server
@@ -353,6 +370,7 @@ export function ThreadShell({
       (thread: Thread) => attachToRunningTurnRef.current(thread),
       [],
     ),
+    onQueuedMessages: replaceQueued,
   });
 
   // The composer surface currently on screen, and the draft that belongs to it.
@@ -419,12 +437,20 @@ export function ThreadShell({
       // connection. A stop that fails reached nothing: the answer keeps
       // running, and the user is told.
       const controller = markStopRequested(activeRunKey);
-      void stopMessage(activeThread.id, source, sendIdOf(activeRunKey)).then(
-        (stopped) => {
+      const threadID = activeThread.id;
+      void stopMessage(threadID, source, sendIdOf(activeRunKey)).then(
+        ({ stopped, queued }) => {
           if (!stopped) {
             abort();
             return;
           }
+          // A stop hands the messages queued behind the turn back: they go
+          // into the composer instead of being answered.
+          clearQueued(threadID);
+          if (queued.length > 0)
+            setDrafts((current) =>
+              restoreQueuedDrafts(current, threadDraftScope(threadID), queued),
+            );
           window.setTimeout(() => controller?.abort(), STOP_ABORT_FALLBACK_MS);
         },
         (error: unknown) => {
@@ -440,8 +466,10 @@ export function ThreadShell({
       handleActionError,
       incognito,
       markStopRequested,
+      clearQueued,
       reportShellError,
       sendIdOf,
+      setDrafts,
       t,
       unmarkStopRequested,
     ],
@@ -808,16 +836,18 @@ export function ThreadShell({
     const draftText = draft.text.trim();
     const content = composeContent(draft);
     if (content === "") return;
-    // Only this thread's own turn blocks a new send. Other threads streaming is
-    // exactly what is now allowed.
-    if (
-      activeThread !== null &&
-      isStreaming(runs, threadRunKey(activeThread.id))
-    )
-      return;
     // Slash command detection is the draft alone (the popover keys off it too); it
     // clears any staged chips along with the draft.
     if (runSlashCommand(draftText)) return;
+    // A send while this thread's turn runs queues behind it. Other threads
+    // streaming do not matter.
+    if (
+      activeThread !== null &&
+      isStreaming(runs, threadRunKey(activeThread.id))
+    ) {
+      await queueSend(activeThread.id, content);
+      return;
+    }
     // sendContent clears this scope's draft and chips; on a send error it restores
     // the chips and the draft-only text (not the merged content) for retry.
     await sendContent(content, {
@@ -829,6 +859,75 @@ export function ThreadShell({
       draftScope,
     });
   }
+
+  // queueSend sends the draft while the thread's turn runs: it shows as a
+  // queued bubble under the live answer until the turn picks it up (a
+  // user_message carrying its send id). Queued messages carry text and pastes
+  // only; the composer holds attachments back while the turn runs.
+  async function queueSend(threadID: string, content: string) {
+    const scope = draftScope;
+    const restore = { text: draft.text, pastedTexts: draft.pastedTexts };
+    const bubble: QueuedBubble = {
+      clientMessageId: newTempID("send"),
+      content,
+      pastedTexts: draft.pastedTexts.map(toPastedTextBlock),
+    };
+    addQueued(threadID, bubble);
+    setDrafts((current) => clearDraft(current, scope));
+    setSendError("");
+    try {
+      await queueMessage(
+        threadID,
+        content,
+        bubble.clientMessageId,
+        bubble.pastedTexts,
+      );
+    } catch (error) {
+      removeQueued(threadID, bubble.clientMessageId);
+      setDrafts((current) => setScopedDraft(current, scope, restore));
+      handleActionError(error, t("thread.sendFailed"), reportShellError);
+      return;
+    }
+    // The turn may have ended while the request was out: the server then
+    // started one for the message, which this tab follows.
+    followQueue(threadID);
+  }
+
+  // followQueue attaches to the thread's turn when messages are queued there
+  // but this tab follows no turn on it: the server answers them in a turn of
+  // its own once the one it followed has ended.
+  function followQueue(threadID: string) {
+    if (!hasQueued(threadID) || hasStreamRun(threadRunKey(threadID))) return;
+    attachToRunningTurnRef.current({ id: threadID });
+  }
+
+  // cancelQueued takes a queued message back into the composer. When the turn
+  // picked it up meanwhile the server no longer has it; the bubble then
+  // settles as a sent message.
+  const cancelQueued = useCallback(
+    (threadID: string, bubble: QueuedBubble) => {
+      void deleteQueuedMessage(threadID, bubble.clientMessageId).then(
+        (deleted) => {
+          if (!deleted) return;
+          removeQueued(threadID, bubble.clientMessageId);
+          setDrafts((current) =>
+            restoreQueuedDrafts(current, threadDraftScope(threadID), [bubble]),
+          );
+          requestComposerFocus();
+        },
+        (error: unknown) =>
+          handleActionError(error, t("thread.sendFailed"), reportShellError),
+      );
+    },
+    [
+      handleActionError,
+      removeQueued,
+      reportShellError,
+      requestComposerFocus,
+      setDrafts,
+      t,
+    ],
+  );
 
   // runSlashCommand intercepts a "/command" draft: it opens the ephemeral overlay
   // panel and clears the composer instead of sending a message to the LLM.
@@ -909,6 +1008,9 @@ export function ThreadShell({
     let userMessageConfirmed = false;
     // The stream dropped and the run is following the turn again.
     let reattaching = false;
+    // This send has its answer. A failure later on the same stream belongs to
+    // a follow-up turn for queued messages, not to this send.
+    let answered = false;
     // The thread this run belongs to, known up front for an existing thread and
     // filled in below for one created by this send. Whether the user is still
     // looking at it decides the writes into `messages`, which is a single array
@@ -1041,6 +1143,15 @@ export function ThreadShell({
         createTurnHandlers({
           patch: (next) => patchStreamRun(runKey, next),
           onUserMessage: (message) => {
+            // A message queued behind this turn, now picked up.
+            if (
+              message.clientMessageId !== undefined &&
+              message.clientMessageId !== "" &&
+              message.clientMessageId !== sendId
+            ) {
+              confirmQueuedMessage(threadIDForRun, message, isCurrentThread());
+              return;
+            }
             userMessageConfirmed = true;
             if (!isCurrentThread()) return;
             const confirmed =
@@ -1066,6 +1177,7 @@ export function ThreadShell({
             );
           },
           onAssistantMessage: (message, liveBlocks) => {
+            answered = true;
             if (isCurrentThread()) {
               setMessages((current) =>
                 foldAssistantMessage(current, message, liveBlocks),
@@ -1075,6 +1187,7 @@ export function ThreadShell({
             // live copies now rather than at endRun — the stream reader yields
             // between chunks, so waiting would flash the turn twice.
           },
+          onQueueReturned: (queued) => returnQueued(threadIDForRun, queued),
           onMessageCost: (event) => {
             if (isCurrentThread()) {
               setMessages((current) => applyMessageCost(current, event));
@@ -1214,8 +1327,9 @@ export function ThreadShell({
         setMessages((current) => current.filter((item) => item.id !== staleID));
       }
       // A failed reattach leaves the question on the server, where the turn
-      // may still finish: restoring it would invite a duplicate send.
-      if (options.restoreDraftOnError && !reattaching) {
+      // may still finish: restoring it would invite a duplicate send. An
+      // answered send has nothing to restore: what failed was a follow-up.
+      if (options.restoreDraftOnError && !reattaching && !answered) {
         setDrafts((current) =>
           setScopedDraft(current, restoreScope, {
             text: options.restoreDraft ?? content,
@@ -1241,7 +1355,33 @@ export function ThreadShell({
         keepFailedTurnVisible: keepFailedTurnVisible && targetThreadID !== null,
         controller: abortController,
       });
+      if (targetThreadID !== null && !stopRequested(abortController))
+        followQueue(targetThreadID);
     }
+  }
+
+  // confirmQueuedMessage settles a queued bubble once a turn picked its
+  // message up: it leaves the queue and joins the transcript as sent. A
+  // previous turn's error on the thread is done with.
+  function confirmQueuedMessage(
+    threadID: string,
+    message: Message,
+    onScreen: boolean,
+  ) {
+    removeQueued(threadID, message.clientMessageId);
+    patchStreamRun(threadRunKey(threadID), { error: "" });
+    if (onScreen)
+      setMessages((current) => reconcileUserMessage(current, null, message));
+  }
+
+  // returnQueued puts queued messages the server could not answer back into
+  // the thread's composer.
+  function returnQueued(threadID: string, queued: QueuedMessage[]) {
+    for (const message of queued)
+      removeQueued(threadID, message.clientMessageId);
+    setDrafts((current) =>
+      restoreQueuedDrafts(current, threadDraftScope(threadID), queued),
+    );
   }
 
   // resumeRunningTurn follows a turn that is still running on the server. The
@@ -1259,10 +1399,12 @@ export function ThreadShell({
       signal,
       handlers: () => makeTurn().handlers,
     });
-    if (outcome === "attached" || !isCurrentThread()) return;
+    if (outcome === "attached") return outcome;
     const response = await getThread(threadID);
+    replaceQueued(threadID, response.queuedMessages ?? []);
     if (isCurrentThread())
       setMessages(response.messages.map(rehydrateLoadedMessage));
+    return outcome;
   }
 
   // sentMessageReachedServer reports whether the thread holds the message this
@@ -1298,7 +1440,7 @@ export function ThreadShell({
   // attachToRunningTurn picks up a turn found running when its thread loads: a
   // reload, or a phone that discarded the tab mid-answer. A run this tab already
   // has on the thread is left alone.
-  attachToRunningTurnRef.current = (thread: Thread) => {
+  attachToRunningTurnRef.current = (thread: Pick<Thread, "id">) => {
     const runKey = threadRunKey(thread.id);
     if (hasStreamRun(runKey)) return;
     const abortController = new AbortController();
@@ -1307,12 +1449,9 @@ export function ThreadShell({
     const makeTurn = () =>
       createTurnHandlers({
         patch: (next) => patchStreamRun(runKey, next),
-        onUserMessage: (message) => {
-          if (isCurrentThread())
-            setMessages((current) =>
-              reconcileUserMessage(current, null, message),
-            );
-        },
+        onUserMessage: (message) =>
+          confirmQueuedMessage(thread.id, message, isCurrentThread()),
+        onQueueReturned: (queued) => returnQueued(thread.id, queued),
         onAssistantMessage: (message, liveBlocks) => {
           if (isCurrentThread())
             setMessages((current) =>
@@ -1333,12 +1472,16 @@ export function ThreadShell({
         },
       });
     let failed = false;
+    let followed = false;
     resumeRunningTurn(
       thread.id,
       abortController.signal,
       makeTurn,
       isCurrentThread,
     )
+      .then((outcome) => {
+        followed = outcome === "attached";
+      })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError")
           return;
@@ -1356,6 +1499,9 @@ export function ThreadShell({
           keepFailedTurnVisible: failed,
           controller: abortController,
         });
+        // Only after a turn this tab followed: one that had already ended
+        // reloaded the queue, and following again would loop.
+        if (followed && !stopRequested(abortController)) followQueue(thread.id);
       });
   };
 
@@ -1605,6 +1751,16 @@ export function ThreadShell({
             onSend={handleSend}
             onStop={handleStopResponse}
             onRetry={handleRetry}
+            queuedMessages={
+              activeThread === null
+                ? undefined
+                : queuedByThread[activeThread.id]
+            }
+            onCancelQueued={
+              activeThread === null
+                ? undefined
+                : (message) => cancelQueued(activeThread.id, message)
+            }
             focusSignal={composerFocusTick}
             onOpenProject={navigateToProject}
             onDeleteThread={openDeleteModal}
