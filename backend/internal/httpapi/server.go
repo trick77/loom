@@ -707,6 +707,22 @@ func (r *activeStreamRegistry) stop(userID, threadID, sendID string, cause error
 	return true
 }
 
+// stopAndDrain is stop and, when it found the stream, drain, which hands the
+// queued messages back, as one step under the thread's queue lock. Apart, the
+// canceled turn could unwind in between: its hand-off still found the
+// messages queued and started a stream that answered them, and the stop
+// handed back nothing.
+func (r *activeStreamRegistry) stopAndDrain(userID, threadID, sendID string, cause error, drain func()) bool {
+	lock := r.queueLock(activeStreamKey{userID: userID, threadID: threadID})
+	lock.Lock()
+	defer lock.Unlock()
+	if !r.stop(userID, threadID, sendID, cause) {
+		return false
+	}
+	drain()
+	return true
+}
+
 // stopAndWait cancels the user's active stream on the thread and waits for the
 // handler goroutine to unwind, bounded by timeout. The delete paths use it so a
 // canceled turn's remaining writes land before the thread rows go away, instead of
