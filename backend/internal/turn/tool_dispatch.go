@@ -278,10 +278,10 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 	return out
 }
 
-// MCPPrincipal is the account an MCP users allowlist checks: its stable keys,
-// never the username (the IdP's mutable preferred_username, not unique here).
+// MCPPrincipal is the account an MCP users allowlist checks: its user id,
+// never the username or OIDC subject (see mcp.ServerConfig.Users).
 func MCPPrincipal(user auth.User) mcp.Principal {
-	return mcp.Principal{ID: user.ID, Subject: user.OIDCSubject}
+	return mcp.Principal{ID: user.ID}
 }
 
 // mcpServerGuidance collects the instructions of every server whose tools

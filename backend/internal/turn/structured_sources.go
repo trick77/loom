@@ -9,14 +9,16 @@ import (
 )
 
 // relabelStructuredSources registers the sources an MCP tool returned in
-// structuredContent and prepends a header naming each one's [n] marker, so any
-// server that follows the convention feeds the sources sidebar and inline
-// citations. sources[i] belongs to the text's result item i+1, which the header
-// says; the text itself is never rewritten — a numbered list inside a result
-// (chapters, key points) must reach the model as the server wrote it.
+// structuredContent and prepends a header naming each one's [n] marker and
+// title, so any server that follows the convention feeds the sources sidebar
+// and inline citations. The header is the only numbering the model sees for
+// these results (servers list results unnumbered, in sources order): a
+// server's own "1." next to loom's markers would collide with earlier
+// sources' [n]. The text itself is never rewritten — a numbered list inside a
+// result (chapters, key points) reaches the model as the server wrote it.
 func relabelStructuredSources(output string, sources []mcp.Source, reg *webSourceRegistry) string {
 	var header strings.Builder
-	for i, src := range sources {
+	for _, src := range sources {
 		idx, ok := reg.addSource(src)
 		if !ok {
 			continue
@@ -25,11 +27,7 @@ func relabelStructuredSources(output string, sources []mcp.Source, reg *webSourc
 		if title == "" {
 			title = src.URL
 		}
-		if len(sources) > 1 {
-			fmt.Fprintf(&header, "Source [%d] (result %d): %s — %s\n", idx, i+1, title, strings.TrimSpace(src.URL))
-		} else {
-			fmt.Fprintf(&header, "Source [%d]: %s — %s\n", idx, title, strings.TrimSpace(src.URL))
-		}
+		fmt.Fprintf(&header, "Source [%d]: %s — %s\n", idx, title, strings.TrimSpace(src.URL))
 	}
 	if header.Len() == 0 {
 		return output

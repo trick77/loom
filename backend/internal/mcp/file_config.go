@@ -29,8 +29,8 @@ type fileServer struct {
 	Env        map[string]string `json:"env"`
 	Tools      []string          `json:"tools"`
 	Categories []string          `json:"categories"`
-	// Users restricts the server to these loom accounts (user id or OIDC
-	// subject): a JSON array, or one comma-separated string so a whole list can
+	// Users restricts the server to these loom user ids: a JSON array, or one
+	// comma-separated string so a whole list can
 	// come from one ${VAR}. Absent means every user; present — even null, or
 	// empty after interpolation — with no entry means nobody.
 	Users userList `json:"users"`

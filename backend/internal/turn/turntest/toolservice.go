@@ -22,9 +22,8 @@ type ToolService struct {
 	CallFunc  func(ctx context.Context, name string, args map[string]any) (string, error)
 	// Sources are the structured sources every successful call returns.
 	Sources []mcp.Source
-	// Users limits a server (by name) to these account keys (user id or OIDC
-	// subject), mirroring a mcp.ServerConfig users allowlist; a server absent
-	// here is open.
+	// Users limits a server (by name) to these loom user ids, mirroring a
+	// mcp.ServerConfig users allowlist; a server absent here is open.
 	Users map[string][]string
 	// Instructions are the servers' guidance, by server name.
 	Instructions map[string]string
@@ -102,15 +101,7 @@ func (f ToolService) ToolAllowed(user mcp.Principal, name string) bool {
 // ServerAllowed mirrors mcp.Service.ServerAllowed: exact key match.
 func (f ToolService) ServerAllowed(user mcp.Principal, server string) bool {
 	users, restricted := f.Users[server]
-	if !restricted {
-		return true
-	}
-	for _, allowed := range users {
-		if allowed != "" && (allowed == user.ID || allowed == user.Subject) {
-			return true
-		}
-	}
-	return false
+	return !restricted || mcp.UsersAllow(users, user)
 }
 
 // ServerInstructions implements turn.ToolService.

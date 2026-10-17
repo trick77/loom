@@ -172,7 +172,9 @@ func (c *remoteClient) discover(ctx context.Context) error {
 		c.mu.Unlock()
 		return nil
 	}
-	if !mayBeLegacy(err) {
+	// A server already known to be modern stays modern: a failed discover is
+	// then an outage, not a hint about its protocol.
+	if c.currentEra() == eraModern || !mayBeLegacy(err) {
 		return err
 	}
 	if legacyErr := c.initialize(ctx); legacyErr != nil {

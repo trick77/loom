@@ -77,13 +77,13 @@ func TestRefreshRegistersLateServerAndPicksUpChanges(t *testing.T) {
 
 func TestToolAllowedHonoursUsersAllowlist(t *testing.T) {
 	service := &Service{cfg: Config{Servers: map[string]ServerConfig{
-		"peeq": {RestrictUsers: true, Users: []string{"usr_jan", "sub-anna"}},
+		"peeq": {RestrictUsers: true, Users: []string{"usr_jan", "usr_anna"}},
 		"none": {RestrictUsers: true},
 		"open": {},
 	}}}
-	jan := Principal{ID: "usr_jan", Subject: "sub-jan"}
-	anna := Principal{ID: "usr_anna", Subject: "sub-anna"}
-	eve := Principal{ID: "usr_eve", Subject: "sub-eve"}
+	jan := Principal{ID: "usr_jan"}
+	anna := Principal{ID: "usr_anna"}
+	eve := Principal{ID: "usr_eve"}
 	cases := []struct {
 		user Principal
 		tool string

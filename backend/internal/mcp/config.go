@@ -56,9 +56,10 @@ type ServerConfig struct {
 	// which other accounts on this loom must not reach. An empty Users with
 	// RestrictUsers set serves nobody: an unset allowlist fails closed.
 	RestrictUsers bool `json:"restrictUsers"`
-	// Users holds stable account keys only — the loom user id or the OIDC
-	// subject — never the username: that is the IdP's mutable
-	// preferred_username (or email) and is not unique in loom.
+	// Users holds loom user ids, the one key that never changes: the
+	// username is the IdP's mutable preferred_username (or email) and is not
+	// unique, and the stored OIDC subject is rewritten when an account is
+	// adopted by verified email.
 	Users []string `json:"users"`
 	// TrustInstructions lets the server's own instructions into the system
 	// prompt while its tools are offered. Off by default: a third-party server
@@ -72,27 +73,26 @@ type ServerConfig struct {
 // PDFExtractor extracts the text of a fetched PDF (webfetch.Options.PDFHandler).
 type PDFExtractor func(ctx context.Context, body []byte) (string, error)
 
-// Principal names a loom account to a users allowlist by its stable keys.
+// Principal names a loom account to a users allowlist by its user id.
 type Principal struct {
-	ID      string
-	Subject string
+	ID string
 }
 
-// userAllowed reports whether the account may use this server's tools. Keys
-// compare exactly: ids and subjects are opaque.
-func (cfg ServerConfig) userAllowed(p Principal) bool {
-	if !cfg.RestrictUsers {
-		return true
-	}
-	for _, allowed := range cfg.Users {
-		if allowed == "" {
-			continue
-		}
-		if allowed == p.ID || (p.Subject != "" && allowed == p.Subject) {
+// UsersAllow reports whether a users allowlist admits the account: an exact
+// match on the opaque user id. It is the single definition, shared with the
+// turn test fake so the two cannot drift.
+func UsersAllow(users []string, p Principal) bool {
+	for _, allowed := range users {
+		if allowed != "" && allowed == p.ID {
 			return true
 		}
 	}
 	return false
+}
+
+// userAllowed reports whether the account may use this server's tools.
+func (cfg ServerConfig) userAllowed(p Principal) bool {
+	return !cfg.RestrictUsers || UsersAllow(cfg.Users, p)
 }
 
 // ExposedToolName constructs the exposed tool name by joining server and tool names with "__".

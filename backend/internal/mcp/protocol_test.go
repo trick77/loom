@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -131,15 +132,67 @@ func TestRemoteClientDoesNotFallBackOnModernError(t *testing.T) {
 	}
 }
 
-// A legacy server that answers the unknown probe with a 500 still works
-// through the handshake: discovery must not fail over a method it never knew.
-func TestRemoteClientFallsBackWhenProbeFails5xx(t *testing.T) {
+// A 5xx on the probe is an outage, not an answer: the client must not try
+// (and possibly lock in) the legacy handshake a dual-era server also accepts.
+func TestRemoteClientDoesNotFallBackOn5xxProbe(t *testing.T) {
+	initialized := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req rpcRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		switch req.Method {
 		case "server/discover":
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			http.Error(w, "bad gateway", http.StatusBadGateway)
+		case "initialize":
+			initialized = true
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		}
+	}))
+	t.Cleanup(server.Close)
+	client := NewRemoteClient("d", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, server.Client())
+	if _, err := client.ListTools(context.Background()); err == nil || initialized {
+		t.Fatalf("ListTools() err = %v, initialized = %v; want the outage, no handshake", err, initialized)
+	}
+}
+
+// A server known to be modern stays modern when a later discover fails.
+func TestRemoteClientKeepsModernEraAcrossFailedDiscover(t *testing.T) {
+	var down atomic.Bool
+	initialized := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req modernRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch {
+		case req.Method == "initialize":
+			initialized = true
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case down.Load():
+			http.Error(w, "Bad Request", http.StatusBadRequest)
+		case req.Method == "server/discover":
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"resultType": "complete"}})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{"resultType": "complete", "tools": []any{}}})
+		}
+	}))
+	t.Cleanup(server.Close)
+	client := NewRemoteClient("m", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, server.Client())
+	if _, err := client.ListTools(context.Background()); err != nil {
+		t.Fatalf("first ListTools() error: %v", err)
+	}
+	down.Store(true)
+	if _, err := client.ListTools(context.Background()); err == nil || initialized {
+		t.Fatalf("refresh err = %v, initialized = %v; want the error and no handshake", err, initialized)
+	}
+}
+
+// A legacy server that answers the unknown probe with a 4xx works through
+// the handshake, and its initialize instructions are kept.
+func TestRemoteClientFallsBackWhenProbeFails4xx(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "server/discover":
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		case "initialize":
 			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18", "instructions": "legacy hint"})
 		case "tools/list":

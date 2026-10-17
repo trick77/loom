@@ -222,6 +222,11 @@ function SourceCard({
           src={sourceImageURL(citation.image)}
           alt=""
           loading="lazy"
+          // An image the proxy could not fetch disappears instead of
+          // leaving a broken-image box in the card.
+          onError={(event) => {
+            event.currentTarget.hidden = true;
+          }}
           className="mt-1 h-[54px] w-24 shrink-0 rounded-md object-cover"
         />
       )}

@@ -17,9 +17,9 @@ func TestRelabelStructuredSourcesMapsResultsToRegistryMarkers(t *testing.T) {
 		{URL: "https://peeq.example/?v=a&t=10", Title: "First", Label: "peeq · Chan", Snippet: "one"},
 		{URL: "https://peeq.example/?v=b&t=20", Title: "Second"},
 	}
-	text := "1. No link\n2. First — Chan\n   1. a chapter list\n3. Second — Other"
+	text := "- No link\n- First — Chan\n   1. a chapter list\n- Second — Other"
 	out := relabelStructuredSources(text, sources, reg)
-	wantHeader := "Source [3] (result 2): First — https://peeq.example/?v=a&t=10\nSource [4] (result 3): Second — https://peeq.example/?v=b&t=20\n\n"
+	wantHeader := "Source [3]: First — https://peeq.example/?v=a&t=10\nSource [4]: Second — https://peeq.example/?v=b&t=20\n\n"
 	if out != wantHeader+text {
 		t.Fatalf("relabeled =\n%s\nwant the header then the untouched text", out)
 	}
@@ -49,7 +49,7 @@ func TestRelabelStructuredSourcesWithoutNumberedItemsAddsHeader(t *testing.T) {
 
 func TestStructuredSourceImageMustBeHTTPS(t *testing.T) {
 	reg := newWebSourceRegistryAfter(0)
-	relabelStructuredSources("1. a\n2. b", []mcp.Source{
+	relabelStructuredSources("- a\n- b", []mcp.Source{
 		{URL: "https://peeq.example/?v=a", Image: "https://i.ytimg.com/vi/a/mqdefault.jpg"},
 		{URL: "https://peeq.example/?v=b", Image: "javascript:alert(1)"},
 	}, reg)
@@ -97,7 +97,7 @@ func TestTurnGatesRestrictedServerAndCarriesItsGuidance(t *testing.T) {
 					Sources:      []mcp.Source{{URL: "https://peeq.example/?v=a&t=5", Title: "Rust talk", Label: "peeq · Chan"}},
 					CallFunc: func(context.Context, string, map[string]any) (string, error) {
 						called++
-						return "1. Rust talk — Chan", nil
+						return "- Rust talk — Chan", nil
 					},
 				},
 			}, store, "what do my channels say about rust?")

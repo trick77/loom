@@ -124,16 +124,20 @@ func modernErrorCode(body string) (int, bool) {
 }
 
 // mayBeLegacy reports whether a failed server/discover probe could come from
-// a legacy server, so the initialize handshake is worth trying. Any answer
-// may (a legacy server rejects, 404s or even 500s a method it never heard
-// of; a MethodNotFound for server/discover is legacy by definition, since a
-// modern server must implement it) except the errors only a modern server
-// sends about the request itself, and an UnsupportedProtocolVersion that
-// lists no legacy revision loom speaks. Transport failures are no answer.
-// The handshake's own success is what finally decides (see ListTools).
+// a legacy server, so the initialize handshake is worth trying: a 4xx (the
+// spec's rule for Streamable HTTP; a MethodNotFound for server/discover is
+// legacy by definition, since a modern server must implement it) or a 2xx
+// JSON-RPC error — except the errors only a modern server sends about the
+// request itself, and an UnsupportedProtocolVersion that lists no legacy
+// revision loom speaks. A 5xx is an outage, not an answer: a dual-era server
+// starting up behind a gateway must not be locked into the legacy handshake
+// it would also accept. Transport failures are no answer either.
 func mayBeLegacy(err error) bool {
 	var statusErr *mcpStatusError
 	if errors.As(err, &statusErr) {
+		if statusErr.status < 400 || statusErr.status >= 500 {
+			return false
+		}
 		code, modern := modernErrorCode(statusErr.body)
 		if !modern {
 			return true
