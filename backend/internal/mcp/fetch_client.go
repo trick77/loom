@@ -140,7 +140,7 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 	}}, nil
 }
 
-func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[string]any) (string, error) {
+func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[string]any) (CallResult, error) {
 	url, _ := arguments["url"].(string)
 	// A non-nil error keeps the deterministic fetch->obscura fallback working:
 	// the dispatch layer treats a CallTool error on fetch__fetch as "try
@@ -150,7 +150,7 @@ func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[stri
 	if err != nil && strings.HasPrefix(err.Error(), "Failed to extract PDF") {
 		err = PDFExtractionError{Err: err}
 	}
-	return out, err
+	return CallResult{Text: out}, err
 }
 
 // options maps the tool arguments onto webfetch.Options.

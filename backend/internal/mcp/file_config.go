@@ -29,6 +29,47 @@ type fileServer struct {
 	Env        map[string]string `json:"env"`
 	Tools      []string          `json:"tools"`
 	Categories []string          `json:"categories"`
+	// Users restricts the server to these loom usernames: a JSON array, or one
+	// comma-separated string so a whole list can come from one ${VAR}. Absent
+	// means every user; present but empty after interpolation means nobody.
+	Users *userList `json:"users"`
+}
+
+// userList accepts `"users": ["a","b"]` and `"users": "a,b"`.
+type userList []string
+
+func (u *userList) UnmarshalJSON(data []byte) error {
+	var list []string
+	if err := json.Unmarshal(data, &list); err == nil {
+		*u = list
+		return nil
+	}
+	var joined string
+	if err := json.Unmarshal(data, &joined); err != nil {
+		return fmt.Errorf("users must be a string or an array of strings")
+	}
+	*u = userList{joined}
+	return nil
+}
+
+// resolveUsers interpolates and splits the users entries into usernames.
+func resolveUsers(in *userList, lookupEnv func(string) (string, bool)) ([]string, error) {
+	if in == nil {
+		return nil, nil
+	}
+	out := []string{}
+	for _, entry := range *in {
+		expanded, err := expandEnvRefs(entry, lookupEnv)
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range strings.Split(expanded, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				out = append(out, name)
+			}
+		}
+	}
+	return out, nil
 }
 
 // envRefPattern matches ${NAME} references. Only the braced form is supported so
@@ -105,15 +146,21 @@ func (f fileServer) toServerConfig(lookupEnv func(string) (string, bool)) (Serve
 	if err != nil {
 		return ServerConfig{}, err
 	}
+	users, err := resolveUsers(f.Users, lookupEnv)
+	if err != nil {
+		return ServerConfig{}, err
+	}
 	cfg := ServerConfig{
-		Transport:  transport,
-		URL:        url,
-		Headers:    headers,
-		Command:    command,
-		Args:       args,
-		Env:        envVars,
-		Tools:      f.Tools,
-		Categories: f.Categories,
+		Transport:     transport,
+		URL:           url,
+		Headers:       headers,
+		Command:       command,
+		Args:          args,
+		Env:           envVars,
+		Tools:         f.Tools,
+		Categories:    f.Categories,
+		RestrictUsers: f.Users != nil,
+		Users:         users,
 	}
 	switch transport {
 	case TransportStreamableHTTP:

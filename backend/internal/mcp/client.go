@@ -36,8 +36,16 @@ type Tool struct {
 // Client is the common interface for MCP tool-serving clients.
 type Client interface {
 	ListTools(context.Context) ([]Tool, error)
-	CallTool(context.Context, string, map[string]any) (string, error)
+	CallTool(context.Context, string, map[string]any) (CallResult, error)
 	Close() error
+}
+
+// serverMetadata is what a client learned about its server on the last
+// ListTools: the server's instructions for the model and how long the tool
+// list stays fresh. Clients without either (the in-process fetch) skip it.
+type serverMetadata interface {
+	Instructions() string
+	ToolListTTL() time.Duration
 }
 
 type rpcRequest struct {
@@ -54,12 +62,14 @@ type rpcResponse struct {
 }
 
 type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data"`
 }
 
 type listToolsResult struct {
 	Tools []toolResult `json:"tools"`
+	TTLMs *int64       `json:"ttlMs"`
 }
 
 type toolResult struct {
@@ -68,14 +78,10 @@ type toolResult struct {
 	InputSchema map[string]any `json:"inputSchema"`
 }
 
-type callToolResult struct {
-	Content []toolContent `json:"content"`
-	IsError bool          `json:"isError"`
-}
-
-type toolContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+// discoverResult is the part of a modern server/discover (or a legacy
+// initialize) result loom keeps.
+type discoverResult struct {
+	Instructions string `json:"instructions"`
 }
 
 type remoteClient struct {
@@ -87,6 +93,12 @@ type remoteClient struct {
 	inited     bool
 	mu         sync.Mutex
 	sessionID  string
+	// era is what the server turned out to speak, cached for the client's
+	// lifetime (the spec's per-origin cache); instructions and listTTL come
+	// from the last ListTools. All three are guarded by mu.
+	era          protocolEra
+	instructions string
+	listTTL      time.Duration
 }
 
 // mcpStatusError carries a non-2xx HTTP response from an MCP request so callers
@@ -126,23 +138,92 @@ func NewRemoteClient(serverName string, cfg ServerConfig, httpClient *http.Clien
 	return &remoteClient{serverName: serverName, cfg: cfg, httpClient: httpClient}
 }
 
+// ListTools discovers the server's tools. Until the era is known it probes
+// with a modern server/discover, which also carries the instructions; a server
+// that answers like a legacy one is served through the initialize handshake
+// from then on.
 func (c *remoteClient) ListTools(ctx context.Context) ([]Tool, error) {
+	if c.currentEra() != eraLegacy {
+		var discovered discoverResult
+		err := c.call(ctx, "server/discover", nil, &discovered, true)
+		switch {
+		case err == nil:
+			c.mu.Lock()
+			c.era, c.instructions = eraModern, discovered.Instructions
+			c.mu.Unlock()
+		case c.currentEra() == eraUnknown && isLegacyAnswer(err, true):
+			c.setEra(eraLegacy)
+		default:
+			return nil, err
+		}
+	}
 	var result listToolsResult
-	if err := c.callWithSession(ctx, "tools/list", nil, &result); err != nil {
+	if err := c.request(ctx, "tools/list", nil, &result); err != nil {
 		return nil, err
 	}
+	c.mu.Lock()
+	c.listTTL = toolListTTL(result.TTLMs)
+	c.mu.Unlock()
 	return exposeTools(c.serverName, c.cfg, result.Tools), nil
 }
 
-func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
+func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[string]any) (CallResult, error) {
 	var result callToolResult
-	if err := c.callWithSession(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments}, &result); err != nil {
-		return "", err
+	if err := c.request(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments}, &result); err != nil {
+		return CallResult{}, err
 	}
 	if result.IsError {
-		return "", fmt.Errorf("MCP tool %q returned an error: %s", name, toolContentText(result.Content))
+		return CallResult{}, fmt.Errorf("MCP tool %q returned an error: %s", name, toolContentText(result.Content))
 	}
-	return toolContentText(result.Content), nil
+	return result.toCallResult(), nil
+}
+
+// Instructions returns the server's guidance for the model, from the last
+// server/discover (modern) or initialize (legacy).
+func (c *remoteClient) Instructions() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.instructions
+}
+
+// ToolListTTL returns how long the last tool list stays fresh.
+func (c *remoteClient) ToolListTTL() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.listTTL == 0 {
+		return defaultToolListTTL
+	}
+	return c.listTTL
+}
+
+func (c *remoteClient) currentEra() protocolEra {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.era
+}
+
+func (c *remoteClient) setEra(era protocolEra) {
+	c.mu.Lock()
+	c.era = era
+	c.mu.Unlock()
+}
+
+// request issues a request in the server's era. A request that runs before
+// the era is known (a call before any ListTools) probes like ListTools does.
+func (c *remoteClient) request(ctx context.Context, method string, params map[string]any, out any) error {
+	if c.currentEra() == eraLegacy {
+		return c.callWithSession(ctx, method, params, out)
+	}
+	err := c.call(ctx, method, params, out, true)
+	if err == nil {
+		c.setEra(eraModern)
+		return nil
+	}
+	if c.currentEra() == eraUnknown && isLegacyAnswer(err, false) {
+		c.setEra(eraLegacy)
+		return c.callWithSession(ctx, method, params, out)
+	}
+	return err
 }
 
 func (c *remoteClient) Probe(ctx context.Context) error {
@@ -170,11 +251,11 @@ func (c *remoteClient) Close() error { return nil }
 // the server rejects it with an expired/invalid session, it re-initializes once
 // and retries — Streamable HTTP servers (e.g. Tavily) expire idle sessions, and
 // the session established at startup discovery would otherwise stay stale.
-func (c *remoteClient) callWithSession(ctx context.Context, method string, params, out any) error {
+func (c *remoteClient) callWithSession(ctx context.Context, method string, params map[string]any, out any) error {
 	if err := c.initialize(ctx); err != nil {
 		return err
 	}
-	err := c.call(ctx, method, params, out)
+	err := c.call(ctx, method, params, out, false)
 	if err == nil || !isSessionError(err) {
 		return err
 	}
@@ -186,7 +267,7 @@ func (c *remoteClient) callWithSession(ctx context.Context, method string, param
 	if err := c.initialize(ctx); err != nil {
 		return err
 	}
-	return c.call(ctx, method, params, out)
+	return c.call(ctx, method, params, out, false)
 }
 
 func (c *remoteClient) initialize(ctx context.Context) error {
@@ -195,13 +276,17 @@ func (c *remoteClient) initialize(ctx context.Context) error {
 	if c.inited {
 		return nil
 	}
+	var result discoverResult
 	if err := c.call(ctx, "initialize", map[string]any{
-		"protocolVersion": "2025-06-18",
+		"protocolVersion": legacyProtocolVersion,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]string{"name": "loom", "version": "dev"},
-	}, nil); err != nil {
+		"clientInfo":      clientInfo,
+	}, &result, false); err != nil {
 		return err
 	}
+	c.mu.Lock()
+	c.instructions = result.Instructions
+	c.mu.Unlock()
 	c.inited = true
 	return nil
 }
@@ -216,9 +301,18 @@ func (c *remoteClient) resetSession() {
 	c.mu.Unlock()
 }
 
-func (c *remoteClient) call(ctx context.Context, method string, params any, out any) error {
+// call posts one JSON-RPC request. modern adds the per-request _meta and the
+// mirrored headers and leaves the session id out; a legacy call carries the
+// session the handshake established.
+func (c *remoteClient) call(ctx context.Context, method string, params map[string]any, out any, modern bool) error {
 	id := c.nextID.Add(1)
-	body, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params})
+	var wireParams any
+	if modern {
+		wireParams = modernParams(params)
+	} else if params != nil {
+		wireParams = params
+	}
+	body, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: wireParams})
 	if err != nil {
 		return err
 	}
@@ -231,11 +325,15 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 	// types; spec-compliant servers answer 406 otherwise and may reply with an
 	// SSE stream instead of a bare JSON body.
 	req.Header.Set("Accept", "application/json, text/event-stream")
-	c.mu.Lock()
-	sessionID := c.sessionID
-	c.mu.Unlock()
-	if sessionID != "" {
-		req.Header.Set("Mcp-Session-Id", sessionID)
+	if modern {
+		setModernHeaders(req, method, params)
+	} else {
+		c.mu.Lock()
+		sessionID := c.sessionID
+		c.mu.Unlock()
+		if sessionID != "" {
+			req.Header.Set("Mcp-Session-Id", sessionID)
+		}
 	}
 	for key, value := range c.cfg.Headers {
 		req.Header.Set(key, value)
@@ -245,7 +343,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 		return scrubURLError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if id := resp.Header.Get("Mcp-Session-Id"); id != "" {
+	if id := resp.Header.Get("Mcp-Session-Id"); id != "" && !modern {
 		c.mu.Lock()
 		c.sessionID = id
 		c.mu.Unlock()
@@ -259,7 +357,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params any, out 
 		return err
 	}
 	if rpcResp.Error != nil {
-		return fmt.Errorf("MCP %s failed: %s", method, rpcResp.Error.Message)
+		return &rpcCallError{method: method, code: rpcResp.Error.Code, message: rpcResp.Error.Message, data: rpcResp.Error.Data}
 	}
 	if out == nil {
 		return nil
@@ -437,18 +535,18 @@ func (c *stdioClient) ListTools(ctx context.Context) ([]Tool, error) {
 	return exposeTools(c.serverName, c.cfg, result.Tools), nil
 }
 
-func (c *stdioClient) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
+func (c *stdioClient) CallTool(ctx context.Context, name string, arguments map[string]any) (CallResult, error) {
 	if err := c.initialize(ctx); err != nil {
-		return "", err
+		return CallResult{}, err
 	}
 	var result callToolResult
 	if err := c.call(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments}, &result); err != nil {
-		return "", err
+		return CallResult{}, err
 	}
 	if result.IsError {
-		return "", fmt.Errorf("MCP tool %q returned an error: %s", name, toolContentText(result.Content))
+		return CallResult{}, fmt.Errorf("MCP tool %q returned an error: %s", name, toolContentText(result.Content))
 	}
-	return toolContentText(result.Content), nil
+	return result.toCallResult(), nil
 }
 
 func (c *stdioClient) Close() error {
@@ -485,9 +583,9 @@ func (c *stdioClient) initialize(ctx context.Context) error {
 		return nil
 	}
 	if err := c.call(ctx, "initialize", map[string]any{
-		"protocolVersion": "2025-06-18",
+		"protocolVersion": legacyProtocolVersion,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]string{"name": "loom", "version": "dev"},
+		"clientInfo":      clientInfo,
 	}, nil); err != nil {
 		return err
 	}
@@ -590,25 +688,4 @@ func (c *stdioClient) doCall(method string, params any, out any) error {
 		return err
 	}
 	return io.ErrUnexpectedEOF
-}
-
-func toolContentText(content []toolContent) string {
-	var builder strings.Builder
-	for _, item := range content {
-		if item.Type == "text" && item.Text != "" {
-			if builder.Len() > 0 {
-				builder.WriteByte('\n')
-			}
-			remaining := maxToolOutputBytes - builder.Len()
-			if remaining <= 0 {
-				break
-			}
-			if len(item.Text) > remaining {
-				builder.WriteString(item.Text[:remaining])
-				break
-			}
-			builder.WriteString(item.Text)
-		}
-	}
-	return builder.String()
 }

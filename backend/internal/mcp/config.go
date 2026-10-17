@@ -51,6 +51,12 @@ type ServerConfig struct {
 	// its classifier categories — so an unrecognized value simply never matches
 	// and hides the server. See Service.ToolsFor.
 	Categories []string `json:"categories"`
+	// RestrictUsers limits the server's tools to the loom usernames in Users:
+	// the server reads one person's data (a personal library behind one token),
+	// which other accounts on this loom must not reach. An empty Users with
+	// RestrictUsers set serves nobody: an unset allowlist fails closed.
+	RestrictUsers bool     `json:"restrictUsers"`
+	Users         []string `json:"users"`
 	// PDFExtractor, for the in-process fetch server only, turns a fetched PDF
 	// into text outside the backend process. Nil leaves PDFs unextracted.
 	PDFExtractor PDFExtractor `json:"-"`
@@ -58,6 +64,23 @@ type ServerConfig struct {
 
 // PDFExtractor extracts the text of a fetched PDF (webfetch.Options.PDFHandler).
 type PDFExtractor func(ctx context.Context, body []byte) (string, error)
+
+// userAllowed reports whether username may use this server's tools.
+func (cfg ServerConfig) userAllowed(username string) bool {
+	if !cfg.RestrictUsers {
+		return true
+	}
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return false
+	}
+	for _, allowed := range cfg.Users {
+		if strings.EqualFold(allowed, username) {
+			return true
+		}
+	}
+	return false
+}
 
 // ExposedToolName constructs the exposed tool name by joining server and tool names with "__".
 func ExposedToolName(serverName, toolName string) string {

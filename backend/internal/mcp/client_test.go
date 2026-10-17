@@ -47,6 +47,9 @@ func TestRemoteClientListsAndCallsTools(t *testing.T) {
 			writeRPCResult(t, w, req.ID, map[string]any{
 				"content": []map[string]any{{"type": "text", "text": "result text"}},
 			})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -70,10 +73,10 @@ func TestRemoteClientListsAndCallsTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
-	if got != "result text" {
+	if got.Text != "result text" {
 		t.Fatalf("CallTool() = %q, want result text", got)
 	}
-	if !reflect.DeepEqual(methods, []string{"initialize", "tools/list", "tools/call"}) {
+	if !reflect.DeepEqual(methods, []string{"server/discover", "initialize", "tools/list", "tools/call"}) {
 		t.Fatalf("methods = %#v", methods)
 	}
 }
@@ -115,6 +118,9 @@ func TestRemoteClientHandlesStreamableHTTPSessionAndSSE(t *testing.T) {
 			writeSSEResult(t, w, req.ID, map[string]any{
 				"content": []map[string]any{{"type": "text", "text": "result text"}},
 			})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -134,7 +140,7 @@ func TestRemoteClientHandlesStreamableHTTPSessionAndSSE(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
-	if got != "result text" {
+	if got.Text != "result text" {
 		t.Fatalf("CallTool() = %q, want result text", got)
 	}
 }
@@ -153,6 +159,9 @@ func TestRemoteClientRejectsOversizedResponse(t *testing.T) {
 			_, _ = w.Write([]byte("2"))
 			_, _ = w.Write([]byte(`,"result":{"tools":[{"name":"huge","description":"`))
 			_, _ = w.Write([]byte(strings.Repeat("x", maxRPCResponseBytes)))
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -216,7 +225,7 @@ func TestStdioClientListsTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
-	if got != "echo result" {
+	if got.Text != "echo result" {
 		t.Fatalf("CallTool() = %q, want echo result", got)
 	}
 }
@@ -259,6 +268,9 @@ func TestRemoteClientAllowlistFiltersTools(t *testing.T) {
 				{"name": "tavily_extract", "inputSchema": map[string]any{"type": "object"}},
 				{"name": "tavily_crawl", "inputSchema": map[string]any{"type": "object"}},
 			}})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -313,6 +325,9 @@ func TestRemoteClientReinitializesOnExpiredSession(t *testing.T) {
 				return
 			}
 			writeRPCResult(t, w, req.ID, map[string]any{"content": []map[string]any{{"type": "text", "text": "ok"}}})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -325,7 +340,7 @@ func TestRemoteClientReinitializesOnExpiredSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
-	if got != "ok" {
+	if got.Text != "ok" {
 		t.Fatalf("CallTool() = %q, want ok", got)
 	}
 	mu.Lock()
@@ -352,6 +367,9 @@ func TestRemoteClientDoesNotRetryNonSessionErrors(t *testing.T) {
 			mu.Unlock()
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte("boom"))
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}

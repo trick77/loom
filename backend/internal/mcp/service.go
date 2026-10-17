@@ -32,8 +32,16 @@ const (
 
 // Service routes tool calls to registered MCP clients and enumerates tools for the model prompt.
 type Service struct {
-	tools      []llm.Tool
-	routes     map[string]toolRoute
+	// mu guards the registry below: Refresh replaces a server's tools while
+	// turns read them.
+	mu     sync.RWMutex
+	tools  []llm.Tool
+	routes map[string]toolRoute
+	// servers is every server in registration order (required first, then
+	// best-effort), including a best-effort one whose discovery failed, so a
+	// refresh can retry it. Order decides which server keeps a contested name.
+	servers []*registeredServer
+
 	cfg        Config
 	origins    map[string]string
 	httpClient *http.Client
@@ -58,6 +66,15 @@ const statusCacheTTL = 30 * time.Second
 type toolRoute struct {
 	client Client
 	name   string
+}
+
+// registeredServer is one server's client and the tools it last listed. A nil
+// client is a best-effort server that has not answered discovery yet.
+type registeredServer struct {
+	name     string
+	client   Client
+	tools    []Tool
+	required bool
 }
 
 // ServerStatus reports a configured MCP server's live reachability and metadata.
@@ -176,6 +193,8 @@ func (s *Service) probeServer(ctx context.Context, name string) (bool, string) {
 // derived from the serverName__toolName exposed-name convention.
 func (s *Service) toolCounts() map[string]int {
 	counts := make(map[string]int, len(s.cfg.Servers))
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, t := range s.tools {
 		if server, _, ok := SplitExposedToolName(t.Function.Name); ok {
 			counts[server]++
@@ -240,6 +259,7 @@ func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Clien
 		if err := service.register(serverName, client, tools, failOnDuplicate); err != nil {
 			return nil, err
 		}
+		service.servers = append(service.servers, &registeredServer{name: serverName, client: client, tools: tools, required: true})
 	}
 	return service, nil
 }
@@ -290,9 +310,11 @@ func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, htt
 				logger.Warn("MCP server discovery failed", "server", serverName, "err", err)
 			}
 			_ = client.Close()
+			service.servers = append(service.servers, &registeredServer{name: serverName})
 			continue
 		}
 		_ = service.register(serverName, client, tools, skipDuplicate(logger))
+		service.servers = append(service.servers, &registeredServer{name: serverName, client: client, tools: tools})
 	}
 	// Union the configs so ServerStatus live-probes best-effort servers too, and
 	// record each server's origin so status can label built-in vs file-defined.
@@ -328,6 +350,8 @@ func (s *Service) Tools() []llm.Tool {
 	if s == nil {
 		return nil
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return append([]llm.Tool(nil), s.tools...)
 }
 
@@ -342,6 +366,8 @@ func (s *Service) ToolsFor(active map[string]bool) []llm.Tool {
 	if s == nil {
 		return nil
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	out := make([]llm.Tool, 0, len(s.tools))
 	for _, t := range s.tools {
 		server, _, ok := SplitExposedToolName(t.Function.Name)
@@ -371,15 +397,26 @@ func (s *Service) HasTool(name string) bool {
 	if s == nil {
 		return false
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	_, ok := s.routes[name]
 	return ok
 }
 
-// CallTool invokes an MCP tool by its exposed name, routing to the appropriate client.
+// CallTool invokes an MCP tool by its exposed name and returns its text.
 func (s *Service) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
+	result, err := s.CallToolResult(ctx, name, arguments)
+	return result.Text, err
+}
+
+// CallToolResult invokes an MCP tool by its exposed name, routing to the
+// appropriate client, and returns its text with any structured sources.
+func (s *Service) CallToolResult(ctx context.Context, name string, arguments map[string]any) (CallResult, error) {
+	s.mu.RLock()
 	route, ok := s.routes[name]
+	s.mu.RUnlock()
 	if !ok {
-		return "", fmt.Errorf("unknown MCP tool %q", name)
+		return CallResult{}, fmt.Errorf("unknown MCP tool %q", name)
 	}
 	return route.client.CallTool(ctx, route.name, arguments)
 }

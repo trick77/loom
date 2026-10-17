@@ -175,6 +175,9 @@ func newStatusTestService(t *testing.T) *Service {
 			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
 		case "tools/list":
 			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{}})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -237,6 +240,9 @@ func tavilyMockServer(t *testing.T) *httptest.Server {
 				{"name": "tavily_extract", "description": "Extract", "inputSchema": map[string]any{"type": "object"}},
 				{"name": "tavily_crawl", "description": "Crawl", "inputSchema": map[string]any{"type": "object"}},
 			}})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -258,6 +264,9 @@ func TestBestEffortServiceIncludesSyntheticTavilyAndExternalTools(t *testing.T) 
 				"description": "Fetch URL",
 				"inputSchema": map[string]any{"type": "object"},
 			}}})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -306,6 +315,9 @@ func toolServer(t *testing.T, toolName string) *httptest.Server {
 			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{{
 				"name": toolName, "description": "x", "inputSchema": map[string]any{"type": "object"},
 			}}})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -419,8 +431,8 @@ func (f *fakeClient) ListTools(context.Context) ([]Tool, error) {
 	return f.tools, nil
 }
 
-func (f *fakeClient) CallTool(context.Context, string, map[string]any) (string, error) {
-	return f.result, nil
+func (f *fakeClient) CallTool(context.Context, string, map[string]any) (CallResult, error) {
+	return CallResult{Text: f.result}, nil
 }
 
 func (f *fakeClient) Close() error {
@@ -475,6 +487,9 @@ func TestServiceServerStatusIsCachedWithinTTL(t *testing.T) {
 			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
 		case "tools/list":
 			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{}})
+		case "server/discover":
+			// A legacy server: no handshake yet, so no valid session.
+			http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 		default:
 			t.Fatalf("unexpected method %q", req.Method)
 		}
@@ -521,6 +536,8 @@ func TestServiceFromConfigsSkipsDuplicateToolNamesFromBestEffortServers(t *testi
 				writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
 			case "tools/list":
 				writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{{"name": "echo", "inputSchema": map[string]any{"type": "object"}}}})
+			case "server/discover":
+				http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
 			}
 		}))
 	}
