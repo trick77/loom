@@ -148,7 +148,6 @@ export const de = {
       fetchingWebPage: "Webseite wird abgerufen",
       creating: "{{name}} wird erstellt",
       runningPython: "Python wird ausgeführt",
-      titledWithQuery: "{{title}}: {{query}}",
       savingMemory: "Erinnerung wird gespeichert",
       updatingMemory: "Erinnerung wird aktualisiert",
       forgettingMemory: "Erinnerung wird gelöscht",

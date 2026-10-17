@@ -145,7 +145,6 @@ export const en = {
       fetchingWebPage: "Fetching a web page",
       creating: "Creating {{name}}",
       runningPython: "Running Python",
-      titledWithQuery: "{{title}}: {{query}}",
       savingMemory: "Saving a memory",
       updatingMemory: "Updating a memory",
       forgettingMemory: "Forgetting a memory",
