@@ -23,6 +23,19 @@ const webSource = (url: string, index: number, label = ""): Citation => ({
 });
 
 describe("dedupeByDomain", () => {
+  it("groups by site, not by a source's own per-item label", () => {
+    const peeq = (url: string, index: number, label: string): Citation => ({
+      ...webSource(url, index, label),
+      site: "Peeq",
+    });
+    const deduped = dedupeByDomain([
+      peeq("https://peeq.example/video/a", 1, "peeq · Bike Physics"),
+      peeq("https://peeq.example/video/b", 2, "peeq · Kitchen Lab"),
+      webSource("https://github.com/x", 3, "Github"),
+    ]);
+    expect(deduped.map((s) => s.index)).toEqual([1, 3]);
+  });
+
   it("collapses subdomains of one site (same registrable-domain label) to one, preserving first-seen order", () => {
     const sources = [
       webSource("https://github.com/torvalds", 1, "Github"),

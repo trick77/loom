@@ -24,7 +24,9 @@ func TestRelabelStructuredSourcesMapsResultsToRegistryMarkers(t *testing.T) {
 		t.Fatalf("relabeled =\n%s\nwant the header then the untouched text", out)
 	}
 	got := reg.all()
-	if len(got) != 2 || got[0].Label != "peeq · Chan" || got[0].Snippet != "one" || got[1].Label != "Peeq" {
+	// The server's label replaces the display label but never the site, which
+	// the favicon row groups by.
+	if len(got) != 2 || got[0].Label != "peeq · Chan" || got[0].Site != "Peeq" || got[0].Snippet != "one" || got[1].Label != "Peeq" {
 		t.Fatalf("registered sources = %+v", got)
 	}
 }
@@ -44,6 +46,19 @@ func TestRelabelStructuredSourcesWithoutNumberedItemsAddsHeader(t *testing.T) {
 	out := relabelStructuredSources("Title: A video\nSummary...", []mcp.Source{{URL: "https://peeq.example/?v=a", Title: "A video"}}, reg)
 	if !strings.HasPrefix(out, "Source [1]: A video — https://peeq.example/?v=a\n\n") {
 		t.Fatalf("missing source header:\n%s", out)
+	}
+}
+
+// Sources on IP hosts group by host and port: their public-suffix "label" is
+// just the last octet, which would merge unrelated self-hosted services.
+func TestSiteNameKeepsIPHostsApart(t *testing.T) {
+	reg := newWebSourceRegistryAfter(0)
+	reg.add("http://192.168.1.10:8080/a")
+	reg.add("http://10.0.1.20:3000/b")
+	reg.add("https://docs.github.com/x")
+	got := webSourceCitations(reg.all())
+	if got[0].Site != "192.168.1.10:8080" || got[1].Site != "10.0.1.20:3000" || got[2].Site != "Github" {
+		t.Fatalf("sites = %q, %q, %q", got[0].Site, got[1].Site, got[2].Site)
 	}
 }
 

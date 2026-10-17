@@ -56,7 +56,9 @@ export function SourceFavicon({
   style?: CSSProperties;
 }) {
   const host = hostOf(citation.url);
-  const label = (citation.filename ?? host).trim();
+  // The site, not the source's own label: the avatar stands for the site, so
+  // its letter and colour must not change with each item's label.
+  const label = (citation.site ?? citation.filename ?? host).trim();
   const src =
     citation.url !== undefined && host !== "" ? siteIconURL(citation.url) : "";
   const [failed, setFailed] = useState(false);

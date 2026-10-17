@@ -26,4 +26,7 @@ type Citation struct {
 	Favicon string `json:"favicon,omitempty"`
 	// Image is a preview picture (a video thumbnail) an MCP source supplied.
 	Image string `json:"image,omitempty"`
+	// Site is a web source's site name, which the favicon row groups by;
+	// Filename may instead carry the source's own label (one per channel).
+	Site string `json:"site,omitempty"`
 }
