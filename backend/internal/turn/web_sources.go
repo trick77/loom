@@ -28,6 +28,10 @@ type webSource struct {
 	Favicon string `json:"favicon,omitempty"`
 	// Image is a preview picture a structured source supplied (an https URL).
 	Image string `json:"image,omitempty"`
+	// Site is the host-derived site name, the same as Label unless a
+	// structured source named itself (Label "peeq · Bike Physics", Site
+	// "Peeq"): the favicon row groups by site, the sidebar shows the label.
+	Site string `json:"site,omitempty"`
 }
 
 // maxSourceSnippetChars caps the per-source snippet stored for the sidebar.
@@ -96,6 +100,7 @@ func (r *webSourceRegistry) addDetailed(rawURL, title, snippet, favicon string) 
 		Index:   idx,
 		URL:     strings.TrimSpace(rawURL),
 		Label:   deriveLabel(host),
+		Site:    deriveLabel(host),
 		Title:   title,
 		Snippet: snippet,
 		Favicon: favicon,
@@ -386,6 +391,7 @@ func webSourceCitations(sources []webSource) []Citation {
 			Snippet:  ws.Snippet,
 			Favicon:  ws.Favicon,
 			Image:    ws.Image,
+			Site:     ws.Site,
 		})
 	}
 	return out

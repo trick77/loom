@@ -24,7 +24,9 @@ func TestRelabelStructuredSourcesMapsResultsToRegistryMarkers(t *testing.T) {
 		t.Fatalf("relabeled =\n%s\nwant the header then the untouched text", out)
 	}
 	got := reg.all()
-	if len(got) != 2 || got[0].Label != "peeq · Chan" || got[0].Snippet != "one" || got[1].Label != "Peeq" {
+	// The server's label replaces the display label but never the site, which
+	// the favicon row groups by.
+	if len(got) != 2 || got[0].Label != "peeq · Chan" || got[0].Site != "Peeq" || got[0].Snippet != "one" || got[1].Label != "Peeq" {
 		t.Fatalf("registered sources = %+v", got)
 	}
 }

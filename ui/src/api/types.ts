@@ -202,6 +202,9 @@ export type Citation = {
   favicon?: string;
   // image is a preview picture an MCP source supplied (a video thumbnail).
   image?: string;
+  // site is a web source's site name, which the favicon row groups by;
+  // filename may instead be the source's own label (one per channel).
+  site?: string;
 };
 
 // Document is an uploaded file tracked for retrieval-augmented generation.

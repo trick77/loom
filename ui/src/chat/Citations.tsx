@@ -87,18 +87,22 @@ function combineWebSources(
 // pile shows one icon per distinct site — pages from different subdomains of the
 // same site (github.com, docs.github.com, gist.github.com) share a favicon and
 // would otherwise render as visual duplicates. Keying on hostname alone doesn't
-// collapse those, so we dedupe on the backend-computed site label (`filename`,
-// the registrable domain's main label via the public-suffix list, e.g.
-// "Github") — the correct grouping level. Sources whose label is empty (an IP or
-// bare public-suffix host the backend couldn't label) fall back to their hostname
-// and then their (already URL-unique) url, so they are neither merged together
-// nor dropped. Input order (citation order) is kept.
+// collapse those, so we dedupe on the backend-computed site name (`site`, the
+// registrable domain's main label via the public-suffix list, e.g. "Github") —
+// the correct grouping level. It is not `filename`: a structured source may label
+// itself per item ("peeq · Bike Physics", "peeq · Kitchen Lab") on one site.
+// Citations stored before `site` existed fall back to `filename`. Sources with no
+// site name (an IP or bare public-suffix host the backend couldn't label) fall
+// back to their hostname and then their (already URL-unique) url, so they are
+// neither merged together nor dropped. Input order (citation order) is kept.
 export function dedupeByDomain(sources: Citation[]): Citation[] {
   const seen = new Set<string>();
   const unique: Citation[] = [];
   for (const source of sources) {
     const key =
-      source.filename.trim().toLowerCase() || hostOf(source.url) || source.url;
+      (source.site ?? source.filename).trim().toLowerCase() ||
+      hostOf(source.url) ||
+      source.url;
     if (key === undefined || key === "" || seen.has(key)) continue;
     seen.add(key);
     unique.push(source);
