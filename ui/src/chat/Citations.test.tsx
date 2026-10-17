@@ -401,6 +401,10 @@ describe("SourcesSidebar selection", () => {
         "peeq · Chan",
       ),
     ).toBeInTheDocument();
+
+    // An image the proxy could not fetch hides instead of a broken box.
+    fireEvent.error(images[0]);
+    expect(images[0]).not.toBeVisible();
   });
 
   it("marks only the pinned source's card", () => {
