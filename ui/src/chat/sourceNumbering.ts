@@ -94,7 +94,7 @@ export function assignDisplayNumbers(
   if (byIndex.size === 0) return NO_NUMBERING;
 
   const display = new Map<number, number>();
-  const text = stripCode(content);
+  const text = stripCode(citeSourceURLs(content, byIndex));
   MARKER.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = MARKER.exec(text)) !== null) {
@@ -122,4 +122,94 @@ export function stableDisplayNumbers(): (
     previous = assignDisplayNumbers(content, citations, previous);
     return previous;
   };
+}
+
+// A bracket holding nothing but URLs: "[https://a]", "[<https://a>, https://b]".
+// Not an image ("![…]"), an escaped bracket, a link's text ("[…](…)") or a
+// reference definition ("[…]: …").
+const BRACKETED = /(?<![!\\])\[([^[\]\n]+)\](?![(:])/g;
+const URL_PART = /^<?(https?:\/\/[^\s<>]+?)>?[.,;:]*$/;
+
+type Linked = { url?: string };
+type URLIndex = { exact: Map<string, number>; loose: Map<string, number> };
+
+// looseKey drops what a model tends to lose when it copies a URL: the
+// timestamp query ("?t=42"), the fragment and a trailing slash.
+function looseKey(raw: string): string | undefined {
+  try {
+    const url = new URL(raw);
+    return url.origin + url.pathname.replace(/\/+$/, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function indexURLs(sources: ReadonlyMap<number, Linked>): URLIndex {
+  const exact = new Map<string, number>();
+  const loose = new Map<string, number>();
+  const ambiguous = new Set<string>();
+  for (const [index, source] of sources) {
+    const url = source.url?.trim();
+    if (url === undefined || url === "") continue;
+    if (!exact.has(url)) exact.set(url, index);
+    const key = looseKey(url);
+    if (key === undefined) continue;
+    const known = loose.get(key);
+    if (known === undefined) loose.set(key, index);
+    else if (known !== index) ambiguous.add(key);
+  }
+  // Two sources on one page (two moments of one video) leave the bare page
+  // ambiguous: it stays literal rather than citing the wrong one.
+  for (const key of ambiguous) loose.delete(key);
+  return { exact, loose };
+}
+
+function lookupURL(urls: URLIndex, url: string): number | undefined {
+  const exact = urls.exact.get(url);
+  if (exact !== undefined) return exact;
+  const key = looseKey(url);
+  return key === undefined ? undefined : urls.loose.get(key);
+}
+
+// citeSourceURLs rewrites a bracketed URL of one of the answer's sources into
+// that source's [n] marker. Told by a tool to cite the links it gave, the model
+// once wrote "[https://…]" where the marker belongs, and the raw link stayed in
+// the prose. A bracket stays as written unless every URL in it is a known
+// source, and code is never touched. Numbering and pills both read the
+// rewritten text, so the two agree.
+export function citeSourceURLs(
+  content: string,
+  sources?: ReadonlyMap<number, Linked>,
+): string {
+  if (sources === undefined || sources.size === 0) return content;
+  if (!/\[\s*<?https?:\/\//.test(content)) return content;
+  const urls = indexURLs(sources);
+  if (urls.exact.size === 0) return content;
+  // Matched on the code-blanked copy, which keeps every offset, then cut from
+  // the original.
+  const masked = stripCode(content);
+  let out = "";
+  let last = 0;
+  BRACKETED.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = BRACKETED.exec(masked)) !== null) {
+    const markers = bracketMarkers(match[1], urls);
+    if (markers === null) continue;
+    out += content.slice(last, match.index) + markers;
+    last = match.index + match[0].length;
+  }
+  return last === 0 ? content : out + content.slice(last);
+}
+
+function bracketMarkers(inner: string, urls: URLIndex): string | null {
+  const parts = inner.split(/[\s,;]+/).filter((part) => part !== "");
+  if (parts.length === 0) return null;
+  let markers = "";
+  for (const part of parts) {
+    const url = URL_PART.exec(part)?.[1];
+    const index = url === undefined ? undefined : lookupURL(urls, url);
+    if (index === undefined) return null;
+    markers += `[${index}]`;
+  }
+  return markers;
 }

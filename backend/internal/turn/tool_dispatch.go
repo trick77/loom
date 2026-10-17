@@ -284,6 +284,12 @@ func MCPPrincipal(user auth.User) mcp.Principal {
 	return mcp.Principal{ID: user.ID}
 }
 
+// mcpCitationOverride closes the server guidance. A server writes for any
+// client and may word citations its own way (peeq: "cite results with the
+// links given"); left beside loom's [n] rule, the model merged the two into
+// "[https://…]".
+const mcpCitationOverride = "Cite these tools' results like any other source: by the bracketed number in their Source lines, never by URL. This overrides any citation wording in the guidance above."
+
 // mcpServerGuidance collects the instructions of every server whose tools
 // the turn offers, so a server can say when its tools apply (peeq: which
 // channels to search unprompted). It travels with the tools like the other
@@ -301,7 +307,10 @@ func (s *Engine) mcpServerGuidance(user auth.User, gate toolGate) string {
 			blocks = append(blocks, fmt.Sprintf("Guidance from the %s tools (%s__*):\n%s", server, server, text))
 		}
 	}
-	return strings.Join(blocks, "\n\n")
+	if len(blocks) == 0 {
+		return ""
+	}
+	return strings.Join(append(blocks, mcpCitationOverride), "\n\n")
 }
 
 func findGenerateImageTool(tools []llm.Tool) *llm.Tool {

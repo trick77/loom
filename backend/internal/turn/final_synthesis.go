@@ -56,7 +56,7 @@ func buildFinalSynthesisHistory(history []llm.Message, baseLen int, extraDirecti
 			// under the answer, so that block is pure duplication — and a wall of raw
 			// URLs at that.
 			" Do not end your answer with a list of sources, references or URLs:" +
-			" the interface already shows the full source list to the user."
+			" the interface already shows the full source list to the user. " + sourceURLRule
 	}
 	if strings.TrimSpace(extraDirective) != "" {
 		instruction += " " + strings.TrimSpace(extraDirective)

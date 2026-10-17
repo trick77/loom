@@ -59,7 +59,7 @@ import {
   type DisplayMap,
   type SourceMap,
 } from "./sourcePills";
-import { assignDisplayNumbers } from "./sourceNumbering";
+import { assignDisplayNumbers, citeSourceURLs } from "./sourceNumbering";
 import {
   isImageAttachment,
   type ComposerAttachment,
@@ -525,10 +525,11 @@ export const ProseMarkdown = memo(function ProseMarkdown({
       plugins.push([rehypeSourcePills, sources, display]);
     return plugins;
   }, [streaming, sources, display]);
-  // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses.
+  // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses,
+  // and a bracketed source URL into its [n] marker (see citeSourceURLs).
   const normalized = useMemo(
-    () => normalizeMathDelimiters(children),
-    [children],
+    () => normalizeMathDelimiters(citeSourceURLs(children, sources)),
+    [children, sources],
   );
   return (
     <div className="ui-message-text ui-markdown text-[#f3f0e8]">

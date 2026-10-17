@@ -493,3 +493,49 @@ describe("pill highlighting", () => {
     expect(pill).toHaveClass("ui-source-pill-linked");
   });
 });
+
+// The model once cited "[https://…]" where the marker belongs. A bracketed URL of
+// a source of this answer renders as that source's pill, never as a raw link.
+describe("bracketed source URLs", () => {
+  const video: Citation = {
+    documentId: "",
+    filename: "peeq · Chan",
+    snippet: "",
+    score: 0,
+    url: "https://peeq.example/video/abc?t=42",
+    index: 2,
+  };
+
+  it("renders a bracketed source URL as its pill", () => {
+    const { container } = renderProse(
+      "Spend fell 78% [https://peeq.example/video/abc?t=42].",
+      [video],
+    );
+    const pills = container.querySelectorAll(".ui-source-pill");
+    expect(pills).toHaveLength(1);
+    expect(pills[0]).toHaveTextContent("1");
+    expect(container).not.toHaveTextContent("https://");
+  });
+
+  it("matches the URL without its timestamp and splits a bracketed list", () => {
+    const other: Citation = { ...video, url: "https://b.example/x", index: 3 };
+    const { container } = renderProse(
+      "Both agree [https://peeq.example/video/abc, <https://b.example/x>].",
+      [video, other],
+    );
+    expect(container.querySelectorAll(".ui-source-pill")).toHaveLength(2);
+    expect(container).not.toHaveTextContent("https://");
+  });
+
+  it("leaves unknown URLs, links and code alone", () => {
+    const { container } = renderProse(
+      "See [https://other.example] and [docs](https://peeq.example/video/abc?t=42) and `[https://peeq.example/video/abc?t=42]`.",
+      [video],
+    );
+    expect(container.querySelectorAll(".ui-source-pill")).toHaveLength(0);
+    expect(container).toHaveTextContent("[https://other.example]");
+    expect(container.querySelector("code")).toHaveTextContent(
+      "[https://peeq.example/video/abc?t=42]",
+    );
+  });
+});
