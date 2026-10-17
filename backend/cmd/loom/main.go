@@ -219,6 +219,8 @@ func run() error {
 		chatClient = llmClient
 	}
 	var toolService httpapi.ToolService
+	// mcpRefresh keeps the servers' tool lists current (see Service.RunRefresh).
+	mcpRefresh := func(context.Context) {}
 	toolCfg, err := toolConfigForConfig(cfg, fetchPDF)
 	if err != nil {
 		return err
@@ -239,6 +241,7 @@ func run() error {
 			return err
 		}
 		toolService = discovered
+		mcpRefresh = func(ctx context.Context) { discovered.RunRefresh(ctx, slog.Default()) }
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
 	discoveredTools := 0
@@ -331,7 +334,7 @@ func run() error {
 	defer stop()
 	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, func(ctx context.Context) {
 		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
-	}, sandboxWatch, reembed)
+	}, sandboxWatch, reembed, mcpRefresh)
 }
 
 // sandboxProbeInterval is how quickly run_python follows the sidecar going

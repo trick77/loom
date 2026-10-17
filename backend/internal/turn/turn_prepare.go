@@ -242,7 +242,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		_ = t.stream.SendJSON("knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
 	history := buildLLMHistory(t.user, promptBlocks{
-		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance),
+		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate)),
 		classifier:   classifier.Block(category),
 		user:         userContext,
 		project:      projectContext,

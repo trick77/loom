@@ -63,7 +63,7 @@ type LoopResult struct {
 // rounds run out.
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
 	history := t.plan.history
-	tools, offered := t.e.offerTools(t.thread, t.plan.gate)
+	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
 	t.offered = offered
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -185,14 +185,20 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		// automatically within the round budget.
 		perToolCount := map[string]int{}
 		deferred := make([]bool, len(result.ToolCalls))
+		// A call to an MCP tool this user may not use (a server limited to other
+		// accounts) never runs, even when the model names it unprompted.
+		denied := make([]bool, len(result.ToolCalls))
+		skipped := make([]bool, len(result.ToolCalls))
 		for i, call := range result.ToolCalls {
 			perToolCount[call.Function.Name]++
 			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
+			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(t.user.Username, call.Function.Name)
+			skipped[i] = deferred[i] || denied[i]
 		}
 		// The round's independent web reads start now and overlap; everything
 		// below still handles the calls one at a time, in the model's order.
 		runsCtx, cancelRuns := context.WithCancel(ctx)
-		runs := t.e.startToolRuns(runsCtx, result.ToolCalls, deferred)
+		runs := t.e.startToolRuns(runsCtx, result.ToolCalls, skipped)
 		lastRoundDeferred = false
 		for i, call := range result.ToolCalls {
 			var output string
@@ -202,6 +208,8 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			// a reissued image call is only skipped again).
 			if call.Function.Name == imagegen.ToolName && imageGenerated {
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
+			} else if denied[i] {
+				output = fmt.Sprintf("tool failed: unknown tool %q", call.Function.Name)
 			} else if deferred[i] {
 				cap := t.e.toolCallCapPerRound(call.Function.Name)
 				// The instruction rides with the deferral in history so the model sees

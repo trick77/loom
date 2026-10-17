@@ -231,10 +231,7 @@ type ChatClient interface {
 
 // ToolService exposes configured MCP tools to chat handlers.
 type ToolService interface {
-	Tools() []llm.Tool
-	ToolsFor(active map[string]bool) []llm.Tool
-	CallTool(context.Context, string, map[string]any) (string, error)
-	HasTool(string) bool
+	turn.ToolService
 	ServerStatus(context.Context) []mcp.ServerStatus
 }
 

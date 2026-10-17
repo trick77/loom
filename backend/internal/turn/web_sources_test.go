@@ -162,9 +162,9 @@ func TestRelabelWebToolOutputObscuraNavigateThenSnapshot(t *testing.T) {
 	reg := newWebSourceRegistryAfter(0)
 	navArgs := map[string]any{"url": "https://truefoundry.com/pricing"}
 	// Navigate registers the source and arms the snapshot header.
-	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, navArgs, "navigated ok", reg)
+	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, navArgs, "navigated ok", nil, reg)
 	// Snapshot (no URL of its own) inherits the marker.
-	snap := srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<rendered page>", reg)
+	snap := srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<rendered page>", nil, reg)
 	if !strings.HasPrefix(snap, "Web source [1]: https://truefoundry.com/pricing") {
 		t.Errorf("expected snapshot to inherit navigate marker, got:\n%s", snap)
 	}
@@ -176,7 +176,7 @@ func TestRelabelWebToolOutputObscuraNavigateThenSnapshot(t *testing.T) {
 func TestRelabelWebToolOutputNonWebToolIsNoop(t *testing.T) {
 	srv := &Engine{}
 	reg := newWebSourceRegistryAfter(0)
-	out := srv.relabelWebToolOutput("conversation_search", map[string]any{}, "digest", reg)
+	out := srv.relabelWebToolOutput("conversation_search", map[string]any{}, "digest", nil, reg)
 	if out != "digest" {
 		t.Errorf("expected non-web tool output unchanged, got %q", out)
 	}
@@ -235,7 +235,7 @@ func TestFetchSourceCapturesSnippet(t *testing.T) {
 	srv := &Engine{}
 	reg := newWebSourceRegistryAfter(0)
 	page := "  Modal is a serverless   platform\nfor running Python.  "
-	out := srv.relabelWebToolOutput(fetchToolName, map[string]any{"url": "https://modal.com/docs"}, page, reg)
+	out := srv.relabelWebToolOutput(fetchToolName, map[string]any{"url": "https://modal.com/docs"}, page, nil, reg)
 	if !strings.HasPrefix(out, "Web source [1]: https://modal.com/docs") {
 		t.Errorf("expected fetch header, got:\n%s", out)
 	}
@@ -280,11 +280,11 @@ func TestAddDetailedBackfillsEmptyFields(t *testing.T) {
 func TestRelabelWebToolOutputFailedNavigateDisarmsSnapshotLabel(t *testing.T) {
 	srv := &Engine{}
 	reg := newWebSourceRegistryAfter(0)
-	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://first.example/"}, "navigated ok", reg)
-	_ = srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<first page>", reg)
+	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://first.example/"}, "navigated ok", nil, reg)
+	_ = srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<first page>", nil, reg)
 
-	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://second.example/"}, toolFailedPrefix+": timeout", reg)
-	snap := srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<whatever the browser shows now>", reg)
+	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://second.example/"}, toolFailedPrefix+": timeout", nil, reg)
+	snap := srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<whatever the browser shows now>", nil, reg)
 
 	if strings.Contains(snap, "first.example") || strings.Contains(snap, "second.example") {
 		t.Fatalf("snapshot after a failed navigate carries a source label:\n%s", snap)

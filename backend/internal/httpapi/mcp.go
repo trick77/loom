@@ -38,12 +38,17 @@ type mcpToolInfo struct {
 // into any given request, so a tool listed here is not guaranteed to be offered
 // on every turn.
 func (s *server) handleMCPTools(w http.ResponseWriter, r *http.Request) {
-	if _, ok := currentUser(w, r); !ok {
+	user, ok := currentUser(w, r)
+	if !ok {
 		return
 	}
 	tools := []mcpToolInfo{}
 	if s.mcp != nil {
 		for _, t := range s.mcp.Tools() {
+			// A server limited to other accounts is not part of this user's catalog.
+			if !s.mcp.ToolAllowed(user.Username, t.Function.Name) {
+				continue
+			}
 			server, _, _ := mcp.SplitExposedToolName(t.Function.Name)
 			tools = append(tools, mcpToolInfo{
 				Name:        t.Function.Name,
