@@ -7,17 +7,23 @@ import {
 } from "./activityTrace";
 
 describe("tool call descriptions and labels", () => {
-  test("a server-given title says what the call does, with its query", () => {
+  test("a query stands alone; the title only speaks when there is none", () => {
+    // The step's tag already names the tool ("Web search", the server), so a
+    // title in front of the query ("Tavily Search: …") only repeats it.
     expect(
       summarizeToolCall(
         "peeq__search",
         '{"query":"bike stability"}',
         "Search your video library",
       ),
-    ).toEqual({
-      kind: "lookup",
-      title: "Search your video library: bike stability",
-    });
+    ).toEqual({ kind: "lookup", title: "Bike stability" });
+    expect(
+      summarizeToolCall(
+        "tavily__tavily_search",
+        '{"query":"UBS move headquarters"}',
+        "Tavily Search",
+      ).title,
+    ).toBe("UBS move headquarters");
     // No query: an id or other argument is not worth showing.
     expect(
       summarizeToolCall(
@@ -31,14 +37,14 @@ describe("tool call descriptions and labels", () => {
     ).toEqual({ kind: "generic", title: "List channels" });
   });
 
-  test("only the query joins the title, tidied; other arguments never do", () => {
+  test("the query is tidied and capped; other arguments never show", () => {
     expect(
       summarizeToolCall(
         "peeq__search",
         JSON.stringify({ channel: "UCbikes", query: "  bike\n  stability " }),
         "Search your video library",
       ).title,
-    ).toBe("Search your video library: bike stability");
+    ).toBe("Bike stability");
     const long = "x".repeat(200);
     expect(
       summarizeToolCall(
@@ -46,7 +52,7 @@ describe("tool call descriptions and labels", () => {
         JSON.stringify({ query: long }),
         "Search",
       ).title,
-    ).toBe(`Search: ${"x".repeat(80)}...`);
+    ).toBe(`X${"x".repeat(79)}...`);
   });
 
   test("a titled page fetch keeps its domain, favicon and link", () => {

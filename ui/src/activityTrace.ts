@@ -264,15 +264,14 @@ export function summarizeToolCall(
   ) {
     // The tool's own server said what it does; that beats guessing from the
     // name (a library search is not a web search, so no globe either). A
-    // query is worth showing; other arguments (ids and the like) are not.
+    // query stands alone: the step's tag already names the tool, so the title
+    // in front of it ("Tavily Search: …") only repeated it. The title speaks
+    // when there is no query; other arguments (ids and the like) never show.
     // A page fetch keeps its own row below: domain, favicon and link.
     return {
       kind: query !== undefined ? "lookup" : "generic",
       title: query
-        ? i18n.t("activityTrace.trace.titledWithQuery", {
-            title: serverTitle,
-            query: truncateText(query.replace(/\s+/g, " ").trim(), 80),
-          })
+        ? capitalizeFirst(truncateText(query.replace(/\s+/g, " ").trim(), 80))
         : serverTitle,
     };
   }
