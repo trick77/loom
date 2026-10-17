@@ -138,22 +138,15 @@ func NewRemoteClient(serverName string, cfg ServerConfig, httpClient *http.Clien
 	return &remoteClient{serverName: serverName, cfg: cfg, httpClient: httpClient}
 }
 
-// ListTools discovers the server's tools. Until the era is known it probes
-// with a modern server/discover, which also carries the instructions; a server
-// that answers like a legacy one is served through the initialize handshake
-// from then on.
+// ListTools discovers the server's tools. Until the server is known to be
+// legacy it probes with a modern server/discover, which also carries the
+// instructions. A probe answered like a legacy server tries the initialize
+// handshake, and only a handshake that works marks the server legacy: a
+// modern server that failed the probe for another reason (a cold start, a
+// 503) must be probed again next time, not locked into a handshake it rejects.
 func (c *remoteClient) ListTools(ctx context.Context) ([]Tool, error) {
 	if c.currentEra() != eraLegacy {
-		var discovered discoverResult
-		err := c.call(ctx, "server/discover", nil, &discovered, true)
-		switch {
-		case err == nil:
-			c.mu.Lock()
-			c.era, c.instructions = eraModern, discovered.Instructions
-			c.mu.Unlock()
-		case c.currentEra() == eraUnknown && isLegacyAnswer(err, true):
-			c.setEra(eraLegacy)
-		default:
+		if err := c.discover(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -165,6 +158,28 @@ func (c *remoteClient) ListTools(ctx context.Context) ([]Tool, error) {
 	c.listTTL = toolListTTL(result.TTLMs)
 	c.mu.Unlock()
 	return exposeTools(c.serverName, c.cfg, result.Tools), nil
+}
+
+// discover sends server/discover and settles the era from the answer: modern
+// on success; legacy only once a legacy handshake has actually worked after
+// a probe that may have come from a legacy server.
+func (c *remoteClient) discover(ctx context.Context) error {
+	var discovered discoverResult
+	err := c.call(ctx, "server/discover", nil, &discovered, true)
+	if err == nil {
+		c.mu.Lock()
+		c.era, c.instructions = eraModern, discovered.Instructions
+		c.mu.Unlock()
+		return nil
+	}
+	if !mayBeLegacy(err) {
+		return err
+	}
+	if legacyErr := c.initialize(ctx); legacyErr != nil {
+		return fmt.Errorf("%w (legacy handshake: %v)", err, legacyErr)
+	}
+	c.setEra(eraLegacy)
+	return nil
 }
 
 func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[string]any) (CallResult, error) {
@@ -208,22 +223,18 @@ func (c *remoteClient) setEra(era protocolEra) {
 	c.mu.Unlock()
 }
 
-// request issues a request in the server's era. A request that runs before
-// the era is known (a call before any ListTools) probes like ListTools does.
+// request issues a request in the server's era, settling the era first when
+// no ListTools has run yet.
 func (c *remoteClient) request(ctx context.Context, method string, params map[string]any, out any) error {
+	if c.currentEra() == eraUnknown {
+		if err := c.discover(ctx); err != nil {
+			return err
+		}
+	}
 	if c.currentEra() == eraLegacy {
 		return c.callWithSession(ctx, method, params, out)
 	}
-	err := c.call(ctx, method, params, out, true)
-	if err == nil {
-		c.setEra(eraModern)
-		return nil
-	}
-	if c.currentEra() == eraUnknown && isLegacyAnswer(err, false) {
-		c.setEra(eraLegacy)
-		return c.callWithSession(ctx, method, params, out)
-	}
-	return err
+	return c.call(ctx, method, params, out, true)
 }
 
 func (c *remoteClient) Probe(ctx context.Context) error {

@@ -5,8 +5,6 @@ import (
 	"log/slog"
 	"time"
 	"unicode/utf8"
-
-	"github.com/trick77/loom/internal/llm"
 )
 
 const (
@@ -127,9 +125,10 @@ func (s *Service) rebuildLocked(logger *slog.Logger) {
 
 // ServerInstructions returns a server's guidance for the model (its
 // server/discover or initialize instructions), capped so one server cannot
-// crowd the system prompt. Empty when the server gave none.
+// crowd the system prompt. Empty when the server gave none, or when its
+// config does not trust them (ServerConfig.TrustInstructions).
 func (s *Service) ServerInstructions(server string) string {
-	if s == nil {
+	if s == nil || !s.cfg.Servers[server].TrustInstructions {
 		return ""
 	}
 	s.mu.RLock()
@@ -162,10 +161,10 @@ func capInstructions(text string) string {
 	return cut
 }
 
-// ToolAllowed reports whether a loom user may see and call an exposed tool.
-// A server with a users allowlist (ServerConfig.RestrictUsers) serves only
-// those usernames, compared case-insensitively; every other tool is open.
-func (s *Service) ToolAllowed(username, name string) bool {
+// ToolAllowed reports whether a loom account may see and call an exposed
+// tool. A server with a users allowlist (ServerConfig.RestrictUsers) serves
+// only those accounts; every other tool is open.
+func (s *Service) ToolAllowed(p Principal, name string) bool {
 	if s == nil {
 		return false
 	}
@@ -173,16 +172,14 @@ func (s *Service) ToolAllowed(username, name string) bool {
 	if !ok {
 		return true
 	}
-	return s.cfg.Servers[server].userAllowed(username)
+	return s.ServerAllowed(p, server)
 }
 
-// ToolsAllowed filters tools down to those the user may see.
-func (s *Service) ToolsAllowed(username string, tools []llm.Tool) []llm.Tool {
-	out := make([]llm.Tool, 0, len(tools))
-	for _, tool := range tools {
-		if s.ToolAllowed(username, tool.Function.Name) {
-			out = append(out, tool)
-		}
+// ServerAllowed reports whether a loom account may see a server at all (its
+// tools, its status in the /mcp panel).
+func (s *Service) ServerAllowed(p Principal, server string) bool {
+	if s == nil {
+		return false
 	}
-	return out
+	return s.cfg.Servers[server].userAllowed(p)
 }

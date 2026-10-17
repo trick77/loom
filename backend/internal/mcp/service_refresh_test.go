@@ -39,7 +39,7 @@ func TestRefreshRegistersLateServerAndPicksUpChanges(t *testing.T) {
 	var name atomic.Value
 	name.Store("search")
 	server := toggleServer(t, &up, &name)
-	bestEffort := Config{Servers: map[string]ServerConfig{"peeq": {Transport: TransportStreamableHTTP, URL: server.URL}}}
+	bestEffort := Config{Servers: map[string]ServerConfig{"peeq": {Transport: TransportStreamableHTTP, URL: server.URL, TrustInstructions: true}}}
 
 	service, err := NewServiceFromConfigs(context.Background(), Config{}, bestEffort, server.Client(), nil)
 	if err != nil {
@@ -77,26 +77,68 @@ func TestRefreshRegistersLateServerAndPicksUpChanges(t *testing.T) {
 
 func TestToolAllowedHonoursUsersAllowlist(t *testing.T) {
 	service := &Service{cfg: Config{Servers: map[string]ServerConfig{
-		"peeq": {RestrictUsers: true, Users: []string{"jan"}},
+		"peeq": {RestrictUsers: true, Users: []string{"usr_jan", "sub-anna"}},
 		"none": {RestrictUsers: true},
 		"open": {},
 	}}}
+	jan := Principal{ID: "usr_jan", Subject: "sub-jan"}
+	anna := Principal{ID: "usr_anna", Subject: "sub-anna"}
+	eve := Principal{ID: "usr_eve", Subject: "sub-eve"}
 	cases := []struct {
-		user, tool string
-		want       bool
+		user Principal
+		tool string
+		want bool
 	}{
-		{"jan", "peeq__search", true},
-		{"JAN", "peeq__search", true},
-		{"eve", "peeq__search", false},
-		{"", "peeq__search", false},
-		{"jan", "none__x", false},
-		{"eve", "open__x", true},
-		{"eve", "unprefixed", true},
+		{jan, "peeq__search", true},
+		{anna, "peeq__search", true},
+		{eve, "peeq__search", false},
+		{Principal{ID: "USR_JAN"}, "peeq__search", false},
+		{Principal{}, "peeq__search", false},
+		{jan, "none__x", false},
+		{eve, "open__x", true},
+		{eve, "unprefixed", true},
 	}
 	for _, c := range cases {
 		if got := service.ToolAllowed(c.user, c.tool); got != c.want {
-			t.Errorf("ToolAllowed(%q, %q) = %v, want %v", c.user, c.tool, got, c.want)
+			t.Errorf("ToolAllowed(%+v, %q) = %v, want %v", c.user, c.tool, got, c.want)
 		}
+	}
+}
+
+// A server's instructions reach the prompt only when its config trusts them.
+func TestServerInstructionsNeedTrust(t *testing.T) {
+	var up atomic.Bool
+	var name atomic.Value
+	up.Store(true)
+	name.Store("search")
+	server := toggleServer(t, &up, &name)
+	for _, trusted := range []bool{true, false} {
+		cfg := Config{Servers: map[string]ServerConfig{"peeq": {Transport: TransportStreamableHTTP, URL: server.URL, TrustInstructions: trusted}}}
+		service, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, server.Client(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := service.ServerInstructions("peeq") != ""; got != trusted {
+			t.Fatalf("trusted=%v: instructions present = %v", trusted, got)
+		}
+	}
+}
+
+// A modern server that fails the first probe (a cold start) is probed again,
+// not locked into a legacy handshake it rejects.
+func TestTransientProbeFailureDoesNotLockLegacy(t *testing.T) {
+	var up atomic.Bool
+	var name atomic.Value
+	name.Store("search")
+	server := toggleServer(t, &up, &name)
+	client := NewRemoteClient("peeq", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, server.Client())
+	if _, err := client.ListTools(context.Background()); err == nil {
+		t.Fatal("ListTools() while down = nil error")
+	}
+	up.Store(true)
+	tools, err := client.ListTools(context.Background())
+	if err != nil || len(tools) != 1 {
+		t.Fatalf("ListTools() after recovery = %v, %v", tools, err)
 	}
 }
 

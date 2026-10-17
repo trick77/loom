@@ -29,36 +29,48 @@ type fileServer struct {
 	Env        map[string]string `json:"env"`
 	Tools      []string          `json:"tools"`
 	Categories []string          `json:"categories"`
-	// Users restricts the server to these loom usernames: a JSON array, or one
-	// comma-separated string so a whole list can come from one ${VAR}. Absent
-	// means every user; present but empty after interpolation means nobody.
-	Users *userList `json:"users"`
+	// Users restricts the server to these loom accounts (user id or OIDC
+	// subject): a JSON array, or one comma-separated string so a whole list can
+	// come from one ${VAR}. Absent means every user; present — even null, or
+	// empty after interpolation — with no entry means nobody.
+	Users userList `json:"users"`
+	// TrustInstructions lets the server's instructions into the system prompt.
+	TrustInstructions bool `json:"trustInstructions"`
 }
 
-// userList accepts `"users": ["a","b"]` and `"users": "a,b"`.
-type userList []string
+// userList accepts `"users": ["a","b"]` and `"users": "a,b"`. set records
+// that the key was present at all: encoding/json calls UnmarshalJSON for a
+// present key, null included, and never for an absent one.
+type userList struct {
+	set     bool
+	entries []string
+}
 
 func (u *userList) UnmarshalJSON(data []byte) error {
+	u.set = true
+	if string(data) == "null" {
+		return nil
+	}
 	var list []string
 	if err := json.Unmarshal(data, &list); err == nil {
-		*u = list
+		u.entries = list
 		return nil
 	}
 	var joined string
 	if err := json.Unmarshal(data, &joined); err != nil {
 		return fmt.Errorf("users must be a string or an array of strings")
 	}
-	*u = userList{joined}
+	u.entries = []string{joined}
 	return nil
 }
 
-// resolveUsers interpolates and splits the users entries into usernames.
-func resolveUsers(in *userList, lookupEnv func(string) (string, bool)) ([]string, error) {
-	if in == nil {
+// resolveUsers interpolates and splits the users entries into account keys.
+func resolveUsers(in userList, lookupEnv func(string) (string, bool)) ([]string, error) {
+	if !in.set {
 		return nil, nil
 	}
 	out := []string{}
-	for _, entry := range *in {
+	for _, entry := range in.entries {
 		expanded, err := expandEnvRefs(entry, lookupEnv)
 		if err != nil {
 			return nil, err
@@ -151,16 +163,17 @@ func (f fileServer) toServerConfig(lookupEnv func(string) (string, bool)) (Serve
 		return ServerConfig{}, err
 	}
 	cfg := ServerConfig{
-		Transport:     transport,
-		URL:           url,
-		Headers:       headers,
-		Command:       command,
-		Args:          args,
-		Env:           envVars,
-		Tools:         f.Tools,
-		Categories:    f.Categories,
-		RestrictUsers: f.Users != nil,
-		Users:         users,
+		Transport:         transport,
+		URL:               url,
+		Headers:           headers,
+		Command:           command,
+		Args:              args,
+		Env:               envVars,
+		Tools:             f.Tools,
+		Categories:        f.Categories,
+		RestrictUsers:     f.Users.set,
+		Users:             users,
+		TrustInstructions: f.TrustInstructions,
 	}
 	switch transport {
 	case TransportStreamableHTTP:

@@ -121,37 +121,38 @@ func modernErrorCode(body string) (int, bool) {
 	return 0, false
 }
 
-// isLegacyAnswer reports whether a failed modern request means the server
-// only speaks the legacy revision. A 4xx without a recognised modern error
-// body is legacy (the spec's rule for Streamable HTTP), and so is a 2xx
-// JSON-RPC error: a modern server answers an unknown method with 404. An
-// UnsupportedProtocolVersion listing a legacy revision we speak is legacy too.
-// The server/discover probe (anyStatus) also reads a 5xx that way: a legacy
-// server may choke on a method it has never heard of, and a working server
-// must not fail discovery over it. Transport failures are never an answer.
-func isLegacyAnswer(err error, anyStatus bool) bool {
+// mayBeLegacy reports whether a failed server/discover probe could come from
+// a legacy server, so the initialize handshake is worth trying. Any answer
+// may (a legacy server rejects, 404s or even 500s a method it never heard
+// of; a MethodNotFound for server/discover is legacy by definition, since a
+// modern server must implement it) except the errors only a modern server
+// sends about the request itself, and an UnsupportedProtocolVersion that
+// lists no legacy revision loom speaks. Transport failures are no answer.
+// The handshake's own success is what finally decides (see ListTools).
+func mayBeLegacy(err error) bool {
 	var statusErr *mcpStatusError
 	if errors.As(err, &statusErr) {
-		if !anyStatus && (statusErr.status < 400 || statusErr.status >= 500) {
-			return false
-		}
 		code, modern := modernErrorCode(statusErr.body)
 		if !modern {
 			return true
 		}
-		return code == codeUnsupportedProtocolVersion && supportsLegacy(errorData(statusErr.body))
+		return rpcCodeMayBeLegacy(code, errorData(statusErr.body))
 	}
 	var rpcErr *rpcCallError
 	if errors.As(err, &rpcErr) {
-		switch rpcErr.code {
-		case codeHeaderMismatch, codeMissingRequiredCapability:
-			return false
-		case codeUnsupportedProtocolVersion:
-			return supportsLegacy(rpcErr.data)
-		}
-		return true
+		return rpcCodeMayBeLegacy(rpcErr.code, rpcErr.data)
 	}
 	return false
+}
+
+func rpcCodeMayBeLegacy(code int, data json.RawMessage) bool {
+	switch code {
+	case codeHeaderMismatch, codeMissingRequiredCapability:
+		return false
+	case codeUnsupportedProtocolVersion:
+		return supportsLegacy(data)
+	}
+	return true
 }
 
 // errorData returns the data member of a JSON-RPC error body.

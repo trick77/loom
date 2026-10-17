@@ -51,12 +51,19 @@ type ServerConfig struct {
 	// its classifier categories — so an unrecognized value simply never matches
 	// and hides the server. See Service.ToolsFor.
 	Categories []string `json:"categories"`
-	// RestrictUsers limits the server's tools to the loom usernames in Users:
+	// RestrictUsers limits the server's tools to the loom accounts in Users:
 	// the server reads one person's data (a personal library behind one token),
 	// which other accounts on this loom must not reach. An empty Users with
 	// RestrictUsers set serves nobody: an unset allowlist fails closed.
-	RestrictUsers bool     `json:"restrictUsers"`
-	Users         []string `json:"users"`
+	RestrictUsers bool `json:"restrictUsers"`
+	// Users holds stable account keys only — the loom user id or the OIDC
+	// subject — never the username: that is the IdP's mutable
+	// preferred_username (or email) and is not unique in loom.
+	Users []string `json:"users"`
+	// TrustInstructions lets the server's own instructions into the system
+	// prompt while its tools are offered. Off by default: a third-party server
+	// could change them at any refresh.
+	TrustInstructions bool `json:"trustInstructions"`
 	// PDFExtractor, for the in-process fetch server only, turns a fetched PDF
 	// into text outside the backend process. Nil leaves PDFs unextracted.
 	PDFExtractor PDFExtractor `json:"-"`
@@ -65,17 +72,23 @@ type ServerConfig struct {
 // PDFExtractor extracts the text of a fetched PDF (webfetch.Options.PDFHandler).
 type PDFExtractor func(ctx context.Context, body []byte) (string, error)
 
-// userAllowed reports whether username may use this server's tools.
-func (cfg ServerConfig) userAllowed(username string) bool {
+// Principal names a loom account to a users allowlist by its stable keys.
+type Principal struct {
+	ID      string
+	Subject string
+}
+
+// userAllowed reports whether the account may use this server's tools. Keys
+// compare exactly: ids and subjects are opaque.
+func (cfg ServerConfig) userAllowed(p Principal) bool {
 	if !cfg.RestrictUsers {
 		return true
 	}
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return false
-	}
 	for _, allowed := range cfg.Users {
-		if strings.EqualFold(allowed, username) {
+		if allowed == "" {
+			continue
+		}
+		if allowed == p.ID || (p.Subject != "" && allowed == p.Subject) {
 			return true
 		}
 	}

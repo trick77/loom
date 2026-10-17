@@ -102,7 +102,8 @@ func TestRemoteClientSpeaksModernProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool() error: %v", err)
 	}
-	want := []Source{{URL: "https://peeq.example/?v=abc&t=42", Title: "A video", Label: "peeq · Chan", Snippet: "about things"}}
+	// The URL-less entry keeps its slot: sources[i] is the text's item i+1.
+	want := []Source{{URL: "https://peeq.example/?v=abc&t=42", Title: "A video", Label: "peeq · Chan", Snippet: "about things"}, {Title: "dropped: no url"}}
 	if got.Text != "1. A video" || !reflect.DeepEqual(got.Sources, want) {
 		t.Fatalf("CallTool() = %#v", got)
 	}
@@ -183,6 +184,29 @@ func TestRemoteClientFallsBackOnUnsupportedVersionListingLegacy(t *testing.T) {
 	}
 }
 
+// A legacy server answering server/discover with a JSON-RPC MethodNotFound is
+// still legacy: a modern server must implement discover.
+func TestRemoteClientFallsBackOnMethodNotFoundProbe(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req rpcRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		switch req.Method {
+		case "server/discover":
+			w.WriteHeader(http.StatusNotFound)
+			writeRPCError(w, req.ID, codeMethodNotFound, "method not found")
+		case "initialize":
+			writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+		case "tools/list":
+			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{{"name": "t", "inputSchema": map[string]any{"type": "object"}}}})
+		}
+	}))
+	t.Cleanup(server.Close)
+	client := NewRemoteClient("l", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, server.Client())
+	if tools, err := client.ListTools(context.Background()); err != nil || len(tools) != 1 {
+		t.Fatalf("ListTools() = %v, %v", tools, err)
+	}
+}
+
 func TestHeaderSafeValue(t *testing.T) {
 	cases := map[string]string{
 		"search":         "search",
@@ -212,7 +236,7 @@ func TestToolListTTLClamps(t *testing.T) {
 }
 
 func TestStructuredSourcesIgnoresOtherShapes(t *testing.T) {
-	for _, raw := range []string{``, `null`, `"text"`, `[1,2]`, `{"sources":"nope"}`, `{"other":1}`} {
+	for _, raw := range []string{``, `null`, `"text"`, `[1,2]`, `{"sources":"nope"}`, `{"other":1}`, `{"sources":[{"url":" "}]}`} {
 		if got := structuredSources(json.RawMessage(raw)); got != nil {
 			t.Errorf("structuredSources(%s) = %#v, want nil", raw, got)
 		}

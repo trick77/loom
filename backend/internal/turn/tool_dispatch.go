@@ -187,6 +187,11 @@ func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, argumen
 	if !t.e.mcp.HasTool(obscuraNavigateToolName) || !t.e.mcp.HasTool(obscuraSnapshotToolName) {
 		return "", false
 	}
+	// The fallback calls obscura directly, so it honours a users allowlist on
+	// obscura itself the way an offered call would.
+	if !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), obscuraNavigateToolName) {
+		return "", false
+	}
 	url, ok := arguments["url"].(string)
 	if !ok || strings.TrimSpace(url) == "" {
 		return "", false
@@ -266,11 +271,17 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 	}
 	out := make([]llm.Tool, 0, len(candidates))
 	for _, tool := range candidates {
-		if s.mcp.ToolAllowed(user.Username, tool.Function.Name) {
+		if s.mcp.ToolAllowed(MCPPrincipal(user), tool.Function.Name) {
 			out = append(out, tool)
 		}
 	}
 	return out
+}
+
+// MCPPrincipal is the account an MCP users allowlist checks: its stable keys,
+// never the username (the IdP's mutable preferred_username, not unique here).
+func MCPPrincipal(user auth.User) mcp.Principal {
+	return mcp.Principal{ID: user.ID, Subject: user.OIDCSubject}
 }
 
 // mcpServerGuidance collects the instructions of every server whose tools

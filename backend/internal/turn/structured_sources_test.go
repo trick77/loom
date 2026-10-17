@@ -10,22 +10,32 @@ import (
 	"github.com/trick77/loom/internal/mcp"
 )
 
-func TestRelabelStructuredSourcesNumbersItemsFromTheRegistry(t *testing.T) {
+func TestRelabelStructuredSourcesMapsResultsToRegistryMarkers(t *testing.T) {
 	reg := newWebSourceRegistryAfter(2)
 	sources := []mcp.Source{
+		{URL: "", Title: "no link"},
 		{URL: "https://peeq.example/?v=a&t=10", Title: "First", Label: "peeq · Chan", Snippet: "one"},
 		{URL: "https://peeq.example/?v=b&t=20", Title: "Second"},
 	}
-	out := relabelStructuredSources("1. First — Chan\n   [00:10] transcript: one\n2. Second — Other\n12. not an item of ours", sources, reg)
-	if !strings.HasPrefix(out, "[3] First — Chan") || !strings.Contains(out, "\n[4] Second — Other") {
-		t.Fatalf("items not relabeled with registry markers:\n%s", out)
-	}
-	if !strings.Contains(out, "12. not an item") {
-		t.Fatalf("a number past the sources must stay as is:\n%s", out)
+	text := "1. No link\n2. First — Chan\n   1. a chapter list\n3. Second — Other"
+	out := relabelStructuredSources(text, sources, reg)
+	wantHeader := "Source [3] (result 2): First — https://peeq.example/?v=a&t=10\nSource [4] (result 3): Second — https://peeq.example/?v=b&t=20\n\n"
+	if out != wantHeader+text {
+		t.Fatalf("relabeled =\n%s\nwant the header then the untouched text", out)
 	}
 	got := reg.all()
 	if len(got) != 2 || got[0].Label != "peeq · Chan" || got[0].Snippet != "one" || got[1].Label != "Peeq" {
 		t.Fatalf("registered sources = %+v", got)
+	}
+}
+
+// A numbered list inside a single-source result stays exactly as written.
+func TestRelabelStructuredSourcesLeavesBodyListsAlone(t *testing.T) {
+	reg := newWebSourceRegistryAfter(0)
+	text := "Key points:\n1. Intro\n2. Setup"
+	out := relabelStructuredSources(text, []mcp.Source{{URL: "https://peeq.example/video/a", Title: "A video"}}, reg)
+	if out != "Source [1]: A video — https://peeq.example/video/a\n\n"+text {
+		t.Fatalf("relabeled =\n%s", out)
 	}
 }
 
@@ -66,8 +76,10 @@ func TestTurnGatesRestrictedServerAndCarriesItsGuidance(t *testing.T) {
 		users   []string
 		offered bool
 	}{
-		{"allowed", []string{testUser.Username}, true},
+		{"allowed", []string{testUser.ID}, true},
 		{"denied", []string{"someone_else"}, false},
+		// The username is the IdP's mutable claim: it never grants access.
+		{"username is no key", []string{testUser.Username}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
@@ -98,7 +110,7 @@ func TestTurnGatesRestrictedServerAndCarriesItsGuidance(t *testing.T) {
 				t.Fatalf("offered=%v guided=%v, want %v", offered, guided, c.offered)
 			}
 			if c.offered {
-				if called != 1 || !strings.Contains(out.body, "[1] Rust talk") || !strings.Contains(out.body, "peeq · Chan") {
+				if called != 1 || !strings.Contains(out.body, "Source [1]: Rust talk") || !strings.Contains(out.body, "peeq · Chan") {
 					t.Fatalf("called=%d, body missing relabeled source:\n%s", called, out.body)
 				}
 				return

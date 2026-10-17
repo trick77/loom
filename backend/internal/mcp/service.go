@@ -71,10 +71,9 @@ type toolRoute struct {
 // registeredServer is one server's client and the tools it last listed. A nil
 // client is a best-effort server that has not answered discovery yet.
 type registeredServer struct {
-	name     string
-	client   Client
-	tools    []Tool
-	required bool
+	name   string
+	client Client
+	tools  []Tool
 }
 
 // ServerStatus reports a configured MCP server's live reachability and metadata.
@@ -259,7 +258,7 @@ func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Clien
 		if err := service.register(serverName, client, tools, failOnDuplicate); err != nil {
 			return nil, err
 		}
-		service.servers = append(service.servers, &registeredServer{name: serverName, client: client, tools: tools, required: true})
+		service.servers = append(service.servers, &registeredServer{name: serverName, client: client, tools: tools})
 	}
 	return service, nil
 }

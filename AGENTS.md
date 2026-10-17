@@ -36,8 +36,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
   (`github.com/trick77/webfetch`); Obscura sidecar via `BACKEND_OBSCURA_MCP_URL`. Best-effort extras
   (Context7, ipverse-lens) live in `BACKEND_MCP_SERVERS_FILE` (`mcpServers` JSON, default
   `/conf/mcp.json`, overrides built-ins by name); secrets only as `${VAR}` interpolation.
-  Client speaks MCP 2026-07-28 first, legacy handshake as fallback. New server's sources →
-  `structuredContent.sources`, never a tool-name case in `web_sources.go`.
+  Sources → `structuredContent.sources`, no tool-name case. `users` = user id/OIDC sub, never username.
 - Except `run_python` → `loom-sandbox` (`docs/sandbox.md`): a job never gets `/data`, a user id or a
   socket; isolation change → `make sandbox-escape-test`.
 

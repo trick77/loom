@@ -3,57 +3,36 @@ package turn
 import (
 	"fmt"
 	"net/url"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/trick77/loom/internal/mcp"
 )
 
-// numberedItemPattern matches a result item's "N. " at the start of a line,
-// the shape a server uses to tie its text to structuredContent.sources (item
-// N is sources[N-1]).
-var numberedItemPattern = regexp.MustCompile(`(?m)^(\d+)\. `)
-
 // relabelStructuredSources registers the sources an MCP tool returned in
-// structuredContent and points the text at their [n] markers, so any server
-// that follows the convention feeds the sources sidebar and inline citations.
-// Item numbers in the text become the registry's markers; text without
-// numbered items gets a header listing each source's marker instead.
+// structuredContent and prepends a header naming each one's [n] marker, so any
+// server that follows the convention feeds the sources sidebar and inline
+// citations. sources[i] belongs to the text's result item i+1, which the header
+// says; the text itself is never rewritten — a numbered list inside a result
+// (chapters, key points) must reach the model as the server wrote it.
 func relabelStructuredSources(output string, sources []mcp.Source, reg *webSourceRegistry) string {
-	markers := make([]int, len(sources))
-	registered := false
-	for i, src := range sources {
-		idx, ok := reg.addSource(src)
-		if ok {
-			markers[i], registered = idx, true
-		}
-	}
-	if !registered {
-		return output
-	}
-	matched := false
-	relabeled := numberedItemPattern.ReplaceAllStringFunc(output, func(item string) string {
-		n, err := strconv.Atoi(strings.TrimSuffix(item, ". "))
-		if err != nil || n < 1 || n > len(markers) || markers[n-1] == 0 {
-			return item
-		}
-		matched = true
-		return fmt.Sprintf("[%d] ", markers[n-1])
-	})
-	if matched {
-		return relabeled
-	}
 	var header strings.Builder
 	for i, src := range sources {
-		if markers[i] == 0 {
+		idx, ok := reg.addSource(src)
+		if !ok {
 			continue
 		}
 		title := strings.TrimSpace(src.Title)
 		if title == "" {
 			title = src.URL
 		}
-		fmt.Fprintf(&header, "Source [%d]: %s — %s\n", markers[i], title, strings.TrimSpace(src.URL))
+		if len(sources) > 1 {
+			fmt.Fprintf(&header, "Source [%d] (result %d): %s — %s\n", idx, i+1, title, strings.TrimSpace(src.URL))
+		} else {
+			fmt.Fprintf(&header, "Source [%d]: %s — %s\n", idx, title, strings.TrimSpace(src.URL))
+		}
+	}
+	if header.Len() == 0 {
+		return output
 	}
 	return header.String() + "\n" + output
 }
@@ -78,7 +57,7 @@ func (r *webSourceRegistry) addSource(src mcp.Source) (int, bool) {
 }
 
 // httpsURL returns raw when it is an absolute https URL, else "": a server's
-// image URL ends up in an <img src>, so nothing else gets that far.
+// image URL is fetched by loom's image proxy, so nothing else gets that far.
 func httpsURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	u, err := url.Parse(raw)

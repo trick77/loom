@@ -55,21 +55,22 @@ func structuredSources(raw json.RawMessage) []Source {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil
 	}
-	out := make([]Source, 0, len(payload.Sources))
-	for _, src := range payload.Sources {
-		src.URL = strings.TrimSpace(src.URL)
-		if src.URL == "" {
-			continue
-		}
-		out = append(out, src)
-		if len(out) == maxStructuredSources {
-			break
-		}
+	// Positions are kept, unusable entries included: sources[i] belongs to the
+	// text's item i+1, so dropping one would shift every later citation onto
+	// the wrong item. The consumer skips an entry it cannot register.
+	sources := payload.Sources
+	if len(sources) > maxStructuredSources {
+		sources = sources[:maxStructuredSources]
 	}
-	if len(out) == 0 {
+	usable := false
+	for i := range sources {
+		sources[i].URL = strings.TrimSpace(sources[i].URL)
+		usable = usable || sources[i].URL != ""
+	}
+	if !usable {
 		return nil
 	}
-	return out
+	return sources
 }
 
 func toolContentText(content []toolContent) string {

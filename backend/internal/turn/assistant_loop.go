@@ -192,7 +192,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		for i, call := range result.ToolCalls {
 			perToolCount[call.Function.Name]++
 			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
-			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(t.user.Username, call.Function.Name)
+			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), call.Function.Name)
 			skipped[i] = deferred[i] || denied[i]
 		}
 		// The round's independent web reads start now and overlap; everything

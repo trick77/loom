@@ -96,9 +96,9 @@ type ToolService interface {
 	// CallToolResult is CallTool plus the structured sources the result cited.
 	CallToolResult(context.Context, string, map[string]any) (mcp.CallResult, error)
 	HasTool(string) bool
-	// ToolAllowed reports whether the loom user (by username) may use a tool:
-	// a server can be limited to some accounts.
-	ToolAllowed(username, name string) bool
+	// ToolAllowed reports whether a loom account may use a tool: a server can
+	// be limited to some accounts (see mcp.Principal).
+	ToolAllowed(user mcp.Principal, name string) bool
 	// ServerInstructions is a server's own guidance for the model, empty when
 	// it gave none.
 	ServerInstructions(server string) string
