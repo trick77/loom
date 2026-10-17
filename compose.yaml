@@ -37,6 +37,10 @@ services:
       # Tokens referenced by mcp.json's ${VAR} placeholders (ipverse-lens whois; Context7 docs).
       IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"
       CONTEXT7_API_KEY: "${CONTEXT7_API_KEY:-}"
+      # peeq video library (mcp.json "peeq" entry; see conf/mcp.json.example).
+      PEEQ_MCP_URL: "${PEEQ_MCP_URL:-}"
+      PEEQ_MCP_TOKEN: "${PEEQ_MCP_TOKEN:-}"
+      BACKEND_PEEQ_USERS: "${BACKEND_PEEQ_USERS:-}"
       BACKEND_IMAGE_GEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-https://queue.fal.run}"
       BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"
       BACKEND_IMAGE_GEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-fal-ai/flux-2-pro}"
