@@ -228,7 +228,7 @@ func (s *server) resolveAndCacheIcon(ctx context.Context, key, scheme, host, pag
 // carry <script>, and we re-serve favicon bytes from our own origin. serveFaviconFile
 // adds nosniff + a locked-down CSP as defence in depth for the raster types we serve.
 func (s *server) fetchFaviconBytes(ctx context.Context, rawURL string) (body []byte, contentType string, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil) //nolint:gosec // G704: callers pass an http(s) URL they validated, and the client dials through webfetch.GuardedControl, which rejects every non-public address after DNS resolution
 	if err != nil {
 		return nil, "", err
 	}

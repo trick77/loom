@@ -51,5 +51,5 @@ func (s *server) handleSourceImage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Cache-Control", faviconCacheControl)
-	_, _ = w.Write(body)
+	_, _ = w.Write(body) //nolint:gosec // G705: fetchFaviconBytes admits raster image/* only (no SVG), served with nosniff and a sandboxing CSP
 }

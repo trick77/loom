@@ -17,7 +17,7 @@ func getSourceImage(s *server, target string) *httptest.ResponseRecorder {
 
 func TestHandleSourceImage_proxiesAndCachesAnImage(t *testing.T) {
 	var hits atomic.Int32
-	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		writePNG(w)
 	}))

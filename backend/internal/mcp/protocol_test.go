@@ -72,7 +72,7 @@ func writeRPCError(w http.ResponseWriter, id int64, code int, message string) {
 }
 
 func TestRemoteClientSpeaksModernProtocol(t *testing.T) {
-	server, methods := newModernServer(t, func(req modernRequest) any {
+	server, methods := newModernServer(t, func(modernRequest) any {
 		return map[string]any{
 			"resultType": "complete",
 			"content":    []map[string]any{{"type": "text", "text": "1. A video"}},

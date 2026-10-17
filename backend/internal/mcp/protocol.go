@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -97,7 +98,8 @@ func headerSafeValue(s string) string {
 			safe = false
 		}
 	}
-	if safe && !(len(s) >= 11 && s[:9] == "=?base64?" && s[len(s)-2:] == "?=") {
+	looksEncoded := strings.HasPrefix(s, "=?base64?") && strings.HasSuffix(s, "?=") && len(s) >= 11
+	if safe && !looksEncoded {
 		return s
 	}
 	return "=?base64?" + base64.StdEncoding.EncodeToString([]byte(s)) + "?="

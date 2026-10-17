@@ -176,7 +176,7 @@ func (c *remoteClient) discover(ctx context.Context) error {
 		return err
 	}
 	if legacyErr := c.initialize(ctx); legacyErr != nil {
-		return fmt.Errorf("%w (legacy handshake: %v)", err, legacyErr)
+		return fmt.Errorf("%w (legacy handshake: %w)", err, legacyErr)
 	}
 	c.setEra(eraLegacy)
 	return nil
