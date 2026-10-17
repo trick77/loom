@@ -5291,11 +5291,13 @@ test("renders unknown tool calls with safe fallback details", async () => {
   expect(await screen.findByText("Done.")).toBeInTheDocument();
   const toggle = screen.getByRole("button", { name: /show activity/i });
   expect(toggle).toBeInTheDocument();
-  expect(screen.queryByText("custom lookup")).not.toBeInTheDocument();
+  expect(screen.queryByText("Lookup")).not.toBeInTheDocument();
 
   fireEvent.click(toggle);
 
-  expect(await screen.findByText("custom lookup")).toBeInTheDocument();
+  expect(await screen.findByText("Lookup")).toBeInTheDocument();
+  // The tool behind the step is named too: here its MCP server.
+  expect(screen.getByText("custom")).toBeInTheDocument();
   // A finished tool call shows no status pill — only the terminal timeline node
   // reads "Done".
   const doneNodes = screen.getAllByText("Done");

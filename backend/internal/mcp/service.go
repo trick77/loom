@@ -66,6 +66,7 @@ const statusCacheTTL = 30 * time.Second
 type toolRoute struct {
 	client Client
 	name   string
+	title  string
 }
 
 // registeredServer is one server's client and the tools it last listed. A nil
@@ -402,6 +403,17 @@ func (s *Service) HasTool(name string) bool {
 	return ok
 }
 
+// ToolTitle returns the server's human-readable name for an exposed tool, or
+// "" when the server gave none (the UI then describes the call itself).
+func (s *Service) ToolTitle(name string) string {
+	if s == nil {
+		return ""
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.routes[name].title
+}
+
 // CallTool invokes an MCP tool by its exposed name and returns its text.
 func (s *Service) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
 	result, err := s.CallToolResult(ctx, name, arguments)
@@ -443,7 +455,7 @@ func (s *Service) register(serverName string, client Client, tools []Tool, onDup
 			}
 			continue
 		}
-		s.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName}
+		s.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName, title: tool.Title}
 		s.tools = append(s.tools, llm.Tool{
 			Type: "function",
 			Function: llm.ToolFunction{

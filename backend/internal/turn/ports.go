@@ -102,6 +102,9 @@ type ToolService interface {
 	// ServerInstructions is a server's own guidance for the model, empty when
 	// it gave none.
 	ServerInstructions(server string) string
+	// ToolTitle is a tool's human-readable name from its server, empty when it
+	// gave none.
+	ToolTitle(name string) string
 }
 
 // DocumentService is the RAG document store a turn reads its knowledge from:

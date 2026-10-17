@@ -11,6 +11,9 @@ type ToolCallResponse struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
+	// Title is the tool's human-readable name from its MCP server, so the UI
+	// can say what the call does; empty for built-ins and untitled tools.
+	Title string `json:"title,omitempty"`
 }
 
 // ToolResultResponse is the payload of tool_result: what a tool call returned

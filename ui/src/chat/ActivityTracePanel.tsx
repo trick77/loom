@@ -25,6 +25,7 @@ import {
   type ActivityTraceEvent,
   type ActivityTraceToolEvent,
   type ToolResultPreview,
+  toolSourceLabel,
 } from "../activityTrace";
 import i18n from "../i18n";
 import { Icon } from "./Icon";
@@ -362,6 +363,11 @@ function ActivityTraceRow({
           <span className="flex min-w-0 items-center gap-2">
             <span className="ui-activity-tool-title">
               {event.summary.title}
+            </span>
+            {/* Which tool ran, beside what it did; the raw tool name stays one
+                hover away for anyone debugging. */}
+            <span className="ui-activity-tool-source" title={event.name}>
+              {toolSourceLabel(event.name)}
             </span>
           </span>
           {status !== undefined && (

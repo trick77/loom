@@ -46,6 +46,7 @@ func (t *Run) PersistAssistantTurn(ctx context.Context, result *LoopResult) (cha
 	// The blocks' trace events are separate objects from the flat trace but share
 	// reasoning ids, so stamp the same titles onto them too.
 	t.titles.MergeIntoBlocks(result.Blocks)
+	t.stampToolTitles(result.ActivityTrace, result.Blocks)
 	activityTraceJSON, contentBlocksJSON := MarshalTurnJSON(t.thread.ID, result.ActivityTrace, result.Blocks)
 	turnCost, turnPriced := t.acc.TurnCost()
 	assistantMessage, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, MessageMetricsWithCost(result.StreamResult, t.acc.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, t.citationsJSON(result.WebSources), contentBlocksJSON)
@@ -71,6 +72,7 @@ func (t *Run) persistSegment(ctx context.Context, b *blockBuilder, artifacts []a
 	trace := b.flatTrace()
 	t.titles.MergeInto(trace)
 	t.titles.MergeIntoBlocks(b.blocks)
+	t.stampToolTitles(trace, b.blocks)
 	traceJSON, blocksJSON := MarshalTurnJSON(t.thread.ID, trace, b.blocks)
 	segment, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, b.prose(), chat.MessageTokenUsage{}, artifactsJSON, traceJSON, t.citationsJSON(sources), blocksJSON)
 	if err != nil {

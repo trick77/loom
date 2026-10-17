@@ -15,6 +15,9 @@ type ActivityTraceEvent struct {
 	Status       string `json:"status"`
 	RawArguments string `json:"rawArguments,omitempty"`
 	RawOutput    string `json:"rawOutput,omitempty"`
+	// ToolTitle is a tool event's human-readable tool name from its MCP
+	// server (Title is the reasoning title). Stamped at persist time.
+	ToolTitle string `json:"toolTitle,omitempty"`
 }
 
 // reasoningEvent builds the trace event for a turn's reasoning content.
@@ -35,6 +38,44 @@ func toolCallEvent(call llm.ToolCall) ActivityTraceEvent {
 		Name:         call.Function.Name,
 		Status:       "running",
 		RawArguments: call.Function.Arguments,
+	}
+}
+
+// toolTitle is the human-readable name a tool call is streamed with: its MCP
+// server's title, or "" for a built-in, an untitled tool, or a tool of a
+// server limited to other accounts (its titles are that server's metadata
+// too). The answer is remembered by call id for the persisted trace.
+func (t *Run) toolTitle(callID, name string) string {
+	if title, seen := t.toolTitles[callID]; seen && callID != "" {
+		return title
+	}
+	title := ""
+	if t.e.mcp != nil && t.e.mcp.ToolAllowed(MCPPrincipal(t.user), name) {
+		title = t.e.mcp.ToolTitle(name)
+	}
+	if callID != "" {
+		if t.toolTitles == nil {
+			t.toolTitles = map[string]string{}
+		}
+		t.toolTitles[callID] = title
+	}
+	return title
+}
+
+// stampToolTitles records in the persisted trace (flat and per block) the
+// title each tool call was streamed with, so a reloaded thread describes its
+// tool calls exactly the way the live stream did.
+func (t *Run) stampToolTitles(trace []ActivityTraceEvent, blocks []ContentBlock) {
+	stamp := func(events []ActivityTraceEvent) {
+		for i := range events {
+			if events[i].Type == "tool" && events[i].ToolTitle == "" {
+				events[i].ToolTitle = t.toolTitles[events[i].ID]
+			}
+		}
+	}
+	stamp(trace)
+	for i := range blocks {
+		stamp(blocks[i].Events)
 	}
 }
 

@@ -145,6 +145,10 @@ export const en = {
       fetchingWebPage: "Fetching a web page",
       creating: "Creating {{name}}",
       runningPython: "Running Python",
+      titledWithQuery: "{{title}}: {{query}}",
+      savingMemory: "Saving a memory",
+      updatingMemory: "Updating a memory",
+      forgettingMemory: "Forgetting a memory",
       activityComplete: "Activity complete",
       gen: {
         image: "image",
@@ -154,6 +158,19 @@ export const en = {
         presentation: "presentation",
         file: "file",
       },
+    },
+    // The tool behind a trace step, shown next to what it does.
+    sources: {
+      tavily: "Web search",
+      fetch: "Web fetch",
+      browser: "Browser",
+      python: "Python sandbox",
+      conversations: "Your conversations",
+      projects: "Your projects",
+      imageGenerator: "Image generator",
+      memory: "Memory",
+      files: "File generator",
+      loom: "loom",
     },
   },
   tabTitle: {

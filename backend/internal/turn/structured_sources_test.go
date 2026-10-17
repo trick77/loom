@@ -122,6 +122,57 @@ func TestTurnGatesRestrictedServerAndCarriesItsGuidance(t *testing.T) {
 	}
 }
 
+// A server-titled tool's title reaches the live tool_call event and the
+// persisted trace, so the UI can say what the call does.
+func TestTurnCarriesToolTitle(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{{ID: "c1", Function: llm.ToolCallFunction{Name: "peeq__get_video", Arguments: `{"id":"abc"}`}}}},
+		{Content: "Done."},
+	}}
+	out := runStoredTurn(t, Config{
+		LLM: llmClient,
+		MCP: fakeMCPService{
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "peeq__get_video"}}},
+			Titles:   map[string]string{"peeq__get_video": "Get a video's summaries"},
+			Result:   "summary",
+		},
+	}, store, "summarize video abc")
+	if out.err != nil {
+		t.Fatalf("turn error: %v", out.err)
+	}
+	if !strings.Contains(out.body, `"title":"Get a video's summaries"`) {
+		t.Fatalf("tool_call event lacks the title:\n%s", out.body)
+	}
+	if !strings.Contains(string(store.LastContentBlocks), `"toolTitle":"Get a video's summaries"`) {
+		t.Fatalf("persisted blocks lack the tool title: %s", store.LastContentBlocks)
+	}
+}
+
+// A server limited to other accounts never shows its tool titles, even when
+// the model names one of its tools unprompted.
+func TestTurnHidesRestrictedServerToolTitle(t *testing.T) {
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
+	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{{ID: "c1", Function: llm.ToolCallFunction{Name: "peeq__get_video", Arguments: `{"id":"abc"}`}}}},
+		{Content: "Done."},
+	}}
+	out := runStoredTurn(t, Config{
+		LLM: llmClient,
+		MCP: fakeMCPService{
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "peeq__get_video"}}},
+			Titles:   map[string]string{"peeq__get_video": "Get a video's summaries"},
+			Users:    map[string][]string{"peeq": {"someone_else"}},
+		},
+	}, store, "summarize video abc")
+	if out.err != nil {
+		t.Fatalf("turn error: %v", out.err)
+	}
+	if strings.Contains(out.body, "Get a video's summaries") || strings.Contains(string(store.LastContentBlocks), "Get a video's summaries") {
+		t.Fatalf("a restricted server's title leaked:\n%s\n%s", out.body, store.LastContentBlocks)
+	}
+}
+
 func hasTool(tools []llm.Tool, name string) bool {
 	for _, tool := range tools {
 		if tool.Function.Name == name {
