@@ -27,6 +27,8 @@ type ToolService struct {
 	Users map[string][]string
 	// Instructions are the servers' guidance, by server name.
 	Instructions map[string]string
+	// Titles are the tools' human-readable names, by exposed tool name.
+	Titles map[string]string
 	// ToolCategories optionally tags an exposed tool name with the categories its
 	// server is relevant to, mirroring mcp.Service.ToolsFor. A tool absent here (or
 	// with an empty list) is category-neutral and always returned.
@@ -102,6 +104,11 @@ func (f ToolService) ToolAllowed(user mcp.Principal, name string) bool {
 func (f ToolService) ServerAllowed(user mcp.Principal, server string) bool {
 	users, restricted := f.Users[server]
 	return !restricted || mcp.UsersAllow(users, user)
+}
+
+// ToolTitle implements turn.ToolService.
+func (f ToolService) ToolTitle(name string) string {
+	return f.Titles[name]
 }
 
 // ServerInstructions implements turn.ToolService.

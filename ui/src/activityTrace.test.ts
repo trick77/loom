@@ -178,7 +178,7 @@ describe("activity trace model", () => {
       status: "done",
       summary: {
         kind: "generic",
-        title: "acme transmogrify asset",
+        title: "Transmogrify asset",
       },
       preview: {
         kind: "text",
@@ -212,7 +212,7 @@ describe("activity trace model", () => {
       title: "Creating presentation",
     });
     expect(summarizeToolCall("custom__lookup", "not-json")).toMatchObject({
-      title: "custom lookup",
+      title: "Lookup",
     });
   });
 

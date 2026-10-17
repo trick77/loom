@@ -238,6 +238,9 @@ export type ToolCallEvent = {
   id: string;
   name: string;
   arguments: string;
+  // title is the tool's human-readable name from its MCP server, when it
+  // gave one.
+  title?: string;
 };
 
 export type ToolResultEvent = {

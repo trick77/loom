@@ -407,6 +407,7 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 			ID:        call.ID,
 			Name:      call.Function.Name,
 			Arguments: call.Function.Arguments,
+			Title:     t.e.toolTitle(call.Function.Name),
 		}); err != nil {
 			return LoopResult{}, err
 		}
@@ -671,6 +672,7 @@ func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reaso
 				ID:        event.ToolCall.ID,
 				Name:      event.ToolCall.Function.Name,
 				Arguments: event.ToolCall.Function.Arguments,
+				Title:     t.e.toolTitle(event.ToolCall.Function.Name),
 			})
 		}
 		return nil

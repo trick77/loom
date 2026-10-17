@@ -28,9 +28,12 @@ const (
 type Tool struct {
 	Name         string
 	OriginalName string
-	Description  string
-	InputSchema  map[string]any
-	ServerName   string
+	// Title is the server's human-readable name for the tool, shown to the
+	// user while it runs; empty when the server gave none.
+	Title       string
+	Description string
+	InputSchema map[string]any
+	ServerName  string
 }
 
 // Client is the common interface for MCP tool-serving clients.
@@ -74,8 +77,21 @@ type listToolsResult struct {
 
 type toolResult struct {
 	Name        string         `json:"name"`
+	Title       string         `json:"title"`
 	Description string         `json:"description"`
 	InputSchema map[string]any `json:"inputSchema"`
+	Annotations struct {
+		Title string `json:"title"`
+	} `json:"annotations"`
+}
+
+// displayTitle is the tool's human-readable name: the top-level title the
+// spec prefers, else the older annotations.title.
+func (t toolResult) displayTitle() string {
+	if title := strings.TrimSpace(t.Title); title != "" {
+		return title
+	}
+	return strings.TrimSpace(t.Annotations.Title)
 }
 
 // discoverResult is the part of a modern server/discover (or a legacy
@@ -443,6 +459,7 @@ func exposeTools(serverName string, cfg ServerConfig, tools []toolResult) []Tool
 		out = append(out, Tool{
 			Name:         ExposedToolName(serverName, tool.Name),
 			OriginalName: tool.Name,
+			Title:        tool.displayTitle(),
 			Description:  tool.Description,
 			InputSchema:  tool.InputSchema,
 			ServerName:   serverName,

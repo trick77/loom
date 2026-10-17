@@ -34,6 +34,9 @@ export type ActivityTraceToolEvent = {
   preview?: ToolResultPreview;
   rawArguments?: string;
   rawOutput?: string;
+  // toolTitle is the tool's human-readable name from its MCP server (live from
+  // the tool_call event, persisted with the trace).
+  toolTitle?: string;
 };
 
 export type ToolSummary =
@@ -103,8 +106,9 @@ export function upsertTraceToolCall(
       type: "tool",
       name: event.name,
       status: "running",
-      summary: summarizeToolCall(event.name, event.arguments),
+      summary: summarizeToolCall(event.name, event.arguments, event.title),
       rawArguments: event.arguments,
+      toolTitle: event.title,
     },
   ];
 }
@@ -150,7 +154,11 @@ export function normalizeActivityTrace(
     }
     const summary =
       event.summary ??
-      summarizeToolCall(event.name, event.rawArguments ?? "{}");
+      summarizeToolCall(
+        event.name,
+        event.rawArguments ?? "{}",
+        event.toolTitle,
+      );
     const normalized: ActivityTraceToolEvent = {
       ...event,
       status:
@@ -202,6 +210,7 @@ export function applyReasoningTitle(
 export function summarizeToolCall(
   name: string,
   rawArguments: string,
+  toolTitle?: string,
 ): ToolSummary {
   const args = parseJSONRecord(rawArguments);
   if (name === SANDBOX_TOOL) {
@@ -212,6 +221,24 @@ export function summarizeToolCall(
     };
   }
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
+  const serverTitle = toolTitle?.trim();
+  if (serverTitle) {
+    // The tool's own server said what it does; that beats guessing from the
+    // name (a library search is not a web search, so no globe either).
+    return {
+      kind: query !== undefined ? "lookup" : "generic",
+      title: query
+        ? i18n.t("activityTrace.trace.titledWithQuery", {
+            title: serverTitle,
+            query,
+          })
+        : serverTitle,
+    };
+  }
+  const memory = memoryToolLabel(name);
+  if (memory !== undefined) {
+    return { kind: "generated", title: memory };
+  }
   if (/conversation_search/i.test(name)) {
     // Distinct kind so the trace renders a loupe (own-history search) rather than
     // the globe used for web search — see ActivityTracePanel.
@@ -445,8 +472,51 @@ function looksLikeDomainURL(value: string): boolean {
   );
 }
 
+// readableToolName describes an untitled tool by its own name, without the
+// server prefix the source label already shows: "peeq__get_video" reads
+// "Get video".
 function readableToolName(name: string): string {
-  return name.replace(/__/g, " ").replace(/_/g, " ").trim();
+  const own = name.includes("__") ? name.slice(name.indexOf("__") + 2) : name;
+  return capitalizeFirst(own.replace(/_/g, " ").trim());
+}
+
+function memoryToolLabel(name: string): string | undefined {
+  switch (name) {
+    case "remember_user_directive":
+      return i18n.t("activityTrace.trace.savingMemory");
+    case "update_user_directive":
+      return i18n.t("activityTrace.trace.updatingMemory");
+    case "forget_user_directive":
+      return i18n.t("activityTrace.trace.forgettingMemory");
+  }
+  return undefined;
+}
+
+// Built-in MCP servers and loom's own tools, by the name their label uses.
+const KNOWN_TOOL_SOURCES: Record<string, string> = {
+  tavily: "sources.tavily",
+  fetch: "sources.fetch",
+  obscura: "sources.browser",
+  run_python: "sources.python",
+  conversation_search: "sources.conversations",
+  read_thread: "sources.conversations",
+  read_project_threads: "sources.projects",
+  generate_image: "sources.imageGenerator",
+  remember_user_directive: "sources.memory",
+  update_user_directive: "sources.memory",
+  forget_user_directive: "sources.memory",
+};
+
+// toolSourceLabel names the tool behind a trace step, so the user always sees
+// which tool ran: the MCP server ("peeq", "Context7") or loom's own tool
+// ("Python sandbox", "File generator").
+export function toolSourceLabel(name: string): string {
+  const server = name.includes("__") ? name.slice(0, name.indexOf("__")) : "";
+  const key = KNOWN_TOOL_SOURCES[server] ?? KNOWN_TOOL_SOURCES[name];
+  if (key !== undefined) return i18n.t(`activityTrace.${key}`);
+  if (server !== "") return server;
+  if (/^create_/.test(name)) return i18n.t("activityTrace.sources.files");
+  return i18n.t("activityTrace.sources.loom");
 }
 
 function summarizeReasoning(events: ActivityTraceEvent[]): string {
