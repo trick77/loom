@@ -387,11 +387,15 @@ describe("SourcesSidebar selection", () => {
     const { container } = render(
       <MessageCitations citations={withImage} sourcesOpen />,
     );
+    // Proxied through the backend: the image host never sees the reader.
     const images = container.querySelectorAll(
-      "aside img[src^='https://i.ytimg.com']",
+      "aside img[src^='/api/source-image']",
     );
     expect(images).toHaveLength(1);
-    expect(images[0]).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(images[0]).toHaveAttribute(
+      "src",
+      `/api/source-image?u=${encodeURIComponent("https://i.ytimg.com/vi/abc/mqdefault.jpg")}`,
+    );
     expect(
       within(screen.getByRole("link", { name: /A talk/ })).getByText(
         "peeq · Chan",

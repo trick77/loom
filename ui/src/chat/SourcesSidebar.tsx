@@ -119,6 +119,11 @@ export function SourcesSidebar({
   );
 }
 
+// sourceImageURL routes a source's preview image through the backend proxy.
+function sourceImageURL(imageURL: string): string {
+  return `/api/source-image?u=${encodeURIComponent(imageURL)}`;
+}
+
 function cardKey(citation: Citation, index: number): string {
   return `${citation.index ?? index}-${citation.url ?? ""}`;
 }
@@ -211,13 +216,12 @@ function SourceCard({
         )}
       </div>
       {citation.image !== undefined && citation.image !== "" && (
-        // A preview the source supplied (a video thumbnail). No referrer: the
-        // image host learns nothing about which loom page showed it.
+        // A preview the source supplied (a video thumbnail), fetched by the
+        // backend like favicons: the image host never sees the reader.
         <img
-          src={citation.image}
+          src={sourceImageURL(citation.image)}
           alt=""
           loading="lazy"
-          referrerPolicy="no-referrer"
           className="mt-1 h-[54px] w-24 shrink-0 rounded-md object-cover"
         />
       )}
