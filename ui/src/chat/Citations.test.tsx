@@ -375,6 +375,30 @@ describe("SourcesSidebar selection", () => {
     );
   }
 
+  it("shows a source's preview image, and none without one", () => {
+    const withImage: Citation[] = [
+      {
+        ...webSource("https://peeq.example/?v=abc&t=5", 1, "peeq · Chan"),
+        title: "A talk",
+        image: "https://i.ytimg.com/vi/abc/mqdefault.jpg",
+      },
+      sources[1],
+    ];
+    const { container } = render(
+      <MessageCitations citations={withImage} sourcesOpen />,
+    );
+    const images = container.querySelectorAll(
+      "aside img[src^='https://i.ytimg.com']",
+    );
+    expect(images).toHaveLength(1);
+    expect(images[0]).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(
+      within(screen.getByRole("link", { name: /A talk/ })).getByText(
+        "peeq · Chan",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("marks only the pinned source's card", () => {
     openDrawer({ selected: new Set([1]) });
 

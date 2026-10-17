@@ -26,6 +26,8 @@ type webSource struct {
 	Title   string `json:"title,omitempty"`
 	Snippet string `json:"snippet,omitempty"`
 	Favicon string `json:"favicon,omitempty"`
+	// Image is a preview picture a structured source supplied (an https URL).
+	Image string `json:"image,omitempty"`
 }
 
 // maxSourceSnippetChars caps the per-source snippet stored for the sidebar.
@@ -383,6 +385,7 @@ func webSourceCitations(sources []webSource) []Citation {
 			Title:    ws.Title,
 			Snippet:  ws.Snippet,
 			Favicon:  ws.Favicon,
+			Image:    ws.Image,
 		})
 	}
 	return out

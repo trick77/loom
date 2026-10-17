@@ -2,6 +2,7 @@ package turn
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -65,10 +66,24 @@ func (r *webSourceRegistry) addSource(src mcp.Source) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	if label := strings.TrimSpace(src.Label); label != "" {
-		if pos := idx - r.offset - 1; pos >= 0 && pos < len(r.sources) {
+	if pos := idx - r.offset - 1; pos >= 0 && pos < len(r.sources) {
+		if label := strings.TrimSpace(src.Label); label != "" {
 			r.sources[pos].Label = label
+		}
+		if image := httpsURL(src.Image); image != "" && r.sources[pos].Image == "" {
+			r.sources[pos].Image = image
 		}
 	}
 	return idx, true
+}
+
+// httpsURL returns raw when it is an absolute https URL, else "": a server's
+// image URL ends up in an <img src>, so nothing else gets that far.
+func httpsURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return ""
+	}
+	return raw
 }

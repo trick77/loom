@@ -178,35 +178,48 @@ function SourceCard({
       onFocus={() => onHoverSource?.(number)}
       onBlur={() => onHoverSource?.(undefined)}
       aria-current={isSelected ? "true" : undefined}
-      className={`ui-source-card block rounded-[10px] px-3 py-2.5 no-underline transition-colors ${
+      className={`ui-source-card flex gap-3 rounded-[10px] px-3 py-2.5 no-underline transition-colors ${
         isSelected ? "ui-source-card-selected" : ""
       }`}
     >
-      <div className="mb-1 flex items-center gap-2 text-[13px] text-[#8a887f]">
-        {/* Same plate, family, weight and tabular figures as the inline marker it
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex items-center gap-2 text-[13px] text-[#8a887f]">
+          {/* Same plate, family, weight and tabular figures as the inline marker it
             pairs with — but not its superscript rise: here the number is a row
             element, not a marker riding a text baseline. */}
-        {number !== undefined && (
-          <span className="ui-source-number">{number}</span>
-        )}
-        <span className="truncate">{site}</span>
-      </div>
-      <p className="mb-1 flex items-center gap-2 text-[15px] leading-snug font-semibold text-[#f3f0e8]">
-        <span>{title}</span>
-        <SourceFavicon citation={citation} size={16} />
-      </p>
-      {citation.snippet !== undefined && citation.snippet !== "" && (
-        <p
-          className="text-[13px] leading-5 text-[#8a887f]"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-        >
-          {citation.snippet}
+          {number !== undefined && (
+            <span className="ui-source-number">{number}</span>
+          )}
+          <span className="truncate">{site}</span>
+        </div>
+        <p className="mb-1 flex items-center gap-2 text-[15px] leading-snug font-semibold text-[#f3f0e8]">
+          <span>{title}</span>
+          <SourceFavicon citation={citation} size={16} />
         </p>
+        {citation.snippet !== undefined && citation.snippet !== "" && (
+          <p
+            className="text-[13px] leading-5 text-[#8a887f]"
+            style={{
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {citation.snippet}
+          </p>
+        )}
+      </div>
+      {citation.image !== undefined && citation.image !== "" && (
+        // A preview the source supplied (a video thumbnail). No referrer: the
+        // image host learns nothing about which loom page showed it.
+        <img
+          src={citation.image}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className="mt-1 h-[54px] w-24 shrink-0 rounded-md object-cover"
+        />
       )}
     </a>
   );

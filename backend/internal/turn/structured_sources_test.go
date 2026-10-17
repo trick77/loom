@@ -37,6 +37,18 @@ func TestRelabelStructuredSourcesWithoutNumberedItemsAddsHeader(t *testing.T) {
 	}
 }
 
+func TestStructuredSourceImageMustBeHTTPS(t *testing.T) {
+	reg := newWebSourceRegistryAfter(0)
+	relabelStructuredSources("1. a\n2. b", []mcp.Source{
+		{URL: "https://peeq.example/?v=a", Image: "https://i.ytimg.com/vi/a/mqdefault.jpg"},
+		{URL: "https://peeq.example/?v=b", Image: "javascript:alert(1)"},
+	}, reg)
+	got := webSourceCitations(reg.all())
+	if got[0].Image != "https://i.ytimg.com/vi/a/mqdefault.jpg" || got[1].Image != "" {
+		t.Fatalf("images = %q, %q", got[0].Image, got[1].Image)
+	}
+}
+
 func TestRelabelStructuredSourcesSkipsUnusableURLs(t *testing.T) {
 	reg := newWebSourceRegistryAfter(0)
 	out := relabelStructuredSources("1. x", []mcp.Source{{URL: "ftp://nope"}}, reg)

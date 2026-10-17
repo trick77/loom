@@ -12,12 +12,13 @@ const maxStructuredSources = 20
 // Source is one citable item a tool result carries in
 // structuredContent.sources: the convention loom reads so any MCP server can
 // feed the sources sidebar and the model's [n] markers. URL is required; the
-// rest is display detail.
+// rest is display detail; Image is a preview picture (a video thumbnail).
 type Source struct {
 	URL     string `json:"url"`
 	Title   string `json:"title"`
 	Label   string `json:"label"`
 	Snippet string `json:"snippet"`
+	Image   string `json:"image"`
 }
 
 // CallResult is a tool call's model-facing text plus the sources it cited.
