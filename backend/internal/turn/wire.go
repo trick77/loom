@@ -24,4 +24,6 @@ type Citation struct {
 	// one). Empty for RAG document citations.
 	Title   string `json:"title,omitempty"`
 	Favicon string `json:"favicon,omitempty"`
+	// Image is a preview picture (a video thumbnail) an MCP source supplied.
+	Image string `json:"image,omitempty"`
 }

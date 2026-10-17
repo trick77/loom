@@ -231,11 +231,10 @@ type ChatClient interface {
 
 // ToolService exposes configured MCP tools to chat handlers.
 type ToolService interface {
-	Tools() []llm.Tool
-	ToolsFor(active map[string]bool) []llm.Tool
-	CallTool(context.Context, string, map[string]any) (string, error)
-	HasTool(string) bool
+	turn.ToolService
 	ServerStatus(context.Context) []mcp.ServerStatus
+	// ServerAllowed hides a server limited to other accounts from /mcp.
+	ServerAllowed(user mcp.Principal, server string) bool
 }
 
 // SandboxRunner runs run_python jobs; *sandbox.Client implements it. The
@@ -379,6 +378,7 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/download", s.handlePublicShareArtifactDownload)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/thumbnail", s.handlePublicShareArtifactThumbnail)
 	mux.Handle("GET /api/favicon", s.requireAuth(http.HandlerFunc(s.handleFavicon)))
+	mux.Handle("GET /api/source-image", s.requireAuth(http.HandlerFunc(s.handleSourceImage)))
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
 	mux.Handle("POST /api/artifacts/images/upload", s.requireAuth(http.HandlerFunc(s.handleUploadImageAttachment)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))

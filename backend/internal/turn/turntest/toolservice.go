@@ -20,6 +20,13 @@ type ToolService struct {
 	Available map[string]bool
 	Servers   []mcp.ServerStatus
 	CallFunc  func(ctx context.Context, name string, args map[string]any) (string, error)
+	// Sources are the structured sources every successful call returns.
+	Sources []mcp.Source
+	// Users limits a server (by name) to these loom user ids, mirroring a
+	// mcp.ServerConfig users allowlist; a server absent here is open.
+	Users map[string][]string
+	// Instructions are the servers' guidance, by server name.
+	Instructions map[string]string
 	// ToolCategories optionally tags an exposed tool name with the categories its
 	// server is relevant to, mirroring mcp.Service.ToolsFor. A tool absent here (or
 	// with an empty list) is category-neutral and always returned.
@@ -71,6 +78,35 @@ func (f ToolService) CallTool(ctx context.Context, name string, args map[string]
 		return "", f.Err
 	}
 	return f.Result, nil
+}
+
+// CallToolResult implements turn.ToolService.
+func (f ToolService) CallToolResult(ctx context.Context, name string, args map[string]any) (mcp.CallResult, error) {
+	text, err := f.CallTool(ctx, name, args)
+	if err != nil {
+		return mcp.CallResult{}, err
+	}
+	return mcp.CallResult{Text: text, Sources: f.Sources}, nil
+}
+
+// ToolAllowed implements turn.ToolService.
+func (f ToolService) ToolAllowed(user mcp.Principal, name string) bool {
+	server, _, ok := mcp.SplitExposedToolName(name)
+	if !ok {
+		return true
+	}
+	return f.ServerAllowed(user, server)
+}
+
+// ServerAllowed mirrors mcp.Service.ServerAllowed: exact key match.
+func (f ToolService) ServerAllowed(user mcp.Principal, server string) bool {
+	users, restricted := f.Users[server]
+	return !restricted || mcp.UsersAllow(users, user)
+}
+
+// ServerInstructions implements turn.ToolService.
+func (f ToolService) ServerInstructions(server string) string {
+	return f.Instructions[server]
 }
 
 // HasTool implements turn.ToolService.

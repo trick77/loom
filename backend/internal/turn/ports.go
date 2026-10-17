@@ -8,6 +8,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
 	"github.com/trick77/loom/internal/usage"
@@ -92,7 +93,15 @@ type ToolService interface {
 	Tools() []llm.Tool
 	ToolsFor(active map[string]bool) []llm.Tool
 	CallTool(context.Context, string, map[string]any) (string, error)
+	// CallToolResult is CallTool plus the structured sources the result cited.
+	CallToolResult(context.Context, string, map[string]any) (mcp.CallResult, error)
 	HasTool(string) bool
+	// ToolAllowed reports whether a loom account may use a tool: a server can
+	// be limited to some accounts (see mcp.Principal).
+	ToolAllowed(user mcp.Principal, name string) bool
+	// ServerInstructions is a server's own guidance for the model, empty when
+	// it gave none.
+	ServerInstructions(server string) string
 }
 
 // DocumentService is the RAG document store a turn reads its knowledge from:

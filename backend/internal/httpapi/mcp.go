@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/turn"
 )
 
 // handleMCPServers backs the /mcp slash command: a live status snapshot of every
@@ -11,13 +12,17 @@ import (
 // and the failure reason when down). Endpoints are credential-free by
 // construction (see mcp.ServerStatus).
 func (s *server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
-	if _, ok := currentUser(w, r); !ok {
+	user, ok := currentUser(w, r)
+	if !ok {
 		return
 	}
 	servers := []mcp.ServerStatus{}
 	if s.mcp != nil {
-		if live := s.mcp.ServerStatus(r.Context()); live != nil {
-			servers = live
+		for _, status := range s.mcp.ServerStatus(r.Context()) {
+			// A server limited to other accounts is not this user's to see.
+			if s.mcp.ServerAllowed(turn.MCPPrincipal(user), status.Name) {
+				servers = append(servers, status)
+			}
 		}
 	}
 	writeJSON(w, map[string]any{"servers": servers})
@@ -38,12 +43,17 @@ type mcpToolInfo struct {
 // into any given request, so a tool listed here is not guaranteed to be offered
 // on every turn.
 func (s *server) handleMCPTools(w http.ResponseWriter, r *http.Request) {
-	if _, ok := currentUser(w, r); !ok {
+	user, ok := currentUser(w, r)
+	if !ok {
 		return
 	}
 	tools := []mcpToolInfo{}
 	if s.mcp != nil {
 		for _, t := range s.mcp.Tools() {
+			// A server limited to other accounts is not part of this user's catalog.
+			if !s.mcp.ToolAllowed(turn.MCPPrincipal(user), t.Function.Name) {
+				continue
+			}
 			server, _, _ := mcp.SplitExposedToolName(t.Function.Name)
 			tools = append(tools, mcpToolInfo{
 				Name:        t.Function.Name,

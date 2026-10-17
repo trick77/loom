@@ -200,6 +200,8 @@ export type Citation = {
   // sources sidebar; snippet carries what the source delivered. Web sources only.
   title?: string;
   favicon?: string;
+  // image is a preview picture an MCP source supplied (a video thumbnail).
+  image?: string;
 };
 
 // Document is an uploaded file tracked for retrieval-augmented generation.

@@ -26,6 +26,7 @@ type toolRun struct {
 	arguments  map[string]any
 	argsErr    error
 	output     string
+	sources    []mcp.Source
 	err        error
 	durationMS int64
 }
@@ -49,8 +50,8 @@ func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	callCtx, cancel := context.WithTimeout(ctx, maxToolCallDuration)
 	defer cancel()
 	start := time.Now()
-	output, err := s.mcp.CallTool(callCtx, call.Function.Name, arguments)
-	return toolRun{arguments: arguments, output: output, err: err, durationMS: time.Since(start).Milliseconds()}
+	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, arguments)
+	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, err: err, durationMS: time.Since(start).Milliseconds()}
 }
 
 // finishToolCall turns a finished run into the tool result the model sees:
@@ -82,7 +83,7 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 	t.e.countToolCall(ctx, t.user, call.Function.Name)
 	// Annotate web-search/fetch results with [n] citation markers and register
 	// their source URLs before capping, so the model can cite them inline.
-	return capToolOutput(t.e.relabelWebToolOutput(call.Function.Name, arguments, output, reg))
+	return capToolOutput(t.e.relabelWebToolOutput(call.Function.Name, arguments, output, run.sources, reg))
 }
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at
@@ -186,6 +187,11 @@ func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, argumen
 	if !t.e.mcp.HasTool(obscuraNavigateToolName) || !t.e.mcp.HasTool(obscuraSnapshotToolName) {
 		return "", false
 	}
+	// The fallback calls obscura directly, so it honours a users allowlist on
+	// obscura itself the way an offered call would.
+	if !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), obscuraNavigateToolName) {
+		return "", false
+	}
 	url, ok := arguments["url"].(string)
 	if !ok || strings.TrimSpace(url) == "" {
 		return "", false
@@ -217,7 +223,7 @@ func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, argumen
 // rounds. It also returns the offered built-ins by name, the only way dispatch
 // runs a built-in (see executeBuiltInTool). A name both claim stays the
 // built-in's.
-func (s *Engine) offerTools(thread chat.Thread, gate toolGate) ([]llm.Tool, map[string]*toolSpec) {
+func (s *Engine) offerTools(user auth.User, thread chat.Thread, gate toolGate) ([]llm.Tool, map[string]*toolSpec) {
 	tools := []llm.Tool(nil)
 	builtIns := map[string]*toolSpec{}
 	names := map[string]string{}
@@ -237,27 +243,65 @@ func (s *Engine) offerTools(thread chat.Thread, gate toolGate) ([]llm.Tool, map[
 		builtIns[tool.Function.Name] = spec
 		tools = append(tools, tool)
 	}
-	if s.mcp != nil {
-		// MCP servers are gated by their declared categories: a category-neutral
-		// server (no categories, e.g. web search) is always offered, while a
-		// category-tagged server (e.g. context7 -> "coding") is offered only when
-		// its category is active for this turn. With no category signal at all
-		// (widenAll) every server is offered, so a legacy empty-category thread
-		// never loses tools it had before gating.
-		mcpTools := s.mcp.Tools()
-		if !gate.widenAll() {
-			mcpTools = s.mcp.ToolsFor(gate.activeCategories())
+	for _, tool := range s.offeredMCPTools(user, gate) {
+		if owner, exists := names[tool.Function.Name]; exists {
+			slog.Warn("skipping duplicate MCP tool name", "tool", tool.Function.Name, "existing", owner)
+			continue
 		}
-		for _, tool := range mcpTools {
-			if owner, exists := names[tool.Function.Name]; exists {
-				slog.Warn("skipping duplicate MCP tool name", "tool", tool.Function.Name, "existing", owner)
-				continue
-			}
-			names[tool.Function.Name] = "mcp"
-			tools = append(tools, tool)
-		}
+		names[tool.Function.Name] = "mcp"
+		tools = append(tools, tool)
 	}
 	return tools, builtIns
+}
+
+// offeredMCPTools is the MCP part of a turn's tool set. Servers are gated by
+// their declared categories: a category-neutral server (no categories, e.g.
+// web search) is always offered, while a category-tagged server (e.g. context7
+// -> "coding") is offered only when its category is active for this turn.
+// With no category signal at all (widenAll) every server is offered, so a
+// legacy empty-category thread never loses tools it had before gating. A
+// server limited to some accounts is left out for everyone else.
+func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
+	if s.mcp == nil {
+		return nil
+	}
+	candidates := s.mcp.Tools()
+	if !gate.widenAll() {
+		candidates = s.mcp.ToolsFor(gate.activeCategories())
+	}
+	out := make([]llm.Tool, 0, len(candidates))
+	for _, tool := range candidates {
+		if s.mcp.ToolAllowed(MCPPrincipal(user), tool.Function.Name) {
+			out = append(out, tool)
+		}
+	}
+	return out
+}
+
+// MCPPrincipal is the account an MCP users allowlist checks: its user id,
+// never the username or OIDC subject (see mcp.ServerConfig.Users).
+func MCPPrincipal(user auth.User) mcp.Principal {
+	return mcp.Principal{ID: user.ID}
+}
+
+// mcpServerGuidance collects the instructions of every server whose tools
+// the turn offers, so a server can say when its tools apply (peeq: which
+// channels to search unprompted). It travels with the tools like the other
+// tool guidance and is empty when no offered server gave instructions.
+func (s *Engine) mcpServerGuidance(user auth.User, gate toolGate) string {
+	seen := map[string]bool{}
+	var blocks []string
+	for _, tool := range s.offeredMCPTools(user, gate) {
+		server, _, ok := mcp.SplitExposedToolName(tool.Function.Name)
+		if !ok || seen[server] {
+			continue
+		}
+		seen[server] = true
+		if text := strings.TrimSpace(s.mcp.ServerInstructions(server)); text != "" {
+			blocks = append(blocks, fmt.Sprintf("Guidance from the %s tools (%s__*):\n%s", server, server, text))
+		}
+	}
+	return strings.Join(blocks, "\n\n")
 }
 
 func findGenerateImageTool(tools []llm.Tool) *llm.Tool {

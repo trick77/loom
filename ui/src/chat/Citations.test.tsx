@@ -375,6 +375,38 @@ describe("SourcesSidebar selection", () => {
     );
   }
 
+  it("shows a source's preview image, and none without one", () => {
+    const withImage: Citation[] = [
+      {
+        ...webSource("https://peeq.example/?v=abc&t=5", 1, "peeq · Chan"),
+        title: "A talk",
+        image: "https://i.ytimg.com/vi/abc/mqdefault.jpg",
+      },
+      sources[1],
+    ];
+    const { container } = render(
+      <MessageCitations citations={withImage} sourcesOpen />,
+    );
+    // Proxied through the backend: the image host never sees the reader.
+    const images = container.querySelectorAll(
+      "aside img[src^='/api/source-image']",
+    );
+    expect(images).toHaveLength(1);
+    expect(images[0]).toHaveAttribute(
+      "src",
+      `/api/source-image?u=${encodeURIComponent("https://i.ytimg.com/vi/abc/mqdefault.jpg")}`,
+    );
+    expect(
+      within(screen.getByRole("link", { name: /A talk/ })).getByText(
+        "peeq · Chan",
+      ),
+    ).toBeInTheDocument();
+
+    // An image the proxy could not fetch hides instead of a broken box.
+    fireEvent.error(images[0]);
+    expect(images[0]).not.toBeVisible();
+  });
+
   it("marks only the pinned source's card", () => {
     openDrawer({ selected: new Set([1]) });
 

@@ -36,6 +36,7 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
   (`github.com/trick77/webfetch`); Obscura sidecar via `BACKEND_OBSCURA_MCP_URL`. Best-effort extras
   (Context7, ipverse-lens) live in `BACKEND_MCP_SERVERS_FILE` (`mcpServers` JSON, default
   `/conf/mcp.json`, overrides built-ins by name); secrets only as `${VAR}` interpolation.
+  Sources → `structuredContent.sources`, no tool-name case. `users` = loom user id, never username/subject.
 - Except `run_python` → `loom-sandbox` (`docs/sandbox.md`): a job never gets `/data`, a user id or a
   socket; isolation change → `make sandbox-escape-test`.
 

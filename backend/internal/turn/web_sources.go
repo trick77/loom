@@ -9,6 +9,8 @@ import (
 	"unicode"
 
 	"golang.org/x/net/publicsuffix"
+
+	"github.com/trick77/loom/internal/mcp"
 )
 
 // webSource is one web source gathered during an assistant turn: a stable Index
@@ -24,6 +26,8 @@ type webSource struct {
 	Title   string `json:"title,omitempty"`
 	Snippet string `json:"snippet,omitempty"`
 	Favicon string `json:"favicon,omitempty"`
+	// Image is a preview picture a structured source supplied (an https URL).
+	Image string `json:"image,omitempty"`
 }
 
 // maxSourceSnippetChars caps the per-source snippet stored for the sidebar.
@@ -179,10 +183,11 @@ func capitalizeFirst(s string) string {
 var urlPattern = regexp.MustCompile(`https?://[^\s<>"'` + "`" + `)\]}]+`)
 
 // relabelWebToolOutput annotates a web tool's result with [n] citation markers
-// and registers each source URL, so the model can cite them inline. It is a
-// no-op for non-web tools. The raw (un-capped) output is passed in; the caller
-// caps the returned string.
-func (s *Engine) relabelWebToolOutput(toolName string, arguments map[string]any, output string, reg *webSourceRegistry) string {
+// and registers each source URL, so the model can cite them inline. Any other
+// tool is relabeled from the structured sources its result carried, and left
+// alone when it carried none. The raw (un-capped) output is passed in; the
+// caller caps the returned string.
+func (s *Engine) relabelWebToolOutput(toolName string, arguments map[string]any, output string, sources []mcp.Source, reg *webSourceRegistry) string {
 	if reg == nil {
 		return output
 	}
@@ -224,6 +229,9 @@ func (s *Engine) relabelWebToolOutput(toolName string, arguments map[string]any,
 		}
 		return reg.obscuraNavHd + "\n\n" + output
 	default:
+		if len(sources) > 0 {
+			return relabelStructuredSources(output, sources, reg)
+		}
 		return output
 	}
 }
@@ -377,6 +385,7 @@ func webSourceCitations(sources []webSource) []Citation {
 			Title:    ws.Title,
 			Snippet:  ws.Snippet,
 			Favicon:  ws.Favicon,
+			Image:    ws.Image,
 		})
 	}
 	return out
