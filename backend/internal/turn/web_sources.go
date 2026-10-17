@@ -3,6 +3,7 @@ package turn
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -96,16 +97,31 @@ func (r *webSourceRegistry) addDetailed(rawURL, title, snippet, favicon string) 
 	}
 	idx := r.offset + len(r.sources) + 1
 	r.byKey[key] = idx
+	label := deriveLabel(host)
 	r.sources = append(r.sources, webSource{
 		Index:   idx,
 		URL:     strings.TrimSpace(rawURL),
-		Label:   deriveLabel(host),
-		Site:    deriveLabel(host),
+		Label:   label,
+		Site:    siteName(rawURL, host, label),
 		Title:   title,
 		Snippet: snippet,
 		Favicon: favicon,
 	})
 	return idx, true
+}
+
+// siteName is the key the favicon row groups sources by: the registrable
+// domain's label, except for an IP host, whose "label" is just its last octet
+// (192.168.1.10 and 10.0.1.20 would both read "1"). There the site is the host
+// with its port, so two self-hosted services stay two sites.
+func siteName(rawURL, host, label string) string {
+	if net.ParseIP(host) == nil {
+		return label
+	}
+	if u, err := url.Parse(strings.TrimSpace(rawURL)); err == nil && u.Host != "" {
+		return strings.ToLower(u.Host)
+	}
+	return host
 }
 
 // snippetFromText collapses whitespace and caps a source snippet for the sidebar.
