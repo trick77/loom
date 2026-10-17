@@ -18,14 +18,14 @@ describe("tool call descriptions and labels", () => {
       kind: "lookup",
       title: "Search your video library: bike stability",
     });
-    // No query: the first short argument tells repeated calls apart.
+    // No query: an id or other argument is not worth showing.
     expect(
       summarizeToolCall(
         "peeq__get_video",
         '{"id":"abc"}',
         "Get a video's summaries",
       ),
-    ).toEqual({ kind: "generic", title: "Get a video's summaries: abc" });
+    ).toEqual({ kind: "generic", title: "Get a video's summaries" });
     expect(
       summarizeToolCall("peeq__list_youtube_channels", "{}", "List channels"),
     ).toEqual({ kind: "generic", title: "List channels" });
@@ -56,7 +56,7 @@ describe("tool call descriptions and labels", () => {
     });
     expect(live[0]).toMatchObject({
       toolTitle: "Get a video's summaries",
-      summary: { title: "Get a video's summaries: abc" },
+      summary: { title: "Get a video's summaries" },
     });
     const reloaded = normalizeActivityTrace([
       {
@@ -69,7 +69,7 @@ describe("tool call descriptions and labels", () => {
       },
     ] as never);
     expect(reloaded?.[0]).toMatchObject({
-      summary: { title: "Get a video's summaries: abc" },
+      summary: { title: "Get a video's summaries" },
     });
   });
 

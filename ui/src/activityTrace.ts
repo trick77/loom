@@ -263,16 +263,15 @@ export function summarizeToolCall(
     !isFetchTool(name)
   ) {
     // The tool's own server said what it does; that beats guessing from the
-    // name (a library search is not a web search, so no globe either). The
-    // query, or else the first short argument, tells repeated calls apart.
+    // name (a library search is not a web search, so no globe either). A
+    // query is worth showing; other arguments (ids and the like) are not.
     // A page fetch keeps its own row below: domain, favicon and link.
-    const detail = query ?? firstShortArgument(args);
     return {
       kind: query !== undefined ? "lookup" : "generic",
-      title: detail
+      title: query
         ? i18n.t("activityTrace.trace.titledWithQuery", {
             title: serverTitle,
-            query: detail,
+            query,
           })
         : serverTitle,
     };
@@ -495,21 +494,6 @@ function readableToolName(name: string): string {
   return capitalizeFirst(
     splitExposedName(name).tool.replace(/[_-]+/g, " ").trim(),
   );
-}
-
-// firstShortArgument is the first short string argument of a call, the
-// detail that tells two calls of the same titled tool apart.
-function firstShortArgument(args: Record<string, unknown>): string | undefined {
-  for (const value of Object.values(args)) {
-    if (
-      typeof value === "string" &&
-      value.trim() !== "" &&
-      value.length <= 80
-    ) {
-      return value.trim();
-    }
-  }
-  return undefined;
 }
 
 function memoryToolLabel(name: string): string | undefined {
