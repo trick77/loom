@@ -71,10 +71,11 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 
 ## Queued messages
 - Sent during a running turn → `queued_messages`, moved into `messages` only by `ConsumeQueued`
-  (one tx, rowid = pickup time). Enqueue, consume, stop's drain and hand-off run under the
-  thread's queue lock (`activeStreamRegistry`), never the global registry lock: a review found
-  lost/orphaned messages in every unlocked path. Stop hands queued text back; stopped stream
-  hands the rest to a new stream only after its turn ended.
+  (one tx, rowid = pickup time). Enqueue, consume, stop+drain (ONE locked step, `stopAndDrain`)
+  and hand-off run under the thread's queue lock (`activeStreamRegistry`), never the global
+  registry lock: a review found lost/orphaned messages in every unlocked path; stop and drain
+  apart let the canceled turn's hand-off answer the queue first (CI flake, stop 204). Stop hands
+  queued text back; stopped stream hands the rest to a new stream only after its turn ended.
 
 ## Security invariants (must hold in every feature)
 - Every DB query is scoped by `user_id`; no cross-user access to any resource.

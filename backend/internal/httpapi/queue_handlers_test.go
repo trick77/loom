@@ -183,6 +183,39 @@ func TestStopReturnsQueuedMessagesAndRunsNoFollowUp(t *testing.T) {
 	}
 }
 
+// The stopped turn unwinds the moment it is canceled, and its hand-off looks
+// at the queue. It must not get in between the stop and the drain: there it
+// found the message still queued and started a stream that answered it, and
+// the stop handed back nothing (CI: stop status 204).
+func TestStopAndDrainKeepsTheHandOffOut(t *testing.T) {
+	var reg activeStreamRegistry
+	var stream *activeStream
+	var queued, handedOff atomic.Bool
+	queued.Store(true)
+	handOffDone := make(chan struct{})
+	// Canceling the turn sets it unwinding to its hand-off, while the stop's
+	// goroutine is descheduled for a moment, as on a busy CI runner.
+	cancel := func(error) {
+		go func() {
+			defer close(handOffDone)
+			reg.handOff(stream, queued.Load, func() { handedOff.Store(true) })
+		}()
+		time.Sleep(50 * time.Millisecond)
+	}
+	stream, unregister := reg.registerStream("u1", "thr_1", "send-1", cancel, newTurnHub())
+	defer unregister()
+	stopped := reg.stopAndDrain("u1", "thr_1", "send-1", errStreamStopRequested, func() {
+		queued.Store(false) // the drain takes the message
+	})
+	if !stopped {
+		t.Fatal("stopAndDrain found no stream")
+	}
+	<-handOffDone
+	if handedOff.Load() {
+		t.Fatal("the hand-off answered the queue between the stop and its drain")
+	}
+}
+
 func TestGetThreadListsQueuedMessagesAndDeleteCancelsOne(t *testing.T) {
 	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
 	srv := newAuthenticatedServer(t, Deps{Thread: store, LLM: fakeChatClient{}})

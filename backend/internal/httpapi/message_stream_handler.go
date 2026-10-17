@@ -163,20 +163,20 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusBadRequest, "invalid sendId")
 		return
 	}
-	if !s.activeStreams.stop(user.ID, threadID, sendID, stopCause(r.URL.Query().Get("source"))) {
+	// Stopping hands the messages queued behind the turn back to the user,
+	// who wanted control back, instead of answering them. The stop and the
+	// drain are one step under the queue lock (see stopAndDrain), which every
+	// consume and hand-off shares, so a message is either picked up before the
+	// stop or handed back, never lost or answered in between. What is queued
+	// after the drain is answered once the stopped turn has ended (see handOff).
+	var queued []chat.QueuedMessage
+	stopped := s.activeStreams.stopAndDrain(user.ID, threadID, sendID, stopCause(r.URL.Query().Get("source")), func() {
+		queued, err = s.thread.DrainQueued(context.WithoutCancel(r.Context()), user.ID, threadID)
+	})
+	if !stopped {
 		writeJSONError(w, http.StatusConflict, "no active stream")
 		return
 	}
-	// Stopping hands the messages queued behind the turn back to the user,
-	// who wanted control back, instead of answering them. The stream was
-	// marked finishing first, and the drain shares the queue lock with every
-	// consume, so a message is either picked up before the stop or handed
-	// back, never lost in between. What is queued after the drain is answered
-	// once the stopped turn has ended (see handOff).
-	var queued []chat.QueuedMessage
-	s.activeStreams.withQueueLock(user.ID, threadID, func() {
-		queued, err = s.thread.DrainQueued(context.WithoutCancel(r.Context()), user.ID, threadID)
-	})
 	if err != nil {
 		slog.Warn("drain queued messages failed", "thread_id", threadID, "err", err)
 	}
