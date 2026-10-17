@@ -59,7 +59,7 @@ import {
   type DisplayMap,
   type SourceMap,
 } from "./sourcePills";
-import { assignDisplayNumbers } from "./sourceNumbering";
+import { assignDisplayNumbers, citeSourceURLs } from "./sourceNumbering";
 import {
   isImageAttachment,
   type ComposerAttachment,
@@ -183,7 +183,6 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
         .join("\n\n"),
     [blocks],
   );
-  const copyText = useMemo(() => markdownToPlainText(proseText), [proseText]);
   // Build the [n] -> web-source map once per message so inline citation markers in
   // any text block resolve to source pills. Memoized so its identity is stable
   // across re-renders — a fresh Map each render would force react-markdown to
@@ -191,6 +190,10 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
   const sources = useMemo(
     () => webSourceMap(message.citations),
     [message.citations],
+  );
+  const copyText = useMemo(
+    () => markdownToPlainText(citeSourceURLs(proseText, sources)),
+    [proseText, sources],
   );
   // Number the sources by the order the answer first cites them, so the prose opens
   // at [1] and the sidebar leads with the source actually used. MessageCitations
@@ -525,10 +528,11 @@ export const ProseMarkdown = memo(function ProseMarkdown({
       plugins.push([rehypeSourcePills, sources, display]);
     return plugins;
   }, [streaming, sources, display]);
-  // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses.
+  // Rewrite any \(...\) / \[...\] the model emitted into the $-delimiters remark-math parses,
+  // and a bracketed source URL into its [n] marker (see citeSourceURLs).
   const normalized = useMemo(
-    () => normalizeMathDelimiters(children),
-    [children],
+    () => normalizeMathDelimiters(citeSourceURLs(children, sources)),
+    [children, sources],
   );
   return (
     <div className="ui-message-text ui-markdown text-[#f3f0e8]">
