@@ -21,12 +21,15 @@ import (
 // tool call) stays a parameter. The incognito turn has no Run; see
 // RunIncognitoTurn.
 type Run struct {
-	e         *Engine
-	stream    Emitter
-	titles    *ReasoningTitleTracker
-	inference llm.InferenceMetadata
-	user      auth.User
-	thread    chat.Thread
+	e      *Engine
+	stream Emitter
+	// toolTitles is the server-given title each tool call was streamed with,
+	// by call id: the persisted trace stores exactly what the user saw live.
+	toolTitles map[string]string
+	titles     *ReasoningTitleTracker
+	inference  llm.InferenceMetadata
+	user       auth.User
+	thread     chat.Thread
 	// userMessage is the persisted user message this turn answers.
 	userMessage chat.Message
 	// plan is what Prepare assembled for the assistant loop.

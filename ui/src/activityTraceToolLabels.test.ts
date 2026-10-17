@@ -18,13 +18,33 @@ describe("tool call descriptions and labels", () => {
       kind: "lookup",
       title: "Search your video library: bike stability",
     });
+    // No query: the first short argument tells repeated calls apart.
     expect(
       summarizeToolCall(
         "peeq__get_video",
         '{"id":"abc"}',
         "Get a video's summaries",
       ),
-    ).toEqual({ kind: "generic", title: "Get a video's summaries" });
+    ).toEqual({ kind: "generic", title: "Get a video's summaries: abc" });
+    expect(
+      summarizeToolCall("peeq__list_youtube_channels", "{}", "List channels"),
+    ).toEqual({ kind: "generic", title: "List channels" });
+  });
+
+  test("a titled page fetch keeps its domain, favicon and link", () => {
+    expect(
+      summarizeToolCall(
+        "acme__open_page",
+        '{"url":"https://example.com/a"}',
+        "Open a page",
+      ),
+    ).toMatchObject({ kind: "fetch", url: "https://example.com/a" });
+  });
+
+  test("a titled IP lookup keeps its address", () => {
+    expect(
+      summarizeToolCall("ipverse__whois", '{"ip":"1.2.3.4"}', "IP lookup"),
+    ).toMatchObject({ kind: "lookup", title: "Looking up 1.2.3.4" });
   });
 
   test("the live tool_call title is kept and survives a reload", () => {
@@ -36,7 +56,7 @@ describe("tool call descriptions and labels", () => {
     });
     expect(live[0]).toMatchObject({
       toolTitle: "Get a video's summaries",
-      summary: { title: "Get a video's summaries" },
+      summary: { title: "Get a video's summaries: abc" },
     });
     const reloaded = normalizeActivityTrace([
       {
@@ -49,12 +69,15 @@ describe("tool call descriptions and labels", () => {
       },
     ] as never);
     expect(reloaded?.[0]).toMatchObject({
-      summary: { title: "Get a video's summaries" },
+      summary: { title: "Get a video's summaries: abc" },
     });
   });
 
   test("an untitled tool reads as its own name, without the server prefix", () => {
     expect(summarizeToolCall("peeq__get_video", "{}").title).toBe("Get video");
+    expect(summarizeToolCall("acme__resolve-item-id", "{}").title).toBe(
+      "Resolve item id",
+    );
   });
 
   test("memory tools say what they do", () => {

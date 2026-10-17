@@ -221,20 +221,7 @@ export function summarizeToolCall(
     };
   }
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
-  const serverTitle = toolTitle?.trim();
-  if (serverTitle) {
-    // The tool's own server said what it does; that beats guessing from the
-    // name (a library search is not a web search, so no globe either).
-    return {
-      kind: query !== undefined ? "lookup" : "generic",
-      title: query
-        ? i18n.t("activityTrace.trace.titledWithQuery", {
-            title: serverTitle,
-            query,
-          })
-        : serverTitle,
-    };
-  }
+  const url = stringValue(args, ["url", "uri", "href"]);
   const memory = memoryToolLabel(name);
   if (memory !== undefined) {
     return { kind: "generated", title: memory };
@@ -268,6 +255,28 @@ export function summarizeToolCall(
           : i18n.t("activityTrace.trace.lookupIpAddress"),
     };
   }
+  const serverTitle = toolTitle?.trim();
+  if (
+    serverTitle &&
+    url === undefined &&
+    !isBrowserTool(name) &&
+    !isFetchTool(name)
+  ) {
+    // The tool's own server said what it does; that beats guessing from the
+    // name (a library search is not a web search, so no globe either). The
+    // query, or else the first short argument, tells repeated calls apart.
+    // A page fetch keeps its own row below: domain, favicon and link.
+    const detail = query ?? firstShortArgument(args);
+    return {
+      kind: query !== undefined ? "lookup" : "generic",
+      title: detail
+        ? i18n.t("activityTrace.trace.titledWithQuery", {
+            title: serverTitle,
+            query: detail,
+          })
+        : serverTitle,
+    };
+  }
   if (isSearchTool(name) || query !== undefined) {
     return {
       kind: "search",
@@ -288,7 +297,6 @@ export function summarizeToolCall(
       title: i18n.t("activityTrace.trace.readingProjectThreads"),
     };
   }
-  const url = stringValue(args, ["url", "uri", "href"]);
   if (url !== undefined) {
     return { kind: "fetch", title: domainFromURL(url) ?? url, url };
   }
@@ -472,12 +480,36 @@ function looksLikeDomainURL(value: string): boolean {
   );
 }
 
+// splitExposedName mirrors the backend's SplitExposedToolName: an MCP tool is
+// "<server>__<tool>" with both parts non-empty; anything else is loom's own.
+function splitExposedName(name: string): { server: string; tool: string } {
+  const at = name.indexOf("__");
+  if (at <= 0 || at + 2 >= name.length) return { server: "", tool: name };
+  return { server: name.slice(0, at), tool: name.slice(at + 2) };
+}
+
 // readableToolName describes an untitled tool by its own name, without the
 // server prefix the source label already shows: "peeq__get_video" reads
-// "Get video".
+// "Get video", "context7__resolve-library-id" "Resolve library id".
 function readableToolName(name: string): string {
-  const own = name.includes("__") ? name.slice(name.indexOf("__") + 2) : name;
-  return capitalizeFirst(own.replace(/_/g, " ").trim());
+  return capitalizeFirst(
+    splitExposedName(name).tool.replace(/[_-]+/g, " ").trim(),
+  );
+}
+
+// firstShortArgument is the first short string argument of a call, the
+// detail that tells two calls of the same titled tool apart.
+function firstShortArgument(args: Record<string, unknown>): string | undefined {
+  for (const value of Object.values(args)) {
+    if (
+      typeof value === "string" &&
+      value.trim() !== "" &&
+      value.length <= 80
+    ) {
+      return value.trim();
+    }
+  }
+  return undefined;
 }
 
 function memoryToolLabel(name: string): string | undefined {
@@ -511,7 +543,7 @@ const KNOWN_TOOL_SOURCES: Record<string, string> = {
 // which tool ran: the MCP server ("peeq", "Context7") or loom's own tool
 // ("Python sandbox", "File generator").
 export function toolSourceLabel(name: string): string {
-  const server = name.includes("__") ? name.slice(0, name.indexOf("__")) : "";
+  const { server } = splitExposedName(name);
   const key = KNOWN_TOOL_SOURCES[server] ?? KNOWN_TOOL_SOURCES[name];
   if (key !== undefined) return i18n.t(`activityTrace.${key}`);
   if (server !== "") return server;

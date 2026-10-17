@@ -41,23 +41,35 @@ func toolCallEvent(call llm.ToolCall) ActivityTraceEvent {
 	}
 }
 
-// toolTitle is a tool's human-readable name from its MCP server, or "" for a
-// built-in or an untitled tool.
-func (s *Engine) toolTitle(name string) string {
-	if s.mcp == nil {
-		return ""
+// toolTitle is the human-readable name a tool call is streamed with: its MCP
+// server's title, or "" for a built-in, an untitled tool, or a tool of a
+// server limited to other accounts (its titles are that server's metadata
+// too). The answer is remembered by call id for the persisted trace.
+func (t *Run) toolTitle(callID, name string) string {
+	if title, seen := t.toolTitles[callID]; seen && callID != "" {
+		return title
 	}
-	return s.mcp.ToolTitle(name)
+	title := ""
+	if t.e.mcp != nil && t.e.mcp.ToolAllowed(MCPPrincipal(t.user), name) {
+		title = t.e.mcp.ToolTitle(name)
+	}
+	if callID != "" {
+		if t.toolTitles == nil {
+			t.toolTitles = map[string]string{}
+		}
+		t.toolTitles[callID] = title
+	}
+	return title
 }
 
-// stampToolTitles records each tool event's server-given title in the
-// persisted trace (flat and per block), so a reloaded thread describes its
-// tool calls the way the live stream did.
-func (s *Engine) stampToolTitles(trace []ActivityTraceEvent, blocks []ContentBlock) {
+// stampToolTitles records in the persisted trace (flat and per block) the
+// title each tool call was streamed with, so a reloaded thread describes its
+// tool calls exactly the way the live stream did.
+func (t *Run) stampToolTitles(trace []ActivityTraceEvent, blocks []ContentBlock) {
 	stamp := func(events []ActivityTraceEvent) {
 		for i := range events {
 			if events[i].Type == "tool" && events[i].ToolTitle == "" {
-				events[i].ToolTitle = s.toolTitle(events[i].Name)
+				events[i].ToolTitle = t.toolTitles[events[i].ID]
 			}
 		}
 	}

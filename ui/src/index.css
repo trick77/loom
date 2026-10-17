@@ -743,7 +743,7 @@ body {
 /* The tool behind a step, a quiet tag after what it did. */
 .ui-activity-tool-source {
   flex-shrink: 0;
-  color: #858178;
+  color: var(--color-muted);
   font-size: 0.8em;
   white-space: nowrap;
 }
