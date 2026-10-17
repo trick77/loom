@@ -31,6 +31,24 @@ describe("tool call descriptions and labels", () => {
     ).toEqual({ kind: "generic", title: "List channels" });
   });
 
+  test("only the query joins the title, tidied; other arguments never do", () => {
+    expect(
+      summarizeToolCall(
+        "peeq__search",
+        JSON.stringify({ channel: "UCbikes", query: "  bike\n  stability " }),
+        "Search your video library",
+      ).title,
+    ).toBe("Search your video library: bike stability");
+    const long = "x".repeat(200);
+    expect(
+      summarizeToolCall(
+        "peeq__search",
+        JSON.stringify({ query: long }),
+        "Search",
+      ).title,
+    ).toBe(`Search: ${"x".repeat(80)}...`);
+  });
+
   test("a titled page fetch keeps its domain, favicon and link", () => {
     expect(
       summarizeToolCall(

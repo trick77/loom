@@ -271,7 +271,7 @@ export function summarizeToolCall(
       title: query
         ? i18n.t("activityTrace.trace.titledWithQuery", {
             title: serverTitle,
-            query,
+            query: truncateText(query.replace(/\s+/g, " ").trim(), 80),
           })
         : serverTitle,
     };
