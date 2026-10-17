@@ -125,20 +125,26 @@ export function stableDisplayNumbers(): (
 }
 
 // A bracket holding nothing but URLs: "[https://a]", "[<https://a>, https://b]".
-// Not an image ("![…]"), an escaped bracket, a link's text ("[…](…)") or a
-// reference definition ("[…]: …").
-const BRACKETED = /(?<![!\\])\[([^[\]\n]+)\](?![(:])/g;
+// Not an image ("![…]"), an escaped bracket, a link's text ("[…](…)", or nested
+// in one: "[see [https://a]](…)") or a reference definition ("[…]: …").
+const BRACKETED = /(?<![!\\])\[([^[\]\n]+)\](?![(:\]])/g;
 const URL_PART = /^<?(https?:\/\/[^\s<>]+?)>?[.,;:]*$/;
 
 type Linked = { url?: string };
-type URLIndex = { exact: Map<string, number>; loose: Map<string, number> };
+type Page = { index: number; params: URLSearchParams };
+type URLIndex = { exact: Map<string, number>; pages: Map<string, Page[]> };
 
-// looseKey drops what a model tends to lose when it copies a URL: the
-// timestamp query ("?t=42"), the fragment and a trailing slash.
-function looseKey(raw: string): string | undefined {
+// splitURL separates a URL's page (origin and path, no trailing slash) from its
+// query. The fragment is dropped.
+function splitURL(
+  raw: string,
+): { page: string; params: URLSearchParams } | undefined {
   try {
     const url = new URL(raw);
-    return url.origin + url.pathname.replace(/\/+$/, "");
+    return {
+      page: url.origin + url.pathname.replace(/\/+$/, ""),
+      params: url.searchParams,
+    };
   } catch {
     return undefined;
   }
@@ -146,37 +152,46 @@ function looseKey(raw: string): string | undefined {
 
 function indexURLs(sources: ReadonlyMap<number, Linked>): URLIndex {
   const exact = new Map<string, number>();
-  const loose = new Map<string, number>();
-  const ambiguous = new Set<string>();
+  const pages = new Map<string, Page[]>();
   for (const [index, source] of sources) {
     const url = source.url?.trim();
     if (url === undefined || url === "") continue;
     if (!exact.has(url)) exact.set(url, index);
-    const key = looseKey(url);
-    if (key === undefined) continue;
-    const known = loose.get(key);
-    if (known === undefined) loose.set(key, index);
-    else if (known !== index) ambiguous.add(key);
+    const parts = splitURL(url);
+    if (parts === undefined) continue;
+    const list = pages.get(parts.page) ?? [];
+    list.push({ index, params: parts.params });
+    pages.set(parts.page, list);
   }
-  // Two sources on one page (two moments of one video) leave the bare page
-  // ambiguous: it stays literal rather than citing the wrong one.
-  for (const key of ambiguous) loose.delete(key);
-  return { exact, loose };
+  return { exact, pages };
 }
 
+// lookupURL resolves a URL the model copied. Past an exact match, it accepts a
+// copy that dropped query parameters (a timestamp "?t=42") but never one that
+// changed or added one: "watch?v=B" is not the source "watch?v=A". A copy that
+// fits several sources (two moments of one video) is ambiguous and stays as written.
 function lookupURL(urls: URLIndex, url: string): number | undefined {
   const exact = urls.exact.get(url);
   if (exact !== undefined) return exact;
-  const key = looseKey(url);
-  return key === undefined ? undefined : urls.loose.get(key);
+  const parts = splitURL(url);
+  if (parts === undefined) return undefined;
+  const fits = new Set<number>();
+  for (const page of urls.pages.get(parts.page) ?? []) {
+    let subset = true;
+    for (const [key, value] of parts.params) {
+      if (!page.params.getAll(key).includes(value)) subset = false;
+    }
+    if (subset) fits.add(page.index);
+  }
+  return fits.size === 1 ? [...fits][0] : undefined;
 }
 
 // citeSourceURLs rewrites a bracketed URL of one of the answer's sources into
 // that source's [n] marker. Told by a tool to cite the links it gave, the model
 // once wrote "[https://…]" where the marker belongs, and the raw link stayed in
 // the prose. A bracket stays as written unless every URL in it is a known
-// source, and code is never touched. Numbering and pills both read the
-// rewritten text, so the two agree.
+// source, and code is never touched. Numbering, pills and the copied text all
+// read the rewritten text, so they agree.
 export function citeSourceURLs(
   content: string,
   sources?: ReadonlyMap<number, Linked>,
@@ -201,15 +216,24 @@ export function citeSourceURLs(
   return last === 0 ? content : out + content.slice(last);
 }
 
+// bracketMarkers reads the bracket as one URL first, so a comma inside a URL
+// ("?ids=1,2") does not split it, then as a list.
 function bracketMarkers(inner: string, urls: URLIndex): string | null {
+  const whole = markerOf(inner.trim(), urls);
+  if (whole !== null) return whole;
   const parts = inner.split(/[\s,;]+/).filter((part) => part !== "");
-  if (parts.length === 0) return null;
+  if (parts.length < 2) return null;
   let markers = "";
   for (const part of parts) {
-    const url = URL_PART.exec(part)?.[1];
-    const index = url === undefined ? undefined : lookupURL(urls, url);
-    if (index === undefined) return null;
-    markers += `[${index}]`;
+    const marker = markerOf(part, urls);
+    if (marker === null) return null;
+    markers += marker;
   }
   return markers;
+}
+
+function markerOf(part: string, urls: URLIndex): string | null {
+  const url = URL_PART.exec(part)?.[1];
+  const index = url === undefined ? undefined : lookupURL(urls, url);
+  return index === undefined ? null : `[${index}]`;
 }

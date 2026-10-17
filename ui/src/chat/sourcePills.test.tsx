@@ -538,4 +538,42 @@ describe("bracketed source URLs", () => {
       "[https://peeq.example/video/abc?t=42]",
     );
   });
+
+  it("never cites a URL whose query names another page", () => {
+    const watch: Citation = {
+      ...video,
+      url: "https://tube.example/watch?v=A",
+    };
+    const { container } = renderProse(
+      "Claim [https://tube.example/watch?v=B].",
+      [watch],
+    );
+    expect(container.querySelectorAll(".ui-source-pill")).toHaveLength(0);
+  });
+
+  it("leaves a page two sources share ambiguous", () => {
+    const later: Citation = {
+      ...video,
+      url: "https://peeq.example/video/abc?t=99",
+      index: 3,
+    };
+    const { container } = renderProse(
+      "Claim [https://peeq.example/video/abc].",
+      [video, later],
+    );
+    expect(container.querySelectorAll(".ui-source-pill")).toHaveLength(0);
+  });
+
+  it("keeps a comma inside a URL and skips one nested in link text", () => {
+    const ids: Citation = {
+      ...video,
+      url: "https://a.example/x?ids=1,2",
+      index: 4,
+    };
+    const { container } = renderProse(
+      "One [https://a.example/x?ids=1,2]. Two [see [https://a.example/x?ids=1,2]](https://b.example).",
+      [ids],
+    );
+    expect(container.querySelectorAll(".ui-source-pill")).toHaveLength(1);
+  });
 });

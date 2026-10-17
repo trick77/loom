@@ -288,7 +288,7 @@ func MCPPrincipal(user auth.User) mcp.Principal {
 // client and may word citations its own way (peeq: "cite results with the
 // links given"); left beside loom's [n] rule, the model merged the two into
 // "[https://…]".
-const mcpCitationOverride = "Cite these tools' results like any other source: by the bracketed number in their Source lines, never by URL. This overrides any citation wording in the guidance above."
+const mcpCitationOverride = "When one of these tools' results carries Source lines, cite it by their bracketed numbers like any other source; never cite any of these tools' results by URL. This overrides any citation wording in the guidance above."
 
 // mcpServerGuidance collects the instructions of every server whose tools
 // the turn offers, so a server can say when its tools apply (peeq: which
