@@ -31,7 +31,7 @@ jobs:
       # free-form input, so Dependabot cannot keep this honest.
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13
+          version: v2.14
           working-directory: backend
       # Model facts live in llmwire profiles; loom may name a model only in
       # configuration (see AGENTS.md).
