@@ -139,6 +139,8 @@ export const en = {
       lookupIp: "Looking up {{ip}}",
       lookupIpAddress: "Looking up an IP address",
       searchWeb: "Searching the web",
+      usingWebSearch: "Using web search",
+      usingTool: "Using {{source}}",
       searchDocumentation: "Searching the documentation",
       readingProjectThreads: "Reading project threads",
       browsingWeb: "Browsing the web",

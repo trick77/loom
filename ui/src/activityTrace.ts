@@ -47,7 +47,9 @@ export type ToolSummary =
   | { kind: "file"; title: string }
   | { kind: "generated"; title: string }
   | { kind: "code"; title: string; code: string }
-  | { kind: "generic"; title: string };
+  // placeholder marks a titled call whose arguments have not arrived: the
+  // title already names the source, so the row hides its tag.
+  | { kind: "generic"; title: string; placeholder?: true };
 
 export type ToolResultPreview =
   | {
@@ -106,7 +108,9 @@ export function upsertTraceToolCall(
       type: "tool",
       name: event.name,
       status: "running",
-      summary: summarizeToolCall(event.name, event.arguments, event.title),
+      summary: summarizeToolCall(event.name, event.arguments, event.title, {
+        running: true,
+      }),
       rawArguments: event.arguments,
       toolTitle: event.title,
     },
@@ -122,6 +126,7 @@ export function upsertTraceToolResult(
     const failed = toolOutputFailed(item.name, event.content);
     return {
       ...item,
+      summary: settledSummary(item),
       status: failed ? "failed" : "done",
       preview: summarizeToolResult(item, event.content),
       rawOutput: event.content,
@@ -134,8 +139,24 @@ export function completeTrace(
 ): ActivityTraceEvent[] {
   return events.map((event) => {
     if (event.status !== "running") return event;
+    if (event.type === "tool") {
+      return { ...event, status: "done", summary: settledSummary(event) };
+    }
     return { ...event, status: "done" };
   });
+}
+
+// settledSummary replaces a placeholder title once a call stopped running: the
+// arguments are as complete as they will get, so the query or title speaks.
+function settledSummary(event: ActivityTraceToolEvent): ToolSummary {
+  if (event.summary.kind !== "generic" || !event.summary.placeholder) {
+    return event.summary;
+  }
+  return summarizeToolCall(
+    event.name,
+    event.rawArguments ?? "{}",
+    event.toolTitle,
+  );
 }
 
 export function normalizeActivityTrace(
@@ -167,6 +188,9 @@ export function normalizeActivityTrace(
           : event.status,
       summary,
     };
+    if (normalized.status !== "running") {
+      normalized.summary = settledSummary(normalized);
+    }
     if (event.rawOutput !== undefined && event.preview === undefined) {
       const failed = toolOutputFailed(event.name, event.rawOutput);
       normalized.status = failed ? "failed" : normalized.status;
@@ -207,10 +231,13 @@ export function applyReasoningTitle(
   );
 }
 
+// running marks a call that has not returned yet: its arguments may still be
+// streaming in.
 export function summarizeToolCall(
   name: string,
   rawArguments: string,
   toolTitle?: string,
+  { running = false }: { running?: boolean } = {},
 ): ToolSummary {
   const args = parseJSONRecord(rawArguments);
   if (name === SANDBOX_TOOL) {
@@ -268,6 +295,15 @@ export function summarizeToolCall(
     // in front of it ("Tavily Search: …") only repeated it. The title speaks
     // when there is no query; other arguments (ids and the like) never show.
     // A page fetch keeps its own row below: domain, favicon and link.
+    // Before any argument has arrived the server's title would only name the
+    // vendor ("Tavily Search"); say which source is in use instead.
+    if (running && /^\s*(?:\{\s*\})?\s*$/.test(rawArguments)) {
+      return {
+        kind: "generic",
+        title: usingToolTitle(name),
+        placeholder: true,
+      };
+    }
     return {
       kind: query !== undefined ? "lookup" : "generic",
       title: query
@@ -532,6 +568,16 @@ export function toolSourceLabel(name: string): string {
   if (server !== "") return server;
   if (/^create_/.test(name)) return i18n.t("activityTrace.sources.files");
   return i18n.t("activityTrace.sources.loom");
+}
+
+// usingToolTitle says which source a call is using, by its label.
+function usingToolTitle(name: string): string {
+  if (splitExposedName(name).server === "tavily") {
+    return i18n.t("activityTrace.trace.usingWebSearch");
+  }
+  return i18n.t("activityTrace.trace.usingTool", {
+    source: toolSourceLabel(name),
+  });
 }
 
 function summarizeReasoning(events: ActivityTraceEvent[]): string {
