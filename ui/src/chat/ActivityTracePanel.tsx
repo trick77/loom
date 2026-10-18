@@ -365,10 +365,15 @@ function ActivityTraceRow({
               {event.summary.title}
             </span>
             {/* Which tool ran, beside what it did; the raw tool name stays one
-                hover away for anyone debugging. */}
-            <span className="ui-activity-tool-source" title={event.name}>
-              {toolSourceLabel(event.name)}
-            </span>
+                hover away for anyone debugging. A placeholder title already
+                names it. */}
+            {!(
+              event.summary.kind === "generic" && event.summary.placeholder
+            ) && (
+              <span className="ui-activity-tool-source" title={event.name}>
+                {toolSourceLabel(event.name)}
+              </span>
+            )}
           </span>
           {status !== undefined && (
             <span

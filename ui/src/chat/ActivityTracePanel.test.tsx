@@ -100,6 +100,38 @@ test("tool titles never sweep, even while running", () => {
   expect(title).not.toHaveAttribute("data-text");
 });
 
+test("a placeholder title hides the source tag it already names", () => {
+  render(
+    <ActivityTracePanel
+      active
+      initiallyExpanded
+      events={[
+        {
+          id: "call_search",
+          type: "tool",
+          name: "tavily__tavily_search",
+          status: "running",
+          summary: {
+            kind: "generic",
+            title: "Using web search",
+            placeholder: true,
+          },
+        },
+        {
+          id: "call_done",
+          type: "tool",
+          name: "tavily__tavily_search",
+          status: "done",
+          summary: { kind: "generic", title: "Swiss rail" },
+        },
+      ]}
+    />,
+  );
+
+  expect(screen.getByText("Using web search")).toBeInTheDocument();
+  expect(screen.getAllByText("Web search")).toHaveLength(1);
+});
+
 test("sweeps the working title before any reasoning has streamed", () => {
   render(
     <ActivityTracePanel

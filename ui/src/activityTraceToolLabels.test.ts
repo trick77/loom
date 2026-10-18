@@ -1,12 +1,100 @@
 import { describe, expect, test } from "vitest";
 import {
+  completeTrace,
   normalizeActivityTrace,
   summarizeToolCall,
   toolSourceLabel,
   upsertTraceToolCall,
+  upsertTraceToolResult,
 } from "./activityTrace";
 
 describe("tool call descriptions and labels", () => {
+  test("a titled call without arguments yet never shows the tool's name", () => {
+    // A call streams in before its arguments: the server's title ("Tavily
+    // Search") would name the vendor, so the row says which source is in use
+    // and hides the tag that would repeat it.
+    expect(
+      summarizeToolCall("tavily__tavily_search", "{}", "Tavily Search", {
+        running: true,
+      }),
+    ).toEqual({
+      kind: "generic",
+      title: "Using web search",
+      placeholder: true,
+    });
+    expect(
+      summarizeToolCall("context7__query-docs", "", "Query Documentation", {
+        running: true,
+      }),
+    ).toEqual({ kind: "generic", title: "Using context7", placeholder: true });
+    expect(
+      summarizeToolCall("peeq__get_video", "{}", "Get Video", {
+        running: true,
+      }),
+    ).toEqual({ kind: "generic", title: "Using peeq", placeholder: true });
+  });
+
+  test("the placeholder gives way to the query or, at the result, the title", () => {
+    let events = upsertTraceToolCall([], {
+      id: "c1",
+      name: "tavily__tavily_search",
+      arguments: "",
+      title: "Tavily Search",
+    });
+    expect(events[0]).toMatchObject({ summary: { title: "Using web search" } });
+    events = upsertTraceToolCall(events, {
+      id: "c1",
+      name: "tavily__tavily_search",
+      arguments: '{"query":"swiss rail"}',
+      title: "Tavily Search",
+    });
+    expect(events[0]).toMatchObject({ summary: { title: "Swiss rail" } });
+
+    // A tool without arguments keeps "{}": its title shows once it returns.
+    events = upsertTraceToolCall([], {
+      id: "c2",
+      name: "peeq__list_youtube_channels",
+      arguments: "{}",
+      title: "List channels",
+    });
+    expect(events[0]).toMatchObject({ summary: { title: "Using peeq" } });
+    events = upsertTraceToolResult(events, {
+      id: "c2",
+      name: "peeq__list_youtube_channels",
+      content: "[]",
+    });
+    expect(events[0]).toMatchObject({
+      summary: { kind: "generic", title: "List channels" },
+    });
+    expect(events[0]).not.toHaveProperty("summary.placeholder");
+  });
+
+  test("malformed arguments are no placeholder", () => {
+    expect(
+      summarizeToolCall("peeq__get_video", "[1]", "Get Video", {
+        running: true,
+      }),
+    ).toEqual({ kind: "generic", title: "Get Video" });
+  });
+
+  test("a call stopped before its result drops the placeholder", () => {
+    const running = upsertTraceToolCall([], {
+      id: "c1",
+      name: "tavily__tavily_search",
+      arguments: "",
+      title: "Tavily Search",
+    });
+    expect(completeTrace(running)[0]).toMatchObject({
+      status: "done",
+      summary: { kind: "generic", title: "Tavily Search" },
+    });
+    expect(completeTrace(running)[0]).not.toHaveProperty("summary.placeholder");
+    const reloaded = normalizeActivityTrace([
+      { ...running[0], status: "done" },
+    ] as never);
+    expect(reloaded?.[0]).not.toHaveProperty("summary.placeholder");
+  });
+
   test("a query stands alone; the title only speaks when there is none", () => {
     // The step's tag already names the tool ("Web search", the server), so a
     // title in front of the query ("Tavily Search: …") only repeats it.

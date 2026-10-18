@@ -142,6 +142,8 @@ export const de = {
       lookupIp: "{{ip}} wird nachgeschlagen",
       lookupIpAddress: "IP-Adresse wird nachgeschlagen",
       searchWeb: "Web wird durchsucht",
+      usingWebSearch: "Websuche wird verwendet",
+      usingTool: "{{source}} wird verwendet",
       searchDocumentation: "Dokumentation wird durchsucht",
       readingProjectThreads: "Projekt-Threads werden gelesen",
       browsingWeb: "Web wird durchstöbert",
