@@ -95,7 +95,9 @@ type Config struct {
 	ChatMaxCompletionTokens int
 	ChatTimeout             time.Duration
 	ChatIdleTimeout         time.Duration
-	ChatLogDir              string
+	// ChatLogDir is where dev auth logs raw LLM responses; empty
+	// (BACKEND_CHAT_LOG_DIR=off) logs none.
+	ChatLogDir string
 	// EmbedModel is BACKEND_EMBED_MODEL resolved against llmwire's registry;
 	// embeddings are on when it is set and its key is set, EmbedMissing names
 	// what is not.
@@ -114,7 +116,8 @@ type Config struct {
 	// ImageGenTypographyModel is used instead of ImageGenModel for the first image
 	// of a thread when the request reads as typography/logo/text work (FLUX.2
 	// [max] renders legible text far better than the [pro] default). Empty
-	// disables typography routing — every image stays on ImageGenModel.
+	// (BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL=off) disables typography routing —
+	// every image stays on ImageGenModel.
 	ImageGenTypographyModel string
 	ImageGenPollTimeout     time.Duration
 
@@ -250,11 +253,11 @@ func Load() (Config, error) {
 		UsersDir:                r.String("BACKEND_USERS_DIR", "/data/users"),
 		PublicURL:               r.String("BACKEND_PUBLIC_URL", ""),
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
-		ChatLogDir:              r.String("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
+		ChatLogDir:              optional(r, "BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
 		ImageGenBaseURL:         r.String("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
 		ImageGenAPIKey:          r.String("BACKEND_IMAGE_GEN_API_KEY", ""),
 		ImageGenModel:           r.String("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),
-		ImageGenTypographyModel: r.String("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "fal-ai/flux-2-max"),
+		ImageGenTypographyModel: optional(r, "BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "fal-ai/flux-2-max"),
 		TikaURL:                 r.String("BACKEND_TIKA_URL", "http://tika:9998"),
 		GotenbergURL:            r.String("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
 		TavilyURL:               r.String("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
@@ -369,6 +372,16 @@ func Load() (Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+// optional reads a setting that has a default and can be switched off. kit's
+// env counts an empty variable as unset, so the default applies to it; "off"
+// is the way to turn the setting off.
+func optional(r *env.Reader, name, def string) string {
+	if v := r.String(name, def); !strings.EqualFold(v, "off") {
+		return v
+	}
+	return ""
 }
 
 func validateDevAuthLocalOnly(cfg Config) error {

@@ -51,7 +51,7 @@ type Deps struct {
 	// ImageDefaultModel is the configured baseline image model (e.g.
 	// "flux-2-klein-4b"); ImageGenTypographyModel (e.g. "flux-2-flex") is used instead
 	// for the first image of a thread when it reads as typography/logo/text work.
-	// Empty ImageGenTypographyModel disables typography routing.
+	// Empty ImageGenTypographyModel (config: "off") disables typography routing.
 	ImageDefaultModel       string
 	ImageGenTypographyModel string
 	UsersDir                string

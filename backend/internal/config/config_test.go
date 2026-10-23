@@ -634,3 +634,26 @@ func TestLoad_sandbox(t *testing.T) {
 		})
 	}
 }
+
+// An empty variable takes the default (kit's env); "off" switches these
+// settings off.
+func TestLoad_offDisablesOptionalSettings(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "")
+	t.Setenv("BACKEND_CHAT_LOG_DIR", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ImageGenTypographyModel != "fal-ai/flux-2-max" || cfg.ChatLogDir != "logs/llm-responses" {
+		t.Fatalf("empty = typography %q, log dir %q; want the defaults", cfg.ImageGenTypographyModel, cfg.ChatLogDir)
+	}
+	t.Setenv("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "off")
+	t.Setenv("BACKEND_CHAT_LOG_DIR", "OFF")
+	if cfg, err = Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ImageGenTypographyModel != "" || cfg.ChatLogDir != "" {
+		t.Fatalf("off = typography %q, log dir %q; want both off", cfg.ImageGenTypographyModel, cfg.ChatLogDir)
+	}
+}

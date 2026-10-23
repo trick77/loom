@@ -290,11 +290,6 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 	return source, cause.Error()
 }
 
-// recoverToStream is deferred by the stream handlers once the SSE response is
-// committed. It turns a panic into a terminal error event so the client sees a
-// failed turn instead of a stream that just stops. The panic is logged here
-// with its stack; it is not re-raised because the recovery middleware could
-// only write a 500 into the open stream.
 // sseOpenFailed answers a stream that could not open. Only a writer that cannot
 // flush fails before the 200 and still gets a 500; any other error is a flush
 // after it, to a client already gone.
@@ -304,6 +299,11 @@ func sseOpenFailed(w http.ResponseWriter, r *http.Request, err error) {
 	}
 }
 
+// recoverToStream is deferred by the stream handlers once the SSE response is
+// committed. It turns a panic into a terminal error event so the client sees a
+// failed turn instead of a stream that just stops. The panic is logged here
+// with its stack; it is not re-raised because the recovery middleware could
+// only write a 500 into the open stream.
 func recoverToStream(stream turn.Emitter, r *http.Request) {
 	if p := recover(); p != nil {
 		slog.Error("panic recovered mid-stream", "err", p, "path", r.URL.Path, "stack", string(debug.Stack()))

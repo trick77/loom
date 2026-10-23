@@ -73,10 +73,11 @@ func (h *turnHub) close() {
 	}
 }
 
-// maxReplayWriteBytes bounds one write of a backlog. Each write runs under the
-// sse write deadline, so a long turn replayed over a slow link must not be one
-// write.
-const maxReplayWriteBytes = 64 << 10
+// maxReplayWriteBytes bounds one write of a backlog. Each write runs under
+// kit's sse.WriteTimeout (10 s), and a write past it ends the stream, so a long
+// turn replayed over a slow link must not be one write: 16 KiB still lands on
+// a 2 KB/s link.
+const maxReplayWriteBytes = 16 << 10
 
 // mergedDeltaEvents are the events whose payloads concatenate: consecutive
 // ones replay as one, so a reattaching client does not dispatch thousands.
