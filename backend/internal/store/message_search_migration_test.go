@@ -5,15 +5,15 @@ import (
 	"testing"
 )
 
-// TestMigration0021_BackfillsPopulatedCorpus exercises the real 0021 migration
+// TestMigration0024_BackfillsPopulatedCorpus exercises the real 0021 migration
 // FILE against a DB that already contains messages — the path a live deployment
 // takes, which the fresh-DB suite (table empty when 0021 runs) never covers.
 //
 // It opens a fully-migrated DB, seeds users/threads/messages, then drops the
 // message_fts table + triggers and re-applies the exact bytes of
-// migrations/0021_message_search.sql, asserting the backfill reindexes only the
+// migrations/0024_message_search.sql, asserting the backfill reindexes only the
 // user/assistant rows and that a MATCH query then returns them.
-func TestMigration0021_BackfillsPopulatedCorpus(t *testing.T) {
+func TestMigration0024_BackfillsPopulatedCorpus(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	db, err := Open(dbPath)
 	if err != nil {
@@ -41,7 +41,7 @@ func TestMigration0021_BackfillsPopulatedCorpus(t *testing.T) {
 	exec(`DROP TRIGGER message_fts_au`)
 	exec(`DROP TABLE message_fts`)
 
-	body, err := migrationsFS.ReadFile("migrations/0021_message_search.sql")
+	body, err := migrationsFS.ReadFile("migrations/0024_message_search.sql")
 	if err != nil {
 		t.Fatalf("read migration: %v", err)
 	}

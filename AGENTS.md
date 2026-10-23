@@ -61,9 +61,11 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - Secrets via env only; never commit them. The `admin` account is seeded from env on first boot only.
 
 ## Database / migrations
-- Add a migration as a new numbered file `backend/internal/store/migrations/NNNN_*.sql`. The runner
-  applies pending ones in order and records them in `schema_migrations`.
-- Never edit an already-applied migration — add a new one.
+- Add a migration as the next number `backend/internal/store/migrations/NNNN_*.sql`, never a taken one:
+  kit's runner orders by the number, refuses a duplicate and records the file name in `schema_migrations`.
+- Never edit an already-applied migration — add a new one. A table rebuild that needs foreign keys off:
+  first line `-- migrate:no-transaction`, then `PRAGMA foreign_keys = OFF; BEGIN; … COMMIT; PRAGMA
+  foreign_keys = ON;` (0032). Migrations run on their own pool, so a failed one never leaks its connection.
 - **vec0 never frees a deleted vector**: the chunk stays, inserts append, every KNN reads the partition's
   whole chunks. rongo hit minutes per search at 46k vectors in 380 chunks (46 needed).
   `CompactVectorsAtBoot` rebuilds past 2x, BOOT ONLY: the rebuild holds the write lock for minutes

@@ -18,6 +18,18 @@ import (
 // Open opens (creating if needed) the SQLite database at path, applies PRAGMAs
 // for safe concurrent use, runs migrations, and returns the *sql.DB.
 func Open(path string) (*sql.DB, error) {
+	// Migrations run on a pool of their own, closed before the app's opens: a
+	// table rebuild switches foreign keys off on its connection, and one that
+	// fails midway must not hand that connection to the app.
+	mdb, err := sql.Open("sqlite3", dsn(path))
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	err = migrate(mdb)
+	_ = mdb.Close()
+	if err != nil {
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	db, err := sql.Open("sqlite3", dsn(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -25,10 +37,6 @@ func Open(path string) (*sql.DB, error) {
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
-	}
-	if err := migrate(db); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return db, nil
 }

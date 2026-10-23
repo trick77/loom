@@ -45,7 +45,7 @@ func TestStore_scrubOutOfScopeMessageCitationsIsOneTime(t *testing.T) {
 
 	assertMessageCitationIDs(t, db, "m_empty", []string{"d_thread_1"})
 	var markerCount int
-	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations WHERE version = ?`, scrubCitationsMarker).Scan(&markerCount); err != nil {
+	if err := db.QueryRow(`SELECT count(*) FROM schema_migrations WHERE name = ?`, scrubCitationsMarker).Scan(&markerCount); err != nil {
 		t.Fatalf("count scrub marker: %v", err)
 	}
 	if markerCount != 1 {

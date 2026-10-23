@@ -52,8 +52,8 @@ func TestSharedThreads_foreignKeyIsUserScoped(t *testing.T) {
 
 // A legacy share row owned by someone other than the thread's owner, which the
 // old single-column key accepted, must not stop the rebuild: it is dropped.
-func TestMigration0028_dropsLegacyMismatchedShareRows(t *testing.T) {
-	db := openMigratedUpTo(t, filepath.Join(t.TempDir(), "a.db"), "0027_cost_nano_usd.sql")
+func TestMigration0031_dropsLegacyMismatchedShareRows(t *testing.T) {
+	db := openMigratedUpTo(t, filepath.Join(t.TempDir(), "a.db"), "0030_cost_nano_usd.sql")
 	for _, stmt := range []string{
 		`INSERT INTO users (id, oidc_subject, username, role) VALUES ('owner','s1','owner','user')`,
 		`INSERT INTO users (id, oidc_subject, username, role) VALUES ('other','s2','other','user')`,

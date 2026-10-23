@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestMigration0026_ClearsThreadImageModel exercises the real 0026 migration FILE
+// TestMigration0029_ClearsThreadImageModel exercises the real 0026 migration FILE
 // against rows that predate it — the path a live deployment takes, which the
 // fresh-DB suite (threads table empty when 0026 runs) never covers. That gap is
 // exactly how a first draft of this migration shipped a `SET image_model = NULL`
@@ -16,7 +16,7 @@ import (
 // then re-applies the exact bytes of the migration (it is idempotent, so running
 // it a second time is the test) and asserts the lock is cleared to the ” sentinel
 // SetThreadImageModelIfEmpty matches on.
-func TestMigration0026_ClearsThreadImageModel(t *testing.T) {
+func TestMigration0029_ClearsThreadImageModel(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	db, err := Open(dbPath)
 	if err != nil {
@@ -44,7 +44,7 @@ func TestMigration0026_ClearsThreadImageModel(t *testing.T) {
 		exec(`INSERT INTO threads (id, user_id, title, image_model) VALUES (?,'u1','t',?)`, id, model)
 	}
 
-	body, err := migrationsFS.ReadFile("migrations/0026_reset_thread_image_model.sql")
+	body, err := migrationsFS.ReadFile("migrations/0029_reset_thread_image_model.sql")
 	if err != nil {
 		t.Fatalf("read migration: %v", err)
 	}

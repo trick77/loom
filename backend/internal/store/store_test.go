@@ -113,7 +113,7 @@ CREATE TABLE user_memory (
 		t.Fatalf("read embedded migrations: %v", err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == "0009_memory_length_caps.sql" {
+		if entry.IsDir() || entry.Name() == "0011_memory_length_caps.sql" {
 			continue
 		}
 		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, entry.Name()); err != nil {

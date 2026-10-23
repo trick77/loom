@@ -337,7 +337,7 @@ func (s *Store) ReconcileLegacyDocumentScopes(ctx context.Context) error {
 	// Already reconciled on a prior boot? Then do nothing — never touch newer data.
 	var done int
 	switch err := tx.QueryRowContext(ctx,
-		`SELECT 1 FROM schema_migrations WHERE version = ?`, reconcileLegacyMarker).Scan(&done); err {
+		`SELECT 1 FROM schema_migrations WHERE name = ?`, reconcileLegacyMarker).Scan(&done); err {
 	case nil:
 		return nil
 	case sql.ErrNoRows:
@@ -401,7 +401,7 @@ func (s *Store) ReconcileLegacyDocumentScopes(ctx context.Context) error {
 	}
 
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO schema_migrations (version) VALUES (?)`, reconcileLegacyMarker); err != nil {
+		`INSERT INTO schema_migrations (name) VALUES (?)`, reconcileLegacyMarker); err != nil {
 		return fmt.Errorf("record reconcile marker: %w", err)
 	}
 
