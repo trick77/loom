@@ -9,11 +9,13 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/run"
+	"github.com/trick77/ship/kit/version"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
@@ -33,8 +35,6 @@ import (
 	"github.com/trick77/loom/web"
 )
 
-var version = "dev" // overridden via -ldflags at build time
-
 func main() {
 	// Configure structured logging with an explicit handler so every line
 	// carries an RFC3339 timestamp (the package default does not guarantee one).
@@ -42,13 +42,9 @@ func main() {
 	logLevel := parseLogLevel(envDefault("BACKEND_LOG_LEVEL", "info"))
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		if err := runHealthcheck(healthcheckURL(envDefault("BACKEND_ADDR", ":8080"))); err != nil {
-			slog.Error("healthcheck failed", "err", err)
-			os.Exit(1)
-		}
-		return
+		os.Exit(httpx.Healthcheck(httpx.LocalURL(envDefault("BACKEND_ADDR", ":8080"), "/healthz")))
 	}
-	if err := run(); err != nil {
+	if err := runServer(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
@@ -76,34 +72,10 @@ func parseLogLevel(raw string) slog.Level {
 	}
 }
 
-func healthcheckURL(addr string) string {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return "http://127.0.0.1:8080/api/health"
-	}
-	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
-		host = "127.0.0.1"
-	}
-	return "http://" + net.JoinHostPort(host, port) + "/api/health"
-}
-
-func runHealthcheck(url string) error {
-	client := http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected health status %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func run() error {
+func runServer() error {
 	// Logged first thing so the running build is identifiable even if startup later
 	// fails (config error, DB open, etc.) — the "listening" line only lands on success.
-	slog.Info("starting loom", "version", version)
+	slog.Info("starting loom", "version", version.String())
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -182,7 +154,7 @@ func run() error {
 		if llmClient != nil {
 			ingester.SetImageDescriber(llmClient)
 		}
-		reembed = func(ctx context.Context) { reembedUntilDone(ctx, ingester.ReembedMissing, sleepCtx) }
+		reembed = func(ctx context.Context) { reembedUntilDone(ctx, ingester.ReembedMissing, run.Sleep) }
 		docs := documents.NewService(ragStore, artifactStore, ingester, embedClient, cfg.UsersDir)
 		docs.SetUsageRecorder(usageStore)
 		documentService = docs
@@ -292,7 +264,6 @@ func run() error {
 	deps := httpapi.Deps{
 		Background:                 bg,
 		Lifetime:                   base,
-		Version:                    version,
 		Model:                      chatModelInfo(cfg),
 		Static:                     web.SPAHandler(),
 		OIDC:                       oidcService,
@@ -330,7 +301,7 @@ func run() error {
 		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := run.Context(context.Background())
 	defer stop()
 	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, func(ctx context.Context) {
 		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
@@ -371,7 +342,7 @@ const shutdownGrace = 2 * time.Second
 var errServerShuttingDown = errors.New("server shutting down")
 
 // serve accepts on ln until ctx is done or the listener fails, then stops in
-// the order the deferred db.Close in run() needs:
+// the order the deferred db.Close in runServer() needs:
 //
 //  1. cancel every request context with errServerShuttingDown, so an open SSE
 //     stream unwinds now (persisting its partial answer on a detached context)
@@ -388,7 +359,7 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, bg *backgroun
 
 	serveErr := make(chan error, 1)
 	go func() {
-		slog.Info("listening", "addr", ln.Addr().String(), "version", version)
+		slog.Info("listening", "addr", ln.Addr().String(), "version", version.String())
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err
 			return

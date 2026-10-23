@@ -45,7 +45,7 @@ func TestNewServerSetsReadTimeouts(t *testing.T) {
 	}
 }
 
-// A listener that fails must fail run(): logging the error inside the accept
+// A listener that fails must fail runServer(): logging the error inside the accept
 // goroutine and then waiting for a signal leaves a process that looks alive
 // but serves nothing.
 func TestServeReturnsListenerError(t *testing.T) {
@@ -240,7 +240,7 @@ func TestServeShutdownLetsShortRequestsFinish(t *testing.T) {
 	}
 }
 
-// testBase gives srv a fresh base context, as run() does, and returns its
+// testBase gives srv a fresh base context, as runServer() does, and returns its
 // cancel for serve.
 func testBase(t *testing.T, srv *http.Server) context.CancelCauseFunc {
 	t.Helper()

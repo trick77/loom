@@ -112,7 +112,6 @@ func setupChild(args []string) error {
 	// -I: ignore PYTHON* variables and the user site; -B: no .pyc writes;
 	// -u: unbuffered, so output printed before a kill still arrives.
 	argv := []string{"python3", "-I", "-B", "-u", "-X", "utf8", "main.py"}
-	coverageFlush()
 	if err := installJobFilter(); err != nil {
 		return err
 	}

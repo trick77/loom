@@ -320,7 +320,7 @@ test("greets signed-in users with a night-appropriate greeting after 23:00", asy
 });
 
 test("uses Loom as the HTML title", () => {
-  for (const path of ["../index.html", "../../backend/web/dist/index.html"]) {
+  for (const path of ["../index.html", "../../backend/web/placeholder.html"]) {
     expect(readFileSync(new URL(path, import.meta.url), "utf8")).toContain(
       "<title>Loom</title>",
     );

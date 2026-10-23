@@ -1,92 +1,69 @@
 package web
 
 import (
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
 
-func TestSPAHandler_servesIndexFallback(t *testing.T) {
-	h := SPAHandler()
-
-	// An unknown client-side route must fall back to index.html (200).
+func serve(h http.Handler, path string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/projects/123", nil))
-	if rec.Code != http.StatusOK {
-		t.Errorf("fallback status = %d, want 200", rec.Code)
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	return rec
+}
+
+func TestHandler_unknownRouteGetsTheShell(t *testing.T) {
+	h := handler(fstest.MapFS{"index.html": {Data: []byte("INDEX")}})
+	rec := serve(h, "/projects/123")
+	if rec.Code != http.StatusOK || rec.Body.String() != "INDEX" {
+		t.Errorf("/projects/123 = %d %q, want 200 INDEX", rec.Code, rec.Body.String())
+	}
+	// A mistyped endpoint stays a 404, not HTML posing as JSON.
+	if rec := serve(h, "/api/nope"); rec.Code != http.StatusNotFound {
+		t.Errorf("/api/nope = %d, want 404", rec.Code)
 	}
 }
 
-func TestSpaHandler_retiredIconPathsReturn404(t *testing.T) {
-	// The icon paths loom no longer serves: /favicon.ico is probed blindly by
-	// unfurlers and feed readers, /favicon.svg was the master before it was
-	// renamed to /icon.svg, and the manifest PNGs are held by already-installed
-	// PWAs. None of them parse HTML first, so a 200 of markup is worse than a
-	// clean miss.
-	paths := []string{
-		"/favicon.ico",
-		"/favicon.svg",
-		"/web-app-manifest-192x192.png",
-		"/web-app-manifest-512x512.png",
+func TestHandler_unbuiltServesPlaceholder(t *testing.T) {
+	rec := serve(handler(fstest.MapFS{".gitkeep": {}}), "/")
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "built without its UI") {
+		t.Errorf("unbuilt / = %d %q, want 503 and the placeholder", rec.Code, rec.Body.String())
 	}
+}
 
-	h := spaHandler(fstest.MapFS{"index.html": {Data: []byte("INDEX")}})
-	for _, path := range paths {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("%s status = %d, want 404", path, rec.Code)
+func TestHandler_retiredIconPathsReturn404(t *testing.T) {
+	for path := range retiredIcons {
+		rec := serve(handler(fstest.MapFS{"index.html": {Data: []byte("INDEX")}}), path)
+		if rec.Code != http.StatusNotFound || rec.Body.String() == "INDEX" {
+			t.Errorf("%s = %d %q, want a 404", path, rec.Code, rec.Body.String())
 		}
-		if rec.Body.String() == "INDEX" {
-			t.Errorf("%s served index.html, want 404 body", path)
-		}
-	}
-
-	// The guard must not shadow a real file: if an icon is ever restored to
-	// ui/public, it is served normally rather than permanently 404ing.
-	for _, path := range paths {
-		name := trimLeadingSlash(path)
-		withIcon := spaHandler(fstest.MapFS{
-			"index.html": {Data: []byte("INDEX")},
-			name:         {Data: []byte("ICON")},
+		// The guard must not shadow a real file: a restored icon serves normally.
+		withIcon := handler(fstest.MapFS{
+			"index.html":                  {Data: []byte("INDEX")},
+			strings.TrimPrefix(path, "/"): {Data: []byte("ICON")},
 		})
-		rec := httptest.NewRecorder()
-		withIcon.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-		if rec.Code != http.StatusOK || rec.Body.String() != "ICON" {
+		if rec := serve(withIcon, path); rec.Code != http.StatusOK || rec.Body.String() != "ICON" {
 			t.Errorf("%s with file present = %d %q, want 200 ICON", path, rec.Code, rec.Body.String())
 		}
 	}
 }
 
-func TestSpaHandler_directoryPathFallsBackToIndex(t *testing.T) {
-	fsys := fstest.MapFS{
-		"index.html":    {Data: []byte("INDEX")},
-		"assets/app.js": {Data: []byte("APP")},
+func TestHandler_robotsAndShareNoindex(t *testing.T) {
+	h := handler(fstest.MapFS{"index.html": {Data: []byte("INDEX")}})
+	if rec := serve(h, "/robots.txt"); !strings.Contains(rec.Body.String(), "Disallow: /share/") {
+		t.Errorf("robots.txt = %q", rec.Body.String())
 	}
-	h := spaHandler(fsys)
+	if rec := serve(h, "/share/abc"); !strings.Contains(rec.Header().Get("X-Robots-Tag"), "noindex") {
+		t.Errorf("/share/ X-Robots-Tag = %q, want noindex", rec.Header().Get("X-Robots-Tag"))
+	}
+}
 
-	// A directory path must fall back to index.html, NOT render a listing.
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("/assets status = %d, want 200", rec.Code)
-	}
-	if rec.Body.String() != "INDEX" {
-		t.Errorf("/assets body = %q, want INDEX (index fallback, no dir listing)", rec.Body.String())
-	}
-
-	// An existing regular file is served directly.
-	rec2 := httptest.NewRecorder()
-	h.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil))
-	if rec2.Body.String() != "APP" {
-		t.Errorf("/assets/app.js body = %q, want APP", rec2.Body.String())
-	}
-
-	// An unknown client-side route falls back to index.html.
-	rec3 := httptest.NewRecorder()
-	h.ServeHTTP(rec3, httptest.NewRequest(http.MethodGet, "/projects/123", nil))
-	if rec3.Body.String() != "INDEX" {
-		t.Errorf("/projects/123 body = %q, want INDEX", rec3.Body.String())
+func TestIndexHTML_tracksTheBuild(t *testing.T) {
+	_, ok := IndexHTML()
+	if _, err := fs.Stat(dist(), "index.html"); (err == nil) != ok {
+		t.Errorf("IndexHTML ok = %v, disagrees with the embedded dist", ok)
 	}
 }

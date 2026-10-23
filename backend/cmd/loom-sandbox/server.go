@@ -48,7 +48,6 @@ func (s *server) authorized(r *http.Request) bool {
 }
 
 func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
-	defer coverageFlush()
 	if !s.authorized(r) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return

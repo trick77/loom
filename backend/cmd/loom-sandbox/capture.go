@@ -1,9 +1,16 @@
 package main
 
 import (
+	"io"
 	"strings"
 	"sync"
 	"unicode/utf8"
+)
+
+// Both capture a job's output as its io.Writer.
+var (
+	_ io.Writer = (*headBuffer)(nil)
+	_ io.Writer = (*tailBuffer)(nil)
 )
 
 // headBuffer keeps the first max bytes written and discards the rest, while

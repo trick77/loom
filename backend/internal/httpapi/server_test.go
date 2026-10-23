@@ -22,25 +22,17 @@ import (
 	"github.com/trick77/loom/internal/store"
 )
 
+// The probes are kit's, answering a caller on this host only.
 func TestHealth_returnsOK(t *testing.T) {
-	srv := New(Deps{Version: "test"})
+	srv := New(Deps{})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
 
 	srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["status"] != "ok" {
-		t.Errorf("status field = %q, want ok", body["status"])
-	}
-	if body["version"] != "test" {
-		t.Errorf("version field = %q, want test", body["version"])
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "ok" {
+		t.Fatalf("status = %d, body %q, want 200 ok", rec.Code, rec.Body.String())
 	}
 }
 
@@ -48,7 +40,7 @@ func TestHealth_returnsOK(t *testing.T) {
 // their viewers are not signed in.
 func TestModel_returnsChatModelFactsWithoutAuth(t *testing.T) {
 	info := llm.ModelInfo{ID: "some-model", DisplayName: "Some Model", ContextWindow: 128000}
-	srv := New(Deps{Version: "test", Model: info})
+	srv := New(Deps{Model: info})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/model", nil))
 
@@ -89,7 +81,7 @@ func TestLogging_skipsHealthEndpoint(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/health", nil))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if strings.Contains(logs.String(), "request") {
 		t.Fatalf("health request was logged: %s", logs.String())
 	}
@@ -101,7 +93,7 @@ func TestLogging_skipsHealthEndpoint(t *testing.T) {
 }
 
 func TestMeRequiresSession(t *testing.T) {
-	srv := New(Deps{Version: "test"})
+	srv := New(Deps{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 
@@ -115,7 +107,6 @@ func TestMeRequiresSession(t *testing.T) {
 func TestMeReturnsCurrentUser(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", DisplayName: "Jan", Role: auth.RoleAdmin, ResponseLanguage: "en"}
 	srv := New(Deps{
-		Version:  "test",
 		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
 		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
 		Users:    fakeUserStore{user: user, ok: true},
@@ -141,7 +132,6 @@ func TestMeReturnsCurrentUser(t *testing.T) {
 func TestUpdateMeSetsResponseLanguage(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
-		Version:  "test",
 		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
 		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
 		Users:    fakeUserStore{user: user, ok: true},
@@ -167,7 +157,6 @@ func TestUpdateMeSetsResponseLanguage(t *testing.T) {
 func TestUpdateMeRejectsUnsupportedLanguage(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
-		Version:  "test",
 		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
 		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
 		Users:    fakeUserStore{user: user, ok: true},
@@ -241,7 +230,6 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 func TestAdminUsersRequiresAdmin(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
-		Version:  "test",
 		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
 		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
 		Users:    fakeUserStore{user: user, ok: true},
@@ -259,8 +247,7 @@ func TestAdminUsersRequiresAdmin(t *testing.T) {
 
 func TestAuthCallbackRedirectsOnOIDCError(t *testing.T) {
 	srv := New(Deps{
-		Version: "test",
-		OIDC:    fakeOIDCService{err: errors.New("bad callback")},
+		OIDC: fakeOIDCService{err: errors.New("bad callback")},
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=bad", nil)
@@ -289,8 +276,7 @@ func TestAuthCallbackLogsFailureWithoutLeakingSecrets(t *testing.T) {
 	wrapped := fmt.Errorf("exchange oidc code: %w", urlErr)
 
 	srv := New(Deps{
-		Version: "test",
-		OIDC:    fakeOIDCService{err: wrapped},
+		OIDC: fakeOIDCService{err: wrapped},
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=x&code=authcode456", nil)
@@ -323,7 +309,6 @@ func TestDevAuthLoginCreatesAdminSession(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "dev", Role: auth.RoleAdmin, ResponseLanguage: "en"}
 	session := auth.Session{Token: "tok", UserID: user.ID, ExpiresAt: time.Now().Add(time.Hour)}
 	srv := New(Deps{
-		Version: "test",
 		Sessions: fakeSessionStore{
 			session: session,
 		},
@@ -358,7 +343,7 @@ func TestDevAuthLoginCreatesAdminSession(t *testing.T) {
 }
 
 func TestAuthLoginReturns503WhenOIDCDependencyMissing(t *testing.T) {
-	srv := New(Deps{Version: "test"})
+	srv := New(Deps{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/login", nil)
 

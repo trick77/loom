@@ -19,13 +19,16 @@ import (
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/loom/internal/usage"
+	"github.com/trick77/loom/web"
+	"github.com/trick77/ship/kit/httpx"
 )
 
-// Deps are the dependencies needed to build the server. Grows in later phases
-// (store, config, services); for Phase 1 only Version and the static handler.
+// Deps are the dependencies needed to build the server.
 type Deps struct {
-	Version string
-	Static  http.Handler // serves the embedded SPA; may be nil in tests
+	Static http.Handler // serves the embedded SPA; may be nil in tests
+	// IndexHTML is the SPA shell the share page renders its card into; nil is
+	// the embedded build's (web.IndexHTML).
+	IndexHTML func() ([]byte, bool)
 	// Model describes the configured chat model for /api/model; zero when
 	// chat is off.
 	Model llm.ModelInfo
@@ -80,7 +83,6 @@ type Deps struct {
 }
 
 type server struct {
-	version               string
 	model                 llm.ModelInfo
 	background            *background.Group
 	inflight              inflightKeys
@@ -103,6 +105,7 @@ type server struct {
 	devAuthClaims         auth.Claims
 	postLogoutRedirectURL string
 	publicURL             string
+	indexHTML             func() ([]byte, bool)
 	activeStreams         activeStreamRegistry
 	lifetime              context.Context
 	// engine runs the chat turns the stream handlers start.
@@ -276,7 +279,6 @@ func newServer(d Deps) *server {
 	s := &server{
 		background:            bg,
 		lifetime:              lifetime,
-		version:               d.Version,
 		model:                 d.Model,
 		oidc:                  d.OIDC,
 		auth:                  d.Auth,
@@ -295,6 +297,10 @@ func newServer(d Deps) *server {
 		devAuthClaims:         d.DevAuthClaims,
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
 		publicURL:             d.PublicURL,
+		indexHTML:             d.IndexHTML,
+	}
+	if s.indexHTML == nil {
+		s.indexHTML = web.IndexHTML
 	}
 	s.engine = turn.New(turn.Config{
 		Thread:                     d.Thread,
@@ -325,7 +331,7 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	s := newServer(d)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", s.handleHealth)
+	httpx.Health(mux, slog.Default())
 	mux.HandleFunc("GET /api/model", s.handleModel)
 	mux.HandleFunc("GET /api/auth/login", s.handleAuthLogin)
 	mux.HandleFunc("GET /api/auth/callback", s.handleAuthCallback)

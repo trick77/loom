@@ -7,18 +7,21 @@ FROM golang:1.27-alpine AS build
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 COPY backend/cmd/loom-sandbox/ ./cmd/loom-sandbox/
-# SANDBOX_COVER=1 builds the coverage-instrumented binary the CI escape test
-# measures (see cover_on.go); releases never set it. go build fetches only
-# the modules this binary imports (golang.org/x/sys), not all of loom's.
-ARG SANDBOX_COVER=""
+# ship release passes the release version. go build fetches only the modules
+# this binary imports (golang.org/x/sys), not all of loom's; the version
+# symbol is ignored by the linker, the sandbox does not import kit.
+ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
-    if [ -n "$SANDBOX_COVER" ]; then \
-      CGO_ENABLED=0 go build -cover -covermode=atomic -tags sandboxcover -o /out/loom-sandbox ./cmd/loom-sandbox; \
-    else \
-      CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/loom-sandbox ./cmd/loom-sandbox; \
-    fi
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=${VERSION}" -o /out/loom-sandbox ./cmd/loom-sandbox
 
 FROM python:3.13-slim
+# upgrade: the base image lags Debian's security fixes, and the release's trivy
+# scan fails on any fixed HIGH or CRITICAL finding. VERSION keys the layer, so
+# every release upgrades anew instead of reusing a cached answer.
+ARG VERSION=dev
+RUN echo "upgrade layer: ${VERSION}" \
+    && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
 COPY sandbox/requirements.lock /tmp/requirements.lock
 # Hash-pinned wheels only; no pip at run time. compileall writes the .pyc files
 # now, because jobs run with -B on a read-only root.

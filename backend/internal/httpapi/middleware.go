@@ -61,7 +61,7 @@ func (rec *statusRecorder) Unwrap() http.ResponseWriter {
 // logging logs each request with method, path, status, and duration.
 func logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/health" {
+		if r.URL.Path == "/healthz" || r.URL.Path == "/readyz" {
 			next.ServeHTTP(w, r)
 			return
 		}

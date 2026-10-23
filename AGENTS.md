@@ -4,7 +4,15 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 
 ## Working conventions
 - Docs, specs, and code comments are **English only** (conversation with the maintainer is German).
-- One feature branch per phase (`feat/phase-N-...`); never commit to `master`. Conventional commits.
+- One feature branch per change; never commit to `master`.
+- Commit subjects + PR titles: Go style `area: what` (`httpapi: …`, `chat: …`, `rag: …`, `store: …`, `sandbox: …`, `turn: …`, `ui: …`), gated by ship; release notes list them by area.
+- Gate: `ship check` (`make check`): conform, lint, tests, coverage floors 75 (Go, UI) and patch 75, the
+  `ship.yaml` steps. `ship hooks` once per clone runs it on every push. Raise tests, never a floor. The sandbox
+  escape test is CI only (`sandbox-escape.yaml`): docker + hostile code, too slow for the hook.
+- Release by hand only, on GitHub (images are built, scanned and signed there): `gh workflow run Release -f
+  bump=auto`. auto = patch, or a commit's `Release: minor` + `Release-note: …` lines. Ships both images.
+- Plumbing kit (`github.com/trick77/ship/kit`) has comes from kit, never hand-rolled. Lint config is ship's (no
+  local copy).
 - TDD: write the failing test first, then the minimal implementation.
 - Keep files focused — one clear responsibility each.
 - YAML files use the `.yaml` extension (never `.yml`).
@@ -14,14 +22,14 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - `make fe-test` — frontend Vitest
 - `make fe-lint` — frontend lint (ESLint with react-hooks, prettier check)
 - `make model-names` — fails on a model/vendor name outside `.env.example` (CI runs it)
-- `make coverage-gate` — 75% on changed lines + project floors; needs `pip install diff-cover==10.3.0`.
-- `make fe-build` — build the SPA into `ui/dist` (the image copies it into `backend/web/dist`)
+- `make check` — the gate (`ship check`), what CI and the pre-push hook run
+- `make fe-build` — build the SPA into `backend/web/dist` (the Go embed)
 - `make build` — full build → `bin/loom` (CGO_ENABLED=0)
 - `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_AUTH_MODE`; `make dev` sets both)
 - `docker compose up --build` — full stack (copy `.env.example` → `.env` and fill it first)
 
 ## Locked technical choices (do not change without explicit agreement)
-- Module path `github.com/trick77/loom`. Go 1.26 (`go.mod`; Containerfile uses `golang:1.27-alpine`).
+- Module path `github.com/trick77/loom`. Go 1.27 (`go.mod`; Containerfile uses `golang:1.27-alpine`).
 - **Pure-Go SQLite**: `ncruces/go-sqlite3` pinned to **`v0.23.3`** + `sqlite-vec-go-bindings/ncruces`
   pinned to **`v0.1.7-alpha.2`**.
   `CGO_ENABLED=0` everywhere. Do NOT switch to `mattn/go-sqlite3` — the pin matches the sqlite-vec
@@ -65,9 +73,9 @@ Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an emb
 - Vite + React + TS + Tailwind, **direction A (Warm Editorial)**: tokens are `--ui-*` CSS variables in
   `ui/src/index.css`; use the themed classes (`bg-bg`, `bg-panel`, `text-ink`, `text-muted`,
   `bg-accent`, `rounded-ui`, `font-serif`/`font-sans`). Anthropic fonts are self-hosted there.
-- `npm run build` writes `ui/dist`; Go embeds `backend/web/dist` (only placeholder `index.html`
-  tracked). Local binary with the SPA: copy `ui/dist/.` in, build, then
-  `git checkout -- backend/web/dist/index.html`. Never commit built assets.
+- `npm run build` writes `backend/web/dist`, the Go embed (`emptyOutDir: false`, ship's canon); `make fe-build`
+  and `ship check` empty it first. Only `.gitkeep` is tracked; an unbuilt binary serves `web/placeholder.html`
+  with a 503. Never commit built assets.
 
 ## Queued messages
 - Sent during a running turn → `queued_messages`, moved into `messages` only by `ConsumeQueued`

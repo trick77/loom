@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/trick77/ship/kit/version"
 )
 
 // Protocol revisions loom speaks. The modern revision (2026-07-28) is
@@ -48,7 +50,8 @@ const (
 	eraLegacy
 )
 
-var clientInfo = map[string]string{"name": "loom", "version": "dev"}
+// clientInfo names loom and its release to MCP servers.
+var clientInfo = map[string]string{"name": "loom", "version": version.String()}
 
 // rpcCallError is a JSON-RPC error a server answered with on a 2xx response.
 type rpcCallError struct {

@@ -1,0 +1,35 @@
+name: Sandbox escape
+
+# The run_python sandbox runs model-written code. Its escape tests run the
+# image with the production settings from compose, on plain Docker as in
+# production; any hostile snippet that gets through fails the run. CI only:
+# docker plus the hostile-code suite is too slow for ship's pre-push hook.
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "sandbox/**"
+      - "backend/cmd/loom-sandbox/**"
+      - "backend/go.mod"
+      - "backend/go.sum"
+      - "scripts/sandbox-escape-test.sh"
+      - "scripts/sandbox_escape_test.py"
+      - "compose.yaml"
+      - ".github/workflows/sandbox-escape.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-escape-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  escape:
+    name: Sandbox escape tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./scripts/sandbox-escape-test.sh

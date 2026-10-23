@@ -9,7 +9,6 @@ import (
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/web"
 )
 
 // share_handlers.go implements the public, unauthenticated share viewer endpoints
@@ -79,9 +78,11 @@ type publicShareResponse struct {
 // leaks; enrichment is best-effort.
 func (s *server) handleShareIndex(w http.ResponseWriter, r *http.Request) {
 	noindex(w)
-	index, ok := web.IndexHTML()
+	index, ok := s.indexHTML()
 	if !ok {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		// A binary built without its UI: the rest of the app answers with kit's
+		// placeholder and a 503 too.
+		http.Error(w, "UI not built", http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

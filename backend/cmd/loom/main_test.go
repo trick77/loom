@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -222,36 +220,5 @@ func TestToolConfigForConfigPropagatesFileError(t *testing.T) {
 	}
 	if _, err := toolConfigForConfig(config.Config{MCPServersFile: path}, nil); err == nil {
 		t.Fatal("toolConfigForConfig() error = nil, want propagated file error")
-	}
-}
-
-func TestHealthcheckURLUsesLoopbackForWildcardListenAddress(t *testing.T) {
-	if got, want := healthcheckURL(":8080"), "http://127.0.0.1:8080/api/health"; got != want {
-		t.Fatalf("healthcheckURL(:8080) = %q, want %q", got, want)
-	}
-}
-
-func TestRunHealthcheckRequiresHealthyResponse(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/health" {
-			t.Fatalf("path = %q, want /api/health", r.URL.Path)
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	if err := runHealthcheck(server.URL + "/api/health"); err != nil {
-		t.Fatalf("runHealthcheck() error = %v", err)
-	}
-}
-
-func TestRunHealthcheckFailsUnhealthyResponse(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}))
-	defer server.Close()
-
-	if err := runHealthcheck(server.URL + "/api/health"); err == nil {
-		t.Fatal("runHealthcheck() error = nil, want failure")
 	}
 }
