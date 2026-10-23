@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/ncruces/go-sqlite3 v0.23.3
 	github.com/trick77/llmwire v0.1.3
-	github.com/trick77/ship/kit v0.17.4
+	github.com/trick77/ship/kit v0.17.5
 	github.com/trick77/webfetch v0.4.4
 	github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7
 	github.com/yuin/goldmark v1.8.6

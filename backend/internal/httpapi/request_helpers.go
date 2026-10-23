@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // maxJSONBodyBytes bounds an ordinary JSON request body. Endpoints whose
@@ -25,19 +25,13 @@ const maxJSONBodyBytes = 64 * 1024
 // limit would reject legitimate sends long before the store's own caps apply.
 const maxStreamBodyBytes = 4 << 20
 
-// serverError logs the underlying cause of a 5xx with request context and
-// returns a generic JSON error to the client (no internal details leak out).
-// Every 500 path must go through here so failures are never silent. The cause
-// is redacted for the log (query strings, userinfo) and the path drops a share
-// token, since a cause that embeds an upstream URL may carry a key.
+// serverError is kit's logged 500 with the cause redacted first (query
+// strings, userinfo): a cause that embeds an upstream URL may carry a key.
+// Every 500 path must go through here so failures are never silent. The line
+// carries the request id, which joins it to the access line and its masked
+// path.
 func serverError(w http.ResponseWriter, r *http.Request, err error, clientMessage string) {
-	slog.Error("request failed",
-		"method", r.Method,
-		"path", logPath(r),
-		"client_message", clientMessage,
-		"err", redactErr(err),
-	)
-	writeJSONError(w, http.StatusInternalServerError, clientMessage)
+	httpx.ServerError(w, r, redactErr(err), clientMessage)
 }
 
 // writeStoreError maps a chat store failure to its response: a
@@ -47,11 +41,11 @@ func writeStoreError(w http.ResponseWriter, r *http.Request, err error) {
 	var validation *chat.ValidationError
 	switch {
 	case errors.As(err, &validation):
-		writeJSONError(w, http.StatusBadRequest, validation.Msg)
+		httpx.WriteError(w, http.StatusBadRequest, validation.Msg)
 	case errors.Is(err, chat.ErrThreadNotFound):
-		writeJSONError(w, http.StatusNotFound, chat.ErrThreadNotFound.Error())
+		httpx.WriteError(w, http.StatusNotFound, chat.ErrThreadNotFound.Error())
 	case errors.Is(err, chat.ErrProjectNotFound):
-		writeJSONError(w, http.StatusNotFound, chat.ErrProjectNotFound.Error())
+		httpx.WriteError(w, http.StatusNotFound, chat.ErrProjectNotFound.Error())
 	default:
 		serverError(w, r, err, "thread store failed")
 	}
@@ -60,7 +54,7 @@ func writeStoreError(w http.ResponseWriter, r *http.Request, err error) {
 func currentUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {
 	user, ok := auth.UserFromContext(r.Context())
 	if !ok {
-		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		return auth.User{}, false
 	}
 	return user, true
@@ -68,7 +62,7 @@ func currentUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {
 
 func requireThreadStore(w http.ResponseWriter, s *server) bool {
 	if s.thread == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "thread store is not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "thread store is not configured")
 		return false
 	}
 	return true
@@ -110,10 +104,10 @@ func decodeJSONBodyLimit(w http.ResponseWriter, r *http.Request, dst any, limit 
 // payload.
 func writeDecodeError(w http.ResponseWriter, err error) {
 	if isRequestBodyTooLarge(err) {
-		writeJSONError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "request body too large")
 		return
 	}
-	writeJSONError(w, http.StatusBadRequest, "invalid request body")
+	httpx.WriteError(w, http.StatusBadRequest, "invalid request body")
 }
 
 func isRequestBodyTooLarge(err error) bool {

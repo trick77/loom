@@ -5,7 +5,8 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"net/url"
+
+	"github.com/trick77/ship/kit/sqlitex"
 
 	// sqlite-vec WASM build for ncruces; provides the SQLite WASM binary AND
 	// the vec0 virtual table + vec_* functions. Replaces ncruces/go-sqlite3/embed.
@@ -40,8 +41,5 @@ func Open(path string) (*sql.DB, error) {
 // a deadlock), so two concurrent write transactions would fail instead of
 // queueing.
 func dsn(path string) string {
-	return fmt.Sprintf(
-		"file:%s?_pragma=journal_mode(wal)&_pragma=busy_timeout(10000)&_pragma=foreign_keys(on)&_txlock=immediate",
-		url.PathEscape(path),
-	)
+	return sqlitex.DSN(path, "_txlock=immediate")
 }

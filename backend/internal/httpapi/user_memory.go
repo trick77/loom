@@ -10,6 +10,7 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // userMemoryScope wires the user memory into the shared memory mechanism. Unlike
@@ -117,7 +118,7 @@ func (s *server) handleGetUserMemory(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "get user memory failed")
 		return
 	}
-	writeJSON(w, memory)
+	httpx.WriteJSON(w, http.StatusOK, memory)
 }
 
 // handleGetUserDirectives backs the read-only Memories-page directives view. There
@@ -135,5 +136,5 @@ func (s *server) handleGetUserDirectives(w http.ResponseWriter, r *http.Request)
 	if directives == nil {
 		directives = []chat.UserDirective{}
 	}
-	writeJSON(w, directives)
+	httpx.WriteJSON(w, http.StatusOK, directives)
 }

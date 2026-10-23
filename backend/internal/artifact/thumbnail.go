@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/imagescale"
+	"github.com/trick77/ship/kit/fsx"
 )
 
 // ThumbnailMaxDimension caps the longest side of a generated artifact thumbnail.
@@ -91,22 +92,7 @@ func WriteThumbnail(usersDir, userID, volumeRelPath string, src []byte) (string,
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	tmp, err := os.CreateTemp(dir, ".thumb-*.tmp")
-	if err != nil {
-		return "", err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return "", err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return "", err
-	}
-	if err := os.Rename(tmpName, abs); err != nil {
-		_ = os.Remove(tmpName)
+	if err := fsx.WriteFileAtomic(abs, data, 0o600); err != nil {
 		return "", err
 	}
 	return relPath, nil

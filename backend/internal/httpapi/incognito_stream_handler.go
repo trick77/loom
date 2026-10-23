@@ -10,8 +10,9 @@ import (
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/sse"
 	"github.com/trick77/loom/internal/turn"
+	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/sse"
 )
 
 // incognitoThreadID is the synthetic id used for the ephemeral incognito thread.
@@ -34,7 +35,7 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if s.llm == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "llm is not configured")
 		return
 	}
 	var body incognitoStreamRequest
@@ -43,18 +44,18 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if strings.TrimSpace(body.Content) == "" {
-		writeJSONError(w, http.StatusBadRequest, "message content is required")
+		httpx.WriteError(w, http.StatusBadRequest, "message content is required")
 		return
 	}
 	if len(body.Content) > chat.MaxMessageContentLength {
-		writeJSONError(w, http.StatusBadRequest, "message content is too long")
+		httpx.WriteError(w, http.StatusBadRequest, "message content is too long")
 		return
 	}
 	// The whole transcript is client-supplied every turn; bound it so a caller can't
 	// force an unboundedly large prompt build. The model context window is the real
 	// ceiling — this is a coarse guard well above any legitimate incognito session.
 	if incognitoHistoryTooLarge(body.History) {
-		writeJSONError(w, http.StatusBadRequest, "conversation is too long")
+		httpx.WriteError(w, http.StatusBadRequest, "conversation is too long")
 		return
 	}
 
@@ -69,14 +70,15 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	defer cancelStream(nil)
 	turnStart := time.Now()
 
-	stream, err := sse.NewWriter(w)
+	stream, err := sse.Open(w)
 	if err != nil {
-		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sseOpenFailed(w, r, err)
 		return
 	}
+	// Closed last: the recovery below still sends its error event.
+	defer stream.Close()
 	defer recoverToStream(stream, r)
-	defer stream.Heartbeat(streamCtx, streamHeartbeatInterval)()
+	stream.Heartbeat(streamHeartbeatInterval)
 
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
 	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, user.ResponseLanguageName())

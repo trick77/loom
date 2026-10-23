@@ -9,12 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/ship/kit/env"
 )
 
 // Keep in sync with imagegen's direct-client fallback default.
@@ -169,13 +169,6 @@ type DevUserConfig struct {
 	DisplayName string
 }
 
-func env(key, def string) string {
-	if v, ok := os.LookupEnv(key); ok {
-		return v
-	}
-	return def
-}
-
 // defaultSessionTTL is the login lifetime when BACKEND_SESSION_TTL is unset.
 const defaultSessionTTL = 30 * 24 * time.Hour
 
@@ -183,11 +176,11 @@ const defaultSessionTTL = 30 * 24 * time.Hour
 // chat model is a boot error outside dev auth and leaves chat off in dev (a UI
 // session needs no model); a model llmwire does not know, or one short of its
 // role, is a boot error naming the valid choices.
-func loadChatModels(cfg *Config) error {
+func loadChatModels(r *env.Reader, cfg *Config) error {
 	roles := llm.Roles{
-		Chat:   strings.TrimSpace(env("BACKEND_CHAT_MODEL", "")),
-		Gate:   strings.TrimSpace(env("BACKEND_GATE_MODEL", "")),
-		Vision: strings.TrimSpace(env("BACKEND_VISION_MODEL", "")),
+		Chat:   strings.TrimSpace(r.String("BACKEND_CHAT_MODEL", "")),
+		Gate:   strings.TrimSpace(r.String("BACKEND_GATE_MODEL", "")),
+		Vision: strings.TrimSpace(r.String("BACKEND_VISION_MODEL", "")),
 	}
 	if roles.Chat == "" {
 		// Outside dev auth a deployment without a chat model cannot answer a
@@ -205,7 +198,7 @@ func loadChatModels(cfg *Config) error {
 	cfg.ChatModels = resolved
 	var missing []string
 	for _, key := range resolved.KeyEnvs() {
-		if strings.TrimSpace(env(key, "")) == "" {
+		if strings.TrimSpace(r.String(key, "")) == "" {
 			missing = append(missing, key)
 		}
 	}
@@ -216,8 +209,8 @@ func loadChatModels(cfg *Config) error {
 
 // loadEmbedModel resolves BACKEND_EMBED_MODEL and decides whether embeddings
 // (document RAG) are on, the way loadChatModels does for chat.
-func loadEmbedModel(cfg *Config) error {
-	id := strings.TrimSpace(env("BACKEND_EMBED_MODEL", ""))
+func loadEmbedModel(r *env.Reader, cfg *Config) error {
+	id := strings.TrimSpace(r.String("BACKEND_EMBED_MODEL", ""))
 	if id == "" {
 		// A set embedding key without a model is the configuration from before
 		// the model was configurable: outside dev auth, fail boot rather than
@@ -226,7 +219,7 @@ func loadEmbedModel(cfg *Config) error {
 		if cfg.AuthMode != AuthModeDev {
 			chatKeys := cfg.ChatModels.KeyEnvs()
 			for _, key := range rag.EmbedKeyEnvs(nil) {
-				if strings.TrimSpace(env(key, "")) != "" && !slices.Contains(chatKeys, key) {
+				if strings.TrimSpace(r.String(key, "")) != "" && !slices.Contains(chatKeys, key) {
 					return fmt.Errorf("BACKEND_EMBED_MODEL is required when %s is set: an llmwire embedding model id (see .env.example)", key)
 				}
 			}
@@ -239,7 +232,7 @@ func loadEmbedModel(cfg *Config) error {
 		return err
 	}
 	cfg.EmbedModel = m
-	if strings.TrimSpace(env(m.KeyEnv, "")) == "" {
+	if strings.TrimSpace(r.String(m.KeyEnv, "")) == "" {
 		cfg.EmbedMissing = m.KeyEnv
 		return nil
 	}
@@ -247,92 +240,90 @@ func loadEmbedModel(cfg *Config) error {
 	return nil
 }
 
-// Load reads configuration from the environment, applying defaults.
+// Load reads configuration from the environment, applying defaults. A variable
+// set to the empty string counts as unset (kit's env). Every unparsable or
+// out-of-range number and duration is reported at once.
 func Load() (Config, error) {
+	r := env.New(os.Getenv)
 	cfg := Config{
-		Addr:                    env("BACKEND_ADDR", ":8080"),
-		DBPath:                  env("BACKEND_DB_PATH", "/data/loom.db"),
-		UsersDir:                env("BACKEND_USERS_DIR", "/data/users"),
-		PublicURL:               env("BACKEND_PUBLIC_URL", ""),
+		Addr:                    r.String("BACKEND_ADDR", ":8080"),
+		DBPath:                  r.String("BACKEND_DB_PATH", "/data/loom.db"),
+		UsersDir:                r.String("BACKEND_USERS_DIR", "/data/users"),
+		PublicURL:               r.String("BACKEND_PUBLIC_URL", ""),
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
-		ChatLogDir:              env("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
-		ImageGenBaseURL:         env("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
-		ImageGenAPIKey:          env("BACKEND_IMAGE_GEN_API_KEY", ""),
-		ImageGenModel:           env("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),
-		ImageGenTypographyModel: env("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "fal-ai/flux-2-max"),
-		TikaURL:                 env("BACKEND_TIKA_URL", "http://tika:9998"),
-		GotenbergURL:            env("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
-		TavilyURL:               env("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
-		TavilyAPIKey:            env("BACKEND_TAVILY_API_KEY", ""),
-		ObscuraMCPURL:           env("BACKEND_OBSCURA_MCP_URL", ""),
-		SandboxURL:              env("BACKEND_SANDBOX_URL", ""),
-		SandboxToken:            env("BACKEND_SANDBOX_TOKEN", ""),
-		MCPServersFile:          env("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
-		SessionSecret:           env("BACKEND_SESSION_SECRET", ""),
-		AuthMode:                AuthMode(env("BACKEND_AUTH_MODE", "")),
+		ChatLogDir:              r.String("BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
+		ImageGenBaseURL:         r.String("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
+		ImageGenAPIKey:          r.String("BACKEND_IMAGE_GEN_API_KEY", ""),
+		ImageGenModel:           r.String("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),
+		ImageGenTypographyModel: r.String("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "fal-ai/flux-2-max"),
+		TikaURL:                 r.String("BACKEND_TIKA_URL", "http://tika:9998"),
+		GotenbergURL:            r.String("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
+		TavilyURL:               r.String("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
+		TavilyAPIKey:            r.String("BACKEND_TAVILY_API_KEY", ""),
+		ObscuraMCPURL:           r.String("BACKEND_OBSCURA_MCP_URL", ""),
+		SandboxURL:              r.String("BACKEND_SANDBOX_URL", ""),
+		SandboxToken:            r.String("BACKEND_SANDBOX_TOKEN", ""),
+		MCPServersFile:          r.String("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
+		SessionSecret:           r.String("BACKEND_SESSION_SECRET", ""),
+		AuthMode:                AuthMode(r.String("BACKEND_AUTH_MODE", "")),
 		OIDC: OIDCConfig{
-			Issuer:                env("BACKEND_OIDC_ISSUER", ""),
-			ClientID:              env("BACKEND_OIDC_CLIENT_ID", ""),
-			ClientSecret:          env("BACKEND_OIDC_CLIENT_SECRET", ""),
-			RedirectURL:           env("BACKEND_OIDC_REDIRECT_URL", ""),
-			PostLogoutRedirectURL: env("BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL", ""),
-			AdminGroup:            env("BACKEND_OIDC_ADMIN_GROUP", ""),
+			Issuer:                r.String("BACKEND_OIDC_ISSUER", ""),
+			ClientID:              r.String("BACKEND_OIDC_CLIENT_ID", ""),
+			ClientSecret:          r.String("BACKEND_OIDC_CLIENT_SECRET", ""),
+			RedirectURL:           r.String("BACKEND_OIDC_REDIRECT_URL", ""),
+			PostLogoutRedirectURL: r.String("BACKEND_OIDC_POST_LOGOUT_REDIRECT_URL", ""),
+			AdminGroup:            r.String("BACKEND_OIDC_ADMIN_GROUP", ""),
 		},
 		DevUser: DevUserConfig{
-			Subject:     env("BACKEND_DEV_USER_SUBJECT", "dev-admin"),
-			Username:    env("BACKEND_DEV_USER_USERNAME", "dev"),
-			Email:       env("BACKEND_DEV_USER_EMAIL", "dev@example.local"),
-			DisplayName: env("BACKEND_DEV_USER_NAME", "Dev Admin"),
+			Subject:     r.String("BACKEND_DEV_USER_SUBJECT", "dev-admin"),
+			Username:    r.String("BACKEND_DEV_USER_USERNAME", "dev"),
+			Email:       r.String("BACKEND_DEV_USER_EMAIL", "dev@example.local"),
+			DisplayName: r.String("BACKEND_DEV_USER_NAME", "Dev Admin"),
 		},
 	}
-	if err := loadChatModels(&cfg); err != nil {
+	if err := loadChatModels(r, &cfg); err != nil {
 		return Config{}, err
 	}
-	if err := loadEmbedModel(&cfg); err != nil {
+	if err := loadEmbedModel(r, &cfg); err != nil {
 		return Config{}, err
 	}
-	imageGenPollTimeout, err := time.ParseDuration(env("BACKEND_IMAGE_GEN_POLL_TIMEOUT", defaultImageGenPollTimeout.String()))
-	if err != nil || imageGenPollTimeout <= 0 {
-		return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration greater than 0")
+	// An unparsable value is r's fault and comes back as the default, so each
+	// range check below fires only on a parsed value.
+	cfg.ImageGenPollTimeout = r.Duration("BACKEND_IMAGE_GEN_POLL_TIMEOUT", defaultImageGenPollTimeout)
+	if cfg.ImageGenPollTimeout <= 0 {
+		r.Fail("BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration greater than 0")
 	}
-	cfg.ImageGenPollTimeout = imageGenPollTimeout
-	maxCompletionTokens, err := strconv.Atoi(env("BACKEND_CHAT_MAX_COMPLETION_TOKENS", strconv.Itoa(defaultChatMaxCompletionTokens)))
-	if err != nil || maxCompletionTokens <= 0 {
-		return Config{}, fmt.Errorf("BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0")
+	cfg.ChatMaxCompletionTokens = r.Int("BACKEND_CHAT_MAX_COMPLETION_TOKENS", defaultChatMaxCompletionTokens)
+	if cfg.ChatMaxCompletionTokens <= 0 {
+		r.Fail("BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0")
 	}
-	cfg.ChatMaxCompletionTokens = maxCompletionTokens
-	chatTimeout, err := time.ParseDuration(env("BACKEND_CHAT_TIMEOUT", defaultChatTimeout.String()))
-	if err != nil || chatTimeout <= 0 {
-		return Config{}, fmt.Errorf("BACKEND_CHAT_TIMEOUT must be a duration greater than 0")
+	cfg.ChatTimeout = r.Duration("BACKEND_CHAT_TIMEOUT", defaultChatTimeout)
+	if cfg.ChatTimeout <= 0 {
+		r.Fail("BACKEND_CHAT_TIMEOUT must be a duration greater than 0")
 	}
-	cfg.ChatTimeout = chatTimeout
-	chatIdleTimeout, err := time.ParseDuration(env("BACKEND_CHAT_IDLE_TIMEOUT", defaultChatIdleTimeout.String()))
-	if err != nil || chatIdleTimeout < 0 {
-		return Config{}, fmt.Errorf("BACKEND_CHAT_IDLE_TIMEOUT must be a non-negative duration (0 disables the idle watchdog)")
+	cfg.ChatIdleTimeout = r.Duration("BACKEND_CHAT_IDLE_TIMEOUT", defaultChatIdleTimeout)
+	if cfg.ChatIdleTimeout < 0 {
+		r.Fail("BACKEND_CHAT_IDLE_TIMEOUT must be a non-negative duration (0 disables the idle watchdog)")
 	}
-	cfg.ChatIdleTimeout = chatIdleTimeout
-	knowledgeInlineTokenBudget, err := strconv.Atoi(env("BACKEND_KNOWLEDGE_INLINE_TOKEN_BUDGET", strconv.Itoa(defaultKnowledgeInlineTokenBudget)))
-	if err != nil || knowledgeInlineTokenBudget < 0 {
-		return Config{}, fmt.Errorf("BACKEND_KNOWLEDGE_INLINE_TOKEN_BUDGET must be a non-negative integer (0 disables full-document knowledge injection)")
+	cfg.KnowledgeInlineTokenBudget = r.Int("BACKEND_KNOWLEDGE_INLINE_TOKEN_BUDGET", defaultKnowledgeInlineTokenBudget)
+	if cfg.KnowledgeInlineTokenBudget < 0 {
+		r.Fail("BACKEND_KNOWLEDGE_INLINE_TOKEN_BUDGET must be a non-negative integer (0 disables full-document knowledge injection)")
 	}
-	cfg.KnowledgeInlineTokenBudget = knowledgeInlineTokenBudget
-	projectSummaryTokenBudget, err := strconv.Atoi(env("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET", strconv.Itoa(defaultProjectSummaryTokenBudget)))
-	if err != nil || projectSummaryTokenBudget <= 0 {
-		return Config{}, fmt.Errorf("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET must be an integer greater than 0")
+	cfg.ProjectSummaryTokenBudget = r.Int("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET", defaultProjectSummaryTokenBudget)
+	if cfg.ProjectSummaryTokenBudget <= 0 {
+		r.Fail("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET must be an integer greater than 0")
 	}
-	cfg.ProjectSummaryTokenBudget = projectSummaryTokenBudget
-	loadSandbox(&cfg)
 	if cfg.SessionSecret == "" {
-		return Config{}, fmt.Errorf("BACKEND_SESSION_SECRET is required")
+		r.Fail("BACKEND_SESSION_SECRET is required")
 	}
-	sessionTTL, err := time.ParseDuration(env("BACKEND_SESSION_TTL", defaultSessionTTL.String()))
-	if err != nil || sessionTTL <= 0 {
-		return Config{}, fmt.Errorf("BACKEND_SESSION_TTL must be a duration greater than 0")
+	cfg.SessionTTL = r.Duration("BACKEND_SESSION_TTL", defaultSessionTTL)
+	if cfg.SessionTTL <= 0 {
+		r.Fail("BACKEND_SESSION_TTL must be a duration greater than 0")
 	}
-	cfg.SessionTTL = sessionTTL
-	if strings.TrimSpace(cfg.DBPath) == "" {
-		return Config{}, fmt.Errorf("BACKEND_DB_PATH is required")
+	if err := r.Err(); err != nil {
+		return Config{}, err
 	}
+	loadSandbox(&cfg)
 	if !filepath.IsAbs(cfg.UsersDir) {
 		return Config{}, fmt.Errorf("BACKEND_USERS_DIR must be an absolute path")
 	}
@@ -446,8 +437,10 @@ func loadSandbox(cfg *Config) {
 }
 
 func sandboxProblem(cfg *Config) string {
-	timeout, err := time.ParseDuration(env("BACKEND_SANDBOX_TIMEOUT", maxSandboxTimeout.String()))
-	if err != nil || timeout <= 0 {
+	// Its own reader: a bad value turns run_python off, it never fails boot.
+	r := env.New(os.Getenv)
+	timeout := r.Duration("BACKEND_SANDBOX_TIMEOUT", maxSandboxTimeout)
+	if r.Err() != nil || timeout <= 0 {
 		return "BACKEND_SANDBOX_TIMEOUT must be a duration greater than 0"
 	}
 	if timeout > maxSandboxTimeout {

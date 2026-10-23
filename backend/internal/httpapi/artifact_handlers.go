@@ -14,6 +14,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/imagescale"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 const multipartUploadOverheadBytes = 1 << 20
@@ -35,7 +36,7 @@ func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 	}
 	opts, err := listArtifactsOptionsFromRequest(r)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	items, err := s.artifacts.List(r.Context(), user.ID, opts)
@@ -62,7 +63,7 @@ func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 		cursor := artifact.EncodeArtifactCursor(items[len(items)-1], opts.Sort)
 		nextCursor = &cursor
 	}
-	writeJSON(w, artifactListResponse{Items: response, NextCursor: nextCursor})
+	httpx.WriteJSON(w, http.StatusOK, artifactListResponse{Items: response, NextCursor: nextCursor})
 }
 
 func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {
@@ -93,12 +94,12 @@ func (s *server) serveArtifactDownload(w http.ResponseWriter, r *http.Request, u
 	}
 	abs, err := artifact.ResolveExisting(s.usersDir, userID, found.VolumeRelPath)
 	if err != nil {
-		writeJSONError(w, http.StatusForbidden, "artifact path rejected")
+		httpx.WriteError(w, http.StatusForbidden, "artifact path rejected")
 		return
 	}
 	file, err := os.Open(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
 	if os.IsNotExist(err) {
-		writeJSONError(w, http.StatusGone, "artifact file is missing")
+		httpx.WriteError(w, http.StatusGone, "artifact file is missing")
 		return
 	}
 	if err != nil {
@@ -280,7 +281,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.DisplayFilename) == "" {
-		writeJSONError(w, http.StatusBadRequest, "displayFilename is required")
+		httpx.WriteError(w, http.StatusBadRequest, "displayFilename is required")
 		return
 	}
 	// Clean the name to the same standard uploads enforce (strip unsafe chars,
@@ -288,7 +289,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 	// upload path would reject.
 	displayFilename, err := artifact.SanitizeDisplayName(body.DisplayFilename)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid displayFilename")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid displayFilename")
 		return
 	}
 	found, exists, err := s.artifacts.Get(r.Context(), user.ID, r.PathValue("artifactID"))
@@ -311,7 +312,7 @@ func (s *server) handleRenameArtifact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	found.DisplayFilename = displayFilename
-	writeJSON(w, found.Response())
+	httpx.WriteJSON(w, http.StatusOK, found.Response())
 }
 
 func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Request) {
@@ -326,15 +327,15 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes+multipartUploadOverheadBytes)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		if isRequestBodyTooLarge(err) {
-			writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
+			httpx.WriteError(w, http.StatusRequestEntityTooLarge, "upload too large")
 			return
 		}
-		writeJSONError(w, http.StatusBadRequest, "invalid upload")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "file is required")
+		httpx.WriteError(w, http.StatusBadRequest, "file is required")
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -344,7 +345,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	// everything else here keeps unsupported formats out of the LLM path entirely.
 	canonicalMIME, extension, ok := artifact.AllowedImageFormat(header.Filename)
 	if !ok {
-		writeJSONError(w, http.StatusUnsupportedMediaType, "unsupported image format")
+		httpx.WriteError(w, http.StatusUnsupportedMediaType, "unsupported image format")
 		return
 	}
 	mimeType := header.Header.Get("Content-Type")
@@ -352,11 +353,11 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		mimeType = canonicalMIME
 	}
 	if imagescale.TooLarge(file) {
-		writeJSONError(w, http.StatusRequestEntityTooLarge, "image has too many pixels")
+		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "image has too many pixels")
 		return
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid upload")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
 	threadID := strings.TrimSpace(r.FormValue("threadId"))
@@ -368,7 +369,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		if artifact.CountThreadUploads(items, user.ID) >= documents.MaxChatDocuments {
-			writeJSONError(w, http.StatusConflict, "too many attachments in this thread")
+			httpx.WriteError(w, http.StatusConflict, "too many attachments in this thread")
 			return
 		}
 	}
@@ -384,7 +385,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		Extension:       extension,
 	})
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid upload")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
 	size, copyErr := io.Copy(out, io.LimitReader(file, artifact.MaxArtifactSizeBytes+1))
@@ -400,7 +401,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 	}
 	if size > artifact.MaxArtifactSizeBytes {
 		_ = os.Remove(output.AbsPath)
-		writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
+		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "upload too large")
 		return
 	}
 	// Eagerly generate the sidecar thumbnail (best-effort) so the artifacts list and
@@ -426,7 +427,7 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		serverError(w, r, err, "save upload failed")
 		return
 	}
-	writeJSON(w, created.Response())
+	httpx.WriteJSON(w, http.StatusOK, created.Response())
 }
 
 func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, error) {

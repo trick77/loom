@@ -404,7 +404,7 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 		mux.Handle("/", d.Static)
 	}
 
-	return logging(recovery(mux)), &MemoryWorker{s: s}
+	return middleware(mux), &MemoryWorker{s: s}
 }
 
 type activeStreamRegistry struct {
@@ -755,7 +755,7 @@ func (r *activeStreamRegistry) stopAndWait(userID, threadID string, cause error,
 func (s *server) requireAuth(next http.Handler) http.Handler {
 	if s.auth == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		})
 	}
 	return s.auth.RequireAuth(next)
@@ -764,7 +764,7 @@ func (s *server) requireAuth(next http.Handler) http.Handler {
 func (s *server) requireAdmin(next http.Handler) http.Handler {
 	if s.auth == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		})
 	}
 	return s.auth.RequireAdmin(next)

@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // Memory tuning, shared by the project and user memories.
@@ -193,7 +194,7 @@ func decodeMemoryInstruction(w http.ResponseWriter, r *http.Request) (string, bo
 	}
 	instruction := strings.TrimSpace(body.Instruction)
 	if instruction == "" {
-		writeJSONError(w, http.StatusBadRequest, "instruction is required")
+		httpx.WriteError(w, http.StatusBadRequest, "instruction is required")
 		return "", false
 	}
 	return instruction, true

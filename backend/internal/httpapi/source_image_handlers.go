@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // Cache-Control for a proxied source image. Success is cached by the browser
@@ -27,15 +29,14 @@ func (s *server) handleSourceImage(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("u")
 	target, err := url.Parse(raw)
 	if raw == "" || err != nil || target.Scheme != "https" || target.Host == "" {
-		writeJSONError(w, http.StatusBadRequest, "invalid url")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid url")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), faviconFetchTimeout)
 	defer cancel()
 	body, ct, err := s.fetchFaviconBytes(ctx, raw)
 	if err != nil {
-		w.Header().Set("Cache-Control", sourceImageMissCacheControl)
-		writeJSONError(w, http.StatusBadGateway, "image unavailable")
+		writeCacheableError(w, http.StatusBadGateway, "image unavailable", sourceImageMissCacheControl)
 		return
 	}
 	w.Header().Set("Content-Type", ct)

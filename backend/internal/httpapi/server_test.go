@@ -61,7 +61,7 @@ func TestRecovery_turnsPanicInto500(t *testing.T) {
 	mux.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) {
 		panic("kaboom")
 	})
-	h := recovery(mux)
+	h := middleware(mux)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
@@ -77,12 +77,12 @@ func TestLogging_skipsHealthEndpoint(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
-	h := logging(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
-	if strings.Contains(logs.String(), "request") {
+	if strings.Contains(logs.String(), "http_request") {
 		t.Fatalf("health request was logged: %s", logs.String())
 	}
 

@@ -13,7 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/trick77/ship/kit/env"
 	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/logging"
 	"github.com/trick77/ship/kit/run"
 	"github.com/trick77/ship/kit/version"
 
@@ -36,39 +38,21 @@ import (
 )
 
 func main() {
-	// Configure structured logging with an explicit handler so every line
-	// carries an RFC3339 timestamp (the package default does not guarantee one).
-	// The level is tunable via BACKEND_LOG_LEVEL (debug/info/warn/error).
-	logLevel := parseLogLevel(envDefault("BACKEND_LOG_LEVEL", "info"))
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
+	// The container probe (compose healthcheck) runs before any setup: it must
+	// answer even when the rest of the environment is broken.
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		os.Exit(httpx.Healthcheck(httpx.LocalURL(envDefault("BACKEND_ADDR", ":8080"), "/healthz")))
+		os.Exit(httpx.Healthcheck(httpx.LocalURL(env.New(os.Getenv).String("BACKEND_ADDR", ":8080"), "/healthz")))
+	}
+	// kit's text handler: RFC3339 timestamps, and the request id on every line
+	// a handler logs with its request's context. A bad BACKEND_LOG_LEVEL fails
+	// boot instead of logging at info.
+	if _, err := logging.Setup(logging.Options{Level: os.Getenv("BACKEND_LOG_LEVEL"), LevelVar: "BACKEND_LOG_LEVEL"}); err != nil {
+		slog.Error("fatal", "err", err)
+		os.Exit(1)
 	}
 	if err := runServer(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
-	}
-}
-
-func envDefault(key, def string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return def
-}
-
-// parseLogLevel maps a BACKEND_LOG_LEVEL string to a slog.Level, defaulting to
-// Info for empty or unrecognized values.
-func parseLogLevel(raw string) slog.Level {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
 	}
 }
 
@@ -292,7 +276,7 @@ func runServer() error {
 	}
 	handler, memoryWorker := httpapi.NewWithMemoryWorker(deps)
 
-	srv := newServer(cfg.Addr, handler)
+	srv := httpx.NewServer(cfg.Addr, handler)
 	srv.BaseContext = func(net.Listener) context.Context { return base }
 	// Bind synchronously so "address in use" fails startup here instead of
 	// being logged from a goroutine while the process waits for a signal.
@@ -519,25 +503,4 @@ func tavilyConfigured(cfg config.Config) bool {
 
 func imageGenConfigured(cfg config.Config) bool {
 	return strings.TrimSpace(cfg.ImageGenAPIKey) != ""
-}
-
-// newServer builds the listening server. It is split out of main so the
-// timeouts are assertable: a zero value means "no limit", which is what lets a
-// client open a connection, stall, and hold a goroutine and a file descriptor
-// indefinitely (slow loris).
-//
-// WriteTimeout is deliberately absent. internal/sse streams text/event-stream
-// responses that outlive any sane write deadline, and setting one would cut
-// them off mid-stream.
-func newServer(addr string, handler http.Handler) *http.Server {
-	return &http.Server{
-		Addr:              addr,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		// ReadTimeout stays unset on purpose. It bounds the whole request
-		// including the body, and once the body is read the same deadline
-		// cancels r.Context(), which would cut off a 25 MB upload mid-body and
-		// kill any long chat turn. ReadHeaderTimeout alone closes slow loris.
-		IdleTimeout: 120 * time.Second,
-	}
 }

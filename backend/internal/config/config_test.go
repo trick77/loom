@@ -107,7 +107,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 			name:    "non-integer max completion tokens",
 			key:     "BACKEND_CHAT_MAX_COMPLETION_TOKENS",
 			value:   "many",
-			wantErr: "BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0",
+			wantErr: `BACKEND_CHAT_MAX_COMPLETION_TOKENS: "many" is not an integer`,
 		},
 		{
 			name:    "zero max completion tokens",
@@ -119,7 +119,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 			name:    "invalid timeout",
 			key:     "BACKEND_CHAT_TIMEOUT",
 			value:   "soon",
-			wantErr: "BACKEND_CHAT_TIMEOUT must be a duration greater than 0",
+			wantErr: `BACKEND_CHAT_TIMEOUT: "soon" is not a duration`,
 		},
 		{
 			name:    "zero timeout",
@@ -131,7 +131,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 			name:    "invalid idle timeout",
 			key:     "BACKEND_CHAT_IDLE_TIMEOUT",
 			value:   "soon",
-			wantErr: "BACKEND_CHAT_IDLE_TIMEOUT must be a non-negative duration (0 disables the idle watchdog)",
+			wantErr: `BACKEND_CHAT_IDLE_TIMEOUT: "soon" is not a duration`,
 		},
 		{
 			name:    "negative idle timeout",
@@ -191,7 +191,7 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 func TestLoadImageGenRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_IMAGE_GEN_API_KEY", "fal-test")
-	t.Setenv("BACKEND_IMAGE_GEN_BASE_URL", "")
+	t.Setenv("BACKEND_IMAGE_GEN_BASE_URL", "queue.fal.run")
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_BASE_URL must be an absolute") {
 		t.Fatalf("Load() error = %v, want BACKEND_IMAGE_GEN_BASE_URL required", err)
@@ -230,7 +230,7 @@ func TestLoadImageGenRejectsInvalidPollTimeout(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "soon")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration") {
+	if err == nil || !strings.Contains(err.Error(), `BACKEND_IMAGE_GEN_POLL_TIMEOUT: "soon" is not a duration`) {
 		t.Fatalf("Load() error = %v, want invalid poll timeout", err)
 	}
 }
@@ -517,7 +517,6 @@ func TestLoad_validatesURLsAndDirs(t *testing.T) {
 		{"relative public url", "BACKEND_PUBLIC_URL", "loom.example.com", "BACKEND_PUBLIC_URL", nil},
 		{"public url without host", "BACKEND_PUBLIC_URL", "https://", "BACKEND_PUBLIC_URL", nil},
 		{"relative users dir", "BACKEND_USERS_DIR", "data/users", "BACKEND_USERS_DIR", nil},
-		{"empty db path", "BACKEND_DB_PATH", "", "BACKEND_DB_PATH", nil},
 		{"image gen base url without scheme", "BACKEND_IMAGE_GEN_BASE_URL", "queue.fal.run", "BACKEND_IMAGE_GEN_BASE_URL", map[string]string{"BACKEND_IMAGE_GEN_API_KEY": "k"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

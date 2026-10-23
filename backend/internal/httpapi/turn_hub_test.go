@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/loom/internal/sse"
+	"github.com/trick77/ship/kit/sse"
 )
 
 // recordingEventWriter collects what a follower writes, and the size of each

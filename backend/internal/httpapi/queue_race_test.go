@@ -11,7 +11,7 @@ import (
 
 	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/sse"
+	"github.com/trick77/ship/kit/sse"
 )
 
 // A message queued after a stop waits until the stopped turn has ended, then

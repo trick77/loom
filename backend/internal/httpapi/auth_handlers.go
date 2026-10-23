@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -14,7 +15,7 @@ func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.oidc == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "oidc is not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "oidc is not configured")
 		return
 	}
 	s.oidc.StartLogin(w, r)
@@ -22,7 +23,7 @@ func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 	if s.oidc == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "oidc is not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "oidc is not configured")
 		return
 	}
 	claims, err := s.oidc.HandleCallback(r)
@@ -38,7 +39,7 @@ func (s *server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) createSessionFromClaims(w http.ResponseWriter, r *http.Request, claims auth.Claims, adminGroup string) {
 	if s.users == nil || s.sessions == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "auth is not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "auth is not configured")
 		return
 	}
 	user, err := s.users.UpsertFromClaims(r.Context(), claims, adminGroup)
@@ -57,7 +58,7 @@ func (s *server) createSessionFromClaims(w http.ResponseWriter, r *http.Request,
 
 func (s *server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	if s.sessions == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "sessions are not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "sessions are not configured")
 		return
 	}
 	if cookie, err := r.Cookie(auth.SessionCookieName); err == nil {
@@ -68,7 +69,7 @@ func (s *server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	if redirectURL == "" {
 		redirectURL = "/"
 	}
-	writeJSON(w, map[string]string{"redirectUrl": redirectURL})
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"redirectUrl": redirectURL})
 }
 
 func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +77,7 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, user)
+	httpx.WriteJSON(w, http.StatusOK, user)
 }
 
 // updateMeRequest is the body of PATCH /api/me. responseLanguage is the coupled
@@ -96,7 +97,7 @@ func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.users == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "users are not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "users are not configured")
 		return
 	}
 	var body updateMeRequest
@@ -105,7 +106,7 @@ func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !allowedResponseLanguages[body.ResponseLanguage] {
-		writeJSONError(w, http.StatusBadRequest, "unsupported response language")
+		httpx.WriteError(w, http.StatusBadRequest, "unsupported response language")
 		return
 	}
 	if err := s.users.UpdateResponseLanguage(r.Context(), user.ID, body.ResponseLanguage); err != nil {
@@ -113,12 +114,12 @@ func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user.ResponseLanguage = body.ResponseLanguage
-	writeJSON(w, user)
+	httpx.WriteJSON(w, http.StatusOK, user)
 }
 
 func (s *server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if s.users == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "users are not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "users are not configured")
 		return
 	}
 	users, err := s.users.ListUsers(r.Context())
@@ -126,27 +127,21 @@ func (s *server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "list users failed")
 		return
 	}
-	writeJSON(w, users)
-}
-
-func writeJSON(w http.ResponseWriter, v any) {
-	writeJSONStatus(w, http.StatusOK, v)
-}
-
-func writeJSONStatus(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	httpx.WriteJSON(w, http.StatusOK, users)
 }
 
 // writeNotFound answers a missing resource, and equally one the caller does not
 // own: the two must be indistinguishable.
 func writeNotFound(w http.ResponseWriter) {
-	writeJSONError(w, http.StatusNotFound, "not found")
+	httpx.WriteError(w, http.StatusNotFound, "not found")
 }
 
-func writeJSONError(w http.ResponseWriter, status int, message string) {
+// writeCacheableError is kit's error body under a Cache-Control of the caller's:
+// httpx.WriteError marks every body no-store, and a miss the browser should
+// remember (a favicon, a source image) must stay cacheable.
+func writeCacheableError(w http.ResponseWriter, status int, message, cacheControl string) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", cacheControl)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }

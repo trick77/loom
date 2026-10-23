@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/trick77/loom/internal/sse"
+	"github.com/trick77/ship/kit/sse"
 )
 
 // turnHub carries one chat turn's events to the clients watching it. The turn
