@@ -486,7 +486,7 @@ func TestLoad_unusableChatModelFailsBoot(t *testing.T) {
 // and a complete OIDC setup. Tests override individual keys after calling it.
 func requiredEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret-0123456789abcdef0123456789")
 	t.Setenv("BACKEND_AUTH_MODE", "oidc")
 	t.Setenv("BACKEND_OIDC_ISSUER", "https://idp.example.com")
 	t.Setenv("BACKEND_OIDC_CLIENT_ID", "loom")
@@ -655,5 +655,18 @@ func TestLoad_offDisablesOptionalSettings(t *testing.T) {
 	}
 	if cfg.ImageGenTypographyModel != "" || cfg.ChatLogDir != "" {
 		t.Fatalf("off = typography %q, log dir %q; want both off", cfg.ImageGenTypographyModel, cfg.ChatLogDir)
+	}
+}
+
+func TestLoad_rejectsWeakSessionSecrets(t *testing.T) {
+	for value, want := range map[string]string{
+		"short-secret":                      "at least 32 characters",
+		"change-me-to-a-long-random-string": "placeholder",
+	} {
+		requiredEnv(t)
+		t.Setenv("BACKEND_SESSION_SECRET", value)
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("secret %q: err = %v, want %q", value, err, want)
+		}
 	}
 }

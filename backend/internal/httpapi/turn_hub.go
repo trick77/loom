@@ -134,7 +134,9 @@ type deltaPayload struct {
 }
 
 // mergeDeltas folds runs of the same delta event into one. Order is kept, and
-// the client appends each delta to what it has, so the result is the same.
+// the client appends each delta to what it has, so the result is the same. A
+// run is cut at maxReplayWriteBytes of content, so no merged event outgrows a
+// replay write.
 func mergeDeltas(events []sse.Event) []sse.Event {
 	merged := make([]sse.Event, 0, len(events))
 	var content strings.Builder
@@ -154,6 +156,9 @@ func mergeDeltas(events []sse.Event) []sse.Event {
 		if !mergeable {
 			merged = append(merged, e)
 			continue
+		}
+		if run != "" && content.Len() > 0 && content.Len()+len(payload.Content) > maxReplayWriteBytes {
+			flush(run)
 		}
 		run = e.Name
 		content.WriteString(payload.Content)

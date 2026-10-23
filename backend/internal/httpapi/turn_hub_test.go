@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -169,5 +170,32 @@ func TestTurnHubReplaySplitsALargeBacklog(t *testing.T) {
 func TestTurnHubSendJSONReportsAnUnencodableValue(t *testing.T) {
 	if err := newTurnHub().SendJSON("delta", make(chan int)); err == nil {
 		t.Fatal("SendJSON() error = nil, want the encoding error")
+	}
+}
+
+// A long run of deltas merges into events no bigger than a replay write: one
+// merged event per turn would otherwise outlast the SSE write deadline on a
+// slow link, and the reattach would fail on it every time.
+func TestMergeDeltasCapsARun(t *testing.T) {
+	chunk := strings.Repeat("x", 1000)
+	data, _ := json.Marshal(deltaPayload{Content: chunk})
+	var events []sse.Event
+	for range 100 {
+		events = append(events, sse.Event{Name: "assistant_delta", Data: string(data)})
+	}
+	merged := mergeDeltas(events)
+	total := 0
+	for _, e := range merged {
+		var p deltaPayload
+		if err := json.Unmarshal([]byte(e.Data), &p); err != nil {
+			t.Fatal(err)
+		}
+		if len(p.Content) > maxReplayWriteBytes {
+			t.Fatalf("merged event of %d bytes, over %d", len(p.Content), maxReplayWriteBytes)
+		}
+		total += len(p.Content)
+	}
+	if total != 100*len(chunk) || len(merged) < 2 {
+		t.Fatalf("%d merged events, %d bytes; want the whole run in several", len(merged), total)
 	}
 }

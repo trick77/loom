@@ -16,6 +16,9 @@ backend/web/dist
 
 # The sandbox image copies its hash-pinned requirements.lock from here.
 !sandbox
+# backend/Containerfile.dev builds no UI: the embed dir's .gitkeep is what
+# lets //go:embed all:dist compile there.
+!backend/web/dist/.gitkeep
 
 # Under the allowlist above only backend/, ui/ and sandbox/ reach the context;
 # these keep what the host writes inside them out of it.

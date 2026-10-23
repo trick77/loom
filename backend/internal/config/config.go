@@ -171,6 +171,13 @@ type DevUserConfig struct {
 	DisplayName string
 }
 
+// minSessionSecret is the shortest BACKEND_SESSION_SECRET accepted: a short
+// one can be guessed offline from a single cookie, and any session forged.
+const minSessionSecret = 32
+
+// exampleSessionSecret is .env.example's placeholder, public and so refused.
+const exampleSessionSecret = "change-me-to-a-long-random-string"
+
 // defaultSessionTTL is the login lifetime when BACKEND_SESSION_TTL is unset.
 const defaultSessionTTL = 30 * 24 * time.Hour
 
@@ -315,8 +322,15 @@ func Load() (Config, error) {
 	if cfg.ProjectSummaryTokenBudget <= 0 {
 		r.Fail("BACKEND_PROJECT_SUMMARY_TOKEN_BUDGET must be an integer greater than 0")
 	}
-	if cfg.SessionSecret == "" {
+	// The secret signs the session cookies: checked here, before the store
+	// opens and migrates, so a bad one changes nothing on disk.
+	switch {
+	case cfg.SessionSecret == "":
 		r.Fail("BACKEND_SESSION_SECRET is required")
+	case len(cfg.SessionSecret) < minSessionSecret:
+		r.Fail("BACKEND_SESSION_SECRET must be at least %d characters: it signs the session cookies", minSessionSecret)
+	case cfg.SessionSecret == exampleSessionSecret:
+		r.Fail("BACKEND_SESSION_SECRET is .env.example's placeholder: anyone could sign a session; set your own (openssl rand -hex 32)")
 	}
 	cfg.SessionTTL = r.Duration("BACKEND_SESSION_TTL", defaultSessionTTL)
 	if cfg.SessionTTL <= 0 {
