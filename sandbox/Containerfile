@@ -22,9 +22,12 @@ RUN echo "upgrade layer: ${VERSION}" \
     && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 COPY sandbox/requirements.lock /tmp/requirements.lock
-# Hash-pinned wheels only; no pip at run time. compileall writes the .pyc files
-# now, because jobs run with -B on a read-only root.
+# Hash-pinned wheels only; no pip at run time, so pip goes once they are in
+# (its vendored libraries are the base image's, and the release scan flags
+# them). compileall writes the .pyc files now, because jobs run with -B on a
+# read-only root.
 RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r /tmp/requirements.lock \
+    && pip uninstall -y pip \
     && rm /tmp/requirements.lock \
     && python -m compileall -q /usr/local/lib/python3.13
 # Prebuilt matplotlib font cache; each job gets a copy in its home.
