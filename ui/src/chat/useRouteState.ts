@@ -17,6 +17,7 @@ export function useRouteState() {
   useEffect(() => {
     if (window.location.pathname === "/") {
       window.history.replaceState({}, "", "/new");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the / redirect on mount
       setRoute({ view: "new" });
     }
     function handlePopState() {

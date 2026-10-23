@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/web"
 )
 
 // TestInjectShareMeta_injectsAndEscapes verifies the OG/Twitter tags are inserted
@@ -78,7 +77,7 @@ func TestShareIndex_servesCardForActiveShare(t *testing.T) {
 			Snapshot: json.RawMessage(`{"author":"Jan"}`),
 		},
 	}}
-	srv := New(Deps{Thread: store, Static: web.SPAHandler(), PublicURL: "https://loom.example.com"})
+	srv := New(Deps{Thread: store, Static: http.NotFoundHandler(), IndexHTML: testIndexHTML, PublicURL: "https://loom.example.com"})
 
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/share/abc123", nil))
@@ -107,7 +106,7 @@ func TestShareIndex_servesCardForActiveShare(t *testing.T) {
 // TestShareIndex_deadLinkServesPlainIndex verifies an unknown/disabled share serves
 // the plain SPA index with no card (no title leak, no existence oracle in the meta).
 func TestShareIndex_deadLinkServesPlainIndex(t *testing.T) {
-	srv := New(Deps{Thread: &fakeThreadStore{}, Static: web.SPAHandler(), PublicURL: "https://loom.example.com"})
+	srv := New(Deps{Thread: &fakeThreadStore{}, Static: http.NotFoundHandler(), IndexHTML: testIndexHTML, PublicURL: "https://loom.example.com"})
 
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/share/does-not-exist", nil))
@@ -121,4 +120,10 @@ func TestShareIndex_deadLinkServesPlainIndex(t *testing.T) {
 	if got := rec.Header().Get("X-Robots-Tag"); !strings.Contains(got, "noindex") {
 		t.Errorf("X-Robots-Tag = %q, want noindex", got)
 	}
+}
+
+// testIndexHTML stands in for the embedded build, which a fresh clone does not
+// have (web/dist holds only .gitkeep until the UI is built).
+func testIndexHTML() ([]byte, bool) {
+	return []byte(`<!doctype html><html><head><title>Loom</title></head><body><div id="root"></div></body></html>`), true
 }

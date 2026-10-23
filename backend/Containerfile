@@ -10,15 +10,19 @@ RUN npm run build
 
 # --- Stage 2: build the Go API binary (pure-Go, no cgo) with the embedded SPA ---
 FROM golang:1.27-alpine AS build
-ARG BACKEND_VERSION=dev
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-# Overwrite the committed backend/web/dist placeholder with the real Vite bundle
-# so //go:embed all:dist bakes the production UI into the binary.
-COPY --from=ui /app/ui/dist ./web/dist
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${BACKEND_VERSION}" -o /out/loom ./cmd/loom
+# The real Vite bundle into backend/web/dist (the context leaves the host's out,
+# .dockerignore), so //go:embed all:dist bakes the production UI into the
+# binary. ui/vite.config.ts builds straight to ../backend/web/dist, so from the
+# ui stage's WORKDIR that lands at /app/backend/web/dist.
+COPY --from=ui /app/backend/web/dist ./web/dist
+# ship release passes the release version; declared last so a new version
+# rebuilds only the link step.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=${VERSION}" -o /out/loom ./cmd/loom
 
 # --- Stage 3: minimal runtime ---
 FROM gcr.io/distroless/static-debian12:nonroot

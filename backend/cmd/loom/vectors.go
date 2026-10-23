@@ -77,14 +77,3 @@ func reembedUntilDone(ctx context.Context, run func(context.Context) (int, error
 		delay = min(delay*2, reembedMaxRetry)
 	}
 }
-
-func sleepCtx(ctx context.Context, d time.Duration) bool {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-t.C:
-		return true
-	}
-}

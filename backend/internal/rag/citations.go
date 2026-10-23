@@ -26,7 +26,7 @@ func (s *Store) ScrubOutOfScopeMessageCitations(ctx context.Context) error {
 
 	var done int
 	switch err := tx.QueryRowContext(ctx,
-		`SELECT 1 FROM schema_migrations WHERE version = ?`, scrubCitationsMarker).Scan(&done); err {
+		`SELECT 1 FROM schema_migrations WHERE name = ?`, scrubCitationsMarker).Scan(&done); err {
 	case nil:
 		return nil
 	case sql.ErrNoRows:
@@ -54,7 +54,7 @@ func (s *Store) ScrubOutOfScopeMessageCitations(ctx context.Context) error {
 	}
 
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO schema_migrations (version) VALUES (?)`, scrubCitationsMarker); err != nil {
+		`INSERT INTO schema_migrations (name) VALUES (?)`, scrubCitationsMarker); err != nil {
 		return fmt.Errorf("record citation scrub marker: %w", err)
 	}
 	return tx.Commit()

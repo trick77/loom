@@ -63,6 +63,7 @@ export function ActivityTracePanel({
   const [bodyMounted, setBodyMounted] = useState(expanded);
   useEffect(() => {
     if (expanded) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- mounts the body before it expands
       setBodyMounted(true);
       return;
     }

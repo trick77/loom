@@ -107,7 +107,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 			name:    "non-integer max completion tokens",
 			key:     "BACKEND_CHAT_MAX_COMPLETION_TOKENS",
 			value:   "many",
-			wantErr: "BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0",
+			wantErr: `BACKEND_CHAT_MAX_COMPLETION_TOKENS: "many" is not an integer`,
 		},
 		{
 			name:    "zero max completion tokens",
@@ -119,7 +119,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 			name:    "invalid timeout",
 			key:     "BACKEND_CHAT_TIMEOUT",
 			value:   "soon",
-			wantErr: "BACKEND_CHAT_TIMEOUT must be a duration greater than 0",
+			wantErr: `BACKEND_CHAT_TIMEOUT: "soon" is not a duration`,
 		},
 		{
 			name:    "zero timeout",
@@ -131,7 +131,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 			name:    "invalid idle timeout",
 			key:     "BACKEND_CHAT_IDLE_TIMEOUT",
 			value:   "soon",
-			wantErr: "BACKEND_CHAT_IDLE_TIMEOUT must be a non-negative duration (0 disables the idle watchdog)",
+			wantErr: `BACKEND_CHAT_IDLE_TIMEOUT: "soon" is not a duration`,
 		},
 		{
 			name:    "negative idle timeout",
@@ -191,7 +191,7 @@ func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
 func TestLoadImageGenRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_IMAGE_GEN_API_KEY", "fal-test")
-	t.Setenv("BACKEND_IMAGE_GEN_BASE_URL", "")
+	t.Setenv("BACKEND_IMAGE_GEN_BASE_URL", "queue.fal.run")
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_BASE_URL must be an absolute") {
 		t.Fatalf("Load() error = %v, want BACKEND_IMAGE_GEN_BASE_URL required", err)
@@ -230,7 +230,7 @@ func TestLoadImageGenRejectsInvalidPollTimeout(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "soon")
 	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration") {
+	if err == nil || !strings.Contains(err.Error(), `BACKEND_IMAGE_GEN_POLL_TIMEOUT: "soon" is not a duration`) {
 		t.Fatalf("Load() error = %v, want invalid poll timeout", err)
 	}
 }
@@ -486,7 +486,7 @@ func TestLoad_unusableChatModelFailsBoot(t *testing.T) {
 // and a complete OIDC setup. Tests override individual keys after calling it.
 func requiredEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("BACKEND_SESSION_SECRET", "test-secret")
+	t.Setenv("BACKEND_SESSION_SECRET", "test-secret-0123456789abcdef0123456789")
 	t.Setenv("BACKEND_AUTH_MODE", "oidc")
 	t.Setenv("BACKEND_OIDC_ISSUER", "https://idp.example.com")
 	t.Setenv("BACKEND_OIDC_CLIENT_ID", "loom")
@@ -517,7 +517,6 @@ func TestLoad_validatesURLsAndDirs(t *testing.T) {
 		{"relative public url", "BACKEND_PUBLIC_URL", "loom.example.com", "BACKEND_PUBLIC_URL", nil},
 		{"public url without host", "BACKEND_PUBLIC_URL", "https://", "BACKEND_PUBLIC_URL", nil},
 		{"relative users dir", "BACKEND_USERS_DIR", "data/users", "BACKEND_USERS_DIR", nil},
-		{"empty db path", "BACKEND_DB_PATH", "", "BACKEND_DB_PATH", nil},
 		{"image gen base url without scheme", "BACKEND_IMAGE_GEN_BASE_URL", "queue.fal.run", "BACKEND_IMAGE_GEN_BASE_URL", map[string]string{"BACKEND_IMAGE_GEN_API_KEY": "k"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -633,5 +632,41 @@ func TestLoad_sandbox(t *testing.T) {
 				t.Fatalf("a bad sandbox value must disable the tool with a reason: %+v", cfg)
 			}
 		})
+	}
+}
+
+// An empty variable takes the default (kit's env); "off" switches these
+// settings off.
+func TestLoad_offDisablesOptionalSettings(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "")
+	t.Setenv("BACKEND_CHAT_LOG_DIR", "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ImageGenTypographyModel != "fal-ai/flux-2-max" || cfg.ChatLogDir != "logs/llm-responses" {
+		t.Fatalf("empty = typography %q, log dir %q; want the defaults", cfg.ImageGenTypographyModel, cfg.ChatLogDir)
+	}
+	t.Setenv("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "off")
+	t.Setenv("BACKEND_CHAT_LOG_DIR", "OFF")
+	if cfg, err = Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ImageGenTypographyModel != "" || cfg.ChatLogDir != "" {
+		t.Fatalf("off = typography %q, log dir %q; want both off", cfg.ImageGenTypographyModel, cfg.ChatLogDir)
+	}
+}
+
+func TestLoad_rejectsWeakSessionSecrets(t *testing.T) {
+	for value, want := range map[string]string{
+		"short-secret":                      "at least 32 characters",
+		"change-me-to-a-long-random-string": "placeholder",
+	} {
+		requiredEnv(t)
+		t.Setenv("BACKEND_SESSION_SECRET", value)
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("secret %q: err = %v, want %q", value, err, want)
+		}
 	}
 }

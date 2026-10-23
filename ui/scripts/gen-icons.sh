@@ -85,4 +85,4 @@ check_alpha "$OUT/apple-touch-icon.png" false
 check_alpha "$OUT/icon-maskable-512.png" false
 
 [[ "$fail" == 0 ]] || exit 1
-echo "gen-icons: wrote $(cd "$OUT" && ls icon-*.png apple-touch-icon.png | tr '\n' ' ')"
+echo "gen-icons: wrote $(cd "$OUT" && printf '%s ' icon-*.png apple-touch-icon.png)"

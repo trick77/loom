@@ -10,8 +10,8 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/sse"
 	"github.com/trick77/loom/internal/turn/turntest"
+	"github.com/trick77/ship/kit/sse"
 )
 
 // Local names for the shared turn-port fakes in turntest.
@@ -56,7 +56,7 @@ func runStoredTurnWithInbox(t *testing.T, cfg Config, store *fakeThreadStore, co
 	cfg.Thread = store
 	e := New(cfg)
 	rec := httptest.NewRecorder()
-	stream, err := sse.NewWriter(rec)
+	stream, err := sse.Open(rec)
 	if err != nil {
 		t.Fatal(err)
 	}

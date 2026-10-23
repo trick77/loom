@@ -918,6 +918,7 @@ function SvgResponseBubble({ artifact }: { artifact: DownloadableResponse }) {
     const url = URL.createObjectURL(
       new Blob([artifact.content], { type: "image/svg+xml" }),
     );
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the object URL lives with the effect that revokes it
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [artifact.content]);

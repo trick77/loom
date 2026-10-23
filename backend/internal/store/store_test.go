@@ -34,7 +34,7 @@ func TestOpen_runsMigrations(t *testing.T) {
 	}
 	defer db.Close()
 
-	for _, table := range []string{"settings", "users", "sessions", "projects", "threads", "messages", "artifacts"} {
+	for _, table := range []string{"settings", "users", "projects", "threads", "messages", "artifacts"} {
 		var name string
 		err = db.QueryRow(
 			`SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
@@ -113,7 +113,7 @@ CREATE TABLE user_memory (
 		t.Fatalf("read embedded migrations: %v", err)
 	}
 	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == "0009_memory_length_caps.sql" {
+		if entry.IsDir() || entry.Name() == "0011_memory_length_caps.sql" {
 			continue
 		}
 		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, entry.Name()); err != nil {

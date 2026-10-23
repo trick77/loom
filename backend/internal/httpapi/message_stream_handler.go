@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/sse"
 	"github.com/trick77/loom/internal/turn"
+	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/sse"
 )
 
 // Cancel causes of a turn's stream context. The handlers cancel with one of
@@ -41,7 +42,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.llm == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "llm is not configured")
 		return
 	}
 	var body streamMessageRequest
@@ -51,7 +52,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !validSendID(body.ClientMessageID) {
-		writeJSONError(w, http.StatusBadRequest, "invalid clientMessageId")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid clientMessageId")
 		return
 	}
 
@@ -81,7 +82,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// content, so the text part uses the same trimmed form the message will carry.
 	imageParts, imageArtifacts, err := s.engine.ResolveImageAttachments(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Persist the images and documents the user sent with this message so the sent
@@ -107,16 +108,16 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// The turn writes its events into the hub, never to a client directly.
 	hub := newTurnHub()
 	entry, unregister := s.activeStreams.registerStream(user.ID, threadID, body.ClientMessageID, cancelStream, hub)
-	writer, err := sse.NewWriter(w)
+	writer, err := sse.Open(w)
 	if err != nil {
-		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
 		cancelStream(nil)
 		unregister()
 		hub.close()
 		endLive()
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sseOpenFailed(w, r, err)
 		return
 	}
+	defer writer.Close()
 	_ = hub.SendJSON("user_message", userMessage)
 	chain := &turnChain{s: s, user: user, threadID: threadID, stream: entry, hub: hub, liveCtx: liveCtx, streamCtx: streamCtx}
 	finished := s.startTurnChain(chain, &turnInput{
@@ -130,7 +131,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	// Keep the connection alive through idle proxies during long silent gaps —
 	// notably while a model serializes a large tool-call argument server-side and
 	// streams nothing to the client for up to a few minutes (see sse.Heartbeat).
-	defer writer.Heartbeat(r.Context(), streamHeartbeatInterval)()
+	writer.Heartbeat(streamHeartbeatInterval)
 	// The sending client follows the hub like a reattaching one, until the
 	// chain ends the stream or the client goes away. The handler then waits
 	// for the chain, so a send's request is open as long as its turns run:
@@ -160,7 +161,7 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 	// applied when that turn registers.
 	sendID := r.URL.Query().Get("sendId")
 	if !validSendID(sendID) {
-		writeJSONError(w, http.StatusBadRequest, "invalid sendId")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid sendId")
 		return
 	}
 	// Stopping hands the messages queued behind the turn back to the user,
@@ -174,7 +175,7 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		queued, err = s.thread.DrainQueued(context.WithoutCancel(r.Context()), user.ID, threadID)
 	})
 	if !stopped {
-		writeJSONError(w, http.StatusConflict, "no active stream")
+		httpx.WriteError(w, http.StatusConflict, "no active stream")
 		return
 	}
 	if err != nil {
@@ -184,7 +185,7 @@ func (s *server) handleStopStreamMessage(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writeJSON(w, stopStreamResponse{Queued: queued})
+	httpx.WriteJSON(w, http.StatusOK, stopStreamResponse{Queued: queued})
 }
 
 // stopStreamResponse carries the queued messages a stop handed back.
@@ -249,13 +250,13 @@ func (s *server) handleAttachStreamMessage(w http.ResponseWriter, r *http.Reques
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	writer, err := sse.NewWriter(w)
+	writer, err := sse.Open(w)
 	if err != nil {
-		slog.Error("request failed", "method", r.Method, "path", r.URL.Path, "client_message", "sse writer init failed", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		sseOpenFailed(w, r, err)
 		return
 	}
-	defer writer.Heartbeat(r.Context(), streamHeartbeatInterval)()
+	defer writer.Close()
+	writer.Heartbeat(streamHeartbeatInterval)
 	hub.follow(r.Context(), writer, true)
 }
 
@@ -287,6 +288,15 @@ func streamCancelDetails(ctx context.Context) (string, string) {
 		source = "deadline"
 	}
 	return source, cause.Error()
+}
+
+// sseOpenFailed answers a stream that could not open. Only a writer that cannot
+// flush fails before the 200 and still gets a 500; any other error is a flush
+// after it, to a client already gone.
+func sseOpenFailed(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, sse.ErrNoFlush) {
+		serverError(w, r, err, "sse writer init failed")
+	}
 }
 
 // recoverToStream is deferred by the stream handlers once the SSE response is

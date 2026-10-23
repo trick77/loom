@@ -1,84 +1,67 @@
 # loom
 
-Self-hosted, multi-user LLM chat app: Go backend serving a JSON/SSE API + an embedded React SPA.
+Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 
 ## Working conventions
-- Docs, specs, and code comments are **English only** (conversation with the maintainer is German).
-- One feature branch per phase (`feat/phase-N-...`); never commit to `master`. Conventional commits.
-- TDD: write the failing test first, then the minimal implementation.
-- Keep files focused — one clear responsibility each.
-- YAML files use the `.yaml` extension (never `.yml`).
+- Docs, specs, code comments English only (maintainer talks German). TDD. YAML is `.yaml`.
+- One branch per change, never commit to `master`.
+- Commit subjects + PR titles: Go style `area: what` (`httpapi: …`, `chat: …`, `rag: …`, `store: …`, `sandbox: …`, `turn: …`, `ui: …`), gated by ship; release notes list them by area.
+- Gate: `make check` (`ship check`): conform, lint, tests, floors 75 (Go, UI), patch 75, `ship.yaml` steps.
+  `make hooks` once per clone runs it on every push. Raise tests, never a floor. Sandbox escape test is CI
+  only (`sandbox-escape.yaml`, docker); isolation change → `make sandbox-escape-test` locally.
+- Release by hand: `gh workflow run Release -f bump=auto` (patch, or `Release: minor` + `Release-note: …`
+  lines). Builds, scans and signs both images.
+- Plumbing kit (`github.com/trick77/ship/kit`) provides comes from kit, never hand-rolled. Lint config is
+  ship's, no local copy.
 
-## Commands
-- `make test` — backend Go tests (`go test ./...`)
-- `make fe-test` — frontend Vitest
-- `make fe-lint` — frontend lint (oxlint: rules-of-hooks, exhaustive-deps, unused vars)
-- `make model-names` — fails on a model/vendor name outside `.env.example` (CI runs it)
-- `make coverage-gate` — 75% on changed lines + project floors; needs `pip install diff-cover==10.3.0`.
-- `make fe-build` — build the SPA into `ui/dist` (the image copies it into `backend/web/dist`)
-- `make build` — full build → `bin/loom` (CGO_ENABLED=0)
-- `make run` — run locally (needs `BACKEND_SESSION_SECRET` + `BACKEND_AUTH_MODE`; `make dev` sets both)
-- `docker compose up --build` — full stack (copy `.env.example` → `.env` and fill it first)
-
-## Locked technical choices (do not change without explicit agreement)
-- Module path `github.com/trick77/loom`. Go 1.26 (`go.mod`; Containerfile uses `golang:1.27-alpine`).
-- **Pure-Go SQLite**: `ncruces/go-sqlite3` pinned to **`v0.23.3`** + `sqlite-vec-go-bindings/ncruces`
-  pinned to **`v0.1.7-alpha.2`**.
-  `CGO_ENABLED=0` everywhere. Do NOT switch to `mattn/go-sqlite3` — the pin matches the sqlite-vec
-  binding's ABI; `ncruces/go-sqlite3` v0.24+ breaks the current sqlite-vec binding.
-- One SQLite file; `sqlite-vec` for vectors. No separate DB service.
-- HTTP: stdlib `net/http` (Go 1.22 method routing), no web framework. Streaming: **SSE**.
-- LLMs only via `github.com/trick77/llmwire`: it owns the wire and every model fact (profiles); loom
-  owns routing, budgets, prompts, accounting. **Never name a model, vendor or model behaviour in
-  loom**: use intents (`ReasoningMinimal`/`ReasoningBalanced`, `MaxAnswerTokens`) and profile fields;
-  a missing fact goes into llmwire. Tests use `llmwiretest`. Extraction: Apache **Tika** sidecar.
-- Tools are **MCP-backed**. Tavily via `BACKEND_TAVILY_API_KEY`; `fetch__fetch` runs **in-process**
-  (`github.com/trick77/webfetch`); Obscura sidecar via `BACKEND_OBSCURA_MCP_URL`. Best-effort extras
-  (Context7, ipverse-lens) live in `BACKEND_MCP_SERVERS_FILE` (`mcpServers` JSON, default
-  `/conf/mcp.json`, overrides built-ins by name); secrets only as `${VAR}` interpolation.
-  Sources → `structuredContent.sources`, no tool-name case. `users` = loom user id, never username/subject.
-- Except `run_python` → `loom-sandbox` (`docs/sandbox.md`): a job never gets `/data`, a user id or a
-  socket; isolation change → `make sandbox-escape-test`.
+## Locked technical choices (change only with explicit agreement)
+- Go 1.27. **Pure-Go SQLite**: `ncruces/go-sqlite3` **v0.23.3** + `sqlite-vec-go-bindings/ncruces`
+  **v0.1.7-alpha.2**, bumped together by hand (v0.24+ breaks the binding ABI). `CGO_ENABLED=0`; never
+  `mattn/go-sqlite3`. One SQLite file, `sqlite-vec` for vectors.
+- stdlib `net/http`, no framework. Streaming: SSE (kit `sse`).
+- LLMs only via `github.com/trick77/llmwire` (wire + every model fact); loom owns routing, budgets,
+  prompts, accounting. **Never name a model, vendor or model behaviour in loom**: intents
+  (`ReasoningMinimal`/`ReasoningBalanced`, `MaxAnswerTokens`), profile fields; a missing fact goes into
+  llmwire. Tests use `llmwiretest`. Extraction: Tika sidecar.
+- Tools are MCP-backed. `fetch__fetch` in-process (`webfetch`); Tavily, Obscura built in; extras in
+  `BACKEND_MCP_SERVERS_FILE` (default `/conf/mcp.json`, overrides built-ins by name, secrets only as
+  `${VAR}`). Sources → `structuredContent.sources`, no tool-name case. `users` = loom user id.
+- `run_python` → `loom-sandbox` (`docs/sandbox.md`): a job never gets `/data`, a user id or a socket.
 
 ## Config
-- Runtime config comes from `BACKEND_*` env vars — see `backend/internal/config/config.go` and
-  `.env.example`. Required to boot: `BACKEND_SESSION_SECRET` and `BACKEND_AUTH_MODE` (`oidc` with its
-  issuer/client settings, or `dev` on loopback).
-- Models are config: `BACKEND_CHAT_MODEL` (+ optional `BACKEND_GATE_MODEL`, `BACKEND_VISION_MODEL`),
-  `BACKEND_EMBED_MODEL` (model change → vector table rebuilt at boot, background re-embed); ids are
-  checked at boot against llmwire's registry. Keys: `LLMWIRE_<PROVIDER>_API_KEY`; compose loads
-  `.env` via `env_file`, so a swap is `.env` only.
-- Gates (titles, classification, image intent/description) ask `ReasoningMinimal`; turns, forced
-  final answer, prose helpers `ReasoningBalanced` (minimal may mean thinking off: wrong on prose).
-- Secrets via env only; never commit them. The `admin` account is seeded from env on first boot only.
+- `BACKEND_*` env (`config.go`, `.env.example`). Empty = unset (kit env); `off` disables an optional one.
+- Boot needs `BACKEND_AUTH_MODE` (`oidc` + issuer/client, or `dev` on loopback) and
+  `BACKEND_SESSION_SECRET` ≥ 32 chars: it signs the session cookie (kit/auth). No session table: logout only
+  clears the cookie, rotating the secret signs everyone out.
+- Models: `BACKEND_CHAT_MODEL` (+ `_GATE_`, `_VISION_`), `BACKEND_EMBED_MODEL` (change → vector table
+  rebuilt at boot, re-embed in background); checked against llmwire. Keys `LLMWIRE_<PROVIDER>_API_KEY`.
+- Gates (titles, classification, image intent) ask `ReasoningMinimal`; turns and prose `ReasoningBalanced`
+  (minimal may mean thinking off: wrong on prose).
+- Secrets via env only. `admin` is seeded from env on first boot only.
 
 ## Database / migrations
-- Add a migration as a new numbered file `backend/internal/store/migrations/NNNN_*.sql`. The runner
-  applies pending ones in order and records them in `schema_migrations`.
-- Never edit an already-applied migration — add a new one.
-- **vec0 never frees a deleted vector**: the chunk stays, inserts append, every KNN reads the partition's
-  whole chunks. rongo hit minutes per search at 46k vectors in 380 chunks (46 needed).
-  `CompactVectorsAtBoot` rebuilds past 2x, BOOT ONLY: the rebuild holds the write lock for minutes
-  (rongo production: 8m33s for 46k vectors), far past the busy timeout. Deletes only warn.
+- Next free number `store/migrations/NNNN_*.sql`, never a taken one (kit runner refuses duplicates).
+  Never edit an applied migration.
+- Rebuild needing FKs off: first line `-- migrate:no-transaction`, then `PRAGMA foreign_keys = OFF; BEGIN;
+  … COMMIT; PRAGMA foreign_keys = ON;` (0032). Migrations run on their own pool, a failed one leaks no
+  FK-off connection.
+- **vec0 never frees a deleted vector**: every KNN reads the partition's whole chunks (rongo: minutes per
+  search at 46k vectors in 380 chunks). `CompactVectorsAtBoot` rebuilds past 2x, BOOT ONLY: it holds the
+  write lock for minutes (rongo: 8m33s), far past the busy timeout. Deletes only warn.
 
 ## Frontend
-- Vite + React + TS + Tailwind, **direction A (Warm Editorial)**: tokens are `--ui-*` CSS variables in
-  `ui/src/index.css`; use the themed classes (`bg-bg`, `bg-panel`, `text-ink`, `text-muted`,
-  `bg-accent`, `rounded-ui`, `font-serif`/`font-sans`). Anthropic fonts are self-hosted there.
-- `npm run build` writes `ui/dist`; Go embeds `backend/web/dist` (only placeholder `index.html`
-  tracked). Local binary with the SPA: copy `ui/dist/.` in, build, then
-  `git checkout -- backend/web/dist/index.html`. Never commit built assets.
+- Vite + React + TS + Tailwind, direction A (Warm Editorial): `--ui-*` tokens in `ui/src/index.css`,
+  themed classes (`bg-bg`, `bg-panel`, `text-ink`, `text-muted`, `bg-accent`, `rounded-ui`).
+- Build writes `backend/web/dist` (the Go embed, only `.gitkeep` tracked); unbuilt binary serves
+  `web/placeholder.html` with 503. Never commit built assets.
 
 ## Queued messages
-- Sent during a running turn → `queued_messages`, moved into `messages` only by `ConsumeQueued`
-  (one tx, rowid = pickup time). Enqueue, consume, stop+drain (ONE locked step, `stopAndDrain`)
-  and hand-off run under the thread's queue lock (`activeStreamRegistry`), never the global
-  registry lock: a review found lost/orphaned messages in every unlocked path; stop and drain
-  apart let the canceled turn's hand-off answer the queue first (CI flake, stop 204). Stop hands
-  queued text back; stopped stream hands the rest to a new stream only after its turn ended.
+- Sent during a running turn → `queued_messages`, moved into `messages` only by `ConsumeQueued` (one tx,
+  rowid = pickup time). Enqueue, consume, stop+drain (ONE locked step, `stopAndDrain`) and hand-off run
+  under the thread's queue lock (`activeStreamRegistry`), never the global lock: every unlocked path lost
+  or orphaned messages; stop and drain apart let the canceled turn answer the queue first (CI flake).
+  Stop hands queued text back; a stopped stream hands the rest on only after its turn ended.
 
-## Security invariants (must hold in every feature)
-- Every DB query is scoped by `user_id`; no cross-user access to any resource.
-- All per-user volume file access is sandboxed to the user's root: reject `..`, absolute paths, and
-  symlink escape.
-- Admin-only endpoints are role-gated.
+## Security invariants
+- Every DB query scoped by `user_id`. Per-user file access confined to the user's root (`..`, absolute,
+  symlink escape rejected). Admin endpoints role-gated.

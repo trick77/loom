@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/trick77/loom/internal/sse"
+	"github.com/trick77/ship/kit/sse"
 )
 
 // turnHub carries one chat turn's events to the clients watching it. The turn
@@ -73,10 +73,11 @@ func (h *turnHub) close() {
 	}
 }
 
-// maxReplayWriteBytes bounds one write of a backlog. Each write runs under the
-// sse write deadline, so a long turn replayed over a slow link must not be one
-// write.
-const maxReplayWriteBytes = 64 << 10
+// maxReplayWriteBytes bounds one write of a backlog. Each write runs under
+// kit's sse.WriteTimeout (10 s), and a write past it ends the stream, so a long
+// turn replayed over a slow link must not be one write: 16 KiB still lands on
+// a 2 KB/s link.
+const maxReplayWriteBytes = 16 << 10
 
 // mergedDeltaEvents are the events whose payloads concatenate: consecutive
 // ones replay as one, so a reattaching client does not dispatch thousands.
@@ -133,7 +134,9 @@ type deltaPayload struct {
 }
 
 // mergeDeltas folds runs of the same delta event into one. Order is kept, and
-// the client appends each delta to what it has, so the result is the same.
+// the client appends each delta to what it has, so the result is the same. A
+// run is cut at maxReplayWriteBytes of content, so no merged event outgrows a
+// replay write.
 func mergeDeltas(events []sse.Event) []sse.Event {
 	merged := make([]sse.Event, 0, len(events))
 	var content strings.Builder
@@ -153,6 +156,9 @@ func mergeDeltas(events []sse.Event) []sse.Event {
 		if !mergeable {
 			merged = append(merged, e)
 			continue
+		}
+		if run != "" && content.Len() > 0 && content.Len()+len(payload.Content) > maxReplayWriteBytes {
+			flush(run)
 		}
 		run = e.Name
 		content.WriteString(payload.Content)

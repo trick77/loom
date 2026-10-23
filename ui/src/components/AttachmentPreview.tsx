@@ -70,6 +70,7 @@ export function AttachmentPreview({
   // swaps a revoked blob: URL for the stable server download URL under the same
   // attachment id, where a stable list key keeps the instance mounted).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on the source changing
     setBroken(false);
   }, [previewUrl]);
   const extensionLabel = attachmentExtensionLabel(filename);

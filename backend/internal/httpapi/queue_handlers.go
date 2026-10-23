@@ -8,6 +8,7 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/turn"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // queueMessageRequest is a message sent while a turn runs. Queued messages
@@ -30,7 +31,7 @@ func (s *server) handleQueueMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.llm == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "llm is not configured")
 		return
 	}
 	var body queueMessageRequest
@@ -41,7 +42,7 @@ func (s *server) handleQueueMessage(w http.ResponseWriter, r *http.Request) {
 	// The send id is how the client matches the message once a turn picks it
 	// up, and how it takes it back: required here.
 	if body.ClientMessageID == "" || !validSendID(body.ClientMessageID) {
-		writeJSONError(w, http.StatusBadRequest, "invalid clientMessageId")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid clientMessageId")
 		return
 	}
 	threadID := r.PathValue("threadID")

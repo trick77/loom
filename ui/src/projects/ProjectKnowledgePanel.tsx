@@ -111,6 +111,7 @@ export function ProjectKnowledgePanel({
 
   const pollRound = useRef(0);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- back to loading before the fetch
     setLoading(true);
     setError("");
     pollRound.current = 0;

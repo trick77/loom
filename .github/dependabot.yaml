@@ -1,66 +1,173 @@
 version: 2
 updates:
-  # Go backend
   - package-ecosystem: gomod
     directory: /backend
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
       interval: weekly
+      day: sunday
+      time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
     groups:
-      go-minor-and-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+      # kit is v0.x: a minor may break. Its own PR, never inside the
+      # catch-all (first matching group wins).
+      kit:
+        patterns: ["github.com/trick77/ship/kit", "github.com/trick77/ship/kit/*"]
+      gomod-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      gomod-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
     ignore:
-      # Pinned at v0.23.x for sqlite-vec ABI compatibility (see AGENTS.md);
-      # bumping to v0.24+ breaks the current sqlite-vec binding.
-      - dependency-name: github.com/ncruces/go-sqlite3
-      # v2.3.4+ requires Go 1.26.1, while Loom is intentionally pinned to Go 1.25.
-      - dependency-name: github.com/johnfercher/maroto/v2
-        versions: [">=2.3.4"]
+      # sqlite-vec-go-bindings v0.1.7-alpha.2 is welded to v0.23.3 (v0.24+ breaks the binding); bump both or neither, by hand
+      - dependency-name: "github.com/ncruces/go-sqlite3"
+      # wasm built against ncruces' SQLite: a lone bump skews the pair and breaks vector search at runtime; bump both or neither, by hand
+      - dependency-name: "github.com/asg017/sqlite-vec-go-bindings"
 
-  # React frontend
   - package-ecosystem: npm
     directory: /ui
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
       interval: weekly
+      day: sunday
+      time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
     groups:
-      # First matching group wins, so the specific group comes first and the
-      # catch-all stays last. vite, its react plugin, vitest and its coverage
+      # First matching group wins, so the specific groups come first and the
+      # catch-alls stay last. vite, its react plugin, vitest and its coverage
       # provider are one dependency family: vitest pins a vite major range and
       # @vitest/coverage-v8 pins vitest's exact version, so bumping any one
       # alone fails npm ci on ERESOLVE (or nests a second vite). They always
-      # travel together.
+      # travel together. @tailwindcss/vite peer-depends on vite's major too,
+      # and pins tailwindcss exactly: split, the plugin nests its own core.
       vite-and-vitest:
-        patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*"]
-      npm-minor-and-patch:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
+        patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*", "@tailwindcss/vite", "tailwindcss"]
+      # Pinned exact; a release may format differently and fail the gate's
+      # format:check, so it never blocks the other bumps: its own PR,
+      # reformatted there.
+      prettier:
+        patterns: ["prettier"]
+      # A new rule or recommended-set change can fail the gate's lint: its own
+      # PR, findings fixed there. typescript-eslint, @eslint/js and the
+      # eslint-config-*/eslint-plugin-* packages track eslint's major.
+      eslint:
+        patterns: ["eslint", "eslint-*", "typescript-eslint", "@eslint/*"]
+      npm-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
     ignore:
-      # We only import katex for its stylesheet, but the math DOM is built by the
-      # katex rehype-katex resolves — so both must stay on the range rehype-katex
-      # declares (^0.16.0), or npm nests a second copy and the two drift apart.
-      # KaTeX 0.18 renamed the structural classes (.strut -> .katex-strut,
-      # .base -> .katex-base), so a newer stylesheet over 0.16 markup collapses
-      # every fraction into an unreadable overlap. Unpin only together with
-      # rehype-katex.
-      - dependency-name: katex
+      # typescript-eslint's peer dependency takes typescript <6.1.0: any newer
+      # one, minor included, fails npm ci on ERESOLVE. Lift this (and
+      # conform's typescriptCap) once typescript-eslint supports newer TS.
+      - dependency-name: "typescript"
+        versions: [">=6.1.0"]
+      # only its stylesheet is imported, over the markup rehype-katex's katex (^0.16) builds; 0.18 renamed the structural classes and collapses every fraction
+      - dependency-name: "katex"
         versions: [">=0.17.0"]
 
-  # GitHub Actions
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
-    groups:
-      actions:
-        patterns: ["*"]
-
-  # Container base image. Dependabot's docker ecosystem matches backend/Containerfile
-  # via /dockerfile|containerfile/i (Containerfile support landed when dependabot-core
-  # closed #6067), so base-image bumps come as a grouped PR.
+  # Base images in the Containerfile.
   - package-ecosystem: docker
     directory: /backend
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
     schedule:
       interval: weekly
+      day: sunday
+      time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
     groups:
-      docker:
-        patterns: ["*"]
+      docker-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      docker-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  # Base images in the Containerfile.
+  - package-ecosystem: docker
+    directory: /sandbox
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
+    groups:
+      docker-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      docker-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  # Images the compose files pin by tag.
+  - package-ecosystem: docker-compose
+    directory: /
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
+    groups:
+      compose-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      compose-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+
+  - package-ecosystem: github-actions
+    directory: /
+    commit-message: { prefix: deps }   # Go style: "deps: bump …"
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "07:00"
+      timezone: Europe/Zurich
+    open-pull-requests-limit: 5
+    groups:
+      actions-non-major:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - major

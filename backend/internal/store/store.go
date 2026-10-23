@@ -5,7 +5,8 @@ package store
 import (
 	"database/sql"
 	"fmt"
-	"net/url"
+
+	"github.com/trick77/ship/kit/sqlitex"
 
 	// sqlite-vec WASM build for ncruces; provides the SQLite WASM binary AND
 	// the vec0 virtual table + vec_* functions. Replaces ncruces/go-sqlite3/embed.
@@ -17,6 +18,18 @@ import (
 // Open opens (creating if needed) the SQLite database at path, applies PRAGMAs
 // for safe concurrent use, runs migrations, and returns the *sql.DB.
 func Open(path string) (*sql.DB, error) {
+	// Migrations run on a pool of their own, closed before the app's opens: a
+	// table rebuild switches foreign keys off on its connection, and one that
+	// fails midway must not hand that connection to the app.
+	mdb, err := sql.Open("sqlite3", dsn(path))
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	err = migrate(mdb)
+	_ = mdb.Close()
+	if err != nil {
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	db, err := sql.Open("sqlite3", dsn(path))
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
@@ -24,10 +37,6 @@ func Open(path string) (*sql.DB, error) {
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
-	}
-	if err := migrate(db); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return db, nil
 }
@@ -40,8 +49,5 @@ func Open(path string) (*sql.DB, error) {
 // a deadlock), so two concurrent write transactions would fail instead of
 // queueing.
 func dsn(path string) string {
-	return fmt.Sprintf(
-		"file:%s?_pragma=journal_mode(wal)&_pragma=busy_timeout(10000)&_pragma=foreign_keys(on)&_txlock=immediate",
-		url.PathEscape(path),
-	)
+	return sqlitex.DSN(path, "_txlock=immediate")
 }

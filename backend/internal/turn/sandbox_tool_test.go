@@ -22,7 +22,7 @@ import (
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
-	"github.com/trick77/loom/internal/sse"
+	"github.com/trick77/ship/kit/sse"
 )
 
 func strp(s string) *string { return &s }
@@ -66,7 +66,7 @@ func newSandboxFixture(t *testing.T) sandboxFixture {
 	}}
 	box := &fakeSandbox{Enabled: true}
 	rec := httptest.NewRecorder()
-	stream, err := sse.NewWriter(rec)
+	stream, err := sse.Open(rec)
 	if err != nil {
 		t.Fatal(err)
 	}

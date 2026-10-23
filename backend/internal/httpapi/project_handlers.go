@@ -7,6 +7,7 @@ import (
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/usage"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // stopProjectThreadStreams terminates any turn still generating on a thread of the
@@ -34,7 +35,7 @@ func (s *server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	}
 	archived, err := parseOptionalBool(r, "archived")
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid archived query parameter")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid archived query parameter")
 		return
 	}
 	projects, err := s.thread.ListProjects(r.Context(), user.ID, archived)
@@ -42,7 +43,7 @@ func (s *server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "list projects failed")
 		return
 	}
-	writeJSON(w, projects)
+	httpx.WriteJSON(w, http.StatusOK, projects)
 }
 
 func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
@@ -64,7 +65,7 @@ func (s *server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	usage.Record(s.usage, "project_created", func() error { return s.usage.IncProjectCreated(r.Context(), user.ID) })
-	writeJSONStatus(w, http.StatusCreated, project)
+	httpx.WriteJSON(w, http.StatusCreated, project)
 }
 
 func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +87,7 @@ func (s *server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w)
 		return
 	}
-	writeJSON(w, project)
+	httpx.WriteJSON(w, http.StatusOK, project)
 }
 
 func (s *server) handleStarProject(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +112,7 @@ func (s *server) handleSetProjectStarred(w http.ResponseWriter, r *http.Request,
 		writeNotFound(w)
 		return
 	}
-	writeJSON(w, project)
+	httpx.WriteJSON(w, http.StatusOK, project)
 }
 
 func (s *server) handleArchiveProject(w http.ResponseWriter, r *http.Request) {

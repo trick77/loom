@@ -24,7 +24,7 @@ export function clampSidebar(width: number): number {
  * page. A hand-edited value is clamped rather than trusted.
  */
 export function storedSidebarWidth(): number {
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = localStorage.getItem(STORAGE_KEY);
   } catch {

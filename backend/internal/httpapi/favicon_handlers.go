@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/trick77/ship/kit/fsx"
+	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/webfetch"
 )
 
@@ -123,12 +125,12 @@ func faviconRelease(key string, g *faviconGate) {
 func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 	raw := r.URL.Query().Get("u")
 	if raw == "" {
-		writeJSONError(w, http.StatusBadRequest, "missing url")
+		httpx.WriteError(w, http.StatusBadRequest, "missing url")
 		return
 	}
 	target, err := url.Parse(raw)
 	if err != nil || (target.Scheme != "https" && target.Scheme != "http") || target.Host == "" {
-		writeJSONError(w, http.StatusBadRequest, "invalid url")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid url")
 		return
 	}
 	scheme := strings.ToLower(target.Scheme)
@@ -188,8 +190,7 @@ func (s *server) handleFavicon(w http.ResponseWriter, r *http.Request) {
 // writeFaviconMissError reports "no icon for this site" as a browser-cacheable
 // non-2xx, which is what makes the frontend's <img> onError draw its letter avatar.
 func writeFaviconMissError(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", faviconMissCacheControl)
-	writeJSONError(w, http.StatusBadGateway, "favicon resolve failed")
+	writeCacheableError(w, http.StatusBadGateway, "favicon resolve failed", faviconMissCacheControl)
 }
 
 // errNoUsableIcon is the verdict of a complete resolve: every candidate was tried and
@@ -272,10 +273,10 @@ func (s *server) writeFaviconCache(key string, body []byte, contentType string) 
 		return "", err
 	}
 	dataPath := filepath.Join(dir, key)
-	if err := faviconWriteAtomic(dataPath, body); err != nil {
+	if err := fsx.WriteFileAtomic(dataPath, body, 0o600); err != nil {
 		return "", err
 	}
-	if err := faviconWriteAtomic(dataPath+".ct", []byte(contentType)); err != nil {
+	if err := fsx.WriteFileAtomic(dataPath+".ct", []byte(contentType), 0o600); err != nil {
 		return "", err
 	}
 	// A site that failed to resolve before and resolves now must stop being reported
@@ -293,7 +294,7 @@ func (s *server) writeFaviconMiss(key string) {
 	if err != nil {
 		return
 	}
-	_ = faviconWriteAtomic(filepath.Join(dir, key+".miss"), nil)
+	_ = fsx.WriteFileAtomic(filepath.Join(dir, key+".miss"), nil, 0o600)
 }
 
 // faviconMissed reports whether key was marked unresolvable within faviconMissTTL.
@@ -361,30 +362,6 @@ func serveFaviconFile(w http.ResponseWriter, r *http.Request, path, contentType,
 	w.Header().Set("Cache-Control", faviconCacheControl)
 	w.Header().Set("ETag", etag)
 	http.ServeContent(w, r, path, info.ModTime(), f)
-}
-
-// faviconWriteAtomic writes data to path via a temp file + rename so a concurrent
-// reader never observes a partial file.
-func faviconWriteAtomic(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".fav-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
-		return err
-	}
-	if err := os.Rename(tmpName, path); err != nil { //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
-		_ = os.Remove(tmpName) //nolint:gosec // path is built from faviconCacheKey(host), a sha256 hex digest, so traversal is structurally impossible
-		return err
-	}
-	return nil
 }
 
 // faviconCacheKey hashes a cache identity (the source host) into a filesystem-safe

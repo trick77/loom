@@ -337,7 +337,7 @@ func TestBackendContainerfileBuildsAndEmbedsUI(t *testing.T) {
 	}
 	for _, want := range []string{
 		"RUN npm run build",
-		"COPY --from=ui /app/ui/dist ./web/dist",
+		"COPY --from=ui /app/backend/web/dist ./web/dist",
 	} {
 		if !strings.Contains(dockerfile, want) {
 			t.Fatalf("backend/Containerfile missing UI-build fragment %q", want)
@@ -360,120 +360,4 @@ func composeService(t *testing.T, compose, name string) string {
 		}
 	}
 	return rest
-}
-
-func TestReleaseWorkflowPublishesProductionImages(t *testing.T) {
-	data, err := os.ReadFile("../../../.github/workflows/release.yaml")
-	if err != nil {
-		t.Fatalf("read release workflow: %v", err)
-	}
-	workflow := string(data)
-
-	if !strings.Contains(workflow, `ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.version }}`) {
-		t.Fatal("release workflow missing backend image tag")
-	}
-	if strings.Contains(workflow, "-ui:${{ steps.ver.outputs.version }}") {
-		t.Fatal("release workflow must not publish a separate loom-ui image")
-	}
-	if strings.Contains(workflow, "loom-obscura") || strings.Contains(workflow, "Build and push Obscura MCP image") {
-		t.Fatal("release workflow must not build or publish an Obscura wrapper image")
-	}
-	// Fetch runs in-process now, so there is no fetch companion image.
-	if strings.Contains(workflow, "loom-fetch") || strings.Contains(workflow, "-fetch:") ||
-		strings.Contains(workflow, "Build and push fetch MCP image") {
-		t.Fatal("release workflow must not build or publish the removed fetch image")
-	}
-
-	// The tag is created through the REST API (create-ref) rather than
-	// `git push`, matching the sibling repos, so the step is named "Create tag".
-	tagStep := strings.Index(workflow, "- name: Create tag")
-	if tagStep < 0 {
-		t.Fatal("release workflow missing final git tag step")
-	}
-	idx := strings.Index(workflow, "- name: Build and push backend image")
-	if idx < 0 {
-		t.Fatal("release workflow missing backend image build step")
-	}
-	if idx > tagStep {
-		t.Fatal("backend image build must run before the git tag step")
-	}
-	sandbox := strings.Index(workflow, "- name: Build and push sandbox image")
-	if sandbox < 0 || sandbox > tagStep {
-		t.Fatal("release workflow must build the sandbox image before the git tag step")
-	}
-	for _, want := range []string{
-		"file: ./sandbox/Containerfile",
-		`ghcr.io/${{ github.repository }}-sandbox:latest`,
-	} {
-		if !strings.Contains(workflow, want) {
-			t.Fatalf("release workflow missing sandbox image fragment %q", want)
-		}
-	}
-	// The coverage-instrumented runner is for CI only.
-	if strings.Contains(workflow, "SANDBOX_COVER") {
-		t.Fatal("release must never build the -cover sandbox runner")
-	}
-}
-
-func TestReleaseWorkflowBuildsProductionImages(t *testing.T) {
-	// Production images are built and pushed by the release workflow on master
-	// push. The PR test workflow no longer builds Docker images (it relied on
-	// release.yaml for that), so this invariant lives against release.yaml.
-	data, err := os.ReadFile("../../../.github/workflows/release.yaml")
-	if err != nil {
-		t.Fatalf("read release workflow: %v", err)
-	}
-	workflow := string(data)
-
-	for _, want := range []string{
-		`name: Build and push backend image`,
-		`file: ./backend/Containerfile`,
-	} {
-		if !strings.Contains(workflow, want) {
-			t.Fatalf("release workflow missing production image build fragment %q", want)
-		}
-	}
-	// The UI is now built inside the backend image, so there is no separate build step.
-	if strings.Contains(workflow, `file: ./ui/Containerfile`) {
-		t.Fatal("release workflow must not build a separate ui image")
-	}
-}
-
-func TestPRWorkflowTypechecksUI(t *testing.T) {
-	// vitest does not run tsc/vite build, so the PR test workflow must run the
-	// UI build itself to catch type/build breakage before merge.
-	// Renamed from test.yaml to ci.yaml to match the sibling repos.
-	data, err := os.ReadFile("../../../.github/workflows/ci.yaml")
-	if err != nil {
-		t.Fatalf("read CI workflow: %v", err)
-	}
-	workflow := string(data)
-
-	if !strings.Contains(workflow, `cd ui && npm run build`) {
-		t.Fatalf("CI workflow missing UI build step")
-	}
-}
-
-func TestCleanupWorkflowManagesOnlyTheLoomImage(t *testing.T) {
-	data, err := os.ReadFile("../../../.github/workflows/cleanup-images.yaml")
-	if err != nil {
-		t.Fatalf("read cleanup workflow: %v", err)
-	}
-	workflow := string(data)
-
-	if strings.Contains(workflow, "loom-obscura") {
-		t.Fatal("cleanup workflow must not manage the removed Obscura wrapper image")
-	}
-	if strings.Contains(workflow, "loom-fetch") {
-		t.Fatal("cleanup workflow must not manage the removed fetch image")
-	}
-	if !strings.Contains(workflow, `image-names: "loom"`) {
-		t.Fatal("cleanup workflow must manage the loom image")
-	}
-	if !strings.Contains(workflow, `image-names: "loom-sandbox"`) {
-		t.Fatal("cleanup workflow must manage the loom-sandbox image")
-	}
-	if strings.Contains(workflow, "loom-ui") {
-		t.Fatal("cleanup workflow must not manage the removed loom-ui image")
-	}
 }

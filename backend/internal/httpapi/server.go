@@ -19,22 +19,24 @@ import (
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/loom/internal/usage"
+	"github.com/trick77/loom/web"
+	kitauth "github.com/trick77/ship/kit/auth"
+	"github.com/trick77/ship/kit/httpx"
 )
 
-// Deps are the dependencies needed to build the server. Grows in later phases
-// (store, config, services); for Phase 1 only Version and the static handler.
+// Deps are the dependencies needed to build the server.
 type Deps struct {
-	Version string
-	Static  http.Handler // serves the embedded SPA; may be nil in tests
+	Static http.Handler // serves the embedded SPA; may be nil in tests
+	// IndexHTML is the SPA shell the share page renders its card into; nil is
+	// the embedded build's (web.IndexHTML).
+	IndexHTML func() ([]byte, bool)
 	// Model describes the configured chat model for /api/model; zero when
 	// chat is off.
 	Model llm.ModelInfo
 
-	OIDC     OIDCService
-	Auth     *auth.Middleware
-	Sessions SessionService
-	// SessionTTL is the login lifetime (config defaults it).
-	SessionTTL time.Duration
+	OIDC       OIDCService
+	Auth       *auth.Middleware
+	Sessions   SessionService
 	Users      UserService
 	Thread     ThreadStore
 	Usage      UsageStore
@@ -49,7 +51,7 @@ type Deps struct {
 	// ImageDefaultModel is the configured baseline image model (e.g.
 	// "flux-2-klein-4b"); ImageGenTypographyModel (e.g. "flux-2-flex") is used instead
 	// for the first image of a thread when it reads as typography/logo/text work.
-	// Empty ImageGenTypographyModel disables typography routing.
+	// Empty ImageGenTypographyModel (config: "off") disables typography routing.
 	ImageDefaultModel       string
 	ImageGenTypographyModel string
 	UsersDir                string
@@ -80,14 +82,12 @@ type Deps struct {
 }
 
 type server struct {
-	version               string
 	model                 llm.ModelInfo
 	background            *background.Group
 	inflight              inflightKeys
 	oidc                  OIDCService
 	auth                  *auth.Middleware
 	sessions              SessionService
-	sessionTTL            time.Duration
 	users                 UserService
 	thread                ThreadStore
 	usage                 UsageStore
@@ -103,6 +103,7 @@ type server struct {
 	devAuthClaims         auth.Claims
 	postLogoutRedirectURL string
 	publicURL             string
+	indexHTML             func() ([]byte, bool)
 	activeStreams         activeStreamRegistry
 	lifetime              context.Context
 	// engine runs the chat turns the stream handlers start.
@@ -241,18 +242,18 @@ type ToolService interface {
 // handlers need nothing beyond the engine's port, so it is the same type.
 type SandboxRunner = turn.SandboxRunner
 
-// OIDCService is the auth handler dependency for OIDC redirects and callbacks.
+// OIDCService is the auth handler dependency for OIDC redirects and
+// callbacks; *kitauth.OIDC is one.
 type OIDCService interface {
-	StartLogin(http.ResponseWriter, *http.Request)
-	HandleCallback(*http.Request) (auth.Claims, error)
+	Start(http.ResponseWriter, *http.Request)
+	Callback(http.ResponseWriter, *http.Request) (kitauth.Claims, error)
 }
 
-// SessionService is the session dependency used by auth handlers.
+// SessionService issues and clears the session cookie; *kitauth.Sessions is
+// one.
 type SessionService interface {
-	Create(context.Context, string, time.Duration) (auth.Session, error)
-	Revoke(context.Context, string) error
-	CookieFor(string, time.Time) *http.Cookie
-	ClearCookie() *http.Cookie
+	Issue(http.ResponseWriter, kitauth.Claims) error
+	Clear(http.ResponseWriter)
 }
 
 // UserService is the user dependency used by auth handlers.
@@ -276,12 +277,10 @@ func newServer(d Deps) *server {
 	s := &server{
 		background:            bg,
 		lifetime:              lifetime,
-		version:               d.Version,
 		model:                 d.Model,
 		oidc:                  d.OIDC,
 		auth:                  d.Auth,
 		sessions:              d.Sessions,
-		sessionTTL:            d.SessionTTL,
 		users:                 d.Users,
 		thread:                d.Thread,
 		usage:                 d.Usage,
@@ -295,6 +294,10 @@ func newServer(d Deps) *server {
 		devAuthClaims:         d.DevAuthClaims,
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
 		publicURL:             d.PublicURL,
+		indexHTML:             d.IndexHTML,
+	}
+	if s.indexHTML == nil {
+		s.indexHTML = web.IndexHTML
 	}
 	s.engine = turn.New(turn.Config{
 		Thread:                     d.Thread,
@@ -325,7 +328,7 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	s := newServer(d)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", s.handleHealth)
+	httpx.Health(mux, slog.Default())
 	mux.HandleFunc("GET /api/model", s.handleModel)
 	mux.HandleFunc("GET /api/auth/login", s.handleAuthLogin)
 	mux.HandleFunc("GET /api/auth/callback", s.handleAuthCallback)
@@ -398,7 +401,7 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 		mux.Handle("/", d.Static)
 	}
 
-	return logging(recovery(mux)), &MemoryWorker{s: s}
+	return middleware(mux), &MemoryWorker{s: s}
 }
 
 type activeStreamRegistry struct {
@@ -749,7 +752,7 @@ func (r *activeStreamRegistry) stopAndWait(userID, threadID string, cause error,
 func (s *server) requireAuth(next http.Handler) http.Handler {
 	if s.auth == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		})
 	}
 	return s.auth.RequireAuth(next)
@@ -758,7 +761,7 @@ func (s *server) requireAuth(next http.Handler) http.Handler {
 func (s *server) requireAdmin(next http.Handler) http.Handler {
 	if s.auth == nil {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
+			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
 		})
 	}
 	return s.auth.RequireAdmin(next)

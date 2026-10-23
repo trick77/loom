@@ -21,7 +21,7 @@ import (
 )
 
 func TestCreateThreadRequiresAuth(t *testing.T) {
-	srv := New(Deps{Version: "test"})
+	srv := New(Deps{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/threads", strings.NewReader(`{}`))
 

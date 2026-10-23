@@ -11,7 +11,7 @@
 # in an uncommitted .env file at the repo root; compose.dev.yaml loads it.
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 cd "$ROOT"
 

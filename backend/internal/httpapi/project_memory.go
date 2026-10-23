@@ -13,6 +13,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/turn"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // projectMemoryScope wires the project memory into the shared memory mechanism.
@@ -185,7 +186,7 @@ func (s *server) handleGetProjectMemory(w http.ResponseWriter, r *http.Request) 
 		serverError(w, r, err, "get project memory failed")
 		return
 	}
-	writeJSON(w, memory)
+	httpx.WriteJSON(w, http.StatusOK, memory)
 }
 
 // handleEditProjectMemory applies a natural-language instruction to the
@@ -197,7 +198,7 @@ func (s *server) handleEditProjectMemory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if s.llm == nil {
-		writeJSONError(w, http.StatusServiceUnavailable, "llm is not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "llm is not configured")
 		return
 	}
 	projectID := r.PathValue("projectID")
@@ -216,10 +217,10 @@ func (s *server) handleEditProjectMemory(w http.ResponseWriter, r *http.Request)
 	}
 	if err := s.editMemory(r.Context(), user, s.projectMemoryScope(user, *project), instruction); err != nil {
 		if errors.Is(err, errMemoryBusy) {
-			writeJSONError(w, http.StatusConflict, err.Error())
+			httpx.WriteError(w, http.StatusConflict, err.Error())
 			return
 		}
-		writeJSONError(w, http.StatusBadGateway, "edit project memory failed")
+		httpx.WriteError(w, http.StatusBadGateway, "edit project memory failed")
 		return
 	}
 	memory, _, err := s.thread.GetProjectMemory(r.Context(), user.ID, projectID)
@@ -227,5 +228,5 @@ func (s *server) handleEditProjectMemory(w http.ResponseWriter, r *http.Request)
 		serverError(w, r, err, "get project memory failed")
 		return
 	}
-	writeJSON(w, memory)
+	httpx.WriteJSON(w, http.StatusOK, memory)
 }

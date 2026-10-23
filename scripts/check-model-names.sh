@@ -5,7 +5,7 @@
 # and is history, not code.
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
 if git grep -nIiwE 'mimo|glm|zai|xiaomi|z\.ai' -- . \

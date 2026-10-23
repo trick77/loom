@@ -94,7 +94,8 @@ func (e *linuxExecutor) run(ctx context.Context, j job) (runResponse, error) {
 	cpu := int(4*j.timeout/time.Second) + 1
 	cmd := exec.Command("/proc/self/exe", childCommand, //nolint:gosec // re-exec of this binary; the arguments are server-made
 		jobDir, strconv.Itoa(uid), strconv.FormatUint(e.cfg.memLimit, 10), strconv.Itoa(cpu), e.cfg.python)
-	cmd.Env = childEnv()
+	// exec-child starts with no environment; it builds the interpreter's itself.
+	cmd.Env = []string{}
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	cmd.ExtraFiles = []*os.File{setupW} // fd 3 in the child

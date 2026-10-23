@@ -9,11 +9,16 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	kitauth "github.com/trick77/ship/kit/auth"
+	"github.com/trick77/ship/kit/env"
+	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/logging"
+	"github.com/trick77/ship/kit/run"
+	"github.com/trick77/ship/kit/version"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
@@ -33,77 +38,29 @@ import (
 	"github.com/trick77/loom/web"
 )
 
-var version = "dev" // overridden via -ldflags at build time
-
 func main() {
-	// Configure structured logging with an explicit handler so every line
-	// carries an RFC3339 timestamp (the package default does not guarantee one).
-	// The level is tunable via BACKEND_LOG_LEVEL (debug/info/warn/error).
-	logLevel := parseLogLevel(envDefault("BACKEND_LOG_LEVEL", "info"))
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
+	// The container probe (compose healthcheck) runs before any setup: it must
+	// answer even when the rest of the environment is broken.
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		if err := runHealthcheck(healthcheckURL(envDefault("BACKEND_ADDR", ":8080"))); err != nil {
-			slog.Error("healthcheck failed", "err", err)
-			os.Exit(1)
-		}
-		return
+		os.Exit(httpx.Healthcheck(httpx.LocalURL(env.New(os.Getenv).String("BACKEND_ADDR", ":8080"), "/healthz")))
 	}
-	if err := run(); err != nil {
+	// kit's text handler: RFC3339 timestamps, and the request id on every line
+	// a handler logs with its request's context. A bad BACKEND_LOG_LEVEL fails
+	// boot instead of logging at info.
+	if _, err := logging.Setup(logging.Options{Level: os.Getenv("BACKEND_LOG_LEVEL"), LevelVar: "BACKEND_LOG_LEVEL"}); err != nil {
+		slog.Error("fatal", "err", err)
+		os.Exit(1)
+	}
+	if err := runServer(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }
 
-func envDefault(key, def string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return def
-}
-
-// parseLogLevel maps a BACKEND_LOG_LEVEL string to a slog.Level, defaulting to
-// Info for empty or unrecognized values.
-func parseLogLevel(raw string) slog.Level {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "debug":
-		return slog.LevelDebug
-	case "warn", "warning":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
-}
-
-func healthcheckURL(addr string) string {
-	host, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return "http://127.0.0.1:8080/api/health"
-	}
-	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
-		host = "127.0.0.1"
-	}
-	return "http://" + net.JoinHostPort(host, port) + "/api/health"
-}
-
-func runHealthcheck(url string) error {
-	client := http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected health status %d", resp.StatusCode)
-	}
-	return nil
-}
-
-func run() error {
+func runServer() error {
 	// Logged first thing so the running build is identifiable even if startup later
 	// fails (config error, DB open, etc.) — the "listening" line only lands on success.
-	slog.Info("starting loom", "version", version)
+	slog.Info("starting loom", "version", version.String())
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -118,11 +75,11 @@ func run() error {
 
 	secureCookies := strings.HasPrefix(cfg.PublicURL, "https://")
 	userStore := auth.NewUserStore(db)
-	sessionStore := auth.NewSessionStore(db, secureCookies)
-	if _, err := sessionStore.DeleteExpired(context.Background()); err != nil {
+	sessions, err := auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, secureCookies)
+	if err != nil {
 		return err
 	}
-	authMW := auth.NewMiddleware(sessionStore, userStore)
+	authMW := auth.NewMiddleware(sessions, userStore)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	usageStore := usage.NewStore(db)
@@ -182,7 +139,7 @@ func run() error {
 		if llmClient != nil {
 			ingester.SetImageDescriber(llmClient)
 		}
-		reembed = func(ctx context.Context) { reembedUntilDone(ctx, ingester.ReembedMissing, sleepCtx) }
+		reembed = func(ctx context.Context) { reembedUntilDone(ctx, ingester.ReembedMissing, run.Sleep) }
 		docs := documents.NewService(ragStore, artifactStore, ingester, embedClient, cfg.UsersDir)
 		docs.SetUsageRecorder(usageStore)
 		documentService = docs
@@ -251,12 +208,16 @@ func run() error {
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
 	if cfg.AuthMode == config.AuthModeOIDC {
-		discoveredOIDC, err := auth.NewOIDCServiceFromDiscovery(context.Background(), auth.OIDCServiceConfig{
+		discoveredOIDC, err := kitauth.NewOIDC(context.Background(), kitauth.OIDCConfig{
 			Issuer:       cfg.OIDC.Issuer,
 			ClientID:     cfg.OIDC.ClientID,
 			ClientSecret: cfg.OIDC.ClientSecret,
 			RedirectURL:  cfg.OIDC.RedirectURL,
-			SecureCookie: secureCookies,
+			// loom's scopes: groups is not asked for, the IdP's client may not
+			// allow it; the admin role reads the groups the profile carries.
+			Scopes:       []string{"openid", "profile", "email"},
+			CookiePrefix: "loom_",
+			Secure:       secureCookies,
 		})
 		if err != nil {
 			return err
@@ -292,13 +253,11 @@ func run() error {
 	deps := httpapi.Deps{
 		Background:                 bg,
 		Lifetime:                   base,
-		Version:                    version,
 		Model:                      chatModelInfo(cfg),
 		Static:                     web.SPAHandler(),
 		OIDC:                       oidcService,
 		Auth:                       authMW,
-		Sessions:                   sessionStore,
-		SessionTTL:                 cfg.SessionTTL,
+		Sessions:                   sessions,
 		Users:                      userStore,
 		Thread:                     threadStore,
 		Usage:                      usageStore,
@@ -321,7 +280,7 @@ func run() error {
 	}
 	handler, memoryWorker := httpapi.NewWithMemoryWorker(deps)
 
-	srv := newServer(cfg.Addr, handler)
+	srv := httpx.NewServer(cfg.Addr, handler)
 	srv.BaseContext = func(net.Listener) context.Context { return base }
 	// Bind synchronously so "address in use" fails startup here instead of
 	// being logged from a goroutine while the process waits for a signal.
@@ -330,11 +289,9 @@ func run() error {
 		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := run.Context(context.Background())
 	defer stop()
-	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, func(ctx context.Context) {
-		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
-	}, sandboxWatch, reembed, mcpRefresh)
+	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, sandboxWatch, reembed, mcpRefresh)
 }
 
 // sandboxProbeInterval is how quickly run_python follows the sidecar going
@@ -352,10 +309,6 @@ func sandboxForConfig(cfg config.Config) (httpapi.SandboxRunner, func(context.Co
 	return client, func(ctx context.Context) { client.Watch(ctx, sandboxProbeInterval) }
 }
 
-// sessionJanitorInterval is how often expired sessions are purged while the
-// server runs; boot runs one sweep as well.
-const sessionJanitorInterval = time.Hour
-
 // shutdownTimeout bounds each stage of the graceful stop: in-flight requests
 // get this long to finish once a signal arrives, then the background group
 // gets the same.
@@ -371,7 +324,7 @@ const shutdownGrace = 2 * time.Second
 var errServerShuttingDown = errors.New("server shutting down")
 
 // serve accepts on ln until ctx is done or the listener fails, then stops in
-// the order the deferred db.Close in run() needs:
+// the order the deferred db.Close in runServer() needs:
 //
 //  1. cancel every request context with errServerShuttingDown, so an open SSE
 //     stream unwinds now (persisting its partial answer on a detached context)
@@ -381,14 +334,13 @@ var errServerShuttingDown = errors.New("server shutting down")
 //  4. wait for the workers to return.
 //
 // cancelBase cancels srv's BaseContext, which every request derives from.
-// workers are the long-running sweeps (memory refresh, session janitor,
-// re-embed); they stop when ctx does.
+// workers are the long-running sweeps (memory refresh, re-embed); they stop when ctx does.
 func serve(ctx context.Context, srv *http.Server, ln net.Listener, bg *background.Group, cancelBase context.CancelCauseFunc, workers ...func(context.Context)) error {
 	defer cancelBase(nil)
 
 	serveErr := make(chan error, 1)
 	go func() {
-		slog.Info("listening", "addr", ln.Addr().String(), "version", version)
+		slog.Info("listening", "addr", ln.Addr().String(), "version", version.String())
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err
 			return
@@ -548,25 +500,4 @@ func tavilyConfigured(cfg config.Config) bool {
 
 func imageGenConfigured(cfg config.Config) bool {
 	return strings.TrimSpace(cfg.ImageGenAPIKey) != ""
-}
-
-// newServer builds the listening server. It is split out of main so the
-// timeouts are assertable: a zero value means "no limit", which is what lets a
-// client open a connection, stall, and hold a goroutine and a file descriptor
-// indefinitely (slow loris).
-//
-// WriteTimeout is deliberately absent. internal/sse streams text/event-stream
-// responses that outlive any sane write deadline, and setting one would cut
-// them off mid-stream.
-func newServer(addr string, handler http.Handler) *http.Server {
-	return &http.Server{
-		Addr:              addr,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-		// ReadTimeout stays unset on purpose. It bounds the whole request
-		// including the body, and once the body is read the same deadline
-		// cancels r.Context(), which would cut off a 25 MB upload mid-body and
-		// kill any long chat turn. ReadHeaderTimeout alone closes slow loris.
-		IdleTimeout: 120 * time.Second,
-	}
 }

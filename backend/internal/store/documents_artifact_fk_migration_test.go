@@ -10,9 +10,9 @@ import (
 // abort on its NOT NULL constraint; the delete path worked around it by
 // detaching artifacts first. The rebuild keys artifact_id alone. Because the
 // rebuild drops a table that chunks cascade from, this is also the test that
-// the runner's foreign-keys-off directive keeps existing chunks alive.
-func TestMigration0029_documentsArtifactFKIsSingleColumnAndKeepsChunks(t *testing.T) {
-	db := openMigratedUpTo(t, filepath.Join(t.TempDir(), "a.db"), "0028_shared_threads_user_scoped_fk.sql")
+// the file's foreign_keys = OFF keeps existing chunks alive.
+func TestMigration0032_documentsArtifactFKIsSingleColumnAndKeepsChunks(t *testing.T) {
+	db := openMigratedUpTo(t, filepath.Join(t.TempDir(), "a.db"), "0031_shared_threads_user_scoped_fk.sql")
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := db.Exec(query, args...); err != nil {

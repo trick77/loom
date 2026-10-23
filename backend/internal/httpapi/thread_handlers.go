@@ -10,6 +10,7 @@ import (
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/usage"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // threadDeleteStopTimeout bounds how long a delete waits for a canceled turn on
@@ -25,7 +26,7 @@ func (s *server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 	}
 	opts, err := listThreadsOptionsFromRequest(r)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	threads, err := s.thread.ListThreads(r.Context(), user.ID, opts)
@@ -38,7 +39,7 @@ func (s *server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 		cursor := chat.EncodeThreadCursor(threads[len(threads)-1])
 		nextCursor = &cursor
 	}
-	writeJSON(w, listThreadsResponse{Items: threads, NextCursor: nextCursor})
+	httpx.WriteJSON(w, http.StatusOK, listThreadsResponse{Items: threads, NextCursor: nextCursor})
 }
 
 // maxThreadContentSearchResults caps the interactive content search. The sidebar
@@ -60,7 +61,7 @@ func (s *server) handleSearchThreadContent(w http.ResponseWriter, r *http.Reques
 	if raw := query.Get("limit"); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed < 1 {
-			writeJSONError(w, http.StatusBadRequest, "limit must be a positive integer")
+			httpx.WriteError(w, http.StatusBadRequest, "limit must be a positive integer")
 			return
 		}
 		if parsed < limit {
@@ -76,7 +77,7 @@ func (s *server) handleSearchThreadContent(w http.ResponseWriter, r *http.Reques
 	for i, hit := range hits {
 		items[i] = threadSearchResult{Thread: hit.Thread, Snippet: hit.Snippet}
 	}
-	writeJSON(w, threadSearchResponse{Items: items})
+	httpx.WriteJSON(w, http.StatusOK, threadSearchResponse{Items: items})
 }
 
 func (s *server) handleListThreadIDs(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +87,7 @@ func (s *server) handleListThreadIDs(w http.ResponseWriter, r *http.Request) {
 	}
 	opts, err := listThreadsOptionsFromRequest(r)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	ids, err := s.thread.ListThreadIDs(r.Context(), user.ID, opts)
@@ -94,7 +95,7 @@ func (s *server) handleListThreadIDs(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "list thread ids failed")
 		return
 	}
-	writeJSON(w, ids)
+	httpx.WriteJSON(w, http.StatusOK, ids)
 }
 
 func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +117,7 @@ func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	usage.Record(s.usage, "thread_created", func() error { return s.usage.IncThreadCreated(r.Context(), user.ID) })
-	writeJSONStatus(w, http.StatusCreated, thread)
+	httpx.WriteJSON(w, http.StatusCreated, thread)
 }
 
 func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
@@ -167,7 +168,7 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		summary := s.shareSummaryOf(share)
 		resp.Share = &summary
 	}
-	writeJSON(w, resp)
+	httpx.WriteJSON(w, http.StatusOK, resp)
 }
 
 // refreshMessageArtifacts overlays each message's embedded artifact snapshots with
@@ -211,7 +212,7 @@ func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w)
 		return
 	}
-	writeJSON(w, thread)
+	httpx.WriteJSON(w, http.StatusOK, thread)
 }
 
 func (s *server) handleStarThread(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +237,7 @@ func (s *server) handleSetThreadStarred(w http.ResponseWriter, r *http.Request, 
 		writeNotFound(w)
 		return
 	}
-	writeJSON(w, thread)
+	httpx.WriteJSON(w, http.StatusOK, thread)
 }
 
 func (s *server) handleArchiveThread(w http.ResponseWriter, r *http.Request) {
@@ -359,7 +360,7 @@ func (s *server) handleBulkDeleteThreads(w http.ResponseWriter, r *http.Request)
 		}
 		deleted++
 	}
-	writeJSON(w, bulkDeleteThreadsResponse{Deleted: deleted})
+	httpx.WriteJSON(w, http.StatusOK, bulkDeleteThreadsResponse{Deleted: deleted})
 }
 
 func listThreadsOptionsFromRequest(r *http.Request) (chat.ListThreadsOptions, error) {

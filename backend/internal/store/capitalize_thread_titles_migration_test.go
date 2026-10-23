@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestMigration0025_CapitalizesExistingThreadTitles exercises the real 0025
+// TestMigration0028_CapitalizesExistingThreadTitles exercises the real 0025
 // migration FILE against rows that predate it — the path a live deployment takes,
 // which the fresh-DB suite (threads table empty when 0025 runs) never covers.
 //
@@ -13,7 +13,7 @@ import (
 // apart, then re-applies the exact bytes of the migration (it is idempotent, so
 // running it a second time is the test) and asserts only the plain lowercase ones
 // were rewritten.
-func TestMigration0025_CapitalizesExistingThreadTitles(t *testing.T) {
+func TestMigration0028_CapitalizesExistingThreadTitles(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	db, err := Open(dbPath)
 	if err != nil {
@@ -52,7 +52,7 @@ func TestMigration0025_CapitalizesExistingThreadTitles(t *testing.T) {
 		)
 	}
 
-	body, err := migrationsFS.ReadFile("migrations/0025_capitalize_thread_titles.sql")
+	body, err := migrationsFS.ReadFile("migrations/0028_capitalize_thread_titles.sql")
 	if err != nil {
 		t.Fatalf("read migration: %v", err)
 	}

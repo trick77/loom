@@ -9,7 +9,7 @@ import (
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/web"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // share_handlers.go implements the public, unauthenticated share viewer endpoints
@@ -49,7 +49,7 @@ func (s *server) handleGetPublicShare(w http.ResponseWriter, r *http.Request) {
 	if len(stored.Messages) == 0 {
 		stored.Messages = json.RawMessage("[]")
 	}
-	writeJSON(w, publicShareResponse{
+	httpx.WriteJSON(w, http.StatusOK, publicShareResponse{
 		ShareID:  share.ShareID,
 		Title:    stored.Title,
 		Author:   stored.Author,
@@ -79,9 +79,11 @@ type publicShareResponse struct {
 // leaks; enrichment is best-effort.
 func (s *server) handleShareIndex(w http.ResponseWriter, r *http.Request) {
 	noindex(w)
-	index, ok := web.IndexHTML()
+	index, ok := s.indexHTML()
 	if !ok {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		// A binary built without its UI: the rest of the app answers with kit's
+		// placeholder and a 503 too.
+		http.Error(w, "UI not built", http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -258,7 +260,7 @@ func (s *server) handleCreateShare(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "create share failed")
 		return
 	}
-	writeJSONStatus(w, http.StatusCreated, s.shareSummaryOf(share))
+	httpx.WriteJSON(w, http.StatusCreated, s.shareSummaryOf(share))
 }
 
 // handleUpdateShare re-freezes the snapshot of an existing share (same link).
@@ -310,7 +312,7 @@ func (s *server) refreezeShare(w http.ResponseWriter, r *http.Request, user auth
 		writeNotFound(w)
 		return
 	}
-	writeJSON(w, s.shareSummaryOf(share))
+	httpx.WriteJSON(w, http.StatusOK, s.shareSummaryOf(share))
 }
 
 // handleDisableShare turns off the public link (the "Keep private" action). The
@@ -351,7 +353,7 @@ func (s *server) handleListMyShares(w http.ResponseWriter, r *http.Request) {
 			Title:        share.Title,
 		})
 	}
-	writeJSON(w, shareListResponse{Items: items})
+	httpx.WriteJSON(w, http.StatusOK, shareListResponse{Items: items})
 }
 
 type shareListResponse struct {

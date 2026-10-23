@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/trick77/ship/kit/secret"
 )
 
 type server struct {
@@ -43,12 +44,10 @@ func (s *server) authorized(r *http.Request) bool {
 	if s.cfg.token == "" {
 		return true
 	}
-	got := r.Header.Get("X-Sandbox-Token")
-	return subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.token)) == 1
+	return secret.Match(r.Header.Get("X-Sandbox-Token"), s.cfg.token)
 }
 
 func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
-	defer coverageFlush()
 	if !s.authorized(r) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return

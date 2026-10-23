@@ -181,12 +181,13 @@ export function useThreadData({
     return projects.find((project) => project.id === route.projectID) ?? null;
   }
 
+  const activeThreadProjectId = activeThread?.projectId;
   const activeThreadProject = useMemo(() => {
-    if (activeThread?.projectId === undefined) return null;
+    if (activeThreadProjectId === undefined) return null;
     return (
-      projects.find((project) => project.id === activeThread.projectId) ?? null
+      projects.find((project) => project.id === activeThreadProjectId) ?? null
     );
-  }, [activeThread?.projectId, projects]);
+  }, [activeThreadProjectId, projects]);
 
   return {
     activeProject,

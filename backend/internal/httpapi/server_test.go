@@ -20,27 +20,20 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/store"
+	kitauth "github.com/trick77/ship/kit/auth"
 )
 
+// The probes are kit's, answering a caller on this host only.
 func TestHealth_returnsOK(t *testing.T) {
-	srv := New(Deps{Version: "test"})
+	srv := New(Deps{})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
 
 	srv.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["status"] != "ok" {
-		t.Errorf("status field = %q, want ok", body["status"])
-	}
-	if body["version"] != "test" {
-		t.Errorf("version field = %q, want test", body["version"])
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "ok" {
+		t.Fatalf("status = %d, body %q, want 200 ok", rec.Code, rec.Body.String())
 	}
 }
 
@@ -48,7 +41,7 @@ func TestHealth_returnsOK(t *testing.T) {
 // their viewers are not signed in.
 func TestModel_returnsChatModelFactsWithoutAuth(t *testing.T) {
 	info := llm.ModelInfo{ID: "some-model", DisplayName: "Some Model", ContextWindow: 128000}
-	srv := New(Deps{Version: "test", Model: info})
+	srv := New(Deps{Model: info})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/model", nil))
 
@@ -69,7 +62,7 @@ func TestRecovery_turnsPanicInto500(t *testing.T) {
 	mux.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) {
 		panic("kaboom")
 	})
-	h := recovery(mux)
+	h := middleware(mux)
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))
@@ -85,12 +78,12 @@ func TestLogging_skipsHealthEndpoint(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
-	h := logging(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/health", nil))
-	if strings.Contains(logs.String(), "request") {
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if strings.Contains(logs.String(), "http_request") {
 		t.Fatalf("health request was logged: %s", logs.String())
 	}
 
@@ -101,7 +94,7 @@ func TestLogging_skipsHealthEndpoint(t *testing.T) {
 }
 
 func TestMeRequiresSession(t *testing.T) {
-	srv := New(Deps{Version: "test"})
+	srv := New(Deps{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 
@@ -115,9 +108,8 @@ func TestMeRequiresSession(t *testing.T) {
 func TestMeReturnsCurrentUser(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", DisplayName: "Jan", Role: auth.RoleAdmin, ResponseLanguage: "en"}
 	srv := New(Deps{
-		Version:  "test",
-		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
-		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
+		Auth:     auth.NewMiddleware(fakeSessionStore{userID: user.ID}, fakeUserStore{user: user, ok: true}),
+		Sessions: fakeSessionStore{userID: user.ID},
 		Users:    fakeUserStore{user: user, ok: true},
 	})
 	rec := httptest.NewRecorder()
@@ -141,9 +133,8 @@ func TestMeReturnsCurrentUser(t *testing.T) {
 func TestUpdateMeSetsResponseLanguage(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
-		Version:  "test",
-		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
-		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
+		Auth:     auth.NewMiddleware(fakeSessionStore{userID: user.ID}, fakeUserStore{user: user, ok: true}),
+		Sessions: fakeSessionStore{userID: user.ID},
 		Users:    fakeUserStore{user: user, ok: true},
 	})
 	rec := httptest.NewRecorder()
@@ -167,9 +158,8 @@ func TestUpdateMeSetsResponseLanguage(t *testing.T) {
 func TestUpdateMeRejectsUnsupportedLanguage(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
-		Version:  "test",
-		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
-		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
+		Auth:     auth.NewMiddleware(fakeSessionStore{userID: user.ID}, fakeUserStore{user: user, ok: true}),
+		Sessions: fakeSessionStore{userID: user.ID},
 		Users:    fakeUserStore{user: user, ok: true},
 	})
 	// "auto" was removed as a value; both an unrelated tag and the retired
@@ -241,9 +231,8 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 func TestAdminUsersRequiresAdmin(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
 	srv := New(Deps{
-		Version:  "test",
-		Auth:     auth.NewMiddleware(fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true}, fakeUserStore{user: user, ok: true}),
-		Sessions: fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
+		Auth:     auth.NewMiddleware(fakeSessionStore{userID: user.ID}, fakeUserStore{user: user, ok: true}),
+		Sessions: fakeSessionStore{userID: user.ID},
 		Users:    fakeUserStore{user: user, ok: true},
 	})
 	rec := httptest.NewRecorder()
@@ -259,8 +248,7 @@ func TestAdminUsersRequiresAdmin(t *testing.T) {
 
 func TestAuthCallbackRedirectsOnOIDCError(t *testing.T) {
 	srv := New(Deps{
-		Version: "test",
-		OIDC:    fakeOIDCService{err: errors.New("bad callback")},
+		OIDC: fakeOIDCService{err: errors.New("bad callback")},
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=bad", nil)
@@ -289,8 +277,7 @@ func TestAuthCallbackLogsFailureWithoutLeakingSecrets(t *testing.T) {
 	wrapped := fmt.Errorf("exchange oidc code: %w", urlErr)
 
 	srv := New(Deps{
-		Version: "test",
-		OIDC:    fakeOIDCService{err: wrapped},
+		OIDC: fakeOIDCService{err: wrapped},
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?state=x&code=authcode456", nil)
@@ -321,13 +308,13 @@ func TestAuthCallbackLogsFailureWithoutLeakingSecrets(t *testing.T) {
 
 func TestDevAuthLoginCreatesAdminSession(t *testing.T) {
 	user := auth.User{ID: "u1", Username: "dev", Role: auth.RoleAdmin, ResponseLanguage: "en"}
-	session := auth.Session{Token: "tok", UserID: user.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	sessions, err := auth.NewSessions("0123456789abcdef0123456789abcdef", time.Hour, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := New(Deps{
-		Version: "test",
-		Sessions: fakeSessionStore{
-			session: session,
-		},
-		Users: fakeUserStore{user: user},
+		Sessions: sessions,
+		Users:    fakeUserStore{user: user},
 		DevAuthClaims: auth.Claims{
 			Subject:  "dev-admin",
 			Username: "dev",
@@ -352,13 +339,47 @@ func TestDevAuthLoginCreatesAdminSession(t *testing.T) {
 	if cookie.Name != auth.SessionCookieName {
 		t.Fatalf("cookie name = %q, want %q", cookie.Name, auth.SessionCookieName)
 	}
-	if cookie.Value != "tok" {
-		t.Fatalf("cookie value = %q, want tok", cookie.Value)
+	// The cookie is the session: it reads back as the user's loom id.
+	next := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	next.AddCookie(cookie)
+	if claims, ok := sessions.Read(next); !ok || claims.Subject != user.ID {
+		t.Fatalf("session = %+v (ok %v), want subject %s", claims, ok, user.ID)
+	}
+}
+
+// Logout clears the cookie, with the attributes the login set it with.
+func TestAuthLogoutClearsTheSessionCookie(t *testing.T) {
+	user := auth.User{ID: "u1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
+	sessions, err := auth.NewSessions("0123456789abcdef0123456789abcdef", time.Hour, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := New(Deps{
+		Auth:     auth.NewMiddleware(sessions, fakeUserStore{user: user, ok: true}),
+		Sessions: sessions,
+		Users:    fakeUserStore{user: user, ok: true},
+	})
+	login := httptest.NewRecorder()
+	if err := sessions.Issue(login, auth.SessionFor(user.ID)); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	req.AddCookie(login.Result().Cookies()[0])
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	cleared := rec.Result().Cookies()
+	if len(cleared) != 1 || cleared[0].Name != auth.SessionCookieName || cleared[0].MaxAge >= 0 || cleared[0].Value != "" {
+		t.Fatalf("cookies = %+v, want %s cleared", cleared, auth.SessionCookieName)
 	}
 }
 
 func TestAuthLoginReturns503WhenOIDCDependencyMissing(t *testing.T) {
-	srv := New(Deps{Version: "test"})
+	srv := New(Deps{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/login", nil)
 
@@ -377,41 +398,37 @@ func TestAuthLoginReturns503WhenOIDCDependencyMissing(t *testing.T) {
 }
 
 type fakeOIDCService struct {
-	claims auth.Claims
+	claims kitauth.Claims
 	err    error
 }
 
-func (f fakeOIDCService) StartLogin(w http.ResponseWriter, r *http.Request) {
+func (f fakeOIDCService) Start(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "https://auth.example.com/authorize", http.StatusFound)
 }
 
-func (f fakeOIDCService) HandleCallback(*http.Request) (auth.Claims, error) {
+func (f fakeOIDCService) Callback(http.ResponseWriter, *http.Request) (kitauth.Claims, error) {
 	return f.claims, f.err
 }
 
+// fakeSessionStore signs userID in for any request carrying a session cookie.
 type fakeSessionStore struct {
-	session auth.Session
-	ok      bool
+	userID string
 }
 
-func (f fakeSessionStore) Lookup(context.Context, string) (auth.Session, bool, error) {
-	return f.session, f.ok, nil
+func (f fakeSessionStore) Read(r *http.Request) (kitauth.Claims, bool) {
+	if c, err := r.Cookie(auth.SessionCookieName); err != nil || c.Value == "" || f.userID == "" {
+		return kitauth.Claims{}, false
+	}
+	return auth.SessionFor(f.userID), true
 }
 
-func (f fakeSessionStore) Create(context.Context, string, time.Duration) (auth.Session, error) {
-	return f.session, nil
-}
-
-func (f fakeSessionStore) Revoke(context.Context, string) error {
+func (f fakeSessionStore) Issue(w http.ResponseWriter, c kitauth.Claims) error {
+	http.SetCookie(w, &http.Cookie{Name: auth.SessionCookieName, Value: "session-" + c.Subject})
 	return nil
 }
 
-func (f fakeSessionStore) CookieFor(token string, expires time.Time) *http.Cookie {
-	return (&auth.SessionStore{}).CookieFor(token, expires)
-}
-
-func (f fakeSessionStore) ClearCookie() *http.Cookie {
-	return (&auth.SessionStore{}).ClearCookie()
+func (f fakeSessionStore) Clear(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: auth.SessionCookieName, MaxAge: -1})
 }
 
 type fakeUserStore struct {
@@ -433,10 +450,4 @@ func (f fakeUserStore) ListUsers(context.Context) ([]auth.User, error) {
 
 func (f fakeUserStore) UpdateResponseLanguage(context.Context, string, string) error {
 	return nil
-}
-
-func TestNewServerUsesConfiguredSessionTTL(t *testing.T) {
-	if got := newServer(Deps{SessionTTL: 12 * time.Hour}).sessionTTL; got != 12*time.Hour {
-		t.Fatalf("sessionTTL = %s, want the configured 12h", got)
-	}
 }

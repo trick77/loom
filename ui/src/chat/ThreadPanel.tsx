@@ -277,6 +277,7 @@ export function ThreadPanel({
   useEffect(() => {
     if (!isSending) {
       liveTraceAutoExpandedRef.current = false;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on the turn ending
       setLiveTraceExpanded(false);
       return;
     }
@@ -366,6 +367,7 @@ export function ThreadPanel({
 
   useLayoutEffect(() => {
     shouldStickToBottomRef.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on the thread changing
     setShowJumpToBottom(false);
     scrollToLatest();
   }, [scrollToLatest, thread?.id]);

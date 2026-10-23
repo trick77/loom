@@ -6,6 +6,7 @@ import (
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/usage"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // usageResponse is the GET /api/me/usage payload: the user's lifetime counters
@@ -68,5 +69,5 @@ func (s *server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, resp)
+	httpx.WriteJSON(w, http.StatusOK, resp)
 }

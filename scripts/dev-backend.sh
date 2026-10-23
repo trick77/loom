@@ -20,7 +20,7 @@
 # Any extra args are passed straight to `docker compose up` (e.g. -d, --no-build).
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
 exec docker compose -f compose.dev.yaml -f compose.dev-uihmr.yaml up --build --remove-orphans "$@"

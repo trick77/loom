@@ -28,7 +28,7 @@ function browserLanguage(): UiLanguage {
 // the last explicit choice (localStorage) wins, else the browser locale. This
 // runs synchronously at import time so there is no flash of English.
 export function initialLanguage(): UiLanguage {
-  let stored: string | null = null;
+  let stored: string | null;
   try {
     stored = localStorage.getItem(STORAGE_KEY);
   } catch {

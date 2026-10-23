@@ -6,34 +6,60 @@ import (
 	"io/fs"
 	"net/http"
 	"strings"
+
+	"github.com/trick77/ship/kit/spa"
 )
 
+// dist holds the Vite build, or only .gitkeep in a fresh clone (ship check
+// empties it before the UI build; the image builds its own).
+//
 //go:embed all:dist
 var distFS embed.FS
 
-// IndexHTML returns the embedded dist/index.html bytes. Callers that need to
-// server-render a per-route <head> (e.g. Open Graph meta for share links) template
-// this instead of letting the SPA handler serve the file verbatim. ok is false if
-// the file is missing (a build error, since dist is embedded at build time).
-func IndexHTML() (html []byte, ok bool) {
-	b, err := distFS.ReadFile("dist/index.html")
-	return b, err == nil
-}
+// placeholder is what an unbuilt binary answers on the app's routes, with a
+// 503 (kit's spa): a Go-only build says so instead of serving a blank page.
+//
+//go:embed placeholder.html
+var placeholder []byte
 
-// SPAHandler serves the embedded frontend (web/dist) as a SPA.
-func SPAHandler() http.Handler {
+func dist() fs.FS {
 	sub, err := fs.Sub(distFS, "dist")
 	if err != nil {
 		panic(err) // dist is embedded at build time; this is a programmer error
 	}
-	return spaHandler(sub)
+	return sub
 }
 
-// spaHandler serves fsys as a SPA: existing regular files are served directly;
-// any other path — unknown client-side routes AND directory paths — falls back
-// to index.html (so a directory never renders an http.FileServer listing).
-func spaHandler(fsys fs.FS) http.Handler {
-	fileServer := http.FileServer(http.FS(fsys))
+// IndexHTML returns the embedded index.html shell. Callers that need to
+// server-render a per-route <head> (e.g. Open Graph meta for share links) template
+// this instead of letting the SPA handler serve the file verbatim. ok is false
+// when the UI was not built.
+func IndexHTML() (html []byte, ok bool) {
+	b, err := fs.ReadFile(dist(), "index.html")
+	return b, err == nil
+}
+
+// SPAHandler serves the embedded frontend (kit's spa): files as they are,
+// /assets/ cached forever, the shell on every other path outside /api,
+// revalidated on every load; the placeholder there when the UI was not built.
+func SPAHandler() http.Handler { return handler(dist()) }
+
+// retiredIcons are icon paths dist does not ship. Crawlers, chat unfurlers and
+// feed readers probe /favicon.ico blindly without parsing HTML, and a stale
+// installed PWA still requests the icons it was installed with by their pinned
+// paths; the shell fallback would hand them index.html with a 200, an HTML page
+// masquerading as an icon. /favicon.svg is here because the master was renamed
+// to /icon.svg when loom picked up peeq's icon mechanism; the manifest icons are
+// the two rasters that predated it.
+var retiredIcons = map[string]bool{
+	"/favicon.ico":                  true,
+	"/favicon.svg":                  true,
+	"/web-app-manifest-192x192.png": true,
+	"/web-app-manifest-512x512.png": true,
+}
+
+func handler(d fs.FS) http.Handler {
+	app := spa.Handler(d, spa.Options{Placeholder: placeholder})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Keep public share pages out of search engines (a <meta> tag alone misses
 		// non-JS crawlers). Mirrors the X-Robots-Tag set by the share API handlers.
@@ -45,52 +71,13 @@ func spaHandler(fsys fs.FS) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/share/") {
 			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		}
-		if info, err := fs.Stat(fsys, trimLeadingSlash(r.URL.Path)); err == nil && !info.IsDir() {
-			// Vite emits content-hashed bundles under /assets/, so they can be cached
-			// forever; index.html (and the SPA fallback below) must not, or clients
-			// pin a stale entrypoint after a deploy.
-			if strings.HasPrefix(r.URL.Path, "/assets/") {
-				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-			} else if r.URL.Path == "/index.html" {
-				w.Header().Set("Cache-Control", "no-cache")
+		// A re-added icon still serves: only a path dist lacks is refused.
+		if retiredIcons[r.URL.Path] {
+			if _, err := fs.Stat(d, strings.TrimPrefix(r.URL.Path, "/")); err != nil {
+				http.NotFound(w, r)
+				return
 			}
-			fileServer.ServeHTTP(w, r)
-			return
 		}
-		// dist ships none of the icon paths below — but crawlers, chat unfurlers
-		// and feed readers probe /favicon.ico blindly without parsing HTML, and a
-		// stale installed PWA still requests the icons it was installed with by
-		// their pinned paths. The SPA fallback below would hand all of them
-		// index.html with a 200: an HTML page masquerading as an icon. 404 is the
-		// honest answer. Sits after the Stat branch so a re-added icon still
-		// serves.
-		//
-		// /favicon.svg is here because the master was renamed to /icon.svg when
-		// loom picked up peeq's icon mechanism; the manifest icons are the two
-		// rasters that predated it. The current set (icon.svg, icon-192.png,
-		// icon-512.png, icon-maskable-512.png, apple-touch-icon.png) all ship, so
-		// none of them belong in this list.
-		switch r.URL.Path {
-		case "/favicon.ico",
-			"/favicon.svg",
-			"/web-app-manifest-192x192.png",
-			"/web-app-manifest-512x512.png":
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Cache-Control", "no-cache")
-		r2 := r.Clone(r.Context())
-		r2.URL.Path = "/"
-		fileServer.ServeHTTP(w, r2)
+		app.ServeHTTP(w, r)
 	})
-}
-
-func trimLeadingSlash(p string) string {
-	if len(p) > 0 && p[0] == '/' {
-		p = p[1:]
-	}
-	if p == "" {
-		return "."
-	}
-	return p
 }

@@ -1,14 +1,19 @@
--- loom:foreign_keys=off
+-- migrate:no-transaction
 -- Key documents.artifact_id on artifacts(id) alone. The composite
 -- (user_id, artifact_id) key carried ON DELETE SET NULL, which on an artifact
 -- delete would null user_id as well and abort on its NOT NULL constraint; the
 -- thread-delete path has been detaching artifacts first to avoid it. SQLite
 -- cannot alter a foreign key in place, so the table is rebuilt row for row.
--- Foreign keys are off for this file (see the directive above): chunks
--- cascade from documents, and DROP TABLE with enforcement on would delete
--- every chunk. The user/project keys and every index are preserved, and a
+-- Foreign keys are off for the rebuild: chunks cascade from documents, and
+-- DROP TABLE with enforcement on would delete every chunk. The pragma is a
+-- no-op inside a transaction, so the file runs outside kit's (the marker
+-- above) on one connection, opens its own after it, and turns enforcement
+-- back on last. The user/project keys and every index are preserved, and a
 -- (user_id, artifact_id) index is added so an artifact delete no longer scans
 -- the table.
+
+PRAGMA foreign_keys = OFF;
+BEGIN;
 
 CREATE TABLE documents_new (
     id             TEXT PRIMARY KEY,
@@ -42,3 +47,6 @@ CREATE INDEX idx_documents_user_project ON documents(user_id, project_id);
 CREATE INDEX idx_documents_status ON documents(status);
 CREATE INDEX idx_documents_user_thread ON documents(user_id, thread_id);
 CREATE INDEX idx_documents_user_artifact ON documents(user_id, artifact_id);
+
+COMMIT;
+PRAGMA foreign_keys = ON;

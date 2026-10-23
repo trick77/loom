@@ -64,9 +64,8 @@ func newAuthenticatedServer(t *testing.T, deps Deps) http.Handler {
 
 func newAuthenticatedServerForUser(t *testing.T, user auth.User, deps Deps) http.Handler {
 	t.Helper()
-	deps.Version = "test"
 	deps.Auth = auth.NewMiddleware(
-		fakeSessionStore{session: auth.Session{Token: "tok", UserID: user.ID}, ok: true},
+		fakeSessionStore{userID: user.ID},
 		fakeUserStore{user: user, ok: true},
 	)
 	return New(deps)

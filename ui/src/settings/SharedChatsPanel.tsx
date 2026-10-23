@@ -22,6 +22,8 @@ export function SharedChatsPanel() {
     return () => {
       active = false;
     };
+    // t is left out: a language switch must not refetch the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function revoke(item: ShareListItem) {

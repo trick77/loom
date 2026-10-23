@@ -5,6 +5,7 @@ import (
 
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/turn"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // handleMCPServers backs the /mcp slash command: a live status snapshot of every
@@ -25,7 +26,7 @@ func (s *server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, map[string]any{"servers": servers})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"servers": servers})
 }
 
 // mcpToolInfo is one row of the /tools slash command.
@@ -63,7 +64,7 @@ func (s *server) handleMCPTools(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
-	writeJSON(w, map[string]any{"tools": tools})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"tools": tools})
 }
 
 // requiredParams pulls the JSON-schema "required" string array out of a tool's

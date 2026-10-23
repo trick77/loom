@@ -285,6 +285,7 @@ export function useDocumentAttachments(scope: {
   // the one you are looking at. A chip's own status carries the real state, and
   // survives the move.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on the scope changing
     setAttachNote("");
   }, [scopeKey]);
 

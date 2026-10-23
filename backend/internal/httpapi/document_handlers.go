@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/ship/kit/httpx"
 )
 
 // DocumentService is the RAG document dependency used by document handlers. It is
@@ -89,17 +90,17 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, artifact.MaxArtifactSizeBytes+multipartUploadOverheadBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		if isRequestBodyTooLarge(err) {
-			writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
+			httpx.WriteError(w, http.StatusRequestEntityTooLarge, "upload too large")
 			return
 		}
 		// A non-size parse failure is a malformed request, not an oversized one.
 		// Returning 413 here would make the client report it as a size error.
-		writeJSONError(w, http.StatusBadRequest, "invalid upload")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "missing file")
+		httpx.WriteError(w, http.StatusBadRequest, "missing file")
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -112,22 +113,22 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 		Reader:    file,
 	})
 	if errors.Is(err, documents.ErrUnsupportedFormat) {
-		writeJSONError(w, http.StatusUnsupportedMediaType, "unsupported document format")
+		httpx.WriteError(w, http.StatusUnsupportedMediaType, "unsupported document format")
 		return
 	}
 	if errors.Is(err, documents.ErrThreadDocumentLimit) {
-		writeJSONError(w, http.StatusConflict, "too many documents in this thread")
+		httpx.WriteError(w, http.StatusConflict, "too many documents in this thread")
 		return
 	}
 	if errors.Is(err, documents.ErrTooLarge) {
-		writeJSONError(w, http.StatusRequestEntityTooLarge, "upload too large")
+		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "upload too large")
 		return
 	}
 	if err != nil {
 		serverError(w, r, err, "upload failed")
 		return
 	}
-	writeJSON(w, toDocumentResponse(doc))
+	httpx.WriteJSON(w, http.StatusOK, toDocumentResponse(doc))
 }
 
 func (s *server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +149,7 @@ func (s *server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
 	for _, d := range docs {
 		out = append(out, toDocumentResponse(d))
 	}
-	writeJSON(w, map[string]any{"items": out})
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +175,7 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 	// don't spawn a second one (avoids duplicate Tika/embedding cost on rapid
 	// re-clicks). The store serializes the actual writes regardless.
 	if doc.Status == rag.StatusExtracting || doc.Status == rag.StatusEmbedding {
-		writeJSON(w, toDocumentResponse(doc))
+		httpx.WriteJSON(w, http.StatusOK, toDocumentResponse(doc))
 		return
 	}
 	// Run ingestion off the request path; the client polls status via list/get.
@@ -186,7 +187,7 @@ func (s *server) handleIndexDocument(w http.ResponseWriter, r *http.Request) {
 		_ = s.documents.Index(ctx, user.ID, docID)
 	})
 	doc.Status = rag.StatusPending
-	writeJSON(w, toDocumentResponse(doc))
+	httpx.WriteJSON(w, http.StatusOK, toDocumentResponse(doc))
 }
 
 func (s *server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +201,7 @@ func (s *server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := s.documents.Delete(r.Context(), user.ID, r.PathValue("documentID")); err != nil {
 		if errors.Is(err, documents.ErrIndexInProgress) {
-			writeJSONError(w, http.StatusConflict, "document is being indexed")
+			httpx.WriteError(w, http.StatusConflict, "document is being indexed")
 			return
 		}
 		serverError(w, r, err, "delete failed")
