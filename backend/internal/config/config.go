@@ -137,10 +137,9 @@ type Config struct {
 	// no-op. See mcp.LoadServersFromFile.
 	MCPServersFile string
 
-	// SessionSecret is required but currently reserved: sessions are random
-	// tokens stored hashed, so nothing derives from it yet. Wiring it into the
-	// token hash would invalidate every live session, which is a deliberate,
-	// separate change; requiring it now keeps deployments ready for that.
+	// SessionSecret signs the session cookies (kit's, keyed by a derivation
+	// of it; at least 32 characters, auth.NewSessions). Rotating it signs
+	// everyone out.
 	SessionSecret string
 	// SessionTTL is how long a login stays valid. Group membership and the
 	// admin role are recomputed at login, so this bounds how long a revoked

@@ -18,7 +18,7 @@ func (s *server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "oidc is not configured")
 		return
 	}
-	s.oidc.StartLogin(w, r)
+	s.oidc.Start(w, r)
 }
 
 func (s *server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +26,7 @@ func (s *server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "oidc is not configured")
 		return
 	}
-	claims, err := s.oidc.HandleCallback(r)
+	claims, err := s.oidc.Callback(w, r)
 	if err != nil {
 		// Warn, not Error: a user abandoning the consent screen reaches this
 		// path too, so it is not necessarily a server fault.
@@ -34,7 +34,7 @@ func (s *server) handleAuthCallback(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?auth_error=oidc_callback_failed", http.StatusFound)
 		return
 	}
-	s.createSessionFromClaims(w, r, claims, s.oidcAdminGroup)
+	s.createSessionFromClaims(w, r, auth.FromOIDC(claims), s.oidcAdminGroup)
 }
 
 func (s *server) createSessionFromClaims(w http.ResponseWriter, r *http.Request, claims auth.Claims, adminGroup string) {
@@ -47,24 +47,20 @@ func (s *server) createSessionFromClaims(w http.ResponseWriter, r *http.Request,
 		serverError(w, r, err, "user upsert failed")
 		return
 	}
-	session, err := s.sessions.Create(r.Context(), user.ID, s.sessionTTL)
-	if err != nil {
+	if err := s.sessions.Issue(w, auth.SessionFor(user.ID)); err != nil {
 		serverError(w, r, err, "session create failed")
 		return
 	}
-	http.SetCookie(w, s.sessions.CookieFor(session.Token, session.ExpiresAt))
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func (s *server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleAuthLogout(w http.ResponseWriter, _ *http.Request) {
 	if s.sessions == nil {
 		httpx.WriteError(w, http.StatusServiceUnavailable, "sessions are not configured")
 		return
 	}
-	if cookie, err := r.Cookie(auth.SessionCookieName); err == nil {
-		_ = s.sessions.Revoke(r.Context(), cookie.Value)
-	}
-	http.SetCookie(w, s.sessions.ClearCookie())
+	// The session lives in the cookie alone: clearing it is the logout.
+	s.sessions.Clear(w)
 	redirectURL := s.postLogoutRedirectURL
 	if redirectURL == "" {
 		redirectURL = "/"

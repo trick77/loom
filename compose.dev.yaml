@@ -37,7 +37,7 @@ services:
       BACKEND_ADDR: "127.0.0.1:8080"
       BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-debug}"
       BACKEND_PUBLIC_URL: "http://localhost:8080"
-      BACKEND_SESSION_SECRET: dev-secret-please-change
+      BACKEND_SESSION_SECRET: dev-secret-please-change-0123456789
       BACKEND_DB_PATH: /data/loom.db
       BACKEND_USERS_DIR: /data/users
       BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"

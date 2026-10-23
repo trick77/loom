@@ -20,6 +20,7 @@ import (
 	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/loom/internal/usage"
 	"github.com/trick77/loom/web"
+	kitauth "github.com/trick77/ship/kit/auth"
 	"github.com/trick77/ship/kit/httpx"
 )
 
@@ -33,11 +34,9 @@ type Deps struct {
 	// chat is off.
 	Model llm.ModelInfo
 
-	OIDC     OIDCService
-	Auth     *auth.Middleware
-	Sessions SessionService
-	// SessionTTL is the login lifetime (config defaults it).
-	SessionTTL time.Duration
+	OIDC       OIDCService
+	Auth       *auth.Middleware
+	Sessions   SessionService
 	Users      UserService
 	Thread     ThreadStore
 	Usage      UsageStore
@@ -89,7 +88,6 @@ type server struct {
 	oidc                  OIDCService
 	auth                  *auth.Middleware
 	sessions              SessionService
-	sessionTTL            time.Duration
 	users                 UserService
 	thread                ThreadStore
 	usage                 UsageStore
@@ -244,18 +242,18 @@ type ToolService interface {
 // handlers need nothing beyond the engine's port, so it is the same type.
 type SandboxRunner = turn.SandboxRunner
 
-// OIDCService is the auth handler dependency for OIDC redirects and callbacks.
+// OIDCService is the auth handler dependency for OIDC redirects and
+// callbacks; *kitauth.OIDC is one.
 type OIDCService interface {
-	StartLogin(http.ResponseWriter, *http.Request)
-	HandleCallback(*http.Request) (auth.Claims, error)
+	Start(http.ResponseWriter, *http.Request)
+	Callback(http.ResponseWriter, *http.Request) (kitauth.Claims, error)
 }
 
-// SessionService is the session dependency used by auth handlers.
+// SessionService issues and clears the session cookie; *kitauth.Sessions is
+// one.
 type SessionService interface {
-	Create(context.Context, string, time.Duration) (auth.Session, error)
-	Revoke(context.Context, string) error
-	CookieFor(string, time.Time) *http.Cookie
-	ClearCookie() *http.Cookie
+	Issue(http.ResponseWriter, kitauth.Claims) error
+	Clear(http.ResponseWriter)
 }
 
 // UserService is the user dependency used by auth handlers.
@@ -283,7 +281,6 @@ func newServer(d Deps) *server {
 		oidc:                  d.OIDC,
 		auth:                  d.Auth,
 		sessions:              d.Sessions,
-		sessionTTL:            d.SessionTTL,
 		users:                 d.Users,
 		thread:                d.Thread,
 		usage:                 d.Usage,

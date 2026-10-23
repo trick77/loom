@@ -1,181 +1,56 @@
 package auth
 
 import (
-	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"database/sql"
-	"encoding/base64"
 	"errors"
-	"fmt"
-	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/trick77/loom/internal/sqlutil"
+	kitauth "github.com/trick77/ship/kit/auth"
 )
 
-// SessionCookieName is the name of the browser cookie carrying the session
-// token.
+// SessionCookieName is the name of the browser cookie carrying the session.
 const SessionCookieName = "loom_session"
 
-// Session is the server-side representation of an authenticated browser session.
-type Session struct {
-	Token     string
-	UserID    string
-	ExpiresAt time.Time
+// minSessionSecret is the shortest BACKEND_SESSION_SECRET accepted. It signs
+// every session cookie; a short one can be guessed offline from a single
+// cookie, and then any user's session forged.
+const minSessionSecret = 32
+
+// NewSessions is kit's signed session cookie, keyed on secret. The cookie
+// carries the session itself, so there is no session table: logout clears the
+// cookie, and rotating the secret signs everyone out.
+func NewSessions(secret string, ttl time.Duration, secure bool) (*kitauth.Sessions, error) {
+	if len(secret) < minSessionSecret {
+		return nil, errors.New("BACKEND_SESSION_SECRET must be at least 32 characters: it signs the session cookies")
+	}
+	return kitauth.NewSessions(kitauth.SessionConfig{
+		Name:   SessionCookieName,
+		Key:    kitauth.DeriveKey(secret, "loom-session"),
+		TTL:    ttl,
+		Secure: secure,
+	})
 }
 
-// SessionStore persists opaque browser sessions.
-type SessionStore struct {
-	db     DBTX
-	secure bool
+// SessionFor is what a loom session carries: the user's loom id as its
+// subject. Role and names are read from the users table on every request, so
+// a role change or a deleted user applies to live sessions.
+func SessionFor(userID string) kitauth.Claims {
+	return kitauth.Claims{Subject: userID}
 }
 
-// NewSessionStore returns a SQLite-backed session store.
-func NewSessionStore(db DBTX, secure bool) *SessionStore {
-	return &SessionStore{db: db, secure: secure}
-}
-
-// Create stores a hashed session token and returns the raw token for the cookie.
-func (s *SessionStore) Create(ctx context.Context, userID string, ttl time.Duration) (Session, error) {
-	token := randomToken()
-	expiresAt := time.Now().UTC().Add(ttl)
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO sessions (token_hash, user_id, expires_at)
-VALUES (?, ?, ?)`,
-		hashToken(token), userID, formatTime(expiresAt),
-	)
-	if err != nil {
-		return Session{}, fmt.Errorf("insert session: %w", err)
-	}
-	return Session{Token: token, UserID: userID, ExpiresAt: expiresAt}, nil
-}
-
-// Lookup returns the active session for token.
-func (s *SessionStore) Lookup(ctx context.Context, token string) (Session, bool, error) {
-	var session Session
-	var expires string
-	var stale bool
-	tokenHash := hashToken(token)
-	err := s.db.QueryRowContext(ctx, `
-SELECT user_id, expires_at, last_seen_at < datetime('now', '-1 minute')
-FROM sessions
-WHERE token_hash = ? AND expires_at > datetime('now')`,
-		tokenHash,
-	).Scan(&session.UserID, &expires, &stale)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Session{}, false, nil
-	}
-	if err != nil {
-		return Session{}, false, fmt.Errorf("lookup session: %w", err)
-	}
-	expiresAt, err := sqlutil.ParseTime(expires)
-	if err != nil {
-		return Session{}, false, err
-	}
-	session.Token = token
-	session.ExpiresAt = expiresAt
-	// Only when due: an UPDATE that matches no row still takes the write lock,
-	// which would queue every request behind any open write transaction.
-	if stale {
-		_, _ = s.db.ExecContext(ctx, `
-UPDATE sessions
-SET last_seen_at = datetime('now')
-WHERE token_hash = ? AND last_seen_at < datetime('now', '-1 minute')`,
-			tokenHash,
-		)
-	}
-	return session, true, nil
-}
-
-// DeleteExpired removes expired sessions and returns how many rows were deleted.
-func (s *SessionStore) DeleteExpired(ctx context.Context) (int64, error) {
-	result, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE expires_at <= datetime('now')`)
-	if err != nil {
-		return 0, fmt.Errorf("delete expired sessions: %w", err)
-	}
-	deleted, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("count deleted sessions: %w", err)
-	}
-	return deleted, nil
-}
-
-// RunJanitor deletes expired sessions every interval until ctx is done. Boot
-// runs one sweep too; this keeps a long-running server from accumulating
-// rows for sessions nobody can use any more.
-func (s *SessionStore) RunJanitor(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		deleted, err := s.DeleteExpired(ctx)
-		if err != nil {
-			if ctx.Err() == nil {
-				slog.Warn("session janitor sweep failed", "err", err)
-			}
-			continue
-		}
-		if deleted > 0 {
-			slog.Info("session janitor purged expired sessions", "count", deleted)
-		}
+// FromOIDC maps kit's verified OIDC claims onto loom's.
+func FromOIDC(c kitauth.Claims) Claims {
+	return Claims{
+		Subject:       c.Subject,
+		Username:      c.PreferredUsername,
+		Email:         c.Email,
+		Name:          c.Name,
+		Groups:        c.Groups,
+		EmailVerified: c.EmailVerified,
 	}
 }
 
-// Revoke deletes the session for token.
-func (s *SessionStore) Revoke(ctx context.Context, token string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = ?`, hashToken(token))
-	if err != nil {
-		return fmt.Errorf("revoke session: %w", err)
-	}
-	return nil
-}
-
-// CookieFor builds the browser session cookie.
-func (s *SessionStore) CookieFor(token string, expires time.Time) *http.Cookie {
-	return &http.Cookie{ //nolint:gosec // HttpOnly and SameSite are set below; Secure is config-driven so local development over plain HTTP still works
-		Name:     SessionCookieName,
-		Value:    token,
-		Path:     "/",
-		Expires:  expires,
-		HttpOnly: true,
-		Secure:   s.secure,
-		SameSite: http.SameSiteLaxMode,
-	}
-}
-
-// ClearCookie returns a cookie that clears the browser session.
-func (s *SessionStore) ClearCookie() *http.Cookie {
-	return &http.Cookie{ //nolint:gosec // HttpOnly and SameSite are set below; Secure is config-driven so local development over plain HTTP still works
-		Name:     SessionCookieName,
-		Value:    "",
-		Path:     "/",
-		Expires:  time.Unix(0, 0),
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   s.secure,
-		SameSite: http.SameSiteLaxMode,
-	}
-}
-
-func randomToken() string {
-	var b [32]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err)
-	}
-	return base64.RawURLEncoding.EncodeToString(b[:])
-}
-
-func hashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return base64.RawURLEncoding.EncodeToString(sum[:])
-}
-
-func formatTime(t time.Time) string {
-	return t.UTC().Format("2006-01-02 15:04:05")
+// SessionReader reads a request's session; *kitauth.Sessions is one.
+type SessionReader interface {
+	Read(*http.Request) (kitauth.Claims, bool)
 }

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	kitauth "github.com/trick77/ship/kit/auth"
 	"github.com/trick77/ship/kit/env"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/logging"
@@ -74,11 +75,11 @@ func runServer() error {
 
 	secureCookies := strings.HasPrefix(cfg.PublicURL, "https://")
 	userStore := auth.NewUserStore(db)
-	sessionStore := auth.NewSessionStore(db, secureCookies)
-	if _, err := sessionStore.DeleteExpired(context.Background()); err != nil {
+	sessions, err := auth.NewSessions(cfg.SessionSecret, cfg.SessionTTL, secureCookies)
+	if err != nil {
 		return err
 	}
-	authMW := auth.NewMiddleware(sessionStore, userStore)
+	authMW := auth.NewMiddleware(sessions, userStore)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
 	usageStore := usage.NewStore(db)
@@ -207,12 +208,16 @@ func runServer() error {
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
 	if cfg.AuthMode == config.AuthModeOIDC {
-		discoveredOIDC, err := auth.NewOIDCServiceFromDiscovery(context.Background(), auth.OIDCServiceConfig{
+		discoveredOIDC, err := kitauth.NewOIDC(context.Background(), kitauth.OIDCConfig{
 			Issuer:       cfg.OIDC.Issuer,
 			ClientID:     cfg.OIDC.ClientID,
 			ClientSecret: cfg.OIDC.ClientSecret,
 			RedirectURL:  cfg.OIDC.RedirectURL,
-			SecureCookie: secureCookies,
+			// loom's scopes: groups is not asked for, the IdP's client may not
+			// allow it; the admin role reads the groups the profile carries.
+			Scopes:       []string{"openid", "profile", "email"},
+			CookiePrefix: "loom_",
+			Secure:       secureCookies,
 		})
 		if err != nil {
 			return err
@@ -252,8 +257,7 @@ func runServer() error {
 		Static:                     web.SPAHandler(),
 		OIDC:                       oidcService,
 		Auth:                       authMW,
-		Sessions:                   sessionStore,
-		SessionTTL:                 cfg.SessionTTL,
+		Sessions:                   sessions,
 		Users:                      userStore,
 		Thread:                     threadStore,
 		Usage:                      usageStore,
@@ -287,9 +291,7 @@ func runServer() error {
 
 	ctx, stop := run.Context(context.Background())
 	defer stop()
-	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, func(ctx context.Context) {
-		sessionStore.RunJanitor(ctx, sessionJanitorInterval)
-	}, sandboxWatch, reembed, mcpRefresh)
+	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, sandboxWatch, reembed, mcpRefresh)
 }
 
 // sandboxProbeInterval is how quickly run_python follows the sidecar going
@@ -306,10 +308,6 @@ func sandboxForConfig(cfg config.Config) (httpapi.SandboxRunner, func(context.Co
 	client := sandbox.New(cfg.SandboxURL, cfg.SandboxToken, cfg.SandboxTimeout)
 	return client, func(ctx context.Context) { client.Watch(ctx, sandboxProbeInterval) }
 }
-
-// sessionJanitorInterval is how often expired sessions are purged while the
-// server runs; boot runs one sweep as well.
-const sessionJanitorInterval = time.Hour
 
 // shutdownTimeout bounds each stage of the graceful stop: in-flight requests
 // get this long to finish once a signal arrives, then the background group
@@ -336,8 +334,7 @@ var errServerShuttingDown = errors.New("server shutting down")
 //  4. wait for the workers to return.
 //
 // cancelBase cancels srv's BaseContext, which every request derives from.
-// workers are the long-running sweeps (memory refresh, session janitor,
-// re-embed); they stop when ctx does.
+// workers are the long-running sweeps (memory refresh, re-embed); they stop when ctx does.
 func serve(ctx context.Context, srv *http.Server, ln net.Listener, bg *background.Group, cancelBase context.CancelCauseFunc, workers ...func(context.Context)) error {
 	defer cancelBase(nil)
 

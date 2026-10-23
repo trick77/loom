@@ -16,7 +16,6 @@ allow:
   - { rule: containerfile, image: "-sandbox", why: "loom-sandbox starts as root to drop each job to its own slot uid (cap_add SETUID/SETGID in compose)" }
   - { rule: distroless, image: "-sandbox", why: "jobs run CPython and its wheels, which need a userland" }
   - { rule: handrolled, path: backend/cmd/loom-sandbox/server.go, why: "the backend probes /healthz across the docker network; kit's Health answers loopback only" }
-  - { rule: handrolled, path: backend/internal/auth/oidc.go, why: "moves to kit/auth in this branch's auth commit" }
 dependabot:
   ignore:
     - ecosystem: gomod
