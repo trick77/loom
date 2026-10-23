@@ -25,6 +25,7 @@ export function UserMemoryPanel() {
 
   useEffect(() => {
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- back to loading before the fetch
     setLoading(true);
     getUserMemory()
       .then((memory) => {

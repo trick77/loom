@@ -34,6 +34,7 @@ export function ShareDialog({
   const copied = copyStatus === "copied";
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-seeded whenever the share arrives
     setChoice(share?.shared === true ? "public" : "private");
   }, [share]);
 

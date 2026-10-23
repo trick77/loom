@@ -28,6 +28,7 @@ export function ProjectDialog({
     : t("projects.actions.editDetails");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-seeded whenever the project changes
     setName(project?.name ?? "");
     setDescription(project?.description ?? "");
   }, [project]);

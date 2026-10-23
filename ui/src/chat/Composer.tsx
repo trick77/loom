@@ -97,6 +97,7 @@ export function Composer({
   const activeIndex = selectedIndex < suggestions.length ? selectedIndex : 0;
   useEffect(() => {
     // Keep the highlighted item in range as the draft narrows the matches.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-clamped as the matches narrow
     setSelectedIndex((current) =>
       current >= suggestions.length ? 0 : current,
     );

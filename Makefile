@@ -42,9 +42,7 @@ backend-coverage:
 fe-test:
 	cd ui && npm run test -- --run
 
-# oxlint rather than ESLint: typescript-eslint does not support the
-# TypeScript 7 release the UI builds with, and oxlint parses TypeScript
-# natively with the same rules-of-hooks / exhaustive-deps checks.
+# ESLint (react-hooks) and prettier, as ship checks them.
 fe-lint:
 	cd ui && npm run lint
 

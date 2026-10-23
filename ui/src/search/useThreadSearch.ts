@@ -57,6 +57,7 @@ export function useThreadSearch(
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- back to loading before the fetch
     setTitleLoading(true);
 
     const titleHandle = window.setTimeout(() => {
@@ -105,6 +106,8 @@ export function useThreadSearch(
       window.clearTimeout(titleHandle);
       if (contentHandle !== undefined) window.clearTimeout(contentHandle);
     };
+    // onSessionExpired is left out: a fresh callback must not restart the search.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trimmed, limit, reloadToken]);
 
   const results = useMemo<SearchResult[]>(() => {

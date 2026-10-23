@@ -29,6 +29,7 @@ export function PdfLightbox({
   useEffect(() => {
     let cancelled = false;
     let url = "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- back to loading before the fetch
     setError(false);
     setObjectUrl("");
     void downloadArtifact(downloadUrl)

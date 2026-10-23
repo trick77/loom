@@ -514,6 +514,7 @@ export function ThreadShell({
 
   useEffect(() => {
     const cleanup = loadRoute(route);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on the route changing
     setSendError("");
     return cleanup;
   }, [loadRoute, route]);
@@ -522,6 +523,7 @@ export function ThreadShell({
   // so they can't bind to a different thread later.
   useEffect(() => {
     if (route.view !== "new") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on leaving the start screen
       setPendingAttachments((current) => {
         current.forEach((attachment) => {
           if (attachment.previewUrl !== undefined)
@@ -550,6 +552,8 @@ export function ThreadShell({
 
   useEffect(() => {
     document.title = tabTitle(route, activeThread, activeProject);
+    // Tracks only the title and name the tab title reads, not the objects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, activeThread?.title, activeProject?.name, i18n.language]);
 
   const navigateToNew = useCallback(() => {

@@ -108,11 +108,13 @@ export function ThreadsPage({
       onSessionExpired();
       return;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors the list error into the banner
     setLoadError(error !== null ? t("chats.loadFailed") : "");
   }, [error, onSessionExpired, t]);
 
   // A new search changes what "all" means, so clear any selection it carried.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on the search term
     setSelectedIds(new Set());
   }, [searchTerm]);
 

@@ -58,6 +58,7 @@ export function SearchModal({
 
   // Keep the selection in range as results change (e.g. full-text rows arrive).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-clamped as the results change
     setSelected((current) => (current >= results.length ? 0 : current));
   }, [results.length]);
 

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import type { Page } from "./api";
 
@@ -23,7 +29,9 @@ export function useInfiniteList<T>(
   // Hold the latest fetchPage without making it a reset dependency (it is a
   // fresh closure each render and would otherwise reload on every render).
   const fetchPageRef = useRef(fetchPage);
-  fetchPageRef.current = fetchPage;
+  useLayoutEffect(() => {
+    fetchPageRef.current = fetchPage;
+  });
 
   // Monotonic request id: a reset bumps it so a slower in-flight request from a
   // previous filter cannot apply its results over the newer list.
@@ -31,6 +39,7 @@ export function useInfiniteList<T>(
 
   useEffect(() => {
     const seq = ++requestSeq.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on resetKeys before the fetch
     setItems([]);
     setLoaded(false);
     setCursor(null);
@@ -81,7 +90,9 @@ export function useInfiniteList<T>(
   // The observer is created once per sentinel node; route it through a ref so it
   // always invokes the latest loadMore (which closes over current cursor/state).
   const loadMoreRef = useRef(loadMore);
-  loadMoreRef.current = loadMore;
+  useLayoutEffect(() => {
+    loadMoreRef.current = loadMore;
+  });
   const observerRef = useRef<IntersectionObserver | null>(null);
   const nodeRef = useRef<HTMLElement | null>(null);
 

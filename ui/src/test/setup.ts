@@ -1,3 +1,5 @@
+// vitest setupFiles entry (vite.config.ts `test.setupFiles`): jest-dom's matchers on vitest's `expect`.
+// Testing Library's cleanup runs by itself between tests (test.globals).
 import "@testing-library/jest-dom/vitest";
 import { configure } from "@testing-library/react";
 
@@ -9,7 +11,7 @@ configure({ asyncUtilTimeout: 5000 });
 // Initialize the i18n singleton for every test, mirroring runtime where main.tsx
 // imports it before any component renders. Without this, components using
 // useTranslation would render raw keys. Tests assert English copy, so pin `en`.
-import i18n from "./src/i18n";
+import i18n from "../i18n";
 void i18n.changeLanguage("en");
 
 // jsdom has no ResizeObserver; provide a no-op stub for components that use it.

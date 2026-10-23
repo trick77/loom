@@ -50,6 +50,7 @@ export function MemoryComposer({
     if (open) {
       inputRef.current?.focus();
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on the composer closing
       setDraft("");
     }
   }, [open]);

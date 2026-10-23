@@ -55,6 +55,7 @@ export function ProjectsPage({
   useEffect(() => {
     if (tab !== "archived") return;
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- back to loading before the fetch
     setArchivedLoading(true);
     setArchivedError("");
     listProjects(true)
@@ -70,6 +71,8 @@ export function ProjectsPage({
     return () => {
       cancelled = true;
     };
+    // t is left out: a language switch must not refetch the list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
   const source = tab === "active" ? projects : archived;
