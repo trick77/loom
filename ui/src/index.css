@@ -1018,22 +1018,30 @@ a.ui-activity-tool-url:hover {
   max-width: 100%;
   align-items: center;
   gap: 0.4em;
-  border: 1px solid rgba(217, 119, 87, 0.35);
+  border: 1px solid
+    color-mix(in srgb, var(--color-accent-strong) 35%, transparent);
   border-radius: 6px;
   padding: 0.2em 0.6em;
-  color: #d97757;
+  color: var(--color-accent-strong);
   font-size: 0.9em;
   text-align: left;
 }
 
-.ui-markdown-image-load span {
+/* The host stays whole; only the model-written alt text gives way. */
+.ui-markdown-image-host {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ui-markdown-image-alt {
   overflow: hidden;
+  color: var(--color-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ui-markdown-image-load:hover {
-  background: rgba(217, 119, 87, 0.1);
+  background: color-mix(in srgb, var(--color-accent-strong) 10%, transparent);
 }
 
 /* Inline web-source citation pill: overrides the prose link color/underline above
