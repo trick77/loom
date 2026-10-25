@@ -225,7 +225,14 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)
 		},
 		func() { userContext = t.e.memory.UserContext(in.ReqCtx, t.user.ID) },
-		func() { projectContext = t.e.memory.ProjectContext(in.ReqCtx, t.user.ID, t.thread) },
+		// A scheduled run brings no project memory, knowledge or documents
+		// into rounds that read untrusted pages, even if its thread was moved
+		// into a project.
+		func() {
+			if !scheduled {
+				projectContext = t.e.memory.ProjectContext(in.ReqCtx, t.user.ID, t.thread)
+			}
+		},
 		// run_python's guidance travels with the tool: when the sidecar is
 		// off, the prompt never mentions it.
 		func() {
@@ -234,6 +241,9 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			}
 		},
 		func() {
+			if scheduled {
+				return
+			}
 			var inlinedDocIDs, knowledgeInlinedIDs map[string]bool
 			var attachmentSources []Citation
 			var inlinedAll bool

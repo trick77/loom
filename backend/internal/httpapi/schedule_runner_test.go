@@ -235,6 +235,34 @@ func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
 	}
 }
 
+func TestScheduledRunIgnoresAProjectItsThreadWasMovedInto(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := &fakeToolChatClient{Results: append(researchRound("Nothing new."), researchRound("Still nothing.")...)}
+	s := newRunnerServer(t, f, client)
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	project, err := f.chat.CreateProject(ctx, testUser.ID, chat.CreateProjectInput{Name: "Bank"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.chat.UpsertProjectMemory(ctx, testUser.ID, project.ID, "Project secret: merger talks with another bank.", 1); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
+	if _, _, err := f.chat.UpdateThread(ctx, testUser.ID, *got.ThreadID, chat.UpdateThreadInput{ProjectID: chat.ProjectIDUpdate{Set: true, Value: &project.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	s.runSchedule(ctx, got)
+	for i, history := range client.Histories {
+		for _, m := range history {
+			if strings.Contains(m.Content, "merger talks") {
+				t.Fatalf("call %d carries the project memory", i)
+			}
+		}
+	}
+}
+
 func TestScheduledRunWithoutMemoryKeepsItsAnswer(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)

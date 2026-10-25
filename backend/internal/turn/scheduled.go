@@ -3,6 +3,7 @@ package turn
 import (
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/trick77/loom/internal/llm"
@@ -48,8 +49,9 @@ const (
 )
 
 // scheduledRunPrompt tells the model it runs unattended.
-// The run sees the user's standing instructions and every server's guidance,
-// both written for a live chat, so it says which parts still apply.
+// The run sees every server's guidance and, when it writes the answer, the
+// user's standing instructions, both written for a live chat, so it says
+// which parts still apply.
 const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what is NEW since earlier runs, naming each new item with its source. When nothing is new, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
 
 // allowTools keeps the tools a scheduled run may use: every MCP tool the
@@ -136,25 +138,89 @@ func (t *Run) withFinalContext(history []llm.Message) []llm.Message {
 // ![alt][ref].
 var markdownImage = regexp.MustCompile(`!\[([^\]]*)\](\([^)]*\)|\[[^\]]*\])`)
 
-// dropImages keeps each markdown image's alt text only. Removing one can
-// close up a new one (![![x](y)](z)), so it repeats until none is left.
+// dropImages leaves no markdown image outside a fenced code block, where
+// none renders. A plain image keeps its alt text; any other image marker
+// (balanced brackets in the alt, a shortcut reference) loses its "!" and is
+// left a link, which needs a click. Removing one can close up a new one
+// (![![x](y)](z), !![), so each pass repeats until none is left.
 func dropImages(s string) string {
-	for markdownImage.MatchString(s) {
-		s = markdownImage.ReplaceAllString(s, "$1")
+	var out, prose strings.Builder
+	flush := func() {
+		p := prose.String()
+		for markdownImage.MatchString(p) {
+			p = markdownImage.ReplaceAllString(p, "$1")
+		}
+		for strings.Contains(p, "![") {
+			p = strings.ReplaceAll(p, "![", "[")
+		}
+		out.WriteString(p)
+		prose.Reset()
 	}
-	return s
+	fence := ""
+	for _, line := range strings.SplitAfter(s, "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		switch {
+		case fence != "":
+			out.WriteString(line)
+			if closesFence(trimmed, fence) {
+				fence = ""
+			}
+		case len(line)-len(trimmed) <= 3 && fenceOf(trimmed) != "":
+			flush()
+			fence = fenceOf(trimmed)
+			out.WriteString(line)
+		default:
+			prose.WriteString(line)
+		}
+	}
+	flush()
+	return out.String()
 }
 
-// dropAnswerImages strips the images from a scheduled run's answer. Opening
-// the thread would load them, so an image an injected page slipped into the
-// answer could carry what the run knows out in its URL, without a click.
-// Links stay: they need one.
+// fenceOf is the run of three or more backticks or tildes a line opens a
+// fenced code block with, or "".
+func fenceOf(line string) string {
+	for _, c := range []string{"`", "~"} {
+		n := len(line) - len(strings.TrimLeft(line, c))
+		if n >= 3 {
+			return line[:n]
+		}
+	}
+	return ""
+}
+
+// closesFence reports whether line closes the block fence opened: the same
+// character, at least as many, nothing else.
+func closesFence(line, fence string) bool {
+	run := len(line) - len(strings.TrimLeft(line, fence[:1]))
+	return run >= len(fence) && strings.TrimSpace(line[run:]) == ""
+}
+
+// dropAnswerImages strips the images from a scheduled run's answer and its
+// reasoning, both rendered as markdown. Opening the thread would load them,
+// so an image an injected page slipped in could carry what the run knows out
+// in its URL, without a click.
 func dropAnswerImages(out LoopResult) LoopResult {
 	out.Content = dropImages(out.Content)
+	out.ActivityTrace = dropReasoningImages(out.ActivityTrace)
+	out.Blocks = slices.Clone(out.Blocks)
 	for i := range out.Blocks {
+		out.Blocks[i].Events = dropReasoningImages(out.Blocks[i].Events)
 		if out.Blocks[i].Type == "text" {
 			out.Blocks[i].Content = dropImages(out.Blocks[i].Content)
 		}
 	}
 	return out
+}
+
+// dropReasoningImages is events with the images taken out of each
+// reasoning text, on a copy: blocks and the trace may share them.
+func dropReasoningImages(events []ActivityTraceEvent) []ActivityTraceEvent {
+	events = slices.Clone(events)
+	for i := range events {
+		if events[i].Type == "reasoning" {
+			events[i].Content = dropImages(events[i].Content)
+		}
+	}
+	return events
 }

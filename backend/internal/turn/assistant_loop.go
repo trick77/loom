@@ -339,7 +339,8 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// prose call in the codebase uses. This also streams the answer live (no tool
 	// suppression), so a long synthesis never looks like a dead thread.
 	var extraDirective string
-	if lastRoundDeferred {
+	// Nobody can ask an unattended run to continue.
+	if lastRoundDeferred && t.scheduled == nil {
 		// Some tool calls were deferred past this turn's per-round caps and never ran.
 		// Tell the user so they can ask to continue — a fresh turn gets a fresh round
 		// budget. Kept language-neutral so the model answers in the user's language.
