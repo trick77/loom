@@ -58,6 +58,13 @@ func (r *scheduleRuns) admit(userID string) bool {
 	return true
 }
 
+// running reports whether the user has a run in flight.
+func (r *scheduleRuns) running(userID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.active[userID]
+}
+
 func (r *scheduleRuns) done(userID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -313,6 +320,12 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		run.Status, run.Error = schedule.StatusTimeout, "the run took longer than the time limit"
 		noteThread = ""
+		minutes := int(schedule.RunTimeout / time.Minute)
+		// A schedule already off, run by hand, is not turned off again.
+		if !sch.Enabled {
+			s.persistRunNote(detached, user.ID, thread.ID, fmt.Sprintf("This scheduled run took longer than %d minutes and was stopped.", minutes))
+			return
+		}
 		// One slow model call is no reason to turn a schedule off; a second
 		// run in a row past the limit is.
 		if s.previousRunTimedOut(detached, sch, runID) {
@@ -320,8 +333,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 			return
 		}
 		s.persistRunNote(detached, user.ID, thread.ID, fmt.Sprintf(
-			"This scheduled run took longer than %d minutes and was stopped. A second run in a row past the limit turns the schedule off.",
-			int(schedule.RunTimeout/time.Minute)))
+			"This scheduled run took longer than %d minutes and was stopped. A second run in a row past the limit turns the schedule off.", minutes))
 		return
 	}
 	// failWith ends a run without an answer: a line in the thread says why.

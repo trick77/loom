@@ -50,10 +50,17 @@ func (t scheduleToolRunner) List(ctx context.Context, user auth.User) string {
 	return "The user's scheduled tasks:\n" + strings.Join(lines, "\n")
 }
 
+// toolID is the schedule id a tool call names, or "".
+func toolID(args map[string]any) string {
+	return strings.TrimSpace(stringOr(toolString(args, "id")))
+}
+
+const toolIDRequired = "tool failed: id is required; get it from schedule_list."
+
 func (t scheduleToolRunner) Update(ctx context.Context, user auth.User, _ string, args map[string]any) string {
-	id := strings.TrimSpace(stringOr(toolString(args, "id")))
+	id := toolID(args)
 	if id == "" {
-		return "tool failed: id is required; get it from schedule_list."
+		return toolIDRequired
 	}
 	in := schedule.Input{Name: toolString(args, "name"), Prompt: toolString(args, "prompt"), Interval: toolString(args, "interval")}
 	if enabled, ok := args["enabled"].(bool); ok {
@@ -69,9 +76,9 @@ func (t scheduleToolRunner) Update(ctx context.Context, user auth.User, _ string
 // lookup finds the schedule the tool's id names; on failure it returns the
 // model-facing text instead.
 func (t scheduleToolRunner) lookup(ctx context.Context, user auth.User, args map[string]any) (schedule.Schedule, string) {
-	id := strings.TrimSpace(stringOr(toolString(args, "id")))
+	id := toolID(args)
 	if id == "" {
-		return schedule.Schedule{}, "tool failed: id is required; get it from schedule_list."
+		return schedule.Schedule{}, toolIDRequired
 	}
 	sch, err := t.s.schedules.GetSchedule(ctx, user.ID, id)
 	if err != nil {
@@ -100,7 +107,7 @@ func (t scheduleToolRunner) Run(ctx context.Context, user auth.User, args map[st
 		return scheduleToolError(err)
 	}
 	out := fmt.Sprintf("Started a run of %q. It runs in the background for up to %d minutes; its answer arrives in a new thread of its own, with a notification when it finds something new.",
-		sch.Name, int(t.s.scheduleRunTimeout()/time.Minute))
+		sch.Name, int(schedule.RunTimeout/time.Minute))
 	switch {
 	case sch.DisabledReason == schedule.DisabledTimeout:
 		out += " Tell the user: loom turned this schedule off because two runs in a row took longer than the time limit, so this run may too; the schedule stays off."
@@ -152,7 +159,7 @@ func scheduleToolError(err error) string {
 		return fmt.Sprintf("Could not save: the user already has %d schedules, the most allowed. Ask which one to delete first.", schedule.MaxSchedulesPerUser)
 	case errors.Is(err, schedule.ErrNotFound):
 		return "No schedule has that id; get the ids from schedule_list."
-	case errors.Is(err, errRunBusy), errors.Is(err, errScheduleRunning):
+	case errors.Is(err, errRunBusy), errors.Is(err, errOwnRunActive), errors.Is(err, errScheduleRunning):
 		return "Not started: " + err.Error() + ". Tell the user."
 	default:
 		return "tool failed: " + err.Error()

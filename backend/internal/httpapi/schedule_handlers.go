@@ -258,7 +258,7 @@ func (s *server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch err := s.runScheduleNow(r.Context(), sch); {
-	case errors.Is(err, errRunBusy), errors.Is(err, errScheduleRunning):
+	case errors.Is(err, errRunBusy), errors.Is(err, errOwnRunActive), errors.Is(err, errScheduleRunning):
 		httpx.WriteError(w, http.StatusConflict, err.Error())
 	case err != nil:
 		serverError(w, r, err, "start schedule run failed")
@@ -269,6 +269,7 @@ func (s *server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
 
 var (
 	errRunBusy         = errors.New("loom is already running as many scheduled runs as it allows, try again in a few minutes")
+	errOwnRunActive    = errors.New("another of your scheduled runs is in progress, try again when it is done")
 	errScheduleRunning = errors.New("this schedule is already running")
 )
 
@@ -277,6 +278,9 @@ var (
 // already has.
 func (s *server) runScheduleNow(ctx context.Context, sch schedule.Schedule) error {
 	if !s.runs.admit(sch.UserID) {
+		if s.runs.running(sch.UserID) {
+			return errOwnRunActive
+		}
 		return errRunBusy
 	}
 	claimed, err := s.schedules.Claim(ctx, sch.UserID, sch.ID, s.clock())

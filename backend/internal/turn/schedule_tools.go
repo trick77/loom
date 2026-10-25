@@ -125,7 +125,7 @@ const scheduleRunAfterOutside = "Not started: this turn already read content fro
 
 var scheduleRunTool = scheduleTool(scheduleRunToolName,
 	"Start one of the user's scheduled tasks now, outside its time, when they ask to run or test it (\"run the cinema scout now\"). "+
-		"Call it before any other tool except schedule_list, with the id from schedule_list. "+
+		"Call it before any tool but the schedule tools, with the id from schedule_list. "+
 		"The run works in the background and answers in a new thread of its own, not in this chat; "+
 		"tell the user that, and do not do the task yourself.",
 	map[string]any{

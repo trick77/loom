@@ -349,6 +349,11 @@ func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string
 		return "", nil, false
 	}
 	output, created := spec.run(ctx, t, call)
+	// Every built-in but the schedule tools can bring in text the user did
+	// not write: another thread, a memory, a file, a program's output.
+	if !strings.HasPrefix(spec.name, "schedule_") {
+		t.readOutside = true
+	}
 	return output, created, true
 }
 

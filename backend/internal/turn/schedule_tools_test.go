@@ -64,6 +64,29 @@ func TestScheduleRunTool(t *testing.T) {
 	if out, _ := spec.run(context.Background(), run, call); out != scheduleRunAfterOutside || tools.runs != 1 {
 		t.Fatalf("run after outside content = %q, %d runs", out, tools.runs)
 	}
+
+	// A built-in brings outside content in too; a schedule tool does not.
+	listing := &Run{e: &Engine{schedules: tools}, offered: map[string]*toolSpec{scheduleListToolName: scheduleSpec(t, scheduleListToolName)}}
+	listing.executeBuiltInTool(context.Background(), llm.ToolCall{Function: llm.ToolCallFunction{Name: scheduleListToolName, Arguments: "{}"}})
+	if listing.readOutside {
+		t.Fatal("schedule_list counted as outside content")
+	}
+	reading := &Run{offered: map[string]*toolSpec{"read_thing": {name: "read_thing", run: withArgs(func(context.Context, *Run, map[string]any) string { return "page" })}}}
+	reading.executeBuiltInTool(context.Background(), llm.ToolCall{Function: llm.ToolCallFunction{Name: "read_thing", Arguments: "{}"}})
+	if !reading.readOutside {
+		t.Fatal("a built-in's output did not count as outside content")
+	}
+}
+
+func scheduleSpec(t *testing.T, name string) *toolSpec {
+	t.Helper()
+	for i := range scheduleToolSpecs {
+		if scheduleToolSpecs[i].name == name {
+			return &scheduleToolSpecs[i]
+		}
+	}
+	t.Fatalf("%s is not registered", name)
+	return nil
 }
 
 // recordingScheduleTools counts the runs it starts.
@@ -76,3 +99,5 @@ func (r *recordingScheduleTools) Run(context.Context, auth.User, map[string]any)
 	r.runs++
 	return "started"
 }
+
+func (r *recordingScheduleTools) List(context.Context, auth.User) string { return "none" }

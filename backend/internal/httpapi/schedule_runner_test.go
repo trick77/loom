@@ -528,6 +528,27 @@ func TestScheduledRunFirstTimeoutKeepsTheSchedule(t *testing.T) {
 	}
 }
 
+// A schedule already off, run by hand past the limit, is not disabled and
+// announced a second time.
+func TestScheduledRunTimeoutOfAScheduleAlreadyOff(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	sch := newRunnerSchedule(t, f)
+	seedTimedOutRun(t, f, sch, time.Now())
+	if err := f.store.Disable(ctx, testUser.ID, sch.ID, schedule.DisabledTimeout, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	off, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
+	runPastTheTimeLimit(t, f, off)
+	if notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 0 {
+		t.Fatalf("a schedule already off was announced again: %+v", notes)
+	}
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
+	if len(messages) != 2 || messages[1].Content != "This scheduled run took longer than 5 minutes and was stopped." {
+		t.Fatalf("thread = %+v", messages)
+	}
+}
+
 func TestScheduledRunSecondTimeoutInARowDisablesTheSchedule(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
@@ -981,15 +1002,21 @@ func TestScheduleToolRunStartsARun(t *testing.T) {
 		t.Fatalf("run unknown = %q", out)
 	}
 	// Another run of the user's, or other users' runs in every slot, hold it
-	// back; a lost claim hands the user's slot back.
-	for _, holders := range [][]string{{testUser.ID}, {"u_a", "u_b"}} {
-		for _, id := range holders {
+	// back, each with its own reason; a lost claim hands the user's slot back.
+	for _, c := range []struct {
+		holders []string
+		want    string
+	}{
+		{[]string{testUser.ID}, "Not started: another of your scheduled runs is in progress"},
+		{[]string{"u_a", "u_b"}, "Not started: loom is already running as many scheduled runs"},
+	} {
+		for _, id := range c.holders {
 			s.runs.admit(id)
 		}
-		if out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID}); !strings.Contains(out, "Not started: loom is already running as many scheduled runs") {
-			t.Fatalf("run with %v busy = %q", holders, out)
+		if out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID}); !strings.Contains(out, c.want) {
+			t.Fatalf("run with %v busy = %q", c.holders, out)
 		}
-		for _, id := range holders {
+		for _, id := range c.holders {
 			s.runs.done(id)
 		}
 	}
