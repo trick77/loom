@@ -219,6 +219,10 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	// noteThread is set while the thread holds this run's prompt without a
 	// reply; whatever ends the run then leaves a line saying why.
 	var noteThread string
+	// replacing is the run's thread once it holds the prompt: however the run
+	// ends, it then replaces the earlier ones the user never took up, after the
+	// run is recorded. The old answer stays readable until then.
+	var replacing string
 	finish := func() {
 		run.DurationMS = s.clock().Sub(start).Milliseconds()
 		if err := s.schedules.FinishRun(detached, sch.UserID, run, s.clock()); err != nil {
@@ -234,6 +238,9 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 			}
 		}
 		finish()
+		if replacing != "" {
+			s.replaceRunThreads(detached, sch.UserID, sch.ID, replacing)
+		}
 	}()
 
 	user, found, err := s.users.FindByID(detached, sch.UserID)
@@ -267,10 +274,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		dropThread("could not store the prompt", err)
 		return
 	}
-	noteThread = thread.ID
-	// However the run ends, its thread replaces the earlier ones the user never
-	// took up: the old answer stays readable until then.
-	defer s.replaceRunThreads(detached, user.ID, sch.ID, thread.ID)
+	noteThread, replacing = thread.ID, thread.ID
 
 	runCtx, cancel := context.WithTimeout(ctx, s.scheduleRunTimeout())
 	defer cancel()

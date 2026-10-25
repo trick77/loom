@@ -7,12 +7,15 @@ import (
 )
 
 // untouchedRunThread matches a scheduled run's thread the user never took up:
-// no question after the run's prompt, nothing queued, not starred, filed into
-// a project or shared. Such a thread is replaced by the schedule's next run
-// and purged once old; every other run thread is the user's to keep.
+// no question after the run's prompt, nothing queued, not starred, archived,
+// filed into a project or shared, and no unread notification pointing at it
+// (its news would vanish unseen). Such a thread is replaced by the schedule's
+// next run and purged once old; every other run thread is the user's to keep.
 const untouchedRunThread = `t.schedule_id IS NOT NULL
   AND t.starred = 0
+  AND t.archived_at IS NULL
   AND t.project_id IS NULL
+  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = t.user_id AND n.thread_id = t.id AND n.read_at IS NULL)
   AND (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id AND m.role = 'user') <= 1
   AND NOT EXISTS (SELECT 1 FROM queued_messages q WHERE q.user_id = t.user_id AND q.thread_id = t.id)
   AND NOT EXISTS (SELECT 1 FROM shared_threads sh WHERE sh.user_id = t.user_id AND sh.thread_id = t.id AND sh.shared = 1)`
@@ -35,9 +38,15 @@ func (s *Store) ReplaceableScheduleThreads(ctx context.Context, userID, schedule
 }
 
 // StaleScheduleThreads lists up to limit untouched run threads, across all
-// users, created before the cutoff, oldest first.
+// users, created before the cutoff, oldest first. An enabled schedule's newest
+// run thread stays: a schedule that runs less than monthly keeps its answer
+// until the next run replaces it.
 func (s *Store) StaleScheduleThreads(ctx context.Context, before time.Time, limit int) ([]ThreadRef, error) {
-	return s.untouchedRunThreads(ctx, `t.created_at < ? ORDER BY t.created_at LIMIT ?`, before.UTC().Format(time.DateTime), limit)
+	return s.untouchedRunThreads(ctx, `t.created_at < ?
+  AND NOT (
+    EXISTS (SELECT 1 FROM schedules sch WHERE sch.id = t.schedule_id AND sch.enabled = 1)
+    AND NOT EXISTS (SELECT 1 FROM threads n WHERE n.schedule_id = t.schedule_id AND n.created_at > t.created_at))
+ORDER BY t.created_at LIMIT ?`, before.UTC().Format(time.DateTime), limit)
 }
 
 // untouchedRunThreads lists the untouched run threads that also match where,

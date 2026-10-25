@@ -71,6 +71,20 @@ func TestReplaceableScheduleThreads(t *testing.T) {
 	if _, err := st.CreateShare(ctx, alice, CreateShareInput{ShareID: "share-1", ThreadID: shared.ID, Title: "t", Snapshot: json.RawMessage(`{}`)}); err != nil {
 		t.Fatal(err)
 	}
+	archived := runThread(t, st, alice, "s1")
+	if _, err := st.SetThreadArchived(ctx, alice, archived.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	// News the user has not read keeps its thread; read news does not.
+	unread := runThread(t, st, alice, "s1")
+	read := runThread(t, st, alice, "s1")
+	if _, err := db.Exec(`INSERT INTO notifications (id, user_id, kind, thread_id, title) VALUES
+('n1', ?, 'schedule_run', ?, 'news'), ('n2', ?, 'schedule_run', ?, 'news')`, alice, unread.ID, alice, read.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE notifications SET read_at = datetime('now') WHERE id = 'n2'`); err != nil {
+		t.Fatal(err)
+	}
 	runThread(t, st, alice, "s2")
 	runThread(t, st, bob, "sb")
 	if _, err := st.CreateThread(ctx, alice, CreateThreadInput{Title: "Plain"}); err != nil {
@@ -81,8 +95,11 @@ func TestReplaceableScheduleThreads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(got, []string{untouched.ID}) {
-		t.Fatalf("replaceable = %v, want only the untouched thread %s", got, untouched.ID)
+	slices.Sort(got)
+	want := []string{untouched.ID, read.ID}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("replaceable = %v, want only the untouched threads %v", got, want)
 	}
 }
 
@@ -94,6 +111,11 @@ func TestStaleScheduleThreads(t *testing.T) {
 	st := NewStore(db)
 	insertTestSchedule(t, db, "s1", alice)
 	insertTestSchedule(t, db, "sb", bob)
+	insertTestSchedule(t, db, "monthly", alice)
+	// Bob's schedule is paused: its newest run thread goes too.
+	if _, err := db.Exec(`UPDATE schedules SET enabled = 0 WHERE id = 'sb'`); err != nil {
+		t.Fatal(err)
+	}
 
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 	age := func(thread Thread, days int) {
@@ -116,6 +138,8 @@ func TestStaleScheduleThreads(t *testing.T) {
 	}
 	plain, _ := st.CreateThread(ctx, alice, CreateThreadInput{Title: "Plain"})
 	age(plain, 40)
+	// An enabled schedule running less than monthly keeps its newest answer.
+	age(runThread(t, st, alice, "monthly"), 45)
 
 	got, err := st.StaleScheduleThreads(ctx, now.AddDate(0, 0, -30), 10)
 	if err != nil {

@@ -122,34 +122,43 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	}
 
 	// The second run reports the same film: nothing new, no notification, in
-	// a fresh thread of its own that replaces the first.
+	// a fresh thread of its own. The first thread stays while its news is
+	// unread; once read, the third run replaces it.
 	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
 	s.runSchedule(ctx, sch)
+	last := client.Histories[len(client.Histories)-1][0].Content
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, firstThread); !found {
+		t.Fatal("a run replaced a thread whose news is unread")
+	}
+	if err := f.store.MarkRead(ctx, testUser.ID, notes[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	client.Results = researchRound("Still Dune: Part Three [1].")
+	s.runSchedule(ctx, sch)
 	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
-	if len(runs) != 2 || runs[0].Status != schedule.StatusNothingNew || runs[0].NewCount != 0 {
-		t.Fatalf("second run = %+v", runs[0])
+	if len(runs) != 3 || runs[2].ThreadID != nil || runs[1].ThreadID != nil {
+		t.Fatalf("runs = %+v, want only the latest still linked to a thread", runs)
+	}
+	if runs[0].Status != schedule.StatusNothingNew || runs[0].NewCount != 0 || runs[1].Status != schedule.StatusNothingNew {
+		t.Fatalf("later runs = %+v", runs[:2])
 	}
 	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 1 {
 		t.Fatalf("a run without news notified: %+v", notes)
 	}
-	secondThread := lastRunThread(t, f, sch)
-	if secondThread == firstThread {
-		t.Fatal("the second run wrote into the first run's thread")
+	lastThread := lastRunThread(t, f, sch)
+	if lastThread == firstThread {
+		t.Fatal("a later run wrote into the first run's thread")
 	}
-	if messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, secondThread); len(messages) != 2 || messages[0].Content != "find new films" {
-		t.Fatalf("thread %s = %+v, want the run's prompt and answer only", secondThread, messages)
+	if messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastThread); len(messages) != 2 || messages[0].Content != "find new films" {
+		t.Fatalf("thread %s = %+v, want the run's prompt and answer only", lastThread, messages)
 	}
 	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, firstThread); found {
-		t.Fatal("the second run kept the first run's untouched thread")
-	}
-	if runs[1].ThreadID != nil {
-		t.Fatalf("the first run still links its replaced thread %s", *runs[1].ThreadID)
+		t.Fatal("a run kept the first run's thread after its news was read")
 	}
 	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); notes[0].ThreadID != nil {
 		t.Fatalf("the first run's notification still links its replaced thread: %+v", notes[0])
 	}
 	// The second run saw the schedule's memory, and the extractor the known key.
-	last := client.Histories[len(client.Histories)-1][0].Content
 	if !strings.Contains(last, "Already reported") || !strings.Contains(last, "Dune: Part Three") || !strings.Contains(last, "arena.ch/programm: 1 finds") {
 		t.Fatalf("second run's prompt lacks the memory:\n%s", last)
 	}
@@ -786,9 +795,17 @@ func TestPruneRunThreadsDropsOldUntouchedOnes(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// An enabled schedule that runs less than monthly keeps its newest answer.
+	s.pruneRunThreads(ctx, now)
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, untouched); !found {
+		t.Fatal("a prune dropped an enabled schedule's newest run thread")
+	}
+	if _, err := f.db.Exec(`UPDATE schedules SET enabled = 0`); err != nil {
+		t.Fatal(err)
+	}
 	s.pruneRunThreads(ctx, now)
 	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, untouched); found {
-		t.Fatal("a prune kept an untouched run thread older than a month")
+		t.Fatal("a prune kept a paused schedule's untouched run thread older than a month")
 	}
 	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, asked.ID); !found {
 		t.Fatal("a prune dropped a run thread the user asked something in")
