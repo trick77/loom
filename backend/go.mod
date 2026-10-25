@@ -6,10 +6,10 @@ require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/asg017/sqlite-vec-go-bindings v0.1.7-alpha.2
 	github.com/ncruces/go-sqlite3 v0.23.3
-	github.com/trick77/llmwire v0.1.3
+	github.com/trick77/llmwire v0.1.6
 	github.com/trick77/ship/kit v0.17.5
 	github.com/trick77/ship/kit/auth v0.3.1
-	github.com/trick77/webfetch v0.4.4
+	github.com/trick77/webfetch v0.4.5
 	github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7
 	github.com/yuin/goldmark v1.8.6
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
