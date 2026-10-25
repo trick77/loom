@@ -224,11 +224,19 @@ func (s *server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	if !ok || !s.schedulesOn(w) {
 		return
 	}
-	if err := s.schedules.DeleteSchedule(r.Context(), user.ID, r.PathValue("scheduleID")); err != nil {
+	if err := s.deleteSchedule(r.Context(), user.ID, r.PathValue("scheduleID")); err != nil {
 		writeScheduleError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteSchedule removes a schedule and the run threads the user never took
+// up: once the schedule is gone they would stay for good, showing its prompt.
+// The threads go first, while they still name the schedule.
+func (s *server) deleteSchedule(ctx context.Context, userID, id string) error {
+	s.replaceRunThreads(ctx, userID, id, "")
+	return s.schedules.DeleteSchedule(ctx, userID, id)
 }
 
 // handleRunSchedule starts a run now, outside the schedule's slots. The run
