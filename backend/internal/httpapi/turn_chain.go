@@ -303,7 +303,9 @@ func (c *turnChain) runTurn(in turnInput) {
 	// never produce an answer use. Detached so a canceled or failed turn still
 	// names the thread.
 	titleThread := func(assistantMessage string) {
-		if !turn.ShouldGenerateThreadTitle(thread.Title, userMessage.Content) {
+		// A scheduled run's thread carries its schedule's name, which a
+		// follow-up may match by chance.
+		if thread.ScheduleID != nil || !turn.ShouldGenerateThreadTitle(thread.Title, userMessage.Content) {
 			return
 		}
 		// The thread is being deleted, so there is nothing left to name: the title

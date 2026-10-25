@@ -104,7 +104,7 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	}
 	firstThread := lastRunThread(t, f, sch)
 	thread, _, _ := f.chat.GetThread(ctx, testUser.ID, firstThread)
-	if thread.ScheduleID == nil || *thread.ScheduleID != sch.ID || !strings.HasPrefix(thread.Title, "Cinema scout · ") {
+	if thread.ScheduleID == nil || *thread.ScheduleID != sch.ID || thread.Title != "Cinema scout" {
 		t.Fatalf("thread = %+v", thread)
 	}
 	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
@@ -1013,18 +1013,6 @@ func TestRejectWhileRunningReportsAStoreFailure(t *testing.T) {
 	}
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d", rec.Code)
-	}
-}
-
-func TestRunThreadTitle(t *testing.T) {
-	start := time.Date(2026, 10, 22, 12, 37, 0, 0, time.UTC)
-	sch := schedule.Schedule{Name: "Cinema scout", Timezone: "Europe/Zurich"}
-	if got := runThreadTitle(sch, start); got != "Cinema scout · 2026-10-22 14:37" {
-		t.Fatalf("title = %q", got)
-	}
-	sch.Timezone = "Mars/Olympus"
-	if got := runThreadTitle(sch, start); got != "Cinema scout · 2026-10-22 12:37" {
-		t.Fatalf("title with a bad zone = %q", got)
 	}
 }
 
