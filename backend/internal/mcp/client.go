@@ -132,6 +132,20 @@ func (e *mcpStatusError) Error() string {
 	return fmt.Sprintf("MCP %s failed with status %d", e.method, e.status)
 }
 
+// errAuthRejected matches (errors.Is) any mcpStatusError carrying a 401/403.
+var errAuthRejected = errors.New("MCP server refused the credentials")
+
+// Is lets errors.Is find a refusal anywhere in a joined discover+legacy error,
+// where errors.As would stop at the first status (a 404 ahead of the 401).
+func (e *mcpStatusError) Is(target error) bool {
+	return target == errAuthRejected && (e.status == http.StatusUnauthorized || e.status == http.StatusForbidden) //nolint:errorlint // sentinel identity
+}
+
+// isAuthError reports whether any status in err's tree is a 401/403.
+func isAuthError(err error) bool {
+	return errors.Is(err, errAuthRejected)
+}
+
 // isSessionError reports whether err is an expired/invalid Streamable HTTP
 // session, which is recoverable by re-initializing. Servers reject such
 // requests with 400 or 404 and mention the session in the body.

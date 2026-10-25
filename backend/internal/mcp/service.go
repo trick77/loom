@@ -264,13 +264,22 @@ func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Clien
 	return service, nil
 }
 
+// listToolsRequired retries discovery until ctx's deadline to wait out a cold
+// sidecar. Rejected credentials are final: a wrong token does not heal, so
+// waiting out the deadline would only hide it behind a generic failure.
 func listToolsRequired(ctx context.Context, client Client) ([]Tool, error) {
 	_, hasDeadline := ctx.Deadline()
 	tools, err := client.ListTools(ctx)
-	if err == nil || !hasDeadline {
-		return tools, err
-	}
 	for {
+		if err == nil {
+			return tools, nil
+		}
+		if isAuthError(err) {
+			return nil, fmt.Errorf("server refused loom's credentials (401/403: its token, or its Host/Origin rules): %w", err)
+		}
+		if !hasDeadline {
+			return nil, err
+		}
 		timer := time.NewTimer(requiredDiscoveryRetryInterval)
 		select {
 		case <-ctx.Done():
@@ -280,11 +289,7 @@ func listToolsRequired(ctx context.Context, client Client) ([]Tool, error) {
 			return nil, err
 		case <-timer.C:
 		}
-		tools, nextErr := client.ListTools(ctx)
-		if nextErr == nil {
-			return tools, nil
-		}
-		err = nextErr
+		tools, err = client.ListTools(ctx)
 	}
 }
 

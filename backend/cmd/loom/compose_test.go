@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -65,13 +66,8 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 		t.Fatal("compose.yaml must hardcode production image refs instead of reading image refs from env")
 	}
 
-	for _, want := range []string{
-		`image: ghcr.io/trick77/loom:latest`,
-		`image: h4ckf0r0day/obscura:0.2.2`,
-	} {
-		if !strings.Contains(compose, want) {
-			t.Fatalf("compose.yaml missing production image reference %q", want)
-		}
+	if !strings.Contains(compose, `image: ghcr.io/trick77/loom:latest`) {
+		t.Fatal("compose.yaml missing production image reference ghcr.io/trick77/loom:latest")
 	}
 	// Fetch runs in-process (github.com/trick77/webfetch), so there is no fetch
 	// sidecar image, service, or isolated network anymore.
@@ -107,8 +103,21 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 			compose := string(data)
 			service := composeService(t, compose, "obscura")
 
+			// A concrete release, so a Dependabot bump needs no test edit but a
+			// floating tag fails; v0.2.3+, the first to honour OBSCURA_MCP_TOKEN
+			// (below it loom's bearer token would guard nothing).
+			m := regexp.MustCompile(`(?m)^    image: h4ckf0r0day/obscura:(\d+)\.(\d+)\.(\d+)$`).FindStringSubmatch(service)
+			if m == nil {
+				t.Fatalf("%s obscura service must run the upstream image at a pinned version", path)
+			}
+			v := [3]int{}
+			for i := range v {
+				v[i], _ = strconv.Atoi(m[i+1])
+			}
+			if v[0] == 0 && (v[1] < 2 || v[1] == 2 && v[2] < 3) {
+				t.Fatalf("%s: obscura %s.%s.%s predates OBSCURA_MCP_TOKEN (v0.2.3)", path, m[1], m[2], m[3])
+			}
 			for _, want := range []string{
-				`image: h4ckf0r0day/obscura:0.2.2`,
 				`- mcp`,
 				`- --http`,
 				`- --host`,
@@ -133,6 +142,31 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 
 			if path == "../../../compose.yaml" && !strings.Contains(service, "- loom") {
 				t.Fatal("production obscura service must join the loom network")
+			}
+		})
+	}
+}
+
+// Loom must send the token obscura expects: both services take it from one
+// anchor, production's from the env with no default.
+func TestComposeSharesObscuraToken(t *testing.T) {
+	for path, wantSource := range map[string]string{
+		"../../../compose.yaml":     `x-obscura-token: &obscura-token "${BACKEND_OBSCURA_MCP_TOKEN:?`,
+		"../../../compose.dev.yaml": `x-obscura-token: &obscura-token dev-`,
+	} {
+		t.Run(path, func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			compose := string(data)
+			if !strings.Contains(compose, "\n"+wantSource) {
+				t.Fatalf("%s: missing %s", path, wantSource)
+			}
+			for service, key := range map[string]string{"loom": "BACKEND_OBSCURA_MCP_TOKEN", "obscura": "OBSCURA_MCP_TOKEN"} {
+				if !strings.Contains(composeService(t, compose, service), "\n      "+key+": *obscura-token\n") {
+					t.Fatalf("%s: %s service must set %s from *obscura-token", path, service, key)
+				}
 			}
 		})
 	}

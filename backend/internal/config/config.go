@@ -126,6 +126,9 @@ type Config struct {
 	TavilyURL     string // hosted Tavily MCP endpoint for built-in web search
 	TavilyAPIKey  string // enables built-in Tavily web search when set
 	ObscuraMCPURL string
+	// ObscuraMCPToken is the sidecar's OBSCURA_MCP_TOKEN, sent as a bearer
+	// token; required with ObscuraMCPURL (minObscuraMCPToken).
+	ObscuraMCPToken string
 	// SandboxURL is the loom-sandbox sidecar that runs run_python; empty keeps
 	// the tool off. SandboxToken authenticates loom to it, SandboxTimeout caps
 	// one job.
@@ -174,6 +177,10 @@ type DevUserConfig struct {
 // minSessionSecret is the shortest BACKEND_SESSION_SECRET accepted: a short
 // one can be guessed offline from a single cookie, and any session forged.
 const minSessionSecret = 32
+
+// minObscuraMCPToken is obscura's own floor (v0.2.3+): below it the sidecar
+// refuses to serve MCP beyond loopback at all.
+const minObscuraMCPToken = 32
 
 // exampleSessionSecret is .env.example's placeholder, public and so refused.
 const exampleSessionSecret = "change-me-to-a-long-random-string"
@@ -270,6 +277,7 @@ func Load() (Config, error) {
 		TavilyURL:               r.String("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
 		TavilyAPIKey:            r.String("BACKEND_TAVILY_API_KEY", ""),
 		ObscuraMCPURL:           r.String("BACKEND_OBSCURA_MCP_URL", ""),
+		ObscuraMCPToken:         r.String("BACKEND_OBSCURA_MCP_TOKEN", ""),
 		SandboxURL:              r.String("BACKEND_SANDBOX_URL", ""),
 		SandboxToken:            r.String("BACKEND_SANDBOX_TOKEN", ""),
 		MCPServersFile:          r.String("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
@@ -331,6 +339,11 @@ func Load() (Config, error) {
 		r.Fail("BACKEND_SESSION_SECRET must be at least %d characters: it signs the session cookies", minSessionSecret)
 	case cfg.SessionSecret == exampleSessionSecret:
 		r.Fail("BACKEND_SESSION_SECRET is .env.example's placeholder: anyone could sign a session; set your own (openssl rand -hex 32)")
+	}
+	// Obscura is a required MCP server once its URL is set: without a token it
+	// does not even start, so say which setting is missing before boot waits on it.
+	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" && len(cfg.ObscuraMCPToken) < minObscuraMCPToken {
+		r.Fail("BACKEND_OBSCURA_MCP_TOKEN must be at least %d characters when BACKEND_OBSCURA_MCP_URL is set: obscura refuses MCP without it (openssl rand -hex 32)", minObscuraMCPToken)
 	}
 	cfg.SessionTTL = r.Duration("BACKEND_SESSION_TTL", defaultSessionTTL)
 	if cfg.SessionTTL <= 0 {

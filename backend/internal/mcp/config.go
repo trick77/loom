@@ -159,10 +159,15 @@ func FetchServerConfig(pdf PDFExtractor) ServerConfig {
 // browser tools: click/type/form-fill/evaluate/...) is not injected — it would
 // dominate the prompt's tool budget on every turn and Loom's flows do not drive
 // interactive browser automation.
-func ObscuraServerConfig(url string) ServerConfig {
+//
+// token is the sidecar's OBSCURA_MCP_TOKEN, sent as a bearer token: obscura
+// v0.2.3+ refuses to serve MCP beyond loopback without one and answers 401 to
+// a request that lacks it (config.Load requires one with the URL).
+func ObscuraServerConfig(url, token string) ServerConfig {
 	return ServerConfig{
 		Transport: TransportStreamableHTTP,
 		URL:       url,
+		Headers:   map[string]string{"Authorization": "Bearer " + token},
 		Tools:     []string{"browser_navigate", "browser_snapshot"},
 	}
 }

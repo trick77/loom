@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -122,6 +123,37 @@ func TestServiceFromConfigClosesUnavailableClient(t *testing.T) {
 	}
 	if !client.closed {
 		t.Fatal("unavailable client was not closed")
+	}
+}
+
+func TestRequiredServiceDoesNotRetryRejectedCredentials(t *testing.T) {
+	for name, tc := range map[string]struct {
+		discover, legacy int
+		deadline         bool
+	}{
+		"401":                  {http.StatusUnauthorized, http.StatusUnauthorized, true},
+		"403":                  {http.StatusForbidden, http.StatusForbidden, true},
+		"404 then legacy 401":  {http.StatusNotFound, http.StatusUnauthorized, true},
+		"401 without deadline": {http.StatusUnauthorized, http.StatusUnauthorized, false},
+	} {
+		client := &fakeClient{
+			// Wrapped the way the client reports a failed modern + legacy handshake.
+			err:                   fmt.Errorf("%w (legacy handshake: %w)", &mcpStatusError{method: "server/discover", status: tc.discover}, &mcpStatusError{method: "initialize", status: tc.legacy}),
+			failuresBeforeSuccess: -1,
+		}
+		ctx, cancel := context.Background(), context.CancelFunc(func() {})
+		if tc.deadline {
+			ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		}
+		start := time.Now()
+		_, err := NewRequiredServiceFromClients(ctx, map[string]Client{"obscura": client})
+		cancel()
+		if err == nil || !strings.Contains(err.Error(), "refused loom's credentials") {
+			t.Fatalf("%s: err = %v, want a credentials error", name, err)
+		}
+		if client.listToolsCalls != 1 || time.Since(start) > time.Second {
+			t.Fatalf("%s: %d ListTools calls in %s, want one, no retry until the deadline", name, client.listToolsCalls, time.Since(start))
+		}
 	}
 }
 
