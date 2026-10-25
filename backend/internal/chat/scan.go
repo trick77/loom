@@ -63,14 +63,25 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	var thread Thread
 	var projectID sql.NullString
 	var archivedAt, lastMessageAt sql.NullString
+	var branchedThread, branchedMessage, scheduleID sql.NullString
 	var createdAt, updatedAt string
-	dest := []any{&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt}
+	dest := []any{&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt,
+		&branchedThread, &branchedMessage, &scheduleID}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return Thread{}, err
 	}
 	if projectID.Valid {
 		thread.ProjectID = &projectID.String
+	}
+	if branchedThread.Valid {
+		thread.BranchedFromThreadID = &branchedThread.String
+	}
+	if branchedMessage.Valid {
+		thread.BranchedFromMessageID = &branchedMessage.String
+	}
+	if scheduleID.Valid {
+		thread.ScheduleID = &scheduleID.String
 	}
 	var err error
 	thread.ArchivedAt, err = nullableTime(archivedAt)
@@ -91,6 +102,14 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	}
 	return thread, nil
 }
+
+// threadColumns is the threads projection scanThreadRow reads, ScheduleID
+// derived from the schedule that owns the thread; threadColumnsT is the same
+// for a query that aliases threads as t.
+const (
+	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, branched_from_thread_id, branched_from_message_id, (SELECT s.id FROM schedules s WHERE s.user_id = threads.user_id AND s.thread_id = threads.id)"
+	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.branched_from_thread_id, t.branched_from_message_id, (SELECT s.id FROM schedules s WHERE s.user_id = t.user_id AND s.thread_id = t.id)"
+)
 
 // messageColumns is the full messages projection scanMessage reads.
 const messageColumns = "id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, client_message_id, created_at"

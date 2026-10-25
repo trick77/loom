@@ -68,7 +68,7 @@ func (s *Store) SearchThreadsByContent(ctx context.Context, userID, query string
 
 	var sb strings.Builder
 	sb.WriteString(`
-SELECT t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at,
+SELECT ` + threadColumnsT + `,
        snippet(message_fts, 3, '«', '»', '…', 32) AS snippet
 FROM message_fts
 JOIN messages m ON m.id = message_fts.message_id

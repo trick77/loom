@@ -28,3 +28,16 @@ test("old /chat URLs are not supported (no backward compatibility)", () => {
   expect(routeFromPath("/chat/t1")).toEqual({ view: "new" });
   expect(routeFromPath("/chats")).toEqual({ view: "new" });
 });
+
+test("routes schedule pages", () => {
+  expect(routeFromPath("/schedules")).toEqual({ view: "schedules" });
+  expect(routeFromPath("/schedules/s%201")).toEqual({
+    view: "schedule",
+    scheduleID: "s 1",
+  });
+  expect(routeFromPath("/schedules/")).toEqual({ view: "new" });
+  expect(pathForRoute({ view: "schedules" })).toBe("/schedules");
+  expect(pathForRoute({ view: "schedule", scheduleID: "s 1" })).toBe(
+    "/schedules/s%201",
+  );
+});

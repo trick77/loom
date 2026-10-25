@@ -38,6 +38,7 @@ import { WorkingDot } from "./WorkingDot";
 import { threadCostPrefix } from "../metrics";
 import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
 import { QueuedMessages } from "./QueuedMessages";
+import { formatRunDate } from "../schedules/scheduleText";
 import type { QueuedBubble } from "./useQueuedMessages";
 
 export function ThreadPanel({
@@ -73,6 +74,9 @@ export function ThreadPanel({
   onStarThread,
   onToggleThreadMenu,
   onCloseThreadMenu,
+  onContinueInNewThread,
+  onOpenSchedule,
+  onOpenThread,
 }: {
   thread: Thread | null;
   threadProject: Project | null;
@@ -110,8 +114,19 @@ export function ThreadPanel({
   onToggleThreadMenu(menuKey: string): void;
   onCloseThreadMenu(): void;
   onOpenSidebar(): void;
+  /** Continues an answer in a new thread (offered in a schedule's thread). */
+  onContinueInNewThread?(threadID: string, messageID: string): void;
+  onOpenSchedule?(scheduleID: string): void;
+  onOpenThread?(threadID: string): void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // A schedule's thread is its run feed: read-only, follow-ups branch off.
+  const scheduleID = thread?.scheduleId ?? null;
+  const lastAnswerID =
+    scheduleID === null
+      ? null
+      : ([...messages].reverse().find((m) => m.role === "assistant")?.id ??
+        null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -432,6 +447,33 @@ export function ThreadPanel({
                 {thread?.title ?? t("common.newThread")}
               </span>
             </h1>
+            {scheduleID !== null && (
+              <button
+                type="button"
+                onClick={() => onOpenSchedule?.(scheduleID)}
+                className="ml-2 inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#3a3a37] bg-[#2a2a28] py-px pl-2 pr-2.5 text-[12.5px] text-[#c9c6bd] hover:text-white"
+              >
+                <Icon name="clock" size="13px" className="text-accent-strong" />
+                {t("thread.scheduleLabel")}
+              </button>
+            )}
+            {thread?.branchedFromThreadId && (
+              <button
+                type="button"
+                title={t("thread.branchedFromSource")}
+                onClick={() =>
+                  onOpenThread?.(thread.branchedFromThreadId as string)
+                }
+                className="ml-2 hidden shrink-0 items-center gap-1.5 rounded-full border border-[#3a3a37] bg-[#2a2a28] py-px pl-2 pr-2.5 text-[12.5px] text-[#c9c6bd] hover:text-white sm:inline-flex"
+              >
+                <Icon
+                  name="messages"
+                  size="13px"
+                  className="text-accent-strong"
+                />
+                {t("thread.branchedFrom")}
+              </button>
+            )}
             {thread !== null && headerMenuKey !== null && (
               <button
                 aria-expanded={headerMenuOpen}
@@ -511,15 +553,43 @@ export function ThreadPanel({
               // Key off clientKey when present (an optimistic message keeps it across
               // reconcile to the persisted id) so the bubble's DOM node is stable.
               <div key={message.clientKey ?? message.id} className="space-y-6">
+                {scheduleID !== null && message.role === "user" && (
+                  <div className="flex items-center gap-2.5 text-[12.5px] text-[#8a887f] before:h-px before:flex-1 before:bg-[#2e2e2c] after:h-px after:flex-1 after:bg-[#2e2e2c]">
+                    <Icon
+                      name="clock"
+                      size="13px"
+                      className="text-accent-strong"
+                    />
+                    {t("thread.scheduledRun", {
+                      date: formatRunDate(message.createdAt, i18n.language),
+                    })}
+                  </div>
+                )}
                 <MessageBubble
                   message={message}
                   retryMessage={
-                    message.role === "assistant" ? previousUser[index] : null
+                    message.role === "assistant" && scheduleID === null
+                      ? previousUser[index]
+                      : null
                   }
                   onRetry={handleRetryRequest}
                   category={thread?.category}
                   threadCostNanoUsd={cumulativeCost[index]}
                 />
+                {scheduleID !== null &&
+                  message.role === "assistant" &&
+                  thread !== null && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onContinueInNewThread?.(thread.id, message.id)
+                      }
+                      className="-mt-3 flex items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] text-[#c9c6bd] hover:bg-[#2a2a28] hover:text-white"
+                    >
+                      <Icon name="messages" size="14px" />
+                      {t("thread.continueInNewThread")}
+                    </button>
+                  )}
               </div>
             ))}
             {/* The live streaming region is built as ONE keyed array so React's
@@ -623,34 +693,59 @@ export function ThreadPanel({
           >
             <div className="pointer-events-none absolute inset-x-0 bottom-full h-8 bg-gradient-to-t from-bg to-transparent" />
             <div className="ui-thread-rail pointer-events-auto mx-auto w-full max-w-[754px]">
-              <WindowFileDrop
-                enabled={thread !== null}
-                onAttachFiles={handleAttachFiles}
-                onAttachError={handleAttachError}
-              />
-              <Composer
-                variant="thread"
-                draft={draft}
-                focusSignal={focusSignal}
-                isSending={isSending}
-                canQueue={thread !== null}
-                sendDisabled={imageUploadPending}
-                placeholder={t("thread.messagePlaceholder")}
-                onDraftChange={onDraftChange}
-                pastedTexts={pastedTexts}
-                onAddPastedText={onAddPastedText}
-                onRemovePastedText={onRemovePastedText}
-                onSend={handleSendRequest}
-                onStop={onStop}
-                onAttachFiles={thread === null ? undefined : handleAttachFiles}
-                onAttachError={handleAttachError}
-                attachments={attachments}
-                onRemoveAttachment={removeAttachment}
-              />
-              {(attachNote || deferredAttachNote) !== "" && (
-                <div className="ui-meta-text mt-2 text-center text-[#858178]">
-                  {attachNote || deferredAttachNote}
+              {scheduleID !== null ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#343432] bg-[#232321] px-3.5 py-3 text-[13.5px] text-[#a29f96]">
+                  <div className="flex items-center gap-2">
+                    <Icon name="lock" size="15px" />
+                    {t("thread.readOnly")}
+                  </div>
+                  {lastAnswerID !== null && thread !== null && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onContinueInNewThread?.(thread.id, lastAnswerID)
+                      }
+                      className="ui-control-text flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 font-medium text-[#1d1d1b]"
+                    >
+                      <Icon name="messages" size="14px" />
+                      {t("thread.continueInNewThread")}
+                    </button>
+                  )}
                 </div>
+              ) : (
+                <>
+                  <WindowFileDrop
+                    enabled={thread !== null}
+                    onAttachFiles={handleAttachFiles}
+                    onAttachError={handleAttachError}
+                  />
+                  <Composer
+                    variant="thread"
+                    draft={draft}
+                    focusSignal={focusSignal}
+                    isSending={isSending}
+                    canQueue={thread !== null}
+                    sendDisabled={imageUploadPending}
+                    placeholder={t("thread.messagePlaceholder")}
+                    onDraftChange={onDraftChange}
+                    pastedTexts={pastedTexts}
+                    onAddPastedText={onAddPastedText}
+                    onRemovePastedText={onRemovePastedText}
+                    onSend={handleSendRequest}
+                    onStop={onStop}
+                    onAttachFiles={
+                      thread === null ? undefined : handleAttachFiles
+                    }
+                    onAttachError={handleAttachError}
+                    attachments={attachments}
+                    onRemoveAttachment={removeAttachment}
+                  />
+                  {(attachNote || deferredAttachNote) !== "" && (
+                    <div className="ui-meta-text mt-2 text-center text-[#858178]">
+                      {attachNote || deferredAttachNote}
+                    </div>
+                  )}
+                </>
               )}
               <div className="ui-meta-text mt-[14px] text-center text-[#858178]">
                 {t("thread.disclaimer")}

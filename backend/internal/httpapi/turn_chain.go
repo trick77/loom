@@ -287,6 +287,7 @@ func (c *turnChain) runTurn(in turnInput) {
 		Usage:       usageTotal,
 		Start:       turnStart,
 		Inbox:       queueInbox{c: c},
+		Timezone:    s.timezoneFor(user.ID),
 	}, turn.PrepareInput{
 		StreamCtx:             streamCtx,
 		TurnCtx:               turnCtx,

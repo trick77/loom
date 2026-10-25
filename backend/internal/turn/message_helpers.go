@@ -141,7 +141,7 @@ func (t *Run) GenerateAndSendThreadTitle(ctx context.Context, assistantMessage s
 
 // promptBlocks are the context blocks appended to a turn's system prompt.
 type promptBlocks struct {
-	toolGuidance, classifier, user, project, knowledge, document string
+	toolGuidance, schedule, classifier, user, project, knowledge, document string
 }
 
 func buildLLMHistory(user auth.User, blocks promptBlocks, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
@@ -150,7 +150,7 @@ func buildLLMHistory(user auth.User, blocks promptBlocks, messages []chat.Messag
 	// turn, so the prompt never names a tool that was gated out of the request.
 	// The blocks keep this order; an empty one is skipped.
 	systemContent := systemPromptForUser(user, time.Now())
-	for _, block := range []string{blocks.toolGuidance, blocks.classifier, blocks.user, blocks.project, blocks.knowledge, blocks.document} {
+	for _, block := range []string{blocks.toolGuidance, blocks.schedule, blocks.classifier, blocks.user, blocks.project, blocks.knowledge, blocks.document} {
 		if strings.TrimSpace(block) != "" {
 			systemContent += "\n\n" + block
 		}

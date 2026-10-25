@@ -136,7 +136,7 @@ func (s *Store) ListThreads(ctx context.Context, userID string, opts ListThreads
 	args = append(args, limit)
 
 	query := fmt.Sprintf(`
-SELECT id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at
+SELECT `+threadColumns+`
 FROM threads
 WHERE %s
 ORDER BY COALESCE(last_message_at, updated_at) DESC, updated_at DESC, id DESC
@@ -492,7 +492,7 @@ func (s *Store) getThread(ctx context.Context, userID, threadID string) (Thread,
 	// one probe, not the user's whole share list.
 	var shared bool
 	thread, err := scanThreadRow(s.db.QueryRowContext(ctx, `
-SELECT id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at,
+SELECT `+threadColumns+`,
        EXISTS (SELECT 1 FROM shared_threads sh WHERE sh.user_id = threads.user_id AND sh.thread_id = threads.id AND sh.shared = 1)
 FROM threads
 WHERE user_id = ? AND id = ?`,

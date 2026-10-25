@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -74,16 +75,30 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 		// snapshots the browser's PDF viewer.
 		if !mcp.IsPDFExtractionError(err) {
 			if fallback, ok := t.fetchObscuraFallback(fallbackCtx, call.Function.Name, arguments, round, reg); ok {
+				t.observeToolCall(call.Function.Name, arguments, nil, false, true)
 				return fallback
 			}
 		}
+		t.observeToolCall(call.Function.Name, arguments, nil, false, false)
 		return capToolOutput("tool failed: " + err.Error())
 	}
 	slog.Info("tool call completed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "result_bytes", len(output))
 	t.e.countToolCall(ctx, t.user, call.Function.Name)
 	// Annotate web-search/fetch results with [n] citation markers and register
 	// their source URLs before capping, so the model can cite them inline.
-	return capToolOutput(t.e.relabelWebToolOutput(call.Function.Name, arguments, output, run.sources, reg))
+	before := 0
+	if reg != nil {
+		before = reg.len()
+	}
+	relabeled := t.e.relabelWebToolOutput(call.Function.Name, arguments, output, run.sources, reg)
+	sources := run.sources
+	if len(sources) == 0 && reg != nil {
+		for _, s := range reg.all()[before:] {
+			sources = append(sources, mcp.Source{URL: s.URL})
+		}
+	}
+	t.observeToolCall(call.Function.Name, arguments, sources, !strings.HasPrefix(output, toolFailedPrefix), false)
+	return capToolOutput(relabeled)
 }
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at
@@ -294,10 +309,13 @@ const mcpCitationOverride = "When one of these tools' results carries Source lin
 // the turn offers, so a server can say when its tools apply (peeq: which
 // channels to search unprompted). It travels with the tools like the other
 // tool guidance and is empty when no offered server gave instructions.
-func (s *Engine) mcpServerGuidance(user auth.User, gate toolGate) string {
+func (s *Engine) mcpServerGuidance(user auth.User, gate toolGate, scheduled *ScheduledRun) string {
 	seen := map[string]bool{}
 	var blocks []string
 	for _, tool := range s.offeredMCPTools(user, gate) {
+		if scheduled != nil && !slices.Contains(scheduled.Tools, tool.Function.Name) {
+			continue
+		}
 		server, _, ok := mcp.SplitExposedToolName(tool.Function.Name)
 		if !ok || seen[server] {
 			continue

@@ -3,7 +3,11 @@
 // relevant chunks for a query.
 package rag
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/trick77/loom/internal/tokens"
+)
 
 // TextChunk is one unit of indexed text with its position and an estimated token count.
 type TextChunk struct {
@@ -29,20 +33,9 @@ func DefaultChunkOptions() ChunkOptions {
 	return ChunkOptions{TargetTokens: 600, MaxTokens: 800, OverlapTokens: 75}
 }
 
-// estimateTokens approximates the token count of s. Real BPE tokenization would
-// require a runtime vocabulary download (tiktoken), which a self-hosted, offline
-// deployment cannot rely on; ~4 characters/token is the standard heuristic and
-// is sufficient for sizing chunks and the embedding budget.
+// estimateTokens approximates the token count of s; see tokens.Estimate.
 func estimateTokens(s string) int {
-	n := len([]rune(s))
-	if n == 0 {
-		return 0
-	}
-	t := (n + 3) / 4
-	if t < 1 {
-		t = 1
-	}
-	return t
+	return tokens.Estimate(s)
 }
 
 // Chunk splits text into overlapping, token-bounded chunks on whitespace

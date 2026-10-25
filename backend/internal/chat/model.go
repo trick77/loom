@@ -148,6 +148,13 @@ type Thread struct {
 	CreatedAt     time.Time  `json:"createdAt"`
 	UpdatedAt     time.Time  `json:"updatedAt"`
 	LastMessageAt *time.Time `json:"lastMessageAt"`
+	// ScheduleID is the schedule whose run feed this thread is; such a thread
+	// takes no messages from the user. nil for every other thread.
+	ScheduleID *string `json:"scheduleId"`
+	// BranchedFromThreadID and BranchedFromMessageID name the answer this
+	// thread was continued from; nil when it was not, or the source is gone.
+	BranchedFromThreadID  *string `json:"branchedFromThreadId"`
+	BranchedFromMessageID *string `json:"branchedFromMessageId"`
 	// Shared is true when an active public share link exists for this thread
 	// (a shared_threads row with shared=1). Populated by ListThreads so chat
 	// lists can badge shared threads; left false on single-thread fetches,

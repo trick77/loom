@@ -13,7 +13,9 @@ import { describeActionError } from "./actionErrors";
 import {
   DEFAULT_THREAD_TITLE,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+  branchThread,
   createThread,
+  type AppNotification,
   deleteQueuedMessage,
   getThread,
   queueMessage,
@@ -112,6 +114,16 @@ const MemoryPage = lazy(() =>
 const ProjectsPage = lazy(() =>
   import("../projects/ProjectsPage").then((module) => ({
     default: module.ProjectsPage,
+  })),
+);
+const SchedulesPage = lazy(() =>
+  import("../schedules/SchedulesPage").then((module) => ({
+    default: module.SchedulesPage,
+  })),
+);
+const ScheduleDetailPage = lazy(() =>
+  import("../schedules/ScheduleDetailPage").then((module) => ({
+    default: module.ScheduleDetailPage,
   })),
 );
 const SettingsModal = lazy(() =>
@@ -606,6 +618,21 @@ export function ThreadShell({
     go({ view: "memory" });
   }, [go, onThread, closeMobileSidebar]);
 
+  const navigateToSchedules = useCallback(() => {
+    onThread();
+    closeMobileSidebar();
+    go({ view: "schedules" });
+  }, [go, onThread, closeMobileSidebar]);
+
+  const navigateToSchedule = useCallback(
+    (scheduleID: string) => {
+      onThread();
+      closeMobileSidebar();
+      go({ view: "schedule", scheduleID });
+    },
+    [go, onThread, closeMobileSidebar],
+  );
+
   const navigateToProject = useCallback(
     (project: Project) => {
       onThread();
@@ -691,6 +718,39 @@ export function ThreadShell({
       go({ view: "thread", threadID });
     },
     [go, onThread, closeMobileSidebar],
+  );
+
+  // continueInNewThread copies a scheduled run's answer into a normal thread
+  // and opens it, ready for a follow-up question.
+  const continueInNewThread = useCallback(
+    async (threadID: string, messageID: string) => {
+      try {
+        const branch = await branchThread(threadID, messageID);
+        setThreads((current) => upsertThreadById(current, branch));
+        void selectThread(branch.id);
+      } catch (error) {
+        handleActionError(error, t("thread.continueFailed"), reportShellError);
+      }
+    },
+    [selectThread, t, setThreads, handleActionError, reportShellError],
+  );
+
+  // A notification opens the run's thread; an auto-disable opens the
+  // schedule, where it can be enabled again.
+  const openNotification = useCallback(
+    (notification: AppNotification) => {
+      if (
+        notification.kind === "schedule_disabled" &&
+        notification.scheduleId !== null
+      ) {
+        navigateToSchedule(notification.scheduleId);
+      } else if (notification.threadId !== null) {
+        void selectThread(notification.threadId);
+      } else if (notification.scheduleId !== null) {
+        navigateToSchedule(notification.scheduleId);
+      }
+    },
+    [navigateToSchedule, selectThread],
   );
 
   const handleSetThreadStarred = useCallback(
@@ -1618,6 +1678,8 @@ export function ThreadShell({
         onArtifacts={navigateToArtifacts}
         onProjects={navigateToProjects}
         onMemory={navigateToMemory}
+        onSchedules={navigateToSchedules}
+        onOpenNotification={openNotification}
         onOpenSearch={openSearch}
         onSelectThread={selectThread}
         onDeleteThread={openDeleteModal}
@@ -1666,6 +1728,26 @@ export function ThreadShell({
         ) : route.view === "memory" ? (
           <Suspense fallback={null}>
             <MemoryPage onOpenSidebar={openMobileSidebar} />
+          </Suspense>
+        ) : route.view === "schedules" ? (
+          <Suspense fallback={null}>
+            <SchedulesPage
+              onOpenSidebar={openMobileSidebar}
+              onOpenSchedule={navigateToSchedule}
+              onOpenThread={(threadID) => void selectThread(threadID)}
+              onSessionExpired={onSessionExpired}
+            />
+          </Suspense>
+        ) : route.view === "schedule" ? (
+          <Suspense fallback={null}>
+            <ScheduleDetailPage
+              key={route.scheduleID}
+              scheduleID={route.scheduleID}
+              onOpenSidebar={openMobileSidebar}
+              onBack={navigateToSchedules}
+              onOpenThread={(threadID) => void selectThread(threadID)}
+              onSessionExpired={onSessionExpired}
+            />
           </Suspense>
         ) : route.view === "projects" ? (
           renderProjectsPage(loadError)
@@ -1777,6 +1859,9 @@ export function ThreadShell({
             }
             onToggleThreadMenu={toggleThreadMenu}
             onCloseThreadMenu={closeThreadMenu}
+            onContinueInNewThread={continueInNewThread}
+            onOpenSchedule={navigateToSchedule}
+            onOpenThread={(threadID) => void selectThread(threadID)}
           />
         )}
       </main>

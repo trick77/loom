@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -56,6 +57,22 @@ type LoopResult struct {
 	// order the model cites them. Persisted as citations and rendered as inline
 	// source pills + a bottom "Sources" row.
 	WebSources []webSource
+	// Rounds is how many tool rounds ran; LimitHit names the scheduled run's
+	// limit that forced the final answer ("" when none did).
+	Rounds   int
+	LimitHit string
+	// Interrupted is a partial answer kept from a stopped or stalled round,
+	// returned without an error.
+	Interrupted bool
+}
+
+// SourceURLs are the turn's web sources by their [n] number.
+func (r LoopResult) SourceURLs() map[int]string {
+	out := make(map[int]string, len(r.WebSources))
+	for _, s := range r.WebSources {
+		out[s.Index] = s.URL
+	}
+	return out
 }
 
 // RunAssistantLoop answers the turn from the history Prepare built, running
@@ -64,6 +81,14 @@ type LoopResult struct {
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
 	history := t.plan.history
 	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
+	tools = t.allowTools(tools)
+	if t.scheduled != nil {
+		for name := range offered {
+			if !slices.Contains(t.scheduled.Tools, name) {
+				delete(offered, name)
+			}
+		}
+	}
 	t.offered = offered
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -101,10 +126,14 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// round (see the web_sources event below) so inline markers resolve while the
 	// answer streams; the same sources are also persisted with the message.
 	reg := newWebSourceRegistryAfter(t.plan.sourceCount)
+	rounds, limitHit := 0, ""
 	// Stamp gathered sources onto every subsequent return (natural answer, forced
 	// final, interrupted partial) in one place. The tool-less/image fast paths
 	// return above this and never gather web sources.
-	defer func() { out.WebSources = reg.all() }()
+	interrupted := false
+	defer func() {
+		out.WebSources, out.Rounds, out.LimitHit, out.Interrupted = reg.all(), rounds, limitHit, interrupted
+	}()
 	b := &blockBuilder{}
 	// The prompt prefix before any tool round: original system prompt + prior
 	// conversation + the user's question. The forced final answer rebuilds a clean
@@ -119,7 +148,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				return LoopResult{}, err
 			}
 			b.addResult(t.titles, result)
-			if b.keepInterrupted(&result, err, artifacts) {
+			if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 				return b.result(result, artifacts, ""), nil
 			}
 			return LoopResult{}, err
@@ -193,6 +222,11 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			perToolCount[call.Function.Name]++
 			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
 			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), call.Function.Name)
+			// A scheduled run runs only its fixed set, whatever tool the
+			// model names.
+			if t.scheduled != nil && !slices.Contains(t.scheduled.Tools, call.Function.Name) {
+				denied[i] = true
+			}
 			skipped[i] = deferred[i] || denied[i]
 		}
 		// The round's independent web reads start now and overlap; everything
@@ -267,6 +301,13 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			}
 		}
 		toolRan = true
+		rounds++
+		// A scheduled run past its token budget or soft deadline stops
+		// researching and answers from what it has.
+		if limitHit = t.overLimit(); limitHit != "" {
+			slog.Info("forcing final answer", "reason", "scheduled_limit", "limit", limitHit, "round", round)
+			break
+		}
 		// A message the user queued while this round ran is picked up here,
 		// between the tool results and the next model call, never mid-tool.
 		// It answers in a fresh segment with a full round budget, and gets its
@@ -318,7 +359,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	}
 	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), finalHistory, finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(t.titles, result)
-	if b.keepInterrupted(&result, err, artifacts) {
+	if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 		return b.result(result, artifacts, ""), nil
 	}
 	// Backstop: if the clean synthesis still produced no prose (e.g. the model emitted
@@ -332,7 +373,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		}
 		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), retryHistory, finalRetryInference(t.inference, result), nil)
 		b.addResult(t.titles, result)
-		if b.keepInterrupted(&result, err, artifacts) {
+		if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 			return b.result(result, artifacts, ""), nil
 		}
 		if err == nil && strings.TrimSpace(result.Content) == "" {

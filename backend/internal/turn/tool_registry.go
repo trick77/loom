@@ -212,7 +212,7 @@ func imageToolSpec(gen imagegen.Tool) toolSpec {
 // built-in's definition. On a duplicate name the first spec wins.
 func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 	s.toolsOnce.Do(func() {
-		tools := slices.Clone(coreTools)
+		tools := slices.Concat(coreTools, scheduleToolSpecs)
 		for _, gen := range s.docTools {
 			tools = append(tools, docToolSpec(gen))
 		}

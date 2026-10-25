@@ -66,6 +66,9 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
   if (name === "memory") {
     return <Icon name="memory" size="21px" className={className} />;
   }
+  if (name === "schedules") {
+    return <Icon name="clock" size="21px" className={className} />;
+  }
   return null;
 }
 
@@ -165,9 +168,17 @@ function SidebarThreadItem({
           type="button"
         >
           <span
-            className={`block whitespace-nowrap ${active ? "pr-7" : "truncate"}`}
+            className={`flex items-center gap-1.5 whitespace-nowrap ${active ? "pr-7" : ""}`}
           >
-            {thread.title}
+            <span className={active ? "" : "truncate"}>{thread.title}</span>
+            {thread.scheduleId && (
+              <Icon
+                name="clock"
+                size="13px"
+                className="shrink-0 text-[#8f8b82]"
+                label={t("sidebar.schedules")}
+              />
+            )}
           </span>
           {active && (
             <span

@@ -1,4 +1,5 @@
 import { AuthExpiredError, UserFacingError } from "./http";
+import { browserTimezone } from "./schedules";
 import type {
   Artifact,
   Citation,
@@ -121,7 +122,12 @@ export async function streamMessage(
       `/api/threads/${encodeURIComponent(threadId)}/messages:stream`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // The timezone lets a schedule created in this turn run on the
+        // user's clock.
+        headers: {
+          "Content-Type": "application/json",
+          "X-Loom-Timezone": browserTimezone(),
+        },
         body: JSON.stringify(requestBody),
         signal,
       },

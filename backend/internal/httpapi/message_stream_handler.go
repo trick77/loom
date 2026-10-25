@@ -66,6 +66,10 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w)
 		return
 	}
+	if rejectScheduleThread(w, thread) {
+		return
+	}
+	s.rememberTimezone(user.ID, r)
 	priorMessages, found, err := s.thread.ListMessages(r.Context(), user.ID, threadID)
 	if err != nil {
 		serverError(w, r, err, "list messages failed")

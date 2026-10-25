@@ -17,6 +17,7 @@ import (
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/loom/internal/usage"
 	"github.com/trick77/loom/web"
@@ -79,6 +80,17 @@ type Deps struct {
 	// timing (see turn.Config); zero keeps the defaults, tests shorten them.
 	ReasoningTitleHold       time.Duration
 	ReasoningTitleStartBytes int
+	// Schedules stores scheduled tasks and notifications; ScheduleLLM reads
+	// intervals and a run's findings. Both nil keep scheduled tasks off.
+	Schedules   *schedule.Store
+	ScheduleLLM ScheduleLLM
+}
+
+// ScheduleLLM is the model work scheduled tasks need beyond a chat turn;
+// *llm.Client is one.
+type ScheduleLLM interface {
+	ParseSchedule(ctx context.Context, text string) (string, bool, error)
+	ExtractFindings(ctx context.Context, task, answer string, knownKeys []string) ([]llm.Finding, error)
 }
 
 type server struct {
@@ -108,6 +120,17 @@ type server struct {
 	lifetime              context.Context
 	// engine runs the chat turns the stream handlers start.
 	engine *turn.Engine
+	// schedules is nil while scheduled tasks are off; see scheduleRuns.
+	schedules   *schedule.Store
+	scheduleSvc *schedule.Service
+	scheduleLLM ScheduleLLM
+	runs        *scheduleRuns
+	// timezones holds each user's browser timezone, by user id.
+	timezones sync.Map
+	// now is the clock scheduled runs read; nil is time.Now. runTimeout
+	// replaces schedule.RunTimeout when set (tests).
+	now        func() time.Time
+	runTimeout time.Duration
 }
 
 // The stores and services below are the HTTP layer's full dependencies. Each
@@ -139,6 +162,8 @@ type ThreadStore interface {
 	SetThreadTitleIfUnchanged(context.Context, string, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
+	BranchThread(context.Context, string, string, string) (chat.Thread, error)
+	SetLastMessageAt(context.Context, string, string, *time.Time) error
 
 	// Messages.
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage, string) (chat.Message, error)
@@ -299,7 +324,21 @@ func newServer(d Deps) *server {
 	if s.indexHTML == nil {
 		s.indexHTML = web.IndexHTML
 	}
+	var scheduleTools turn.ScheduleTools
+	if d.Schedules != nil && d.ScheduleLLM != nil {
+		s.schedules, s.scheduleLLM = d.Schedules, d.ScheduleLLM
+		s.scheduleSvc = &schedule.Service{
+			Store:       d.Schedules,
+			Interpreter: d.ScheduleLLM,
+			Namer:       scheduleNamer{s: s},
+			Threads:     scheduleThreadTitles{s: s},
+			Now:         s.clock,
+		}
+		s.runs = newScheduleRuns()
+		scheduleTools = scheduleToolRunner{s: s}
+	}
 	s.engine = turn.New(turn.Config{
+		Schedules:                  scheduleTools,
 		Thread:                     d.Thread,
 		Usage:                      d.Usage,
 		Artifacts:                  d.Artifacts,
@@ -325,6 +364,13 @@ func newServer(d Deps) *server {
 // on one shared server, so the worker's sweep and the request path's refreshes
 // hold the same single-flight guard.
 func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
+	handler, memory, _ := NewWithWorkers(d)
+	return handler, memory
+}
+
+// NewWithWorkers is NewWithMemoryWorker plus the worker that starts due
+// scheduled runs, on the same server.
+func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	s := newServer(d)
 
 	mux := http.NewServeMux()
@@ -380,6 +426,21 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 	mux.HandleFunc("GET /api/shares/{shareID}", s.handleGetPublicShare)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/download", s.handlePublicShareArtifactDownload)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/thumbnail", s.handlePublicShareArtifactThumbnail)
+	mux.Handle("POST /api/threads/{threadID}/messages/{messageID}/branch", s.requireAuth(http.HandlerFunc(s.handleBranchThread)))
+	mux.Handle("GET /api/schedules", s.requireAuth(http.HandlerFunc(s.handleListSchedules)))
+	mux.Handle("POST /api/schedules", s.requireAuth(http.HandlerFunc(s.handleCreateSchedule)))
+	mux.Handle("POST /api/schedules:parse", s.requireAuth(http.HandlerFunc(s.handleParseSchedule)))
+	mux.Handle("GET /api/schedules/{scheduleID}", s.requireAuth(http.HandlerFunc(s.handleGetSchedule)))
+	mux.Handle("PATCH /api/schedules/{scheduleID}", s.requireAuth(http.HandlerFunc(s.handleUpdateSchedule)))
+	mux.Handle("DELETE /api/schedules/{scheduleID}", s.requireAuth(http.HandlerFunc(s.handleDeleteSchedule)))
+	mux.Handle("POST /api/schedules/{scheduleID}/run", s.requireAuth(http.HandlerFunc(s.handleRunSchedule)))
+	mux.Handle("GET /api/schedules/{scheduleID}/runs", s.requireAuth(http.HandlerFunc(s.handleListScheduleRuns)))
+	mux.Handle("GET /api/schedules/{scheduleID}/memory", s.requireAuth(http.HandlerFunc(s.handleGetScheduleMemory)))
+	mux.Handle("DELETE /api/schedules/{scheduleID}/memory/{kind}", s.requireAuth(http.HandlerFunc(s.handleDeleteScheduleMemory)))
+	mux.Handle("GET /api/notifications", s.requireAuth(http.HandlerFunc(s.handleListNotifications)))
+	mux.Handle("GET /api/notifications/unread", s.requireAuth(http.HandlerFunc(s.handleUnreadNotifications)))
+	mux.Handle("POST /api/notifications/read-all", s.requireAuth(http.HandlerFunc(s.handleReadAllNotifications)))
+	mux.Handle("POST /api/notifications/{notificationID}/read", s.requireAuth(http.HandlerFunc(s.handleReadNotification)))
 	mux.Handle("GET /api/favicon", s.requireAuth(http.HandlerFunc(s.handleFavicon)))
 	mux.Handle("GET /api/source-image", s.requireAuth(http.HandlerFunc(s.handleSourceImage)))
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
@@ -401,7 +462,7 @@ func NewWithMemoryWorker(d Deps) (http.Handler, *MemoryWorker) {
 		mux.Handle("/", d.Static)
 	}
 
-	return middleware(mux), &MemoryWorker{s: s}
+	return middleware(mux), &MemoryWorker{s: s}, &ScheduleWorker{s: s}
 }
 
 type activeStreamRegistry struct {

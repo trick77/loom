@@ -232,6 +232,21 @@ func (f *ThreadStore) DeleteThread(_ context.Context, _ string, threadID string)
 	return true, nil
 }
 
+// BranchThread returns a copy of Thread named "branch_1" whose source is the
+// given answer.
+func (f *ThreadStore) BranchThread(_ context.Context, _ string, threadID, messageID string) (chat.Thread, error) {
+	branch := f.Thread
+	branch.ID, branch.ScheduleID = "branch_1", nil
+	branch.BranchedFromThreadID, branch.BranchedFromMessageID = &threadID, &messageID
+	return branch, nil
+}
+
+// SetLastMessageAt sets Thread's activity time.
+func (f *ThreadStore) SetLastMessageAt(_ context.Context, _ string, _ string, at *time.Time) error {
+	f.Thread.LastMessageAt = at
+	return nil
+}
+
 // AddMessageWithAttachments appends msg_1 to Messages and records its
 // attachments, pasted texts and send id.
 func (f *ThreadStore) AddMessageWithAttachments(_ context.Context, _ string, threadID string, role chat.Role, content string, attachments json.RawMessage, pastedTexts json.RawMessage, clientMessageID string) (chat.Message, error) {

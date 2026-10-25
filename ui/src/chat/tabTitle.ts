@@ -35,6 +35,10 @@ export function tabTitle(
     case "thread":
       base = activeThread?.title ?? null;
       break;
+    case "schedules":
+    case "schedule":
+      base = i18n.t("tabTitle.schedules");
+      break;
     default: {
       // Erschöpfend: ein neuer RouteState-View erzwingt hier einen Compile-Fehler.
       const _exhaustive: never = route;

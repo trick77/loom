@@ -18,4 +18,5 @@ export type MessageWithActivityTrace = Message & {
   clientKey?: string;
 };
 
-export type SidebarIconName = "threads" | "projects" | "artifacts" | "memory";
+export type SidebarIconName =
+  "threads" | "projects" | "artifacts" | "memory" | "schedules";
