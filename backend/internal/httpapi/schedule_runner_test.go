@@ -202,7 +202,10 @@ func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
 		},
 	}
 	s := newServer(deps)
-	s.runSchedule(ctx, newRunnerSchedule(t, f))
+	sch := newRunnerSchedule(t, f)
+	// A file format in the prompt brings no file tools, so no guidance for them.
+	sch.Prompt = "summarize new videos as a PDF"
+	s.runSchedule(ctx, sch)
 	if strings.Join(called, ",") != "peeq__search" {
 		t.Fatalf("called = %v, want the user's peeq search", called)
 	}
@@ -211,6 +214,9 @@ func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
 		if !strings.Contains(system, want) {
 			t.Fatalf("the run's system prompt lacks %q:\n%s", want, system)
 		}
+	}
+	if strings.Contains(system, "create_pdf_file") {
+		t.Fatalf("the run's system prompt guides file tools it does not have:\n%s", system)
 	}
 }
 

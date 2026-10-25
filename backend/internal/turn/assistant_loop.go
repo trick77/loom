@@ -80,8 +80,7 @@ func (r LoopResult) SourceURLs() map[int]string {
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
 	history := t.plan.history
 	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
-	tools = t.allowTools(tools, offered)
-	t.offered = offered
+	tools, t.offered = t.allowTools(tools, offered)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)

@@ -259,7 +259,8 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	gate := newToolGate(category, turnCategory, t.userMessage.Content)
 	gate.sandbox = sandboxOn
 	fileToolGuidance := ""
-	if gate.docgenEnabled() {
+	// A scheduled run has no file tools to guide.
+	if gate.docgenEnabled() && !scheduled {
 		fileToolGuidance = fileToolGuardrailPrompt
 	}
 	if len(knowledgeSources) > 0 {

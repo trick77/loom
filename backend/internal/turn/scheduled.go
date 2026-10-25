@@ -47,25 +47,26 @@ const (
 )
 
 // scheduledRunPrompt tells the model it runs unattended.
-const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools, then answer with what is NEW since earlier runs, naming each new item with its source. When nothing is new, say so in one sentence. Never ask the user anything."
+// The run sees the user's standing instructions and every server's guidance,
+// both written for a live chat, so it says which parts still apply.
+const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what is NEW since earlier runs, naming each new item with its source. When nothing is new, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
 
 // allowTools keeps the tools a scheduled run may use: every MCP tool the
 // user may use (offerTools already left out other accounts' servers), never a
 // built-in, so no memory, file, sandbox or schedule tool. It records them for
-// dispatch and empties builtIns. Any other turn keeps all of them.
-func (t *Run) allowTools(tools []llm.Tool, builtIns map[string]*toolSpec) []llm.Tool {
+// dispatch and returns no built-ins to offer. Any other turn keeps all of them.
+func (t *Run) allowTools(tools []llm.Tool, builtIns map[string]*toolSpec) ([]llm.Tool, map[string]*toolSpec) {
 	if t.scheduled == nil {
-		return tools
+		return tools, builtIns
 	}
 	tools = slices.DeleteFunc(tools, func(tool llm.Tool) bool {
 		return builtIns[tool.Function.Name] != nil
 	})
-	clear(builtIns)
 	t.scheduledTools = make(map[string]bool, len(tools))
 	for _, tool := range tools {
 		t.scheduledTools[tool.Function.Name] = true
 	}
-	return tools
+	return tools, map[string]*toolSpec{}
 }
 
 // scheduledDenies reports whether a scheduled run refuses a tool call: one
