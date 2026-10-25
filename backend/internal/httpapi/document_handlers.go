@@ -116,6 +116,10 @@ func (s *server) handleUploadDocument(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnsupportedMediaType, "unsupported document format")
 		return
 	}
+	if errors.Is(err, documents.ErrMissingScope) {
+		httpx.WriteError(w, http.StatusBadRequest, "upload needs a thread or a project")
+		return
+	}
 	if errors.Is(err, documents.ErrThreadDocumentLimit) {
 		httpx.WriteError(w, http.StatusConflict, "too many documents in this thread")
 		return

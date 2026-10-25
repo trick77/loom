@@ -34,6 +34,11 @@ var ErrThreadDocumentLimit = errors.New("thread document limit reached")
 // is the enforced limit, mirroring the image attachment handler.
 var ErrTooLarge = errors.New("upload too large")
 
+// ErrMissingScope is returned when an upload names neither a project nor a
+// thread. Such a document would be user-global and retrieved in every
+// project-less chat of its owner.
+var ErrMissingScope = errors.New("upload needs a thread or a project")
+
 // ArtifactStore is the subset of the artifact store the document service needs.
 type ArtifactStore interface {
 	Create(context.Context, artifact.CreateInput) (artifact.Artifact, error)
@@ -105,8 +110,7 @@ func (s *Service) SetUsageRecorder(usage UsageRecorder) {
 
 // UploadInput describes a single document upload. ProjectID scopes the document
 // to a project; a project-less upload with a ThreadID is private to that chat.
-// A project-less upload with an empty ThreadID would be user-global, but no
-// caller does that today (the composer always passes its thread).
+// One of the two is required (ErrMissingScope).
 type UploadInput struct {
 	UserID    string
 	ThreadID  string
@@ -123,13 +127,16 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 	if !ok {
 		return rag.Document{}, artifact.Artifact{}, ErrUnsupportedFormat
 	}
-	if in.ProjectID == nil && strings.TrimSpace(in.ThreadID) != "" {
-		threadID := strings.TrimSpace(in.ThreadID)
-		documentCount, err := s.store.CountThreadDocuments(ctx, in.UserID, threadID)
+	in.ThreadID = strings.TrimSpace(in.ThreadID)
+	if in.ProjectID == nil && in.ThreadID == "" {
+		return rag.Document{}, artifact.Artifact{}, ErrMissingScope
+	}
+	if in.ProjectID == nil {
+		documentCount, err := s.store.CountThreadDocuments(ctx, in.UserID, in.ThreadID)
 		if err != nil {
 			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count thread documents: %w", err)
 		}
-		items, err := s.artifacts.ListForThread(ctx, in.UserID, threadID)
+		items, err := s.artifacts.ListForThread(ctx, in.UserID, in.ThreadID)
 		if err != nil {
 			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count thread uploads: %w", err)
 		}
@@ -184,10 +191,8 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 
 	// A composer upload in a project-less thread is private to that one thread; a
 	// project upload keeps the project scope (ThreadID is then provenance-only).
-	// A project-less upload with no thread stays user-global — a state no caller
-	// produces today (see UploadInput).
 	var threadID *string
-	if in.ProjectID == nil && in.ThreadID != "" {
+	if in.ProjectID == nil {
 		threadID = &in.ThreadID
 	}
 

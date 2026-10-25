@@ -78,6 +78,18 @@ func TestHandleUploadDocument_chatDocumentLimit(t *testing.T) {
 	}
 }
 
+func TestHandleUploadDocument_missingScopeIsBadRequest(t *testing.T) {
+	svc := &fakeDocumentService{UploadErr: documents.ErrMissingScope}
+	server := newAuthenticatedServer(t, Deps{Documents: svc})
+
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, multipartUpload(t, "a.txt", "bytes", nil))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleUploadDocument_payloadTooLarge(t *testing.T) {
 	// Content over the limit is enforced in documents.Upload (which returns
 	// ErrTooLarge); the handler must map that to 413 so the client reports a size
