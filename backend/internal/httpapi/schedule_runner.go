@@ -255,6 +255,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		run.CostNanoUSD, _ = usageTotal.Cost()
 	}()
 	var seen observations
+	research, reported := memory.Blocks(schedule.MemoryTokenBudget)
 	turnRun := s.engine.Prepare(turn.RunConfig{
 		Stream:      discardEmitter{},
 		User:        user,
@@ -265,7 +266,8 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		Scheduled: &turn.ScheduledRun{
 			TokenBudget:  schedule.RunTokenBudget,
 			SoftDeadline: start.Add(schedule.RunSoftDeadline),
-			Memory:       memory.Block(schedule.MemoryTokenBudget),
+			Memory:       research,
+			Reported:     reported,
 			Observe:      seen.add,
 			Now:          s.clock,
 		},

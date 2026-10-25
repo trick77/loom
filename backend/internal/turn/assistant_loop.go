@@ -78,12 +78,15 @@ func (r LoopResult) SourceURLs() map[int]string {
 // tool rounds as the model asks for them, then a forced final answer if the
 // rounds run out.
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
+	if t.scheduled != nil {
+		defer func() { out = dropAnswerImages(out) }()
+	}
 	history := t.plan.history
 	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
 	tools, t.offered = t.allowTools(tools, offered)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
-		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)
+		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(history), inferenceWithPurpose(t.inference, "chat", 1), nil)
 		b.addResult(t.titles, result)
 		if persistInterruptedPartial(result, err) {
 			return b.result(result, nil, ""), nil
@@ -143,6 +146,13 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				return b.result(result, artifacts, ""), nil
 			}
 			return LoopResult{}, err
+		}
+		if len(result.ToolCalls) == 0 && t.scheduled != nil {
+			// A scheduled run answers only from the tool-free final call, the
+			// one that sees the memory; a round that stops calling tools ends
+			// the research (scheduledResearchNote) and its text is dropped.
+			slog.Info("forcing final answer", "reason", "scheduled_research_done", "round", round)
+			break
 		}
 		b.addResult(t.titles, result)
 		if len(result.ToolCalls) == 0 {
@@ -330,13 +340,14 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// prose call in the codebase uses. This also streams the answer live (no tool
 	// suppression), so a long synthesis never looks like a dead thread.
 	var extraDirective string
-	if lastRoundDeferred {
+	// Nobody can ask an unattended run to continue.
+	if lastRoundDeferred && t.scheduled == nil {
 		// Some tool calls were deferred past this turn's per-round caps and never ran.
 		// Tell the user so they can ask to continue — a fresh turn gets a fresh round
 		// budget. Kept language-neutral so the model answers in the user's language.
 		extraDirective = "Some requested items could not be processed within this turn's tool limit; briefly tell the user that not everything was processed and offer to continue if they'd like the rest."
 	}
-	finalHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, extraDirective, reg.all())
+	finalHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, t.notesBudgetTokens(), extraDirective, reg.all())
 	if !ok {
 		// No gathered notes (should not happen once tools ran) — fall back to the full
 		// history with a plain, tool-free directive.
@@ -346,7 +357,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		}
 		finalHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: directive})
 	}
-	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), finalHistory, finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
+	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(finalHistory), finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(t.titles, result)
 	if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 		return b.result(result, artifacts, ""), nil
@@ -356,11 +367,11 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// fall back to a fixed message — anything but persisting an empty turn.
 	if err == nil && strings.TrimSpace(result.Content) == "" {
 		slog.Info("retrying empty final answer", "reason", "empty_synthesis", "round", maxToolRounds+1)
-		retryHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, "Answer in plain prose now. Do not emit any tool call or any tool-call markup.", reg.all())
+		retryHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, t.notesBudgetTokens(), "Answer in plain prose now. Do not emit any tool call or any tool-call markup.", reg.all())
 		if !ok {
 			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}
-		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), retryHistory, finalRetryInference(t.inference, result), nil)
+		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(retryHistory), finalRetryInference(t.inference, result), nil)
 		b.addResult(t.titles, result)
 		if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 			return b.result(result, artifacts, ""), nil

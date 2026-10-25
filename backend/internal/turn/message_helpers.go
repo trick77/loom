@@ -76,6 +76,19 @@ func (s *Engine) classifyFirstTurn(requestCtx context.Context, inf llm.Inference
 	return category
 }
 
+// classifyScheduledRun classifies a scheduled run's prompt for its tool gate.
+// A failed classification is "", which offers every server, instead of
+// General, which would drop the category-tagged ones from that run only.
+func (s *Engine) classifyScheduledRun(requestCtx context.Context, inf llm.InferenceMetadata, prompt string) string {
+	requestCtx, cancel := context.WithTimeout(requestCtx, s.gateTimeout())
+	defer cancel()
+	category, err := s.llm.ClassifyThread(llm.WithInferenceMetadata(requestCtx, gateInference(inf, "classify")), prompt)
+	if err != nil {
+		return ""
+	}
+	return category
+}
+
 // persistThreadCategory stores the category without touching the title, which is
 // written later in the turn by GenerateAndSendThreadTitle. Best-effort: a failed
 // write costs a stored label, never the answer.

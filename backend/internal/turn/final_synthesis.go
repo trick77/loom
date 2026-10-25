@@ -14,6 +14,12 @@ import (
 // dropped.
 const finalSynthesisNotesBudgetTokens = 24000
 
+// scheduledNotesBudgetTokens is the notes cap for a scheduled run's final
+// call. Its answer always comes from that call, so dropping notes there drops
+// new items; its last tool round already carried every note, so the call is
+// no larger than that round was.
+const scheduledNotesBudgetTokens = 96000
+
 // buildFinalSynthesisHistory rebuilds the forced final-answer turn as a clean,
 // tool-free turn over the research notes already gathered. After a tool-saturated
 // research turn a model may not commit to prose when simply told to — it
@@ -28,11 +34,11 @@ const finalSynthesisNotesBudgetTokens = 24000
 // pattern that triggers the tool-call reflex — and folds the gathered tool outputs
 // (already [n]-annotated web notes) into the final user message. Returns ok=false
 // when there are no notes, so the caller keeps the previous full-history behaviour.
-func buildFinalSynthesisHistory(history []llm.Message, baseLen int, extraDirective string, sources []webSource) ([]llm.Message, bool) {
+func buildFinalSynthesisHistory(history []llm.Message, baseLen, notesBudgetTokens int, extraDirective string, sources []webSource) ([]llm.Message, bool) {
 	if baseLen <= 0 || baseLen > len(history) {
 		return nil, false
 	}
-	notes := collectToolNotes(history[baseLen:], finalSynthesisNotesBudgetTokens*bytesPerToken)
+	notes := collectToolNotes(history[baseLen:], notesBudgetTokens*bytesPerToken)
 	if notes == "" {
 		return nil, false
 	}

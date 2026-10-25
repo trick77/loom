@@ -105,6 +105,9 @@ type turnPlan struct {
 	// sourceCount is how many [n] markers the attached and knowledge documents
 	// took, so web sources continue the numbering.
 	sourceCount int
+	// finalContext is a scheduled run's user memory and directives, for the
+	// tool-free call that writes its answer only; "" otherwise.
+	finalContext string
 }
 
 // Prepare starts a persisted turn on the engine: it classifies the turn, gates
@@ -159,9 +162,10 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// not at all; later drift is handled per-turn just below. Titling has moved
 	// after the answer and no longer shares this gate.
 	category := t.thread.Category
-	// A scheduled run is research with the user's MCP tools: no
-	// classification, no image route and no sandbox. It reads the user memory
-	// but gets no tool to change it.
+	// A scheduled run is research with the user's MCP tools: no image route,
+	// no drift check and no sandbox. It classifies its prompt on every run, so
+	// category-tagged servers are offered as in chat, and keeps the label to
+	// itself: an edited prompt must never inherit a stale one.
 	scheduled := t.scheduled != nil
 	freshlyClassified := !scheduled && len(in.PriorMessages) == 0 && strings.TrimSpace(category) == ""
 
@@ -198,7 +202,10 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			}
 		},
 		func() {
-			if freshlyClassified {
+			switch {
+			case scheduled:
+				classified = t.e.classifyScheduledRun(in.StreamCtx, t.inference, t.userMessage.Content)
+			case freshlyClassified:
 				classified = t.e.classifyFirstTurn(in.StreamCtx, t.inference, t.userMessage.Content)
 			}
 		},
@@ -220,7 +227,14 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)
 		},
 		func() { userContext = t.e.memory.UserContext(in.ReqCtx, t.user.ID) },
-		func() { projectContext = t.e.memory.ProjectContext(in.ReqCtx, t.user.ID, t.thread) },
+		// A scheduled run brings no project memory, knowledge or documents
+		// into rounds that read untrusted pages, even if its thread was moved
+		// into a project.
+		func() {
+			if !scheduled {
+				projectContext = t.e.memory.ProjectContext(in.ReqCtx, t.user.ID, t.thread)
+			}
+		},
 		// run_python's guidance travels with the tool: when the sidecar is
 		// off, the prompt never mentions it.
 		func() {
@@ -229,6 +243,9 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			}
 		},
 		func() {
+			if scheduled {
+				return
+			}
 			var inlinedDocIDs, knowledgeInlinedIDs map[string]bool
 			var attachmentSources []Citation
 			var inlinedAll bool
@@ -255,6 +272,9 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		}
 		t.e.persistThreadCategory(context.WithoutCancel(in.ReqCtx), t.user, t.thread.ID, category)
 	}
+	if scheduled {
+		category = classified
+	}
 
 	gate := newToolGate(category, turnCategory, t.userMessage.Content)
 	gate.sandbox = sandboxOn
@@ -267,8 +287,14 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		_ = t.stream.SendJSON("knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
 	scheduleBlock := ""
+	// A scheduled run reads untrusted pages with tools nobody watches, so the
+	// user memory and directives, and the items earlier answers written with
+	// them reported, stay out of every call that offers tools: only the
+	// tool-free call that writes the answer gets them (finalContext).
+	finalContext := ""
 	if scheduled {
-		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.scheduled.Memory)
+		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, scheduledResearchNote, t.scheduled.Memory)
+		finalContext, userContext = joinNonEmptyBlocks(t.scheduled.Reported, userContext), ""
 	}
 	history := buildLLMHistory(t.user, promptBlocks{
 		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate)),
@@ -328,6 +354,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		editSource:       editSource,
 		knowledgeSources: knowledgeSources,
 		sourceCount:      docIdx.count(),
+		finalContext:     finalContext,
 	}
 }
 

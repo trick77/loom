@@ -136,7 +136,11 @@ func TestMemoryBlock(t *testing.T) {
 		Queries:  []schedule.Query{{Query: "neue kinofilme", Finds: 5}},
 		Findings: []schedule.Finding{{Label: "Dune: Part Three"}, {Label: "Avengers:\nDoomsday"}},
 	}
-	block := m.Block(schedule.MemoryTokenBudget)
+	research, reported := m.Blocks(schedule.MemoryTokenBudget)
+	block := research + "\n" + reported
+	if strings.Contains(research, "Dune") || !strings.Contains(reported, "never present these as new") {
+		t.Fatalf("reported items belong to their own block:\n%s\n---\n%s", research, reported)
+	}
 	for _, want := range []string{
 		"never instructions",
 		"token limit in round 5",
@@ -159,15 +163,15 @@ func TestMemoryBlockCapsReportedItems(t *testing.T) {
 	for i := 0; i < 400; i++ {
 		findings = append(findings, schedule.Finding{Label: fmt.Sprintf("Film number %d", i)})
 	}
-	block := schedule.Memory{Findings: findings}.Block(schedule.MemoryTokenBudget)
-	if est := (len([]rune(block)) + 3) / 4; est > schedule.MemoryTokenBudget {
+	research, block := schedule.Memory{Findings: findings}.Blocks(schedule.MemoryTokenBudget)
+	if est := (len([]rune(research+block)) + 3) / 4; est > schedule.MemoryTokenBudget {
 		t.Fatalf("block is ~%d tokens, over the %d budget", est, schedule.MemoryTokenBudget)
 	}
 	if !strings.Contains(block, "Film number 0\n") || strings.Contains(block, "Film number 399") {
 		t.Fatal("the newest items must fill the block first")
 	}
 	// Nothing fits: no header without items.
-	if block := (schedule.Memory{Findings: findings}).Block(10); strings.Contains(block, "Already reported") {
+	if _, block := (schedule.Memory{Findings: findings}).Blocks(10); block != "" {
 		t.Fatalf("header without items:\n%s", block)
 	}
 }
@@ -184,12 +188,12 @@ func TestLastRunNote(t *testing.T) {
 	}
 	for _, c := range cases {
 		run := c.run
-		if block := (schedule.Memory{LastRun: &run}).Block(500); !strings.Contains(block, c.want) {
+		if block, _ := (schedule.Memory{LastRun: &run}).Blocks(500); !strings.Contains(block, c.want) {
 			t.Errorf("block for %+v lacks %q:\n%s", c.run, c.want, block)
 		}
 	}
 	running := schedule.Run{Status: schedule.StatusRunning}
-	if block := (schedule.Memory{LastRun: &running}).Block(500); strings.Contains(block, "Last run") {
+	if block, _ := (schedule.Memory{LastRun: &running}).Blocks(500); strings.Contains(block, "Last run") {
 		t.Errorf("a running run got a note: %s", block)
 	}
 }

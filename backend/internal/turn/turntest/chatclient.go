@@ -289,6 +289,7 @@ type ToolChatClient struct {
 	Plain          string
 	PlainErr       error
 	ClassifyResult string
+	ClassifyErr    error
 	ImageIntent    llm.ImageIntent
 	TitleResult    string
 	TitleFor       func(reasoning string) string
@@ -366,7 +367,7 @@ func (f *ToolChatClient) GenerateThreadTitle(context.Context, string, string, st
 
 // ClassifyThread implements turn.ChatClient.
 func (f *ToolChatClient) ClassifyThread(context.Context, string) (string, error) {
-	return f.ClassifyResult, nil
+	return f.ClassifyResult, f.ClassifyErr
 }
 
 // ClassifyImageIntent implements turn.ChatClient.
