@@ -84,12 +84,6 @@ func TestSystemPromptForUser_LanguageDirective(t *testing.T) {
 		if strings.Contains(unset, "English") {
 			t.Errorf("%s unset: must not force English: %q", build.name, unset)
 		}
-
-		// A legacy "auto" row (predating removal) is treated as unset, not English.
-		legacy := build.fn(auth.User{ResponseLanguage: "auto"}, now)
-		if !strings.Contains(legacy, "Answer in the language the user writes in.") {
-			t.Errorf("%s legacy auto: want neutral directive: %q", build.name, legacy)
-		}
 	}
 }
 

@@ -1,8 +1,6 @@
 package auth
 
 import (
-	"strings"
-
 	"golang.org/x/text/language"
 	"golang.org/x/text/language/display"
 )
@@ -12,10 +10,9 @@ import (
 // prompts name it in. Both the chat's answer-language directive and the
 // user-facing utility generations (thread title, project description,
 // reasoning title, project memory) use it, so they match. Unset returns "":
-// nothing is pinned, and the output simply follows the user's own language. A
-// legacy "auto" (predating its removal) is treated as unset, defensively.
+// nothing is pinned, and the output simply follows the user's own language.
 func (u User) ResponseLanguageName() string {
-	if u.ResponseLanguage == "" || strings.EqualFold(u.ResponseLanguage, "auto") {
+	if u.ResponseLanguage == "" {
 		return ""
 	}
 	return languageName(u.ResponseLanguage)

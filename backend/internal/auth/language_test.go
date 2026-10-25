@@ -5,8 +5,6 @@ import "testing"
 func TestResponseLanguageName(t *testing.T) {
 	cases := map[string]string{
 		"":        "",
-		"auto":    "",
-		"AUTO":    "",
 		"de":      "German",
 		"en":      "English",
 		"Klingon": "Klingon",
