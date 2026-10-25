@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -35,17 +34,11 @@ type Namer interface {
 	NameSchedule(ctx context.Context, userID, prompt string) (string, error)
 }
 
-// ThreadTitles keeps a schedule's thread titled like the schedule.
-type ThreadTitles interface {
-	SetThreadTitle(ctx context.Context, userID, threadID, title string) error
-}
-
 // Service is the schedule logic the HTTP handlers and the chat tools share.
 type Service struct {
 	Store       *Store
 	Interpreter Interpreter
 	Namer       Namer
-	Threads     ThreadTitles
 	// Now and Rand are the clock and the slot draws; tests fix them.
 	Now  func() time.Time
 	Rand *rand.Rand
@@ -195,22 +188,10 @@ func (s *Service) Update(ctx context.Context, userID, id string, in Input) (Sche
 	if err != nil {
 		return Schedule{}, err
 	}
-	oldName := sch.Name
 	if err := s.apply(ctx, &sch, in, false); err != nil {
 		return Schedule{}, err
 	}
-	saved, err := s.Store.SaveSchedule(ctx, sch)
-	if err != nil {
-		return Schedule{}, err
-	}
-	// The schedule is saved by now: a thread that cannot be renamed is logged,
-	// not reported as a failed save.
-	if saved.Name != oldName && saved.ThreadID != nil && s.Threads != nil {
-		if err := s.Threads.SetThreadTitle(ctx, userID, *saved.ThreadID, saved.Name); err != nil {
-			slog.Warn("rename schedule thread failed", "schedule_id", saved.ID, "err", err)
-		}
-	}
-	return saved, nil
+	return s.Store.SaveSchedule(ctx, sch)
 }
 
 func (s *Service) apply(ctx context.Context, sch *Schedule, in Input, creating bool) error {

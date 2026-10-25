@@ -27,35 +27,24 @@ type fakeNamer struct{ name string }
 
 func (f fakeNamer) NameSchedule(context.Context, string, string) (string, error) { return f.name, nil }
 
-type fakeTitles struct{ titled map[string]string }
-
-func (f *fakeTitles) SetThreadTitle(_ context.Context, _, threadID, title string) error {
-	f.titled[threadID] = title
-	return nil
-}
-
 // sunday is Sunday 25 Oct 2026, 10:00 in Zurich.
 var sunday = time.Date(2026, 10, 25, 9, 0, 0, 0, time.UTC)
 
-func newService(t *testing.T, interp *fakeInterpreter) (*schedule.Service, *fakeTitles) {
+func newService(t *testing.T, interp *fakeInterpreter) *schedule.Service {
 	t.Helper()
-	db := openDB(t)
-	seedThread(t, db, "u1", "th1")
-	titles := &fakeTitles{titled: map[string]string{}}
 	return &schedule.Service{
-		Store:       schedule.NewStore(db),
+		Store:       schedule.NewStore(openDB(t)),
 		Interpreter: interp,
 		Namer:       fakeNamer{name: "Cinema scout"},
-		Threads:     titles,
 		Now:         func() time.Time { return sunday },
 		Rand:        rand.New(rand.NewPCG(1, 2)),
-	}, titles
+	}
 }
 
 func ptr[T any](v T) *T { return &v }
 
 func TestInterpret(t *testing.T) {
-	svc, _ := newService(t, &fakeInterpreter{template: "~ 7~22 * * ~", ok: true})
+	svc := newService(t, &fakeInterpreter{template: "~ 7~22 * * ~", ok: true})
 	p, err := svc.Interpret(context.Background(), " once a week ", "Europe/Zurich")
 	if err != nil {
 		t.Fatalf("Interpret: %v", err)
@@ -89,7 +78,7 @@ func TestInterpretErrors(t *testing.T) {
 		{&fakeInterpreter{ok: true}, "daily", "Mars/Olympus", func(err error) bool { return errors.As(err, new(schedule.ValidationError)) }},
 	}
 	for i, c := range cases {
-		svc, _ := newService(t, c.interp)
+		svc := newService(t, c.interp)
 		if _, err := svc.Interpret(ctx, c.interval, c.tz); !c.want(err) {
 			t.Errorf("case %d: err = %v", i, err)
 		}
@@ -98,7 +87,7 @@ func TestInterpretErrors(t *testing.T) {
 
 func TestCreateNamesAndSchedules(t *testing.T) {
 	interp := &fakeInterpreter{template: "~ 7~22 * * ~", ok: true}
-	svc, _ := newService(t, interp)
+	svc := newService(t, interp)
 	sch, err := svc.Create(context.Background(), "u1", schedule.Input{
 		Prompt: ptr("find films"), Interval: ptr("once a week"), Timezone: ptr("Europe/Zurich"),
 	})
@@ -122,7 +111,7 @@ func TestCreateNamesAndSchedules(t *testing.T) {
 // A prompt past the cap is refused with a message that tells the model how to
 // shorten it: the model reads it as the tool result and retries.
 func TestCreateRefusesALongPromptWithHowToShortenIt(t *testing.T) {
-	svc, _ := newService(t, &fakeInterpreter{template: "~ 7~22 * * ~", ok: true})
+	svc := newService(t, &fakeInterpreter{template: "~ 7~22 * * ~", ok: true})
 	long := strings.Repeat("ä", schedule.MaxPromptLength+1)
 	_, err := svc.Create(context.Background(), "u1", schedule.Input{Prompt: &long, Interval: ptr("daily")})
 	var invalid schedule.ValidationError
@@ -146,7 +135,7 @@ func TestCreateRefusesALongPromptWithHowToShortenIt(t *testing.T) {
 }
 
 func TestCreateFallsBackToPromptAsName(t *testing.T) {
-	svc, _ := newService(t, &fakeInterpreter{template: "0 9 * * *", ok: true})
+	svc := newService(t, &fakeInterpreter{template: "0 9 * * *", ok: true})
 	svc.Namer = nil
 	sch, err := svc.Create(context.Background(), "u1", schedule.Input{Prompt: ptr("look for new sci-fi films in Zurich cinemas every week please"), Interval: ptr("daily")})
 	if err != nil {
@@ -159,7 +148,7 @@ func TestCreateFallsBackToPromptAsName(t *testing.T) {
 
 func TestCreateWithDrawnSlotSkipsTheModel(t *testing.T) {
 	interp := &fakeInterpreter{template: "~ ~ * * *", ok: true}
-	svc, _ := newService(t, interp)
+	svc := newService(t, interp)
 	sch, err := svc.Create(context.Background(), "u1", schedule.Input{
 		Prompt: ptr("p"), Interval: ptr("once a week"), Timezone: ptr("Europe/Zurich"),
 		Template: "~ 7~22 * * ~", Cron: "37 14 * * 4",
@@ -186,26 +175,8 @@ func TestCreateWithDrawnSlotSkipsTheModel(t *testing.T) {
 	}
 }
 
-type failingTitles struct{}
-
-func (failingTitles) SetThreadTitle(context.Context, string, string, string) error {
-	return errors.New("thread gone")
-}
-
-func TestUpdateKeepsTheSaveWhenTheThreadRenameFails(t *testing.T) {
-	ctx := context.Background()
-	svc, _ := newService(t, &fakeInterpreter{template: "0 9 * * *", ok: true})
-	svc.Threads = failingTitles{}
-	sch, _ := svc.Create(ctx, "u1", schedule.Input{Prompt: ptr("p"), Interval: ptr("daily")})
-	_ = svc.Store.SetThread(ctx, "u1", sch.ID, "th1")
-	got, err := svc.Update(ctx, "u1", sch.ID, schedule.Input{Name: ptr("Renamed")})
-	if err != nil || got.Name != "Renamed" {
-		t.Fatalf("Update = %+v, %v", got, err)
-	}
-}
-
 func TestDrawnSlotStillChecksTheInterval(t *testing.T) {
-	svc, _ := newService(t, &fakeInterpreter{ok: true})
+	svc := newService(t, &fakeInterpreter{ok: true})
 	for _, interval := range []string{" ", strings.Repeat("x", 201)} {
 		_, err := svc.Create(context.Background(), "u1", schedule.Input{
 			Prompt: ptr("p"), Interval: ptr(interval), Template: "0 9 * * *", Cron: "0 9 * * *",
@@ -219,18 +190,14 @@ func TestDrawnSlotStillChecksTheInterval(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	ctx := context.Background()
 	interp := &fakeInterpreter{template: "~ 7~22 * * ~", ok: true}
-	svc, titles := newService(t, interp)
+	svc := newService(t, interp)
 	sch, _ := svc.Create(ctx, "u1", schedule.Input{Prompt: ptr("p"), Interval: ptr("once a week"), Timezone: ptr("Europe/Zurich")})
-	_ = svc.Store.SetThread(ctx, "u1", sch.ID, "th1")
 	calls := interp.calls
 
 	// Same interval: no new interpretation, same slot.
 	got, err := svc.Update(ctx, "u1", sch.ID, schedule.Input{Interval: ptr("once a week"), Name: ptr("Renamed")})
-	if err != nil || got.Cron != sch.Cron || interp.calls != calls {
+	if err != nil || got.Cron != sch.Cron || got.Name != "Renamed" || interp.calls != calls {
 		t.Fatalf("update with the same interval = %+v, %v, %d calls", got, err, interp.calls-calls)
-	}
-	if titles.titled["th1"] != "Renamed" {
-		t.Fatalf("thread title = %q", titles.titled["th1"])
 	}
 
 	// Reroll draws again from the stored template.

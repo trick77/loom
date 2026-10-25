@@ -8,9 +8,7 @@ import type { MessageWithActivityTrace } from "./types";
 
 function panel(thread: Thread, messages: MessageWithActivityTrace[]) {
   const handlers = {
-    onContinueInNewThread: vi.fn(),
     onOpenSchedule: vi.fn(),
-    onOpenThread: vi.fn(),
   };
   render(
     <ThreadPanel
@@ -70,32 +68,17 @@ const messages: MessageWithActivityTrace[] = [
   } as MessageWithActivityTrace,
 ];
 
-test("a schedule's thread is read-only and continues in a new thread", () => {
+test("a scheduled run's thread takes follow-ups and links to its schedule", () => {
   const handlers = panel({ ...thread, scheduleId: "s1" }, messages);
-  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-  expect(screen.getByText(/run feed/)).toBeInTheDocument();
-  expect(screen.getByText(/Scheduled run ·/)).toBeInTheDocument();
-
-  const continues = screen.getAllByRole("button", {
-    name: /Continue in new thread/,
-  });
-  expect(continues).toHaveLength(2);
-  fireEvent.click(continues[1]);
-  expect(handlers.onContinueInNewThread).toHaveBeenCalledWith("th1", "a1");
+  expect(screen.getByRole("textbox")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: /Schedule/ }));
   expect(handlers.onOpenSchedule).toHaveBeenCalledWith("s1");
 });
 
-test("a branched thread links back to its source", () => {
-  const handlers = panel(
-    { ...thread, branchedFromThreadId: "th0", branchedFromMessageId: "a0" },
-    messages,
-  );
-  expect(screen.getByRole("textbox")).toBeInTheDocument();
-  expect(screen.queryByText(/Continue in new thread/)).not.toBeInTheDocument();
-  fireEvent.click(
-    screen.getByRole("button", { name: /Continued from another thread/ }),
-  );
-  expect(handlers.onOpenThread).toHaveBeenCalledWith("th0");
+test("a plain thread shows no schedule link", () => {
+  panel(thread, messages);
+  expect(
+    screen.queryByRole("button", { name: /^Schedule$/ }),
+  ).not.toBeInTheDocument();
 });

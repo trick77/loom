@@ -141,9 +141,9 @@ export function ScheduleMenu({
         >
           {item(t("schedules.runNow"), "play", onRunNow)}
           {item(t("schedules.edit"), "edit", onEdit)}
-          {schedule.threadId !== null &&
-            item(t("schedules.openThread"), "messages", () =>
-              onOpenThread(schedule.threadId as string),
+          {schedule.lastRun?.threadId != null &&
+            item(t("schedules.openLatestRun"), "messages", () =>
+              onOpenThread(schedule.lastRun?.threadId as string),
             )}
           <div className="mx-0.5 my-1 h-px bg-[#454540]" />
           {item(t("common.delete"), "trash", onDelete, true)}

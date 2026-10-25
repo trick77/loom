@@ -164,8 +164,6 @@ type ThreadStore interface {
 	SetThreadTitleIfUnchanged(context.Context, string, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
-	BranchThread(context.Context, string, string, string) (chat.Thread, error)
-	SetLastMessageAt(context.Context, string, string, *time.Time) error
 
 	// Messages.
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage, string) (chat.Message, error)
@@ -333,7 +331,6 @@ func newServer(d Deps) *server {
 			Store:       d.Schedules,
 			Interpreter: d.ScheduleLLM,
 			Namer:       scheduleNamer{s: s},
-			Threads:     scheduleThreadTitles{s: s},
 			Now:         s.clock,
 		}
 		s.runs = newScheduleRuns()
@@ -428,7 +425,6 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.HandleFunc("GET /api/shares/{shareID}", s.handleGetPublicShare)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/download", s.handlePublicShareArtifactDownload)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/thumbnail", s.handlePublicShareArtifactThumbnail)
-	mux.Handle("POST /api/threads/{threadID}/messages/{messageID}/branch", s.requireAuth(http.HandlerFunc(s.handleBranchThread)))
 	mux.Handle("GET /api/schedules", s.requireAuth(http.HandlerFunc(s.handleListSchedules)))
 	mux.Handle("POST /api/schedules", s.requireAuth(http.HandlerFunc(s.handleCreateSchedule)))
 	mux.Handle("POST /api/schedules:parse", s.requireAuth(http.HandlerFunc(s.handleParseSchedule)))

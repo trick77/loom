@@ -52,7 +52,7 @@ func (s *server) handleQueueMessage(w http.ResponseWriter, r *http.Request) {
 	} else if !found {
 		writeNotFound(w)
 		return
-	} else if rejectScheduleThread(w, thread) {
+	} else if s.rejectWhileRunning(w, r, user.ID, thread) {
 		return
 	}
 	s.rememberTimezone(user.ID, r)

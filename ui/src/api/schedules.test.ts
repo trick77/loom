@@ -2,7 +2,6 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { AuthExpiredError, UserFacingError } from "./http";
 import {
-  branchThread,
   browserTimezone,
   createSchedule,
   deleteSchedule,
@@ -122,7 +121,7 @@ test("reads and deletes", async () => {
   expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");
 });
 
-test("notifications and branching", async () => {
+test("notifications", async () => {
   let fetchMock = stubFetch(Response.json([]));
   await listNotifications();
   expect(fetchMock).toHaveBeenCalledWith("/api/notifications");
@@ -134,9 +133,6 @@ test("notifications and branching", async () => {
   fetchMock = stubFetch(new Response(null, { status: 204 }));
   await markAllNotificationsRead();
   expect(fetchMock.mock.calls[0][0]).toBe("/api/notifications/read-all");
-  fetchMock = stubFetch(Response.json({ id: "branch" }));
-  await expect(branchThread("t1", "m1")).resolves.toEqual({ id: "branch" });
-  expect(fetchMock.mock.calls[0][0]).toBe("/api/threads/t1/messages/m1/branch");
 });
 
 test("browserTimezone falls back to UTC", () => {

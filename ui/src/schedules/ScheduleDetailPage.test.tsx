@@ -83,7 +83,16 @@ const runs: api.ScheduleRun[] = [
     newCount: 0,
     newLabels: [],
     error: "search provider unavailable",
+    threadId: "th2",
     messageId: null,
+  },
+  {
+    ...(makeSchedule().lastRun as api.ScheduleRun),
+    id: "r3",
+    status: "nothing_new",
+    newCount: 0,
+    newLabels: [],
+    threadId: null,
   },
 ];
 
@@ -115,10 +124,15 @@ test("shows the schedule, its runs and its memory", async () => {
     screen.getByText("Dune: Part Three, Avengers: Doomsday"),
   ).toBeInTheDocument();
   expect(screen.getByText("search provider unavailable")).toBeInTheDocument();
-  expect(screen.getAllByText("41k").length).toBe(2);
+  expect(screen.getAllByText("41k").length).toBe(3);
   expect(screen.getAllByText("1m 48s").length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole("button", { name: "Open turn →" }));
+  // Each run opens its own thread; a run whose thread is gone has no link.
+  const opens = screen.getAllByRole("button", { name: "Open run →" });
+  expect(opens).toHaveLength(2);
+  fireEvent.click(opens[0]);
   expect(p.onOpenThread).toHaveBeenCalledWith("th1");
+  fireEvent.click(opens[1]);
+  expect(p.onOpenThread).toHaveBeenCalledWith("th2");
 
   fireEvent.click(screen.getByRole("tab", { name: "Memory 11" }));
   expect(screen.getByText("Already reported")).toBeInTheDocument();
@@ -169,7 +183,7 @@ test("an auto-disabled schedule offers to enable again", async () => {
   );
 });
 
-test("run now, edit, thread and delete", async () => {
+test("run now, edit and delete", async () => {
   vi.mocked(api.runScheduleNow).mockResolvedValue();
   vi.mocked(api.deleteSchedule).mockResolvedValue();
   const p = props();
@@ -177,8 +191,6 @@ test("run now, edit, thread and delete", async () => {
   await screen.findByRole("heading", { name: "Cinema scout" });
   fireEvent.click(screen.getByRole("button", { name: /Run now/ }));
   expect(await screen.findByText(/Run started/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /^Thread/ }));
-  expect(p.onOpenThread).toHaveBeenCalledWith("th1");
   fireEvent.click(screen.getByRole("button", { name: /Edit/ }));
   expect(
     await screen.findByRole("dialog", { name: "Edit schedule" }),

@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
@@ -62,6 +65,16 @@ func newRunnerSchedule(t *testing.T, f *scheduleFixture) schedule.Schedule {
 	return sch
 }
 
+// lastRunThread is the thread the schedule's latest run started.
+func lastRunThread(t *testing.T, f *scheduleFixture, sch schedule.Schedule) string {
+	t.Helper()
+	runs, err := f.store.ListRuns(context.Background(), testUser.ID, sch.ID, 1)
+	if err != nil || len(runs) != 1 || runs[0].ThreadID == nil {
+		t.Fatalf("latest run = %+v, %v: no thread", runs, err)
+	}
+	return *runs[0].ThreadID
+}
+
 func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
@@ -89,16 +102,14 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if !strings.Contains(client.Histories[0][0].Content, "running a scheduled task") {
 		t.Fatal("the run's system prompt does not say it runs unattended")
 	}
-	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
-	if got.ThreadID == nil {
-		t.Fatal("the run did not create the schedule's thread")
-	}
-	thread, _, _ := f.chat.GetThread(ctx, testUser.ID, *got.ThreadID)
-	if thread.ScheduleID == nil || thread.Title != "Cinema scout" {
+	firstThread := lastRunThread(t, f, sch)
+	thread, _, _ := f.chat.GetThread(ctx, testUser.ID, firstThread)
+	if thread.ScheduleID == nil || *thread.ScheduleID != sch.ID || !strings.HasPrefix(thread.Title, "Cinema scout · ") {
 		t.Fatalf("thread = %+v", thread)
 	}
 	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
-	if len(notes) != 1 || notes[0].Title != "Cinema scout: 1 new" || notes[0].Body != "Dune: Part Three" || notes[0].MessageID == nil {
+	if len(notes) != 1 || notes[0].Title != "Cinema scout: 1 new" || notes[0].Body != "Dune: Part Three" || notes[0].MessageID == nil ||
+		notes[0].ThreadID == nil || *notes[0].ThreadID != firstThread {
 		t.Fatalf("notifications = %+v", notes)
 	}
 	findings, _ := f.store.ListFindings(ctx, testUser.ID, sch.ID)
@@ -109,13 +120,11 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if len(sources) != 1 || sources[0].URLKey != "arena.ch/programm" || sources[0].Finds != 1 || sources[0].Runs != 1 {
 		t.Fatalf("sources = %+v", sources)
 	}
-	activityAfterNews := thread.LastMessageAt
 
-	// The second run reports the same film: nothing new, no notification, and
-	// the thread stays where it was in the recents.
-	time.Sleep(1100 * time.Millisecond)
+	// The second run reports the same film: nothing new, no notification, in
+	// a fresh thread of its own.
 	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
-	s.runSchedule(ctx, got)
+	s.runSchedule(ctx, sch)
 	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 2 || runs[0].Status != schedule.StatusNothingNew || runs[0].NewCount != 0 {
 		t.Fatalf("second run = %+v", runs[0])
@@ -123,9 +132,14 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 1 {
 		t.Fatalf("a run without news notified: %+v", notes)
 	}
-	thread, _, _ = f.chat.GetThread(ctx, testUser.ID, *got.ThreadID)
-	if !thread.LastMessageAt.Equal(*activityAfterNews) {
-		t.Fatalf("thread activity moved from %v to %v on a run without news", activityAfterNews, thread.LastMessageAt)
+	secondThread := lastRunThread(t, f, sch)
+	if secondThread == firstThread {
+		t.Fatal("the second run wrote into the first run's thread")
+	}
+	for _, id := range []string{firstThread, secondThread} {
+		if messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, id); len(messages) != 2 || messages[0].Content != "find new films" {
+			t.Fatalf("thread %s = %+v, want the run's prompt and answer only", id, messages)
+		}
 	}
 	// The second run saw the schedule's memory, and the extractor the known key.
 	last := client.Histories[len(client.Histories)-1][0].Content
@@ -250,38 +264,9 @@ func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
 			t.Fatalf("the last call (tools %d, memory %v) is not the tool-free one with the memory", len(client.Tools[i]), hasMemory)
 		}
 	}
-	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
-	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
 	if answer := messages[len(messages)-1].Content; answer != "One new talk on agents in banks [1]." {
 		t.Fatalf("answer = %q, want the tool-free call's", answer)
-	}
-}
-
-func TestScheduledRunIgnoresAProjectItsThreadWasMovedInto(t *testing.T) {
-	ctx := context.Background()
-	f := newScheduleFixture(t)
-	client := &fakeToolChatClient{Results: append(researchRound("Nothing new."), researchRound("Still nothing.")...)}
-	s := newRunnerServer(t, f, client)
-	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch)
-	project, err := f.chat.CreateProject(ctx, testUser.ID, chat.CreateProjectInput{Name: "Bank"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.chat.UpsertProjectMemory(ctx, testUser.ID, project.ID, "Project secret: merger talks with another bank.", 1); err != nil {
-		t.Fatal(err)
-	}
-	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
-	if _, _, err := f.chat.UpdateThread(ctx, testUser.ID, *got.ThreadID, chat.UpdateThreadInput{ProjectID: chat.ProjectIDUpdate{Set: true, Value: &project.ID}}); err != nil {
-		t.Fatal(err)
-	}
-	s.runSchedule(ctx, got)
-	for i, history := range client.Histories {
-		for _, m := range history {
-			if strings.Contains(m.Content, "merger talks") {
-				t.Fatalf("call %d carries the project memory", i)
-			}
-		}
 	}
 }
 
@@ -302,8 +287,7 @@ func TestScheduledRunAnswersFromTheToolFreeCall(t *testing.T) {
 	if strings.Contains(client.Histories[2][0].Content, "single word DONE") {
 		t.Fatal("the call that writes the answer is told to reply DONE")
 	}
-	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
-	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
 	if answer := messages[len(messages)-1].Content; answer != "Nothing new." {
 		t.Fatalf("answer = %q, want the tool-free call's", answer)
 	}
@@ -317,8 +301,7 @@ func TestScheduledAnswerDropsImages(t *testing.T) {
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
 	s.runSchedule(ctx, sch)
-	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
-	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
 	answer := messages[len(messages)-1]
 	if strings.Contains(answer.Content, "![") || strings.Contains(answer.Content, "evil.example") {
 		t.Fatalf("answer still loads an image: %q", answer.Content)
@@ -418,7 +401,7 @@ func TestScheduledRunCutByShutdownLeavesANote(t *testing.T) {
 	cancel()
 	<-finished
 	got, _ := f.store.GetSchedule(context.Background(), testUser.ID, sch.ID)
-	messages, _, _ := f.chat.ListMessages(context.Background(), testUser.ID, *got.ThreadID)
+	messages, _, _ := f.chat.ListMessages(context.Background(), testUser.ID, lastRunThread(t, f, sch))
 	if len(messages) != 2 || !strings.Contains(messages[1].Content, "interrupted by a restart") {
 		t.Fatalf("thread = %+v", messages)
 	}
@@ -523,7 +506,7 @@ func TestScheduledRunFirstTimeoutKeepsTheSchedule(t *testing.T) {
 	if notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 0 {
 		t.Fatalf("one timeout notified: %+v", notes)
 	}
-	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
 	if len(messages) != 2 || !strings.Contains(messages[1].Content, "took longer than 5 minutes and was stopped") {
 		t.Fatalf("thread = %+v", messages)
 	}
@@ -544,7 +527,11 @@ func TestScheduledRunSecondTimeoutInARowDisablesTheSchedule(t *testing.T) {
 	if len(notes) != 1 || notes[0].Kind != schedule.KindScheduleDisabled || !strings.Contains(notes[0].Body, "Two runs in a row took longer than 5 minutes") {
 		t.Fatalf("notifications = %+v", notes)
 	}
-	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	thread := lastRunThread(t, f, sch)
+	if notes[0].ThreadID == nil || *notes[0].ThreadID != thread {
+		t.Fatalf("notification thread = %v, want the run's %s", notes[0].ThreadID, thread)
+	}
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, thread)
 	if len(messages) != 2 || !strings.Contains(messages[1].Content, "disabled") {
 		t.Fatalf("thread = %+v", messages)
 	}
@@ -628,8 +615,7 @@ func TestScheduledToolRoundsAskForTheLeastReasoning(t *testing.T) {
 	if final := client.metas[1]; final.Purpose != "chat_final" || final.LeastReasoning {
 		t.Fatalf("final = %+v, want the turn's level", final)
 	}
-	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
-	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
 	if len(messages) != 2 || messages[1].Content != "Nothing new." {
 		t.Fatalf("thread = %+v, want the final's answer", messages)
 	}
@@ -719,27 +705,12 @@ func TestScheduledRunFailureLeavesANote(t *testing.T) {
 	if !got.Enabled {
 		t.Fatal("a failed run disabled the schedule")
 	}
-	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
 	if len(messages) != 2 || !strings.HasPrefix(messages[1].Content, "This scheduled run failed") {
 		t.Fatalf("thread = %+v", messages)
 	}
 	if notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 0 {
 		t.Fatalf("a failed run notified: %+v", notes)
-	}
-}
-
-func TestScheduledRunRecreatesADeletedThread(t *testing.T) {
-	ctx := context.Background()
-	f := newScheduleFixture(t)
-	client := researchClient("Nothing new.")
-	s := newRunnerServer(t, f, client)
-	sch := newRunnerSchedule(t, f)
-	gone := "gone"
-	sch.ThreadID = &gone
-	s.runSchedule(ctx, sch)
-	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
-	if got.ThreadID == nil || *got.ThreadID == gone {
-		t.Fatalf("thread = %v", got.ThreadID)
 	}
 }
 
@@ -883,19 +854,59 @@ func TestScheduleToolRunner(t *testing.T) {
 	}
 }
 
-func TestScheduleNamerAndTitles(t *testing.T) {
+// promptlessStore refuses to store a message.
+type promptlessStore struct{ *chat.Store }
+
+func (promptlessStore) AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage, string) (chat.Message, error) {
+	return chat.Message{}, errors.New("database is locked")
+}
+
+func TestScheduledRunDropsAThreadItCannotFill(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
+	f.deps.Thread = promptlessStore{f.chat}
 	s := newServer(f.deps)
-	if name, err := (scheduleNamer{s: s}).NameSchedule(ctx, testUser.ID, "find films"); err != nil || name != "Cinema scout" {
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error != "could not store the prompt" || runs[0].ThreadID != nil {
+		t.Fatalf("run = %+v", runs)
+	}
+	if threads, _ := f.chat.ListThreads(ctx, testUser.ID, chat.ListThreadsOptions{}); len(threads) != 0 {
+		t.Fatalf("an empty run thread stayed: %+v", threads)
+	}
+}
+
+func TestRejectWhileRunningReportsAStoreFailure(t *testing.T) {
+	f := newScheduleFixture(t)
+	s := newServer(f.deps)
+	scheduleID := "s1"
+	_ = f.db.Close()
+	rec := httptest.NewRecorder()
+	if !s.rejectWhileRunning(rec, httptest.NewRequest(http.MethodPost, "/", nil), testUser.ID, chat.Thread{ID: "t", ScheduleID: &scheduleID}) {
+		t.Fatal("a failed check let the message through")
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
+func TestRunThreadTitle(t *testing.T) {
+	start := time.Date(2026, 10, 22, 12, 37, 0, 0, time.UTC)
+	sch := schedule.Schedule{Name: "Cinema scout", Timezone: "Europe/Zurich"}
+	if got := runThreadTitle(sch, start); got != "Cinema scout · 2026-10-22 14:37" {
+		t.Fatalf("title = %q", got)
+	}
+	sch.Timezone = "Mars/Olympus"
+	if got := runThreadTitle(sch, start); got != "Cinema scout · 2026-10-22 12:37" {
+		t.Fatalf("title with a bad zone = %q", got)
+	}
+}
+
+func TestScheduleNamer(t *testing.T) {
+	f := newScheduleFixture(t)
+	s := newServer(f.deps)
+	if name, err := (scheduleNamer{s: s}).NameSchedule(context.Background(), testUser.ID, "find films"); err != nil || name != "Cinema scout" {
 		t.Fatalf("name = %q, %v", name, err)
-	}
-	thread, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "old"})
-	if err := (scheduleThreadTitles{s: s}).SetThreadTitle(ctx, testUser.ID, thread.ID, "new"); err != nil {
-		t.Fatal(err)
-	}
-	got, _, _ := f.chat.GetThread(ctx, testUser.ID, thread.ID)
-	if got.Title != "new" {
-		t.Fatalf("title = %q", got.Title)
 	}
 }

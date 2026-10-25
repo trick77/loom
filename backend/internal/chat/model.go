@@ -148,13 +148,9 @@ type Thread struct {
 	CreatedAt     time.Time  `json:"createdAt"`
 	UpdatedAt     time.Time  `json:"updatedAt"`
 	LastMessageAt *time.Time `json:"lastMessageAt"`
-	// ScheduleID is the schedule whose run feed this thread is; such a thread
-	// takes no messages from the user. nil for every other thread.
+	// ScheduleID is the schedule whose run started this thread; nil for every
+	// other thread, and once the schedule is gone.
 	ScheduleID *string `json:"scheduleId"`
-	// BranchedFromThreadID and BranchedFromMessageID name the answer this
-	// thread was continued from; nil when it was not, or the source is gone.
-	BranchedFromThreadID  *string `json:"branchedFromThreadId"`
-	BranchedFromMessageID *string `json:"branchedFromMessageId"`
 	// Shared is true when an active public share link exists for this thread
 	// (a shared_threads row with shared=1). Populated by ListThreads so chat
 	// lists can badge shared threads; left false on single-thread fetches,
@@ -297,6 +293,9 @@ type UpdateProjectInput struct {
 type CreateThreadInput struct {
 	ProjectID *string
 	Title     string
+	// ScheduleID marks the thread a scheduled run starts; set by the runner
+	// only, never from a request.
+	ScheduleID *string
 }
 
 // ProjectIDUpdate encodes the semantics of updating a thread's project

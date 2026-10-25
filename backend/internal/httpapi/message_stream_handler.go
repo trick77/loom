@@ -66,7 +66,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w)
 		return
 	}
-	if rejectScheduleThread(w, thread) {
+	if s.rejectWhileRunning(w, r, user.ID, thread) {
 		return
 	}
 	s.rememberTimezone(user.ID, r)

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
@@ -235,42 +236,28 @@ func TestNotificationEndpoints(t *testing.T) {
 	}
 }
 
-func TestBranchEndpoint(t *testing.T) {
+func TestRunThreadTakesAFollowUp(t *testing.T) {
 	f := newScheduleFixture(t)
 	ctx := context.Background()
-	thread, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "t"})
-	question, _ := f.chat.AddMessageWithAttachments(ctx, testUser.ID, thread.ID, chat.RoleUser, "q", nil, nil, "")
-	answer, _ := f.chat.AddMessageWithCitations(ctx, testUser.ID, thread.ID, chat.RoleAssistant, "a", chat.MessageTokenUsage{}, nil, nil, nil, nil)
-	// A plain thread's answers do not branch.
-	if rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/messages/"+answer.ID+"/branch", ""); rec.Code != http.StatusBadRequest {
-		t.Fatalf("branch from a plain thread = %d", rec.Code)
-	}
 	sch, _ := f.store.CreateSchedule(ctx, schedule.Schedule{UserID: testUser.ID, Name: "s", Prompt: "p", IntervalText: "i", CronTemplate: "0 9 * * *", Cron: "0 9 * * *", Timezone: "UTC", Enabled: true})
-	_ = f.store.SetThread(ctx, testUser.ID, sch.ID, thread.ID)
-	rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/messages/"+answer.ID+"/branch", "")
-	branch := decodeInto[chat.Thread](t, rec)
-	if rec.Code != http.StatusCreated || branch.BranchedFromMessageID == nil || *branch.BranchedFromMessageID != answer.ID {
-		t.Fatalf("branch = %d %+v", rec.Code, branch)
-	}
-	if rec = f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/messages/"+question.ID+"/branch", ""); rec.Code != http.StatusBadRequest {
-		t.Fatalf("branch from question = %d", rec.Code)
-	}
-	if rec = f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/messages/nope/branch", ""); rec.Code != http.StatusNotFound {
-		t.Fatalf("branch from unknown = %d", rec.Code)
-	}
-}
-
-func TestScheduleThreadIsReadOnly(t *testing.T) {
-	f := newScheduleFixture(t)
-	ctx := context.Background()
-	thread, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Cinema scout"})
-	sch, _ := f.store.CreateSchedule(ctx, schedule.Schedule{UserID: testUser.ID, Name: "s", Prompt: "p", IntervalText: "i", CronTemplate: "0 9 * * *", Cron: "0 9 * * *", Timezone: "UTC", Enabled: true})
-	_ = f.store.SetThread(ctx, testUser.ID, sch.ID, thread.ID)
+	thread, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Cinema scout", ScheduleID: &sch.ID})
+	runID, _ := f.store.StartRun(ctx, testUser.ID, sch.ID, time.Now())
+	_ = f.store.AttachRunThread(ctx, testUser.ID, runID, thread.ID)
+	// While the run still writes the thread, nothing joins it.
 	for _, path := range []string{"messages:stream", "messages:queue"} {
-		rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/"+path, `{"content":"hi","clientMessageId":"c1"}`)
+		rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/"+path, `{"content":"too early","clientMessageId":"c0"}`)
 		if rec.Code != http.StatusConflict {
-			t.Errorf("%s into a schedule thread = %d %s", path, rec.Code, rec.Body)
+			t.Fatalf("%s during the run = %d %s", path, rec.Code, rec.Body)
 		}
+	}
+	_ = f.store.FinishRun(ctx, testUser.ID, schedule.Run{ID: runID, Status: schedule.StatusNothingNew}, time.Now())
+	rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"tell me more","clientMessageId":"c1"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("follow-up in a run thread = %d %s", rec.Code, rec.Body)
+	}
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, thread.ID)
+	if len(messages) == 0 || messages[0].Content != "tell me more" {
+		t.Fatalf("thread = %+v", messages)
 	}
 }
 

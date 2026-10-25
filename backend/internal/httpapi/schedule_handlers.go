@@ -388,33 +388,20 @@ func (s *server) markNotificationsRead(w http.ResponseWriter, r *http.Request, i
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleBranchThread continues one of the user's answers in a new thread.
-func (s *server) handleBranchThread(w http.ResponseWriter, r *http.Request) {
-	user, ok := currentUser(w, r)
-	if !ok {
-		return
-	}
-	thread, err := s.thread.BranchThread(r.Context(), user.ID, r.PathValue("threadID"), r.PathValue("messageID"))
-	switch {
-	case errors.Is(err, chat.ErrThreadNotFound):
-		writeNotFound(w)
-		return
-	case errors.Is(err, chat.ErrNotAnAnswer), errors.Is(err, chat.ErrNotBranchable):
-		httpx.WriteError(w, http.StatusBadRequest, err.Error())
-		return
-	case err != nil:
-		serverError(w, r, err, "branch thread failed")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusCreated, thread)
-}
-
-// rejectScheduleThread answers 409 when the thread is a schedule's run feed:
-// nobody writes into it but its runs.
-func rejectScheduleThread(w http.ResponseWriter, thread chat.Thread) bool {
-	if thread.ScheduleID == nil {
+// rejectWhileRunning answers 409 while a scheduled run still writes the
+// thread: the run's turn is not a stream the user's message could queue on,
+// and a second turn beside it would interleave the two answers.
+func (s *server) rejectWhileRunning(w http.ResponseWriter, r *http.Request, userID string, thread chat.Thread) bool {
+	if thread.ScheduleID == nil || s.schedules == nil {
 		return false
 	}
-	httpx.WriteError(w, http.StatusConflict, "a schedule's thread is read-only; continue in a new thread")
-	return true
+	running, err := s.schedules.RunningInThread(r.Context(), userID, thread.ID)
+	if err != nil {
+		serverError(w, r, err, "check scheduled run failed")
+		return true
+	}
+	if running {
+		httpx.WriteError(w, http.StatusConflict, "the scheduled run is still writing this thread; send your message once it is done")
+	}
+	return running
 }
