@@ -88,6 +88,7 @@ func TestService_Upload_writesFileArtifactAndDocument(t *testing.T) {
 
 	doc, art, err := svc.Upload(ctx, UploadInput{
 		UserID:   "u",
+		ThreadID: "thread_1",
 		Filename: "Report.pdf",
 		Reader:   strings.NewReader("PDF-BYTES"),
 	})
@@ -116,12 +117,32 @@ func TestService_Upload_rejectsDisallowedFormat(t *testing.T) {
 	}
 }
 
+// An upload with neither a project nor a thread would be user-global and leak
+// into every project-less chat; it is refused before anything is written.
+func TestService_Upload_rejectsMissingScope(t *testing.T) {
+	svc, _, usersDir := newTestService(t)
+	for _, threadID := range []string{"", "  "} {
+		if _, _, err := svc.Upload(context.Background(), UploadInput{
+			UserID:   "u",
+			ThreadID: threadID,
+			Filename: "a.txt",
+			Reader:   strings.NewReader("hi"),
+		}); !errors.Is(err, ErrMissingScope) {
+			t.Fatalf("Upload(thread %q) error = %v, want ErrMissingScope", threadID, err)
+		}
+	}
+	if entries, _ := os.ReadDir(usersDir); len(entries) != 0 {
+		t.Fatalf("users dir holds %d entries after rejected uploads, want 0", len(entries))
+	}
+}
+
 func TestService_Upload_rejectsContentOverSizeLimit(t *testing.T) {
 	svc, _, usersDir := newTestService(t)
 	oversized := strings.NewReader(strings.Repeat("x", artifact.MaxArtifactSizeBytes+1))
 
 	if _, _, err := svc.Upload(context.Background(), UploadInput{
 		UserID:   "u",
+		ThreadID: "thread_1",
 		Filename: "big.txt",
 		Reader:   oversized,
 	}); !errors.Is(err, ErrTooLarge) {
@@ -197,7 +218,7 @@ func TestService_Upload_rejectsWhenThreadUploadLimitReachedByImages(t *testing.T
 func TestService_Index_delegatesToIndexer(t *testing.T) {
 	svc, idx, _ := newTestService(t)
 	ctx := context.Background()
-	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 	if err := svc.Index(ctx, "u", doc.ID); err != nil {
 		t.Fatalf("Index: %v", err)
 	}
@@ -209,7 +230,7 @@ func TestService_Index_delegatesToIndexer(t *testing.T) {
 func TestService_Delete_removesFileArtifactAndDocument(t *testing.T) {
 	svc, _, usersDir := newTestService(t)
 	ctx := context.Background()
-	doc, art, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, art, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 
 	if err := svc.Delete(ctx, "u", doc.ID); err != nil {
 		t.Fatalf("Delete: %v", err)
@@ -228,7 +249,7 @@ func TestService_Delete_removesFileArtifactAndDocument(t *testing.T) {
 func TestService_DeleteForArtifact_deletesOnlyABackedDocument(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	doc, art, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, art, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 
 	if deleted, err := svc.DeleteForArtifact(ctx, "other", art.ID); err != nil || deleted {
 		t.Fatalf("DeleteForArtifact(foreign user) = %v, %v; want false, nil", deleted, err)
@@ -256,7 +277,7 @@ func (failingDeleteArtifacts) Delete(context.Context, string, string) error {
 func TestService_Delete_reportsAFailedArtifactDelete(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	ctx := context.Background()
-	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 	svc.artifacts = failingDeleteArtifacts{svc.artifacts}
 
 	if err := svc.Delete(ctx, "u", doc.ID); err == nil {
@@ -297,14 +318,15 @@ func TestService_Retrieve_recordsQueryEmbeddingCostOnTheTurn(t *testing.T) {
 	svc, _, _ := newTestService(t)
 	svc.SetUsageRecorder(&recordingUsage{})
 	ctx := context.Background()
-	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 	v := make([]float32, 1536)
 	v[0] = 1
 	if err := svc.store.ReplaceChunks(ctx, "u", doc.ID, []rag.TextChunk{{Text: "hello"}}, [][]float32{v}); err != nil {
 		t.Fatalf("seed chunks: %v", err)
 	}
+	threadID := "thread_1"
 	acc := llm.NewUsageAccumulator()
-	if _, err := svc.Retrieve(llm.WithUsageAccumulator(ctx, acc), "u", nil, nil, "what is hello", 5); err != nil {
+	if _, err := svc.Retrieve(llm.WithUsageAccumulator(ctx, acc), "u", nil, &threadID, "what is hello", 5); err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}
 	if nano, _ := acc.TurnCost(); nano != 42 {
@@ -345,14 +367,15 @@ func TestService_Retrieve_embedsQueryAndReturnsChunks(t *testing.T) {
 	usage := &recordingUsage{}
 	svc.SetUsageRecorder(usage)
 	ctx := context.Background()
-	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 	// Directly index chunks via the store to avoid Tika in this unit test.
 	v := make([]float32, 1536)
 	v[0] = 1
 	if err := svc.store.ReplaceChunks(ctx, "u", doc.ID, []rag.TextChunk{{Text: "hello"}}, [][]float32{v}); err != nil {
 		t.Fatalf("seed chunks: %v", err)
 	}
-	res, err := svc.Retrieve(ctx, "u", nil, nil, "what is hello", 5)
+	threadID := "thread_1"
+	res, err := svc.Retrieve(ctx, "u", nil, &threadID, "what is hello", 5)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}
@@ -371,7 +394,7 @@ func TestService_Index_isSingleFlightPerDocument(t *testing.T) {
 	idx.entered = make(chan struct{}, 1)
 	idx.block = make(chan struct{})
 	ctx := context.Background()
-	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 
 	first := make(chan error, 1)
 	go func() { first <- svc.Index(ctx, "u", doc.ID) }()
@@ -398,7 +421,7 @@ func TestService_Index_timesOutAndRecordsFailure(t *testing.T) {
 	defer close(idx.block)
 	svc.SetIndexTimeout(20 * time.Millisecond)
 	ctx := context.Background()
-	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 
 	if err := svc.Index(ctx, "u", doc.ID); err == nil {
 		t.Fatal("Index() error = nil, want a timeout")
@@ -420,7 +443,7 @@ func TestService_Delete_cancelsRunningIngest(t *testing.T) {
 	idx.entered = make(chan struct{}, 1)
 	idx.block = make(chan struct{})
 	ctx := context.Background()
-	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 
 	first := make(chan error, 1)
 	go func() { first <- svc.Index(ctx, "u", doc.ID) }()
@@ -449,7 +472,7 @@ func TestService_Delete_givesUpOnAStuckIngest(t *testing.T) {
 	idx.block = make(chan struct{})
 	idx.ignoreCancel = true
 	ctx := context.Background()
-	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", Filename: "a.txt", Reader: strings.NewReader("hi")})
+	doc, _, _ := svc.Upload(ctx, UploadInput{UserID: "u", ThreadID: "thread_1", Filename: "a.txt", Reader: strings.NewReader("hi")})
 
 	first := make(chan error, 1)
 	go func() { first <- svc.Index(ctx, "u", doc.ID) }()
