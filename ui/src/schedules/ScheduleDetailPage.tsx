@@ -177,16 +177,6 @@ export function ScheduleDetailPage({
               <Icon name="edit" size="14px" />
               {t("schedules.edit")}
             </button>
-            {schedule.threadId !== null && (
-              <button
-                type="button"
-                className={secondaryButton}
-                onClick={() => onOpenThread(schedule.threadId as string)}
-              >
-                <Icon name="messages" size="14px" />
-                {t("schedules.detail.thread")}
-              </button>
-            )}
             <button
               type="button"
               aria-label={t("common.delete")}
@@ -304,18 +294,15 @@ export function ScheduleDetailPage({
                         {formatDuration(run.durationMs)}
                       </td>
                       <td className="whitespace-nowrap border-b border-[#2a2a28] px-2 py-2.5">
-                        {run.messageId !== null &&
-                          schedule.threadId !== null && (
-                            <button
-                              type="button"
-                              className="text-[13px] text-accent-strong hover:underline"
-                              onClick={() =>
-                                onOpenThread(schedule.threadId as string)
-                              }
-                            >
-                              {t("schedules.detail.openTurn")}
-                            </button>
-                          )}
+                        {run.threadId !== null && (
+                          <button
+                            type="button"
+                            className="text-[13px] text-accent-strong hover:underline"
+                            onClick={() => onOpenThread(run.threadId as string)}
+                          >
+                            {t("schedules.detail.openRun")}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

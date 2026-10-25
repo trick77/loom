@@ -11,7 +11,6 @@ export function makeSchedule(overrides: Partial<Schedule> = {}): Schedule {
     template: "~ 7~22 * * ~",
     timezone: "Europe/Zurich",
     enabled: true,
-    threadId: "th1",
     nextRunAt: "2026-10-29T13:37:00Z",
     running: false,
     disabledReason: "",
@@ -23,6 +22,7 @@ export function makeSchedule(overrides: Partial<Schedule> = {}): Schedule {
     lastRun: {
       id: "r1",
       scheduleId: "s1",
+      threadId: "th1",
       messageId: "m1",
       startedAt: "2026-10-22T12:37:00Z",
       finishedAt: "2026-10-22T12:39:00Z",

@@ -13,7 +13,6 @@ import { describeActionError } from "./actionErrors";
 import {
   DEFAULT_THREAD_TITLE,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-  branchThread,
   createThread,
   type AppNotification,
   deleteQueuedMessage,
@@ -718,21 +717,6 @@ export function ThreadShell({
       go({ view: "thread", threadID });
     },
     [go, onThread, closeMobileSidebar],
-  );
-
-  // continueInNewThread copies a scheduled run's answer into a normal thread
-  // and opens it, ready for a follow-up question.
-  const continueInNewThread = useCallback(
-    async (threadID: string, messageID: string) => {
-      try {
-        const branch = await branchThread(threadID, messageID);
-        setThreads((current) => upsertThreadById(current, branch));
-        void selectThread(branch.id);
-      } catch (error) {
-        handleActionError(error, t("thread.continueFailed"), reportShellError);
-      }
-    },
-    [selectThread, t, setThreads, handleActionError, reportShellError],
   );
 
   // A notification opens the run's thread; an auto-disable opens the
@@ -1859,9 +1843,7 @@ export function ThreadShell({
             }
             onToggleThreadMenu={toggleThreadMenu}
             onCloseThreadMenu={closeThreadMenu}
-            onContinueInNewThread={continueInNewThread}
             onOpenSchedule={navigateToSchedule}
-            onOpenThread={(threadID) => void selectThread(threadID)}
           />
         )}
       </main>

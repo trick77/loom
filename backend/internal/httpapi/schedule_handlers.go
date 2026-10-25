@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/ship/kit/httpx"
 )
@@ -386,35 +385,4 @@ func (s *server) markNotificationsRead(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// handleBranchThread continues one of the user's answers in a new thread.
-func (s *server) handleBranchThread(w http.ResponseWriter, r *http.Request) {
-	user, ok := currentUser(w, r)
-	if !ok {
-		return
-	}
-	thread, err := s.thread.BranchThread(r.Context(), user.ID, r.PathValue("threadID"), r.PathValue("messageID"))
-	switch {
-	case errors.Is(err, chat.ErrThreadNotFound):
-		writeNotFound(w)
-		return
-	case errors.Is(err, chat.ErrNotAnAnswer), errors.Is(err, chat.ErrNotBranchable):
-		httpx.WriteError(w, http.StatusBadRequest, err.Error())
-		return
-	case err != nil:
-		serverError(w, r, err, "branch thread failed")
-		return
-	}
-	httpx.WriteJSON(w, http.StatusCreated, thread)
-}
-
-// rejectScheduleThread answers 409 when the thread is a schedule's run feed:
-// nobody writes into it but its runs.
-func rejectScheduleThread(w http.ResponseWriter, thread chat.Thread) bool {
-	if thread.ScheduleID == nil {
-		return false
-	}
-	httpx.WriteError(w, http.StatusConflict, "a schedule's thread is read-only; continue in a new thread")
-	return true
 }

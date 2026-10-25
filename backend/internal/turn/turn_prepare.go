@@ -230,8 +230,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		},
 		func() { userContext = t.e.memory.UserContext(in.ReqCtx, t.user.ID) },
 		// A scheduled run brings no project memory, knowledge or documents
-		// into rounds that read untrusted pages, even if its thread was moved
-		// into a project.
+		// into rounds that read untrusted pages.
 		func() {
 			if !scheduled {
 				projectContext = t.e.memory.ProjectContext(in.ReqCtx, t.user.ID, t.thread)

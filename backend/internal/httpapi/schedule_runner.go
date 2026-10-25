@@ -192,7 +192,7 @@ func (o *observations) list() []schedule.ToolOutcome {
 }
 
 // runSchedule carries out one run of a claimed schedule: its prompt as a
-// headless turn in the schedule's thread, then the findings, the memory, the
+// headless turn in a thread of its own, then the findings, the memory, the
 // run record and, when there is news, a notification.
 func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	detached := context.WithoutCancel(ctx)
@@ -234,13 +234,15 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		run.Error = "the account is gone"
 		return
 	}
-	thread, err := s.scheduleThread(detached, user, sch)
+	thread, err := s.thread.CreateThread(detached, user.ID, chat.CreateThreadInput{Title: sch.Name})
 	if err != nil {
-		slog.Warn("schedule thread failed", "schedule_id", sch.ID, "err", err)
-		run.Error = "could not open the schedule's thread"
+		slog.Warn("create run thread failed", "schedule_id", sch.ID, "err", err)
+		run.Error = "could not open a thread for the run"
 		return
 	}
-	previousActivity := thread.LastMessageAt
+	if err := s.schedules.AttachRunThread(detached, user.ID, runID, thread.ID); err != nil {
+		slog.Warn("attach run thread failed", "schedule_id", sch.ID, "err", err)
+	}
 	userMessage, err := s.thread.AddMessageWithAttachments(detached, user.ID, thread.ID, chat.RoleUser, sch.Prompt, nil, nil, "")
 	if err != nil {
 		slog.Warn("persist schedule prompt failed", "schedule_id", sch.ID, "err", err)
@@ -297,13 +299,11 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 			int(schedule.RunTimeout/time.Minute)))
 		return
 	}
-	// failWith ends a run without an answer: a line in the thread says why,
-	// and the thread keeps its place in the recents.
+	// failWith ends a run without an answer: a line in the thread says why.
 	failWith := func(message, note string) {
 		run.Error = message
 		noteThread = ""
 		s.persistRunNote(detached, user.ID, thread.ID, note)
-		s.restoreActivity(detached, user.ID, thread.ID, previousActivity)
 	}
 	if ctx.Err() != nil {
 		// Shutdown: the run is not the schedule's fault.
@@ -331,7 +331,6 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		// A stalled answer is kept for the reader, but its cut-off list is no
 		// record of what is new: the next run reports the rest.
 		run.Error = "the answer was cut off"
-		s.restoreActivity(detached, user.ID, thread.ID, previousActivity)
 		return
 	}
 
@@ -351,7 +350,6 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		run.Status = schedule.StatusNothingNew
 	}
 	if len(fresh) == 0 {
-		s.restoreActivity(detached, user.ID, thread.ID, previousActivity)
 		return
 	}
 	labels := make([]string, len(fresh))
@@ -394,29 +392,6 @@ func (s *server) recordFindings(ctx context.Context, userID string, sch schedule
 		slog.Warn("record schedule memory failed", "schedule_id", sch.ID, "err", err)
 	}
 	return fresh
-}
-
-// scheduleThread returns the schedule's thread, creating it on the first run
-// or after the user deleted it.
-func (s *server) scheduleThread(ctx context.Context, user auth.User, sch schedule.Schedule) (chat.Thread, error) {
-	if sch.ThreadID != nil {
-		thread, found, err := s.thread.GetThread(ctx, user.ID, *sch.ThreadID)
-		if err != nil {
-			return chat.Thread{}, err
-		}
-		if found {
-			return thread, nil
-		}
-	}
-	thread, err := s.thread.CreateThread(ctx, user.ID, chat.CreateThreadInput{Title: sch.Name})
-	if err != nil {
-		return chat.Thread{}, err
-	}
-	if err := s.schedules.SetThread(ctx, user.ID, sch.ID, thread.ID); err != nil {
-		return chat.Thread{}, err
-	}
-	thread.ScheduleID = &sch.ID
-	return thread, nil
 }
 
 // previousRunTimedOut reports whether the run before runID also went past the
@@ -471,14 +446,6 @@ func (s *server) persistRunNote(ctx context.Context, userID, threadID, note stri
 	}
 }
 
-// restoreActivity keeps a run without news from moving its thread up the
-// recents.
-func (s *server) restoreActivity(ctx context.Context, userID, threadID string, at *time.Time) {
-	if err := s.thread.SetLastMessageAt(ctx, userID, threadID, at); err != nil {
-		slog.Warn("restore thread activity failed", "thread_id", threadID, "err", err)
-	}
-}
-
 func (s *server) notify(ctx context.Context, userID string, n schedule.Notification) {
 	if err := s.schedules.CreateNotification(ctx, userID, n); err != nil {
 		slog.Warn("create notification failed", "err", err)
@@ -494,12 +461,4 @@ func (n scheduleNamer) NameSchedule(ctx context.Context, userID, prompt string) 
 		language = user.ResponseLanguageName()
 	}
 	return n.s.llm.GenerateThreadTitle(ctx, prompt, "", language)
-}
-
-// scheduleThreadTitles renames a schedule's thread with the schedule.
-type scheduleThreadTitles struct{ s *server }
-
-func (t scheduleThreadTitles) SetThreadTitle(ctx context.Context, userID, threadID, title string) error {
-	_, _, err := t.s.thread.UpdateThread(ctx, userID, threadID, chat.UpdateThreadInput{Title: &title})
-	return err
 }

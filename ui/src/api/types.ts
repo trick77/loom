@@ -62,11 +62,8 @@ export type Thread = {
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string;
-  /** The schedule whose run feed this thread is; such a thread is read-only. */
+  /** The schedule whose run started this thread. */
   scheduleId?: string | null;
-  /** The answer this thread was continued from ("Continue in new thread"). */
-  branchedFromThreadId?: string | null;
-  branchedFromMessageId?: string | null;
 };
 
 // ContentBlock is one ordered piece of an assistant message: a run of prose, a

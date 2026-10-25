@@ -175,7 +175,9 @@ func TestResetInterruptedNamesTheThreads(t *testing.T) {
 	st := schedule.NewStore(db)
 	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
 	seedThread(t, db, "u1", "th1")
-	_ = st.SetThread(ctx, "u1", sch.ID, "th1")
+	runID, _ := st.StartRun(ctx, "u1", sch.ID, time.Now())
+	_ = st.AttachRunThread(ctx, "u1", runID, "th1")
+	// A run that stopped before it opened its thread names none.
 	_, _ = st.StartRun(ctx, "u1", sch.ID, time.Now())
 	got, err := st.ResetInterrupted(ctx)
 	if err != nil || len(got) != 1 || got[0] != (schedule.InterruptedRun{UserID: "u1", ThreadID: "th1"}) {
@@ -212,23 +214,11 @@ func TestReleaseMovesASlotThatPassedDuringTheRun(t *testing.T) {
 	}
 }
 
-func TestDisableAndThreadLink(t *testing.T) {
+func TestDisable(t *testing.T) {
 	ctx := context.Background()
-	db := openDB(t)
-	st := schedule.NewStore(db)
+	st := schedule.NewStore(openDB(t))
 	now := time.Now().UTC()
 	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", &now))
-	seedThread(t, db, "u1", "th1")
-	if err := st.SetThread(ctx, "u1", sch.ID, "th1"); err != nil {
-		t.Fatal(err)
-	}
-	found, ok, err := st.ScheduleForThread(ctx, "u1", "th1")
-	if err != nil || !ok || found.ID != sch.ID {
-		t.Fatalf("ScheduleForThread = %+v, %v, %v", found, ok, err)
-	}
-	if _, ok, _ := st.ScheduleForThread(ctx, "u2", "th1"); ok {
-		t.Fatal("another user found the schedule by thread")
-	}
 	if err := st.Disable(ctx, "u1", sch.ID, schedule.DisabledTimeout, now); err != nil {
 		t.Fatal(err)
 	}
@@ -236,13 +226,37 @@ func TestDisableAndThreadLink(t *testing.T) {
 	if got.Enabled || got.DisabledReason != schedule.DisabledTimeout || got.DisabledAt == nil || got.NextRunAt != nil {
 		t.Fatalf("disabled = %+v", got)
 	}
-	// Deleting the thread unlinks the schedule.
+}
+
+func TestRunThreadLink(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	st := schedule.NewStore(db)
+	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
+	seedThread(t, db, "u1", "th1")
+	runID, _ := st.StartRun(ctx, "u1", sch.ID, time.Now())
+	// Another user cannot attach a thread to the run.
+	if err := st.AttachRunThread(ctx, "u2", runID, "th1"); err != nil {
+		t.Fatal(err)
+	}
+	if runs, _ := st.ListRuns(ctx, "u1", sch.ID, 5); len(runs) != 1 || runs[0].ThreadID != nil {
+		t.Fatalf("run after a foreign attach = %+v", runs)
+	}
+	if err := st.AttachRunThread(ctx, "u1", runID, "th1"); err != nil {
+		t.Fatal(err)
+	}
+	if runs, _ := st.ListRuns(ctx, "u1", sch.ID, 5); runs[0].ThreadID == nil || *runs[0].ThreadID != "th1" {
+		t.Fatalf("run thread = %v, want th1", runs[0].ThreadID)
+	}
+	if last, _ := st.LastRuns(ctx, "u1"); last[sch.ID].ThreadID == nil {
+		t.Fatalf("last run lost its thread: %+v", last[sch.ID])
+	}
+	// Deleting the thread keeps the run.
 	if _, err := db.Exec(`DELETE FROM threads WHERE id = 'th1'`); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = st.GetSchedule(ctx, "u1", sch.ID)
-	if got.ThreadID != nil {
-		t.Fatalf("thread id after delete = %v", *got.ThreadID)
+	if runs, _ := st.ListRuns(ctx, "u1", sch.ID, 5); len(runs) != 1 || runs[0].ThreadID != nil {
+		t.Fatalf("run after thread delete = %+v", runs)
 	}
 }
 

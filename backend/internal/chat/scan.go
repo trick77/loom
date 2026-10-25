@@ -63,22 +63,16 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	var thread Thread
 	var projectID sql.NullString
 	var archivedAt, lastMessageAt sql.NullString
-	var branchedThread, branchedMessage, scheduleID sql.NullString
+	var scheduleID sql.NullString
 	var createdAt, updatedAt string
 	dest := []any{&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt,
-		&branchedThread, &branchedMessage, &scheduleID}
+		&scheduleID}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return Thread{}, err
 	}
 	if projectID.Valid {
 		thread.ProjectID = &projectID.String
-	}
-	if branchedThread.Valid {
-		thread.BranchedFromThreadID = &branchedThread.String
-	}
-	if branchedMessage.Valid {
-		thread.BranchedFromMessageID = &branchedMessage.String
 	}
 	if scheduleID.Valid {
 		thread.ScheduleID = &scheduleID.String
@@ -104,11 +98,12 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 }
 
 // threadColumns is the threads projection scanThreadRow reads, ScheduleID
-// derived from the schedule that owns the thread; threadColumnsT is the same
-// for a query that aliases threads as t.
+// derived from the run that started the thread; threadColumnsT is the same
+// for a query that aliases threads as t. A thread from before every run had
+// its own holds several runs of one schedule.
 const (
-	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, branched_from_thread_id, branched_from_message_id, (SELECT s.id FROM schedules s WHERE s.user_id = threads.user_id AND s.thread_id = threads.id)"
-	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.branched_from_thread_id, t.branched_from_message_id, (SELECT s.id FROM schedules s WHERE s.user_id = t.user_id AND s.thread_id = t.id)"
+	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, (SELECT r.schedule_id FROM schedule_runs r WHERE r.user_id = threads.user_id AND r.thread_id = threads.id LIMIT 1)"
+	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, (SELECT r.schedule_id FROM schedule_runs r WHERE r.user_id = t.user_id AND r.thread_id = t.id LIMIT 1)"
 )
 
 // messageColumns is the full messages projection scanMessage reads.

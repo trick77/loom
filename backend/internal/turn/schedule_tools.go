@@ -105,7 +105,7 @@ var scheduleUpdateTool = scheduleTool(scheduleUpdateToolName,
 	}, []any{"id"})
 
 var scheduleDeleteTool = scheduleTool(scheduleDeleteToolName,
-	"Delete one of the user's scheduled tasks for good, when they ask to remove it. Pass the id from schedule_list. Its thread stays.",
+	"Delete one of the user's scheduled tasks for good, when they ask to remove it. Pass the id from schedule_list. The threads of its runs stay.",
 	map[string]any{
 		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},
 	}, []any{"id"})

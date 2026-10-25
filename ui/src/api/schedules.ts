@@ -4,7 +4,6 @@ import {
   requestJSON,
   UserFacingError,
 } from "./http";
-import type { Thread } from "./types";
 
 export type ScheduleRunStatus =
   "running" | "new" | "nothing_new" | "token_limit" | "timeout" | "failed";
@@ -12,6 +11,8 @@ export type ScheduleRunStatus =
 export type ScheduleRun = {
   id: string;
   scheduleId: string;
+  /** The thread the run started; null once deleted. */
+  threadId: string | null;
   messageId: string | null;
   startedAt: string;
   finishedAt: string | null;
@@ -33,7 +34,6 @@ export type Schedule = {
   template: string;
   timezone: string;
   enabled: boolean;
-  threadId: string | null;
   nextRunAt: string | null;
   running: boolean;
   disabledReason: string;
@@ -269,16 +269,4 @@ export async function markAllNotificationsRead(): Promise<void> {
   await request(`/api/notifications/read-all`, "failed to mark read", {
     method: "POST",
   });
-}
-
-// branchThread continues an answer in a new thread and returns that thread.
-export async function branchThread(
-  threadId: string,
-  messageId: string,
-): Promise<Thread> {
-  return requestJSON(
-    `/api/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/branch`,
-    "failed to continue in a new thread",
-    { method: "POST" },
-  );
 }

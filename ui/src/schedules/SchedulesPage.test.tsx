@@ -116,7 +116,7 @@ test("toggles, runs now, opens the thread and deletes", async () => {
   expect(await screen.findByText(/Run started/)).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Schedule actions" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: /Open thread/ }));
+  fireEvent.click(screen.getByRole("menuitem", { name: /Open latest run/ }));
   expect(p.onOpenThread).toHaveBeenCalledWith("th1");
 
   fireEvent.click(screen.getByRole("button", { name: "Schedule actions" }));

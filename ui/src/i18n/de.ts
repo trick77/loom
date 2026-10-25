@@ -125,13 +125,6 @@ export const de = {
     updateFailed: "Thread konnte nicht aktualisiert werden.",
     projectUpdateFailed: "Projekt konnte nicht aktualisiert werden.",
     scheduleLabel: "Zeitplan",
-    scheduledRun: "Geplanter Lauf · {{date}}",
-    readOnly:
-      "Dieser Thread ist der Verlauf des Zeitplans. Rückfragen stellst du in einem eigenen Thread.",
-    continueInNewThread: "In neuem Thread weiterführen",
-    continueFailed: "Konnte nicht in einem neuen Thread weiterführen.",
-    branchedFrom: "Aus einem anderen Thread weitergeführt",
-    branchedFromSource: "Den Thread öffnen, aus dem dieser weitergeführt wurde",
   },
   activityTrace: {
     label: "Loom-Aktivitätsverlauf",
@@ -634,7 +627,7 @@ export const de = {
     menu: "Zeitplan-Aktionen",
     runNow: "Jetzt ausführen",
     edit: "Bearbeiten",
-    openThread: "Thread öffnen",
+    openLatestRun: "Letzten Lauf öffnen",
     pause: "Zeitplan pausieren",
     resume: "Zeitplan fortsetzen",
     runStarted:
@@ -642,7 +635,7 @@ export const de = {
     actionFailed: "Der Zeitplan konnte nicht aktualisiert werden.",
     deleteTitle: "Zeitplan löschen",
     deleteConfirm:
-      "Diesen Zeitplan löschen? Seine Läufe und sein Gedächtnis werden mitgelöscht, sein Thread bleibt.",
+      "Diesen Zeitplan löschen? Seine Läufe und sein Gedächtnis werden mitgelöscht, die Threads seiner Läufe bleiben.",
     form: {
       titleNew: "Neuer Zeitplan",
       titleEdit: "Zeitplan bearbeiten",
@@ -687,13 +680,12 @@ export const de = {
         "{{findings}} gemeldet · {{sources}} Quellen · {{queries}} Suchen",
       runsTab: "Läufe {{count}}",
       memoryTab: "Gedächtnis {{count}}",
-      thread: "Thread",
       notFound: "Diesen Zeitplan gibt es nicht (mehr).",
       colWhen: "Wann",
       colResult: "Ergebnis",
       colTokens: "Tokens",
       colDuration: "Dauer",
-      openTurn: "Antwort öffnen →",
+      openRun: "Lauf öffnen →",
       noRuns: "Noch keine Läufe.",
       none: "keiner",
     },

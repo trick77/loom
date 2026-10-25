@@ -78,7 +78,6 @@ type Schedule struct {
 	Cron           string     `json:"cron"`
 	Timezone       string     `json:"timezone"`
 	Enabled        bool       `json:"enabled"`
-	ThreadID       *string    `json:"threadId"`
 	NextRunAt      *time.Time `json:"nextRunAt"`
 	Running        bool       `json:"running"`
 	DisabledReason string     `json:"disabledReason"`
@@ -89,8 +88,10 @@ type Schedule struct {
 
 // Run is one execution of a schedule.
 type Run struct {
-	ID          string     `json:"id"`
-	ScheduleID  string     `json:"scheduleId"`
+	ID         string `json:"id"`
+	ScheduleID string `json:"scheduleId"`
+	// ThreadID is the thread the run started; nil once the user deleted it.
+	ThreadID    *string    `json:"threadId"`
 	MessageID   *string    `json:"messageId"`
 	StartedAt   time.Time  `json:"startedAt"`
 	FinishedAt  *time.Time `json:"finishedAt"`
@@ -176,19 +177,18 @@ func nullString(v sql.NullString) *string {
 	return &s
 }
 
-const scheduleColumns = "id, user_id, name, prompt, interval_text, cron_template, cron, timezone, enabled, thread_id, next_run_at, running_at, disabled_reason, disabled_at, created_at, updated_at"
+const scheduleColumns = "id, user_id, name, prompt, interval_text, cron_template, cron, timezone, enabled, next_run_at, running_at, disabled_reason, disabled_at, created_at, updated_at"
 
 type rowScanner interface{ Scan(...any) error }
 
 func scanSchedule(row rowScanner) (Schedule, error) {
 	var s Schedule
-	var threadID, nextRunAt, runningAt, disabledReason, disabledAt sql.NullString
+	var nextRunAt, runningAt, disabledReason, disabledAt sql.NullString
 	var createdAt, updatedAt string
 	if err := row.Scan(&s.ID, &s.UserID, &s.Name, &s.Prompt, &s.IntervalText, &s.CronTemplate, &s.Cron, &s.Timezone, &s.Enabled,
-		&threadID, &nextRunAt, &runningAt, &disabledReason, &disabledAt, &createdAt, &updatedAt); err != nil {
+		&nextRunAt, &runningAt, &disabledReason, &disabledAt, &createdAt, &updatedAt); err != nil {
 		return Schedule{}, err
 	}
-	s.ThreadID = nullString(threadID)
 	s.Running = runningAt.Valid
 	s.DisabledReason = disabledReason.String
 	var err error
@@ -239,19 +239,6 @@ func (st *Store) GetSchedule(ctx context.Context, userID, id string) (Schedule, 
 	return s, nil
 }
 
-// ScheduleForThread returns the schedule whose thread threadID is; false when
-// the thread belongs to none.
-func (st *Store) ScheduleForThread(ctx context.Context, userID, threadID string) (Schedule, bool, error) {
-	s, err := scanSchedule(st.db.QueryRowContext(ctx, `SELECT `+scheduleColumns+` FROM schedules WHERE user_id = ? AND thread_id = ?`, userID, threadID))
-	if errors.Is(err, sql.ErrNoRows) {
-		return Schedule{}, false, nil
-	}
-	if err != nil {
-		return Schedule{}, false, fmt.Errorf("schedule for thread: %w", err)
-	}
-	return s, true, nil
-}
-
 // ListSchedules returns the user's schedules, oldest first.
 func (st *Store) ListSchedules(ctx context.Context, userID string) ([]Schedule, error) {
 	rows, err := st.db.QueryContext(ctx, `SELECT `+scheduleColumns+` FROM schedules WHERE user_id = ? ORDER BY created_at, id`, userID)
@@ -293,17 +280,8 @@ WHERE user_id = ? AND id = ?`,
 	return st.GetSchedule(ctx, s.UserID, s.ID)
 }
 
-// SetThread links the schedule to its thread.
-func (st *Store) SetThread(ctx context.Context, userID, id, threadID string) error {
-	_, err := st.db.ExecContext(ctx, `UPDATE schedules SET thread_id = ? WHERE user_id = ? AND id = ?`, threadID, userID, id)
-	if err != nil {
-		return fmt.Errorf("set schedule thread: %w", err)
-	}
-	return nil
-}
-
-// DeleteSchedule removes the schedule with its runs and memory. Its thread
-// stays, as an ordinary thread.
+// DeleteSchedule removes the schedule with its runs and memory. Its runs'
+// threads stay, as ordinary threads.
 func (st *Store) DeleteSchedule(ctx context.Context, userID, id string) error {
 	res, err := st.db.ExecContext(ctx, `DELETE FROM schedules WHERE user_id = ? AND id = ?`, userID, id)
 	if err != nil {
@@ -392,9 +370,8 @@ WHERE user_id = ? AND id = ?`, reason, ts(at), userID, id)
 // with a note.
 func (st *Store) ResetInterrupted(ctx context.Context) ([]InterruptedRun, error) {
 	rows, err := st.db.QueryContext(ctx, `
-SELECT r.user_id, s.thread_id FROM schedule_runs r
-JOIN schedules s ON s.id = r.schedule_id AND s.user_id = r.user_id
-WHERE r.status = 'running' AND s.thread_id IS NOT NULL`)
+SELECT user_id, thread_id FROM schedule_runs
+WHERE status = 'running' AND thread_id IS NOT NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("list interrupted runs: %w", err)
 	}
@@ -439,6 +416,15 @@ func (st *Store) StartRun(ctx context.Context, userID, scheduleID string, at tim
 	return id, nil
 }
 
+// AttachRunThread records the thread a run started.
+func (st *Store) AttachRunThread(ctx context.Context, userID, runID, threadID string) error {
+	_, err := st.db.ExecContext(ctx, `UPDATE schedule_runs SET thread_id = ? WHERE user_id = ? AND id = ?`, threadID, userID, runID)
+	if err != nil {
+		return fmt.Errorf("attach run thread: %w", err)
+	}
+	return nil
+}
+
 // FinishRun writes a finished run's outcome.
 func (st *Store) FinishRun(ctx context.Context, userID string, r Run, at time.Time) error {
 	_, err := st.db.ExecContext(ctx, `
@@ -452,16 +438,16 @@ WHERE user_id = ? AND id = ?`,
 	return nil
 }
 
-const runColumns = "id, schedule_id, message_id, started_at, finished_at, status, new_count, rounds, tokens, cost_nano_usd, duration_ms, error"
+const runColumns = "id, schedule_id, thread_id, message_id, started_at, finished_at, status, new_count, rounds, tokens, cost_nano_usd, duration_ms, error"
 
 func scanRun(row rowScanner) (Run, error) {
 	var r Run
-	var messageID, finishedAt sql.NullString
+	var threadID, messageID, finishedAt sql.NullString
 	var startedAt string
-	if err := row.Scan(&r.ID, &r.ScheduleID, &messageID, &startedAt, &finishedAt, &r.Status, &r.NewCount, &r.Rounds, &r.Tokens, &r.CostNanoUSD, &r.DurationMS, &r.Error); err != nil {
+	if err := row.Scan(&r.ID, &r.ScheduleID, &threadID, &messageID, &startedAt, &finishedAt, &r.Status, &r.NewCount, &r.Rounds, &r.Tokens, &r.CostNanoUSD, &r.DurationMS, &r.Error); err != nil {
 		return Run{}, err
 	}
-	r.MessageID = nullString(messageID)
+	r.ThreadID, r.MessageID = nullString(threadID), nullString(messageID)
 	var err error
 	if r.StartedAt, err = sqlutil.ParseTime(startedAt); err != nil {
 		return Run{}, err
