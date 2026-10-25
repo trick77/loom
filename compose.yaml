@@ -15,6 +15,7 @@ services:
       BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-info}"
       BACKEND_DB_PATH: "/data/loom.db"
       BACKEND_USERS_DIR: "/data/users"
+      PUBLIC_FQDN: "${PUBLIC_FQDN:-}"
       BACKEND_AUTH_MODE: "${BACKEND_AUTH_MODE:-oidc}"
       BACKEND_TIKA_URL: "http://tika:9998"
       BACKEND_GOTENBERG_URL: "http://gotenberg:3000"

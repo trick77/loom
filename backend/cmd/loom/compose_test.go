@@ -216,6 +216,7 @@ func TestProductionComposeDefinesTraefikEntrypoint(t *testing.T) {
 		`traefik.http.services.loom.loadbalancer.server.port: "8080"`,
 		`traefik.http.routers.loom.entrypoints: websecure`,
 		"Host(`${PUBLIC_FQDN:?",
+		`PUBLIC_FQDN: "${PUBLIC_FQDN:-}"`,
 		`traefik.http.routers.loom.tls: "true"`,
 	} {
 		if !strings.Contains(loomService, want) {
