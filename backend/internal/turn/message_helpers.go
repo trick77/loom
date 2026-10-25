@@ -228,8 +228,7 @@ func systemPromptForUser(user auth.User, now time.Time) string {
 // incognito system prompts. A pinned profile language (en/de) is the default, but
 // it yields to an explicit in-message request or a message written in another
 // language — so a per-turn "answer in X" always wins over the profile. An
-// empty/unset value pins nothing and simply tracks the user's own language; a
-// legacy "auto" (predating its removal) is treated the same, defensively (see
+// empty/unset value pins nothing and simply tracks the user's own language (see
 // auth.User.ResponseLanguageName).
 func languageDirective(user auth.User) string {
 	name := user.ResponseLanguageName()
