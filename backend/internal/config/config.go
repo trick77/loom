@@ -80,7 +80,7 @@ type Config struct {
 	Addr      string // HTTP listen address
 	DBPath    string // path to the SQLite file
 	UsersDir  string // root for per-user volumes: <UsersDir>/<user-id>/
-	PublicURL string // externally reachable base URL
+	PublicURL string // https://<PUBLIC_FQDN>; http://<Addr> in dev; empty without either
 
 	// The chat models are configuration: BACKEND_CHAT_MODEL, and optionally
 	// BACKEND_GATE_MODEL and BACKEND_VISION_MODEL (both default to the chat
@@ -265,7 +265,6 @@ func Load() (Config, error) {
 		Addr:                    r.String("BACKEND_ADDR", ":8080"),
 		DBPath:                  r.String("BACKEND_DB_PATH", "/data/loom.db"),
 		UsersDir:                r.String("BACKEND_USERS_DIR", "/data/users"),
-		PublicURL:               r.String("BACKEND_PUBLIC_URL", ""),
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              optional(r, "BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
 		ImageGenBaseURL:         r.String("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
@@ -356,8 +355,8 @@ func Load() (Config, error) {
 	if !filepath.IsAbs(cfg.UsersDir) {
 		return Config{}, fmt.Errorf("BACKEND_USERS_DIR must be an absolute path")
 	}
-	if cfg.PublicURL != "" && !isAbsoluteHTTPURL(cfg.PublicURL) {
-		return Config{}, fmt.Errorf("BACKEND_PUBLIC_URL must be an absolute http(s) URL")
+	if r.String("BACKEND_PUBLIC_URL", "") != "" {
+		slog.Warn("BACKEND_PUBLIC_URL is no longer read: the public URL is https://<PUBLIC_FQDN>; remove it from .env")
 	}
 	if cfg.AuthMode == AuthModeNone && cfg.OIDC.Issuer != "" {
 		cfg.AuthMode = AuthModeOIDC
@@ -383,10 +382,20 @@ func Load() (Config, error) {
 		if strings.TrimSpace(cfg.OIDC.AdminGroup) == "" {
 			slog.Warn("BACKEND_OIDC_ADMIN_GROUP is empty: no OIDC login will be granted the admin role")
 		}
-	case AuthModeDev:
-		if err := validateDevAuthLocalOnly(cfg); err != nil {
+		// Raw, not kit's trimmed read: Traefik's Host rule uses the raw value, so
+		// a stray space must fail here rather than leave loom and Traefik
+		// disagreeing.
+		publicURL, err := publicURLFromFQDN(os.Getenv("PUBLIC_FQDN"))
+		if err != nil {
 			return Config{}, err
 		}
+		cfg.PublicURL = publicURL
+	case AuthModeDev:
+		if !isLoopbackAddr(cfg.Addr) {
+			return Config{}, fmt.Errorf("BACKEND_AUTH_MODE=dev requires BACKEND_ADDR to bind to localhost or a loopback address")
+		}
+		// PUBLIC_FQDN is ignored: compose.dev.yaml loads the production .env whole.
+		cfg.PublicURL = "http://" + cfg.Addr
 	default:
 		return Config{}, fmt.Errorf("BACKEND_AUTH_MODE must be one of: oidc, dev")
 	}
@@ -411,14 +420,18 @@ func optional(r *env.Reader, name, def string) string {
 	return ""
 }
 
-func validateDevAuthLocalOnly(cfg Config) error {
-	if !isLoopbackAddr(cfg.Addr) {
-		return fmt.Errorf("BACKEND_AUTH_MODE=dev requires BACKEND_ADDR to bind to localhost or a loopback address")
+// publicURLFromFQDN is the one place the public URL comes from: the hostname
+// Traefik routes on, never a second setting that could drift from it. Without
+// it session cookies lose Secure, so it is required.
+func publicURLFromFQDN(fqdn string) (string, error) {
+	if fqdn == "" {
+		return "", fmt.Errorf("PUBLIC_FQDN is required when BACKEND_AUTH_MODE=oidc: loom is served at https://<PUBLIC_FQDN>")
 	}
-	if cfg.PublicURL != "" && !isLoopbackPublicURL(cfg.PublicURL) {
-		return fmt.Errorf("BACKEND_AUTH_MODE=dev requires BACKEND_PUBLIC_URL to be empty or loopback")
+	u, err := url.Parse("https://" + fqdn)
+	if err != nil || u.Host != fqdn || u.Hostname() != fqdn {
+		return "", fmt.Errorf("PUBLIC_FQDN must be a bare hostname such as loom.example.com, got %q", fqdn)
 	}
-	return nil
+	return "https://" + fqdn, nil
 }
 
 func isLoopbackAddr(addr string) bool {
@@ -427,14 +440,6 @@ func isLoopbackAddr(addr string) bool {
 		return false
 	}
 	return isLoopbackHost(host)
-}
-
-func isLoopbackPublicURL(raw string) bool {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return false
-	}
-	return isLoopbackHost(parsed.Hostname())
 }
 
 func isLoopbackHost(host string) bool {
