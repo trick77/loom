@@ -132,6 +132,12 @@ func (e *mcpStatusError) Error() string {
 	return fmt.Sprintf("MCP %s failed with status %d", e.method, e.status)
 }
 
+// isAuthError reports whether the server refused the request's credentials.
+func isAuthError(err error) bool {
+	var statusErr *mcpStatusError
+	return errors.As(err, &statusErr) && (statusErr.status == http.StatusUnauthorized || statusErr.status == http.StatusForbidden)
+}
+
 // isSessionError reports whether err is an expired/invalid Streamable HTTP
 // session, which is recoverable by re-initializing. Servers reject such
 // requests with 400 or 404 and mention the session in the body.

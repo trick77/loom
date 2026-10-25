@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -140,14 +141,36 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 
 // obscuraPinnedImage is the upstream obscura image at a concrete release, so a
 // Dependabot bump needs no test edit but a floating tag still fails.
-var obscuraPinnedImage = regexp.MustCompile(`(?m)^    image: h4ckf0r0day/obscura:\d+\.\d+\.\d+$`)
+var obscuraPinnedImage = regexp.MustCompile(`(?m)^    image: h4ckf0r0day/obscura:(\d+)\.(\d+)\.(\d+)$`)
 
-// Obscura v0.2.3+ refuses MCP beyond loopback without OBSCURA_MCP_TOKEN, and loom
-// must send the same value: both services read it from one place.
+// Obscura below v0.2.3 ignores OBSCURA_MCP_TOKEN: loom's bearer token would
+// guard nothing.
+func TestComposeObscuraHonoursToken(t *testing.T) {
+	for _, path := range []string{"../../../compose.yaml", "../../../compose.dev.yaml"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		m := obscuraPinnedImage.FindStringSubmatch(string(data))
+		if m == nil {
+			t.Fatalf("%s: no pinned obscura image", path)
+		}
+		v := [3]int{}
+		for i := range v {
+			v[i], _ = strconv.Atoi(m[i+1])
+		}
+		if v[0] == 0 && (v[1] < 2 || v[1] == 2 && v[2] < 3) {
+			t.Fatalf("%s: obscura %s.%s.%s predates OBSCURA_MCP_TOKEN (v0.2.3)", path, m[1], m[2], m[3])
+		}
+	}
+}
+
+// Loom must send the token obscura expects: both services take it from one
+// anchor, production's from the env with no default.
 func TestComposeSharesObscuraToken(t *testing.T) {
 	for path, wantSource := range map[string]string{
-		"../../../compose.yaml":     `"${BACKEND_OBSCURA_MCP_TOKEN:?`,
-		"../../../compose.dev.yaml": `dev-`,
+		"../../../compose.yaml":     `x-obscura-token: &obscura-token "${BACKEND_OBSCURA_MCP_TOKEN:?`,
+		"../../../compose.dev.yaml": `x-obscura-token: &obscura-token dev-`,
 	} {
 		t.Run(path, func(t *testing.T) {
 			data, err := os.ReadFile(path)
@@ -155,26 +178,16 @@ func TestComposeSharesObscuraToken(t *testing.T) {
 				t.Fatalf("read %s: %v", path, err)
 			}
 			compose := string(data)
-			loom := composeEnvValue(t, composeService(t, compose, "loom"), "BACKEND_OBSCURA_MCP_TOKEN")
-			obscura := composeEnvValue(t, composeService(t, compose, "obscura"), "OBSCURA_MCP_TOKEN")
-			if loom != obscura {
-				t.Fatalf("%s: loom sends %s, obscura expects %s", path, loom, obscura)
+			if !strings.Contains(compose, "\n"+wantSource) {
+				t.Fatalf("%s: missing %s", path, wantSource)
 			}
-			if !strings.Contains(loom, wantSource) {
-				t.Fatalf("%s: obscura token %s, want it from %s", path, loom, wantSource)
+			for service, key := range map[string]string{"loom": "BACKEND_OBSCURA_MCP_TOKEN", "obscura": "OBSCURA_MCP_TOKEN"} {
+				if !strings.Contains(composeService(t, compose, service), "\n      "+key+": *obscura-token\n") {
+					t.Fatalf("%s: %s service must set %s from *obscura-token", path, service, key)
+				}
 			}
 		})
 	}
-}
-
-// composeEnvValue returns the value of one environment entry in a service block.
-func composeEnvValue(t *testing.T, service, key string) string {
-	t.Helper()
-	m := regexp.MustCompile(`(?m)^      ` + regexp.QuoteMeta(key) + `: (.+)$`).FindStringSubmatch(service)
-	if m == nil {
-		t.Fatalf("service sets no %s", key)
-	}
-	return m[1]
 }
 
 func TestProductionComposePublishesNoHostPorts(t *testing.T) {

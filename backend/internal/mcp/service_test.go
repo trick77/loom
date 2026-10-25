@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -122,6 +123,26 @@ func TestServiceFromConfigClosesUnavailableClient(t *testing.T) {
 	}
 	if !client.closed {
 		t.Fatal("unavailable client was not closed")
+	}
+}
+
+func TestRequiredServiceDoesNotRetryRejectedCredentials(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		client := &fakeClient{
+			// Wrapped the way the client reports a failed modern + legacy handshake.
+			err:                   fmt.Errorf("%w (legacy handshake: %w)", &mcpStatusError{method: "server/discover", status: status}, &mcpStatusError{method: "initialize", status: status}),
+			failuresBeforeSuccess: -1,
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		start := time.Now()
+		_, err := NewRequiredServiceFromClients(ctx, map[string]Client{"obscura": client})
+		cancel()
+		if err == nil || !strings.Contains(err.Error(), "credentials rejected") {
+			t.Fatalf("status %d: err = %v, want a credentials error", status, err)
+		}
+		if client.listToolsCalls != 1 || time.Since(start) > time.Second {
+			t.Fatalf("status %d: %d ListTools calls in %s, want one, no retry until the deadline", status, client.listToolsCalls, time.Since(start))
+		}
 	}
 }
 

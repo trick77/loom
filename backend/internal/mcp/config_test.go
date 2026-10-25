@@ -74,9 +74,6 @@ func TestObscuraServerConfigAllowlistsNavigateAndSnapshot(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Tools, want) {
 		t.Fatalf("Tools = %#v, want %#v", cfg.Tools, want)
 	}
-	if len(cfg.Headers) != 0 {
-		t.Fatalf("Headers = %#v, want none without a token", cfg.Headers)
-	}
 }
 
 func TestObscuraServerConfigSendsTokenAsBearer(t *testing.T) {

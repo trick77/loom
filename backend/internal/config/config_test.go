@@ -521,6 +521,9 @@ func requiredEnv(t *testing.T) {
 	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "s3cret")
 	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://loom.example.com/api/auth/callback")
 	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "loom-admins")
+	// Cleared: a shell that sourced .env.example sets the URL without a token.
+	t.Setenv("BACKEND_OBSCURA_MCP_URL", "")
+	t.Setenv("BACKEND_OBSCURA_MCP_TOKEN", "")
 	model, _ := anyChatModel(t)
 	t.Setenv("BACKEND_CHAT_MODEL", model)
 }

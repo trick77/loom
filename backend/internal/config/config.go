@@ -340,8 +340,8 @@ func Load() (Config, error) {
 	case cfg.SessionSecret == exampleSessionSecret:
 		r.Fail("BACKEND_SESSION_SECRET is .env.example's placeholder: anyone could sign a session; set your own (openssl rand -hex 32)")
 	}
-	// Obscura is a required MCP server once its URL is set: without the token
-	// its discovery gets a 401 and boot fails 30s later with no name to it.
+	// Obscura is a required MCP server once its URL is set: without a token it
+	// does not even start, so say which setting is missing before boot waits on it.
 	if cfg.ObscuraMCPURL != "" && len(cfg.ObscuraMCPToken) < minObscuraMCPToken {
 		r.Fail("BACKEND_OBSCURA_MCP_TOKEN must be at least %d characters when BACKEND_OBSCURA_MCP_URL is set: obscura refuses MCP without it (openssl rand -hex 32)", minObscuraMCPToken)
 	}

@@ -162,15 +162,12 @@ func FetchServerConfig(pdf PDFExtractor) ServerConfig {
 //
 // token is the sidecar's OBSCURA_MCP_TOKEN, sent as a bearer token: obscura
 // v0.2.3+ refuses to serve MCP beyond loopback without one and answers 401 to
-// a request that lacks it.
+// a request that lacks it (config.Load requires one with the URL).
 func ObscuraServerConfig(url, token string) ServerConfig {
-	cfg := ServerConfig{
+	return ServerConfig{
 		Transport: TransportStreamableHTTP,
 		URL:       url,
+		Headers:   map[string]string{"Authorization": "Bearer " + token},
 		Tools:     []string{"browser_navigate", "browser_snapshot"},
 	}
-	if token != "" {
-		cfg.Headers = map[string]string{"Authorization": "Bearer " + token}
-	}
-	return cfg
 }
