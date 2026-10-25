@@ -14,7 +14,7 @@ import (
 const (
 	// RunTokenBudget caps the tokens of every model call of one run. Past it
 	// the run gets its final answer without further tools.
-	RunTokenBudget = 300_000
+	RunTokenBudget = 1_000_000
 	// RunTimeout is the hard wall clock of one run. A run past it is canceled;
 	// the second in a row disables its schedule.
 	RunTimeout = 5 * time.Minute
