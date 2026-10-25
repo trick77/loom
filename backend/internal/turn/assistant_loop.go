@@ -147,10 +147,11 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			}
 			return LoopResult{}, err
 		}
-		if len(result.ToolCalls) == 0 && t.plan.finalContext != "" {
-			// A scheduled run with memory answers only from the tool-free final
-			// call, the one that sees the memory: this answer is dropped unseen.
-			slog.Info("forcing final answer", "reason", "scheduled_memory", "round", round)
+		if len(result.ToolCalls) == 0 && t.scheduled != nil {
+			// A scheduled run answers only from the tool-free final call, the
+			// one that sees the memory; a round that stops calling tools ends
+			// the research (scheduledResearchNote) and its text is dropped.
+			slog.Info("forcing final answer", "reason", "scheduled_research_done", "round", round)
 			break
 		}
 		b.addResult(t.titles, result)
@@ -346,7 +347,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		// budget. Kept language-neutral so the model answers in the user's language.
 		extraDirective = "Some requested items could not be processed within this turn's tool limit; briefly tell the user that not everything was processed and offer to continue if they'd like the rest."
 	}
-	finalHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, extraDirective, reg.all())
+	finalHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, t.notesBudgetTokens(), extraDirective, reg.all())
 	if !ok {
 		// No gathered notes (should not happen once tools ran) — fall back to the full
 		// history with a plain, tool-free directive.
@@ -366,7 +367,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// fall back to a fixed message — anything but persisting an empty turn.
 	if err == nil && strings.TrimSpace(result.Content) == "" {
 		slog.Info("retrying empty final answer", "reason", "empty_synthesis", "round", maxToolRounds+1)
-		retryHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, "Answer in plain prose now. Do not emit any tool call or any tool-call markup.", reg.all())
+		retryHistory, ok := buildFinalSynthesisHistory(history, initialHistoryLen, t.notesBudgetTokens(), "Answer in plain prose now. Do not emit any tool call or any tool-call markup.", reg.all())
 		if !ok {
 			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}

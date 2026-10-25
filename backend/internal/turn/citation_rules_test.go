@@ -41,7 +41,7 @@ func TestCitationRulesForbidSourceURLs(t *testing.T) {
 		{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c1"}}},
 		{Role: "tool", ToolCallID: "c1", Content: "Source [1]: A video — https://a.example\n\nnote"},
 	}
-	synth, ok := buildFinalSynthesisHistory(history, 2, "", []webSource{{Index: 1, URL: "https://a.example", Label: "A"}})
+	synth, ok := buildFinalSynthesisHistory(history, 2, finalSynthesisNotesBudgetTokens, "", []webSource{{Index: 1, URL: "https://a.example", Label: "A"}})
 	if !ok || !strings.Contains(synth[len(synth)-1].Content, sourceURLRule) {
 		t.Error("final synthesis instruction lacks the no-URL citation rule")
 	}

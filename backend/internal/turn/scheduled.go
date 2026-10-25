@@ -20,8 +20,12 @@ type ScheduledRun struct {
 	// SoftDeadline is when the loop stops offering tools and answers; zero
 	// means none.
 	SoftDeadline time.Time
-	// Memory is the schedule's memory block for the system prompt.
+	// Memory is the schedule's research memory (sources, searches, last run)
+	// for every call's system prompt.
 	Memory string
+	// Reported is the items earlier runs reported, for the tool-free call
+	// that writes the answer only: earlier answers saw the user memory.
+	Reported string
 	// Observe receives each web tool call's outcome; nil drops them.
 	Observe func(ToolObservation)
 	// Now is the clock the deadline is read against; nil is time.Now.
@@ -53,6 +57,12 @@ const (
 // user's standing instructions, both written for a live chat, so it says
 // which parts still apply.
 const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what is NEW since earlier runs, naming each new item with its source. When nothing is new, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
+
+// scheduledResearchNote tells the rounds that offer tools not to write the
+// answer: a scheduled run's answer always comes from the tool-free final
+// call, the only one that sees the user memory, so a round's own answer is
+// dropped unread. withFinalContext takes it out again for that call.
+const scheduledResearchNote = "While tools are offered, only research: once you have what the task needs, reply with the single word DONE instead of an answer. A separate step writes the answer from your research."
 
 // allowTools keeps the tools a scheduled run may use: every MCP tool the
 // user may use (offerTools already left out other accounts' servers), never a
@@ -119,81 +129,52 @@ func (t *Run) observeToolCall(name string, arguments map[string]any, sources []m
 	t.scheduled.Observe(o)
 }
 
-// withFinalContext is history with a scheduled run's user memory and
-// directives added to its system prompt, for a call that offers no tools.
+// withFinalContext is history for a scheduled run's call that offers no
+// tools and writes the answer: the research-only note taken out of the
+// system prompt, and the reported items, user memory and directives added.
 // Any other turn's history comes back as it is.
 func (t *Run) withFinalContext(history []llm.Message) []llm.Message {
-	if t.plan.finalContext == "" {
+	if t.scheduled == nil {
 		return history
 	}
 	out := slices.Clone(history)
 	if len(out) > 0 && out[0].Role == "system" {
-		out[0].Content = joinNonEmptyBlocks(out[0].Content, t.plan.finalContext)
+		out[0].Content = joinNonEmptyBlocks(strings.Replace(out[0].Content, scheduledResearchNote, "", 1), t.plan.finalContext)
+		return out
+	}
+	if t.plan.finalContext == "" {
 		return out
 	}
 	return append([]llm.Message{{Role: "system", Content: t.plan.finalContext}}, out...)
+}
+
+// notesBudgetTokens caps the research notes of the turn's final call.
+func (t *Run) notesBudgetTokens() int {
+	if t.scheduled != nil {
+		return scheduledNotesBudgetTokens
+	}
+	return finalSynthesisNotesBudgetTokens
 }
 
 // markdownImage is an inline or reference markdown image: ![alt](src) or
 // ![alt][ref].
 var markdownImage = regexp.MustCompile(`!\[([^\]]*)\](\([^)]*\)|\[[^\]]*\])`)
 
-// dropImages leaves no markdown image outside a fenced code block, where
-// none renders. A plain image keeps its alt text; any other image marker
-// (balanced brackets in the alt, a shortcut reference) loses its "!" and is
-// left a link, which needs a click. Removing one can close up a new one
-// (![![x](y)](z), !![), so each pass repeats until none is left.
+// dropImages leaves no markdown image: a plain one keeps its alt text, and
+// any other image marker (balanced brackets in the alt, a shortcut
+// reference) loses its "!" and is left a link, which needs a click. Every
+// image starts with "![", so none is left whatever the renderer makes of the
+// rest; code blocks are not spared, as a guess at where one ends can be
+// wrong. Removing one can close up a new one (![![x](y)](z), !![), so each
+// pass repeats until none is left.
 func dropImages(s string) string {
-	var out, prose strings.Builder
-	flush := func() {
-		p := prose.String()
-		for markdownImage.MatchString(p) {
-			p = markdownImage.ReplaceAllString(p, "$1")
-		}
-		for strings.Contains(p, "![") {
-			p = strings.ReplaceAll(p, "![", "[")
-		}
-		out.WriteString(p)
-		prose.Reset()
+	for markdownImage.MatchString(s) {
+		s = markdownImage.ReplaceAllString(s, "$1")
 	}
-	fence := ""
-	for _, line := range strings.SplitAfter(s, "\n") {
-		trimmed := strings.TrimLeft(line, " ")
-		switch {
-		case fence != "":
-			out.WriteString(line)
-			if closesFence(trimmed, fence) {
-				fence = ""
-			}
-		case len(line)-len(trimmed) <= 3 && fenceOf(trimmed) != "":
-			flush()
-			fence = fenceOf(trimmed)
-			out.WriteString(line)
-		default:
-			prose.WriteString(line)
-		}
+	for strings.Contains(s, "![") {
+		s = strings.ReplaceAll(s, "![", "[")
 	}
-	flush()
-	return out.String()
-}
-
-// fenceOf is the run of three or more backticks or tildes a line opens a
-// fenced code block with, or "".
-func fenceOf(line string) string {
-	for _, c := range []string{"`", "~"} {
-		n := len(line) - len(strings.TrimLeft(line, c))
-		if n >= 3 {
-			return line[:n]
-		}
-	}
-	return ""
-}
-
-// closesFence reports whether line closes the block fence opened: the same
-// character, at least as many, nothing else.
-func closesFence(line, fence string) bool {
-	run := len(line) - len(strings.TrimLeft(line, fence[:1]))
-	return run >= len(fence) && strings.TrimSpace(line[run:]) == ""
+	return s
 }
 
 // dropAnswerImages strips the images from a scheduled run's answer and its

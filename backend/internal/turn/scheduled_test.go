@@ -7,14 +7,15 @@ import (
 
 func TestDropImages(t *testing.T) {
 	cases := map[string]string{
-		"a ![poster](https://evil.example/p.png?d=1) b":                             "a poster b",
-		"![![x](y)](https://evil.example/?d=nested)":                                "x",
-		"![a [b] c](https://evil.example/?d=balanced)":                              "[a [b] c](https://evil.example/?d=balanced)",
-		"![ref]\n\n[ref]: https://evil.example/?d=shortcut":                         "[ref]\n\n[ref]: https://evil.example/?d=shortcut",
-		"!![x](https://evil.example/?d=bang)":                                       "!x",
-		"see [the page](https://arena.ch/programm)":                                 "see [the page](https://arena.ch/programm)",
-		"```md\n![logo](https://x.example/l.png)\n```\n![p](https://evil.example/)": "```md\n![logo](https://x.example/l.png)\n```\np",
-		"~~~~\n![a](b)\n~~~\n![c](d)":                                               "~~~~\n![a](b)\n~~~\n![c](d)",
+		"a ![poster](https://evil.example/p.png?d=1) b":     "a poster b",
+		"![![x](y)](https://evil.example/?d=nested)":        "x",
+		"![a [b] c](https://evil.example/?d=balanced)":      "[a [b] c](https://evil.example/?d=balanced)",
+		"![ref]\n\n[ref]: https://evil.example/?d=shortcut": "[ref]\n\n[ref]: https://evil.example/?d=shortcut",
+		"!![x](https://evil.example/?d=bang)":               "!x",
+		"see [the page](https://arena.ch/programm)":         "see [the page](https://arena.ch/programm)",
+		// Code blocks are not spared: where one ends is the renderer's call.
+		"```bash``` x\n![p](https://evil.example/)": "```bash``` x\np",
+		"~~~~\n![a](b)\n~~~\n![c](d)":               "~~~~\na\n~~~\nc",
 	}
 	for in, want := range cases {
 		if got := dropImages(in); got != want {

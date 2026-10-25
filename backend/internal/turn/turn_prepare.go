@@ -168,7 +168,6 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// itself: an edited prompt must never inherit a stale one.
 	scheduled := t.scheduled != nil
 	freshlyClassified := !scheduled && len(in.PriorMessages) == 0 && strings.TrimSpace(category) == ""
-	classifyNow := freshlyClassified || scheduled
 
 	// Every pre-answer load below is independent of the others, and each may be
 	// a model or database round trip, so they run concurrently: the answer
@@ -203,7 +202,10 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			}
 		},
 		func() {
-			if classifyNow {
+			switch {
+			case scheduled:
+				classified = t.e.classifyScheduledRun(in.StreamCtx, t.inference, t.userMessage.Content)
+			case freshlyClassified:
 				classified = t.e.classifyFirstTurn(in.StreamCtx, t.inference, t.userMessage.Content)
 			}
 		},
@@ -286,12 +288,13 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	}
 	scheduleBlock := ""
 	// A scheduled run reads untrusted pages with tools nobody watches, so the
-	// user memory and directives stay out of every call that offers tools:
-	// only the tool-free call that writes the answer gets them (finalContext).
+	// user memory and directives, and the items earlier answers written with
+	// them reported, stay out of every call that offers tools: only the
+	// tool-free call that writes the answer gets them (finalContext).
 	finalContext := ""
 	if scheduled {
-		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.scheduled.Memory)
-		finalContext, userContext = userContext, ""
+		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, scheduledResearchNote, t.scheduled.Memory)
+		finalContext, userContext = joinNonEmptyBlocks(t.scheduled.Reported, userContext), ""
 	}
 	history := buildLLMHistory(t.user, promptBlocks{
 		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate)),

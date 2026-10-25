@@ -120,7 +120,7 @@ func TestBuildFinalSynthesisHistory_carriesCitationRuleAndSourceIndex(t *testing
 	}
 	sources := []webSource{{Index: 1, URL: "https://a.example", Label: "A"}}
 
-	synth, ok := buildFinalSynthesisHistory(history, 2, "", sources)
+	synth, ok := buildFinalSynthesisHistory(history, 2, finalSynthesisNotesBudgetTokens, "", sources)
 	if !ok {
 		t.Fatal("buildFinalSynthesisHistory returned ok=false with notes present")
 	}
