@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-// TestMigration0024_BackfillsPopulatedCorpus exercises the real 0021 migration
+// TestMigration0024_BackfillsPopulatedCorpus exercises the real 0024 migration
 // FILE against a DB that already contains messages — the path a live deployment
-// takes, which the fresh-DB suite (table empty when 0021 runs) never covers.
+// takes, which the fresh-DB suite (table empty when 0024 runs) never covers.
 //
 // It opens a fully-migrated DB, seeds users/threads/messages, then drops the
 // message_fts table + triggers and re-applies the exact bytes of
@@ -34,7 +34,7 @@ func TestMigration0024_BackfillsPopulatedCorpus(t *testing.T) {
 	exec(`INSERT INTO messages (id, thread_id, user_id, role, content) VALUES ('m2','t1','u1','assistant','the platypus answer lives here')`)
 	exec(`INSERT INTO messages (id, thread_id, user_id, role, content) VALUES ('m3','t1','u1','tool','platypus tool blob stays out')`)
 
-	// Simulate a pre-0021 database that already holds these rows: drop the FTS
+	// Simulate a pre-0024 database that already holds these rows: drop the FTS
 	// objects so re-applying the migration runs its backfill against real data.
 	exec(`DROP TRIGGER message_fts_ai`)
 	exec(`DROP TRIGGER message_fts_ad`)
@@ -46,7 +46,7 @@ func TestMigration0024_BackfillsPopulatedCorpus(t *testing.T) {
 		t.Fatalf("read migration: %v", err)
 	}
 	if _, err := db.Exec(string(body)); err != nil {
-		t.Fatalf("apply 0021 against populated db: %v", err)
+		t.Fatalf("apply 0024 against populated db: %v", err)
 	}
 
 	var indexed, want int

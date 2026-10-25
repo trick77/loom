@@ -238,8 +238,8 @@ func TestSearchMessages_QuerySanitizationNeverErrors(t *testing.T) {
 }
 
 // Note: the migration's backfill clause is exercised faithfully — against the
-// real 0021 file bytes applied to a populated DB — by
-// TestMigration0021_BackfillsPopulatedCorpus in the store package.
+// real 0024 file bytes applied to a populated DB — by
+// TestMigration0024_BackfillsPopulatedCorpus in the store package.
 
 func TestBuildFTSMatchQuery(t *testing.T) {
 	cases := map[string]string{

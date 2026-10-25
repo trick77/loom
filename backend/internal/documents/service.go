@@ -106,9 +106,7 @@ func (s *Service) SetUsageRecorder(usage UsageRecorder) {
 // UploadInput describes a single document upload. ProjectID scopes the document
 // to a project; a project-less upload with a ThreadID is private to that chat.
 // A project-less upload with an empty ThreadID would be user-global, but no
-// caller does that today (the composer always passes its thread) — such globals
-// are treated as a legacy state and are cleaned up by
-// rag.ReconcileLegacyDocumentScopes.
+// caller does that today (the composer always passes its thread).
 type UploadInput struct {
 	UserID    string
 	ThreadID  string
@@ -186,8 +184,8 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 
 	// A composer upload in a project-less thread is private to that one thread; a
 	// project upload keeps the project scope (ThreadID is then provenance-only).
-	// A project-less upload with no thread stays user-global — a legacy-only state
-	// no caller produces today (see UploadInput).
+	// A project-less upload with no thread stays user-global — a state no caller
+	// produces today (see UploadInput).
 	var threadID *string
 	if in.ProjectID == nil && in.ThreadID != "" {
 		threadID = &in.ThreadID
