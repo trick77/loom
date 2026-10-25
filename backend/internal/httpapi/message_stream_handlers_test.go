@@ -154,6 +154,28 @@ func TestStreamMessageGeneratesTitleWhenThreadTitleIsFirstPrompt(t *testing.T) {
 	}
 }
 
+// A run thread is titled with its schedule's name; a follow-up that happens to
+// match it leaves the name alone.
+func TestStreamMessageKeepsARunThreadsScheduleName(t *testing.T) {
+	scheduleID := "sch_1"
+	store := &fakeThreadStore{
+		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Weather", ScheduleID: &scheduleID},
+	}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: store,
+		LLM:    fakeChatClient{Title: "Rain forecast"},
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"weather"}`))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "Rain forecast") || store.Thread.Title != "Weather" {
+		t.Fatalf("a run thread was retitled: %q\n%s", store.Thread.Title, rec.Body.String())
+	}
+}
+
 func TestStreamMessageSendsAndPersistsReasoningContent(t *testing.T) {
 	store := &fakeThreadStore{
 		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle},
