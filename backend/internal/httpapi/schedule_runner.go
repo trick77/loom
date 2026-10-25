@@ -24,6 +24,8 @@ const (
 	maxConcurrentScheduleRuns = 2
 	// schedulePruneEvery is how often old notifications and stale memory go.
 	schedulePruneEvery = time.Hour
+	// findingsTimeout bounds the gate call that lists a run's findings.
+	findingsTimeout = time.Minute
 )
 
 // scheduleRuns admits scheduled runs: at most maxConcurrentScheduleRuns in
@@ -84,8 +86,12 @@ func (w *ScheduleWorker) Run(ctx context.Context) {
 	if s.schedules == nil {
 		return
 	}
-	if err := s.schedules.ResetInterrupted(ctx); err != nil {
+	interrupted, err := s.schedules.ResetInterrupted(ctx)
+	if err != nil {
 		slog.Warn("reset interrupted schedule runs failed", "err", err)
+	}
+	for _, run := range interrupted {
+		s.closeInterruptedRun(ctx, run)
 	}
 	ticker := time.NewTicker(scheduleTick)
 	defer ticker.Stop()
@@ -135,7 +141,13 @@ func (w *ScheduleWorker) startDue(ctx context.Context) {
 // startScheduleRun runs a claimed and admitted schedule in the background.
 func (s *server) startScheduleRun(ctx context.Context, sch schedule.Schedule) {
 	release := func() {
-		if err := s.schedules.Release(context.WithoutCancel(ctx), sch.UserID, sch.ID); err != nil {
+		detached := context.WithoutCancel(ctx)
+		current, err := s.schedules.GetSchedule(detached, sch.UserID, sch.ID)
+		if err != nil {
+			current = sch
+		}
+		now := s.clock()
+		if err := s.schedules.Release(detached, sch.UserID, sch.ID, now, schedule.NextRun(current, now)); err != nil {
 			slog.Warn("release schedule failed", "schedule_id", sch.ID, "err", err)
 		}
 		s.runs.done(sch.UserID)
@@ -298,8 +310,20 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	noteThread = ""
 	costs.SetAssistant(assistant)
 	run.MessageID = &assistant.ID
+	if result.Interrupted {
+		// A stalled answer is kept for the reader, but its cut-off list is no
+		// record of what is new: the next run reports the rest.
+		run.Error = "the answer was cut off"
+		s.restoreActivity(detached, user.ID, thread.ID, previousActivity)
+		return
+	}
 
-	fresh := s.recordFindings(turnCtx, user.ID, sch, runID, result, memory.Findings, seen.list())
+	// The extraction gets its own deadline, and ends with the server: the
+	// run's own limit is spent by now.
+	extractCtx, cancelExtract := context.WithTimeout(
+		llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), findingsTimeout)
+	defer cancelExtract()
+	fresh := s.recordFindings(extractCtx, user.ID, sch, runID, result, memory.Findings, seen.list())
 	run.NewCount = len(fresh)
 	switch {
 	case result.LimitHit == turn.LimitTokens:
@@ -393,6 +417,16 @@ func (s *server) disableAfterTimeout(ctx context.Context, user auth.User, sch sc
 		Title:      sch.Name + " was disabled",
 		Body:       fmt.Sprintf("The run took longer than %d minutes. Open the schedule to change it or enable it again.", minutes),
 	})
+}
+
+// closeInterruptedRun notes under a prompt the previous process left without
+// a reply. A run that stopped before it stored its prompt left none.
+func (s *server) closeInterruptedRun(ctx context.Context, run schedule.InterruptedRun) {
+	last, err := s.thread.ListRecentMessages(ctx, run.UserID, run.ThreadID, 1)
+	if err != nil || len(last) == 0 || last[0].Role != chat.RoleUser {
+		return
+	}
+	s.persistRunNote(ctx, run.UserID, run.ThreadID, "This scheduled run was interrupted by a restart.")
 }
 
 // persistRunNote ends a run that has no answer with a line saying why, so the

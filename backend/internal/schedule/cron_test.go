@@ -183,6 +183,19 @@ func TestTwiceADayAcrossADaylightSavingSwitch(t *testing.T) {
 	}
 }
 
+func TestResolveTemplateRedrawsADayThatNeverComes(t *testing.T) {
+	// "once in February": a drawn 30th or 31st never runs; another draw does.
+	for seed := uint64(0); seed < 40; seed++ {
+		spec, err := ResolveTemplate("0 9 ~ 2 *", time.UTC, time.Now(), rand.New(rand.NewPCG(seed, 3)))
+		if err != nil {
+			t.Fatalf("seed %d: %v", seed, err)
+		}
+		if d := spec.daysOfMonth[0]; d > 29 {
+			t.Fatalf("seed %d drew day %d of February", seed, d)
+		}
+	}
+}
+
 func TestResolveTemplateNeverRunsAndSteppedDraws(t *testing.T) {
 	if _, err := ResolveTemplate("0 9 30 2 *", time.UTC, time.Now(), rand.New(rand.NewPCG(1, 1))); !errors.Is(err, ErrNeverRuns) {
 		t.Fatalf("30 February err = %v, want ErrNeverRuns", err)

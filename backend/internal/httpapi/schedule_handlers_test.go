@@ -241,6 +241,12 @@ func TestBranchEndpoint(t *testing.T) {
 	thread, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "t"})
 	question, _ := f.chat.AddMessageWithAttachments(ctx, testUser.ID, thread.ID, chat.RoleUser, "q", nil, nil, "")
 	answer, _ := f.chat.AddMessageWithCitations(ctx, testUser.ID, thread.ID, chat.RoleAssistant, "a", chat.MessageTokenUsage{}, nil, nil, nil, nil)
+	// A plain thread's answers do not branch.
+	if rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/messages/"+answer.ID+"/branch", ""); rec.Code != http.StatusBadRequest {
+		t.Fatalf("branch from a plain thread = %d", rec.Code)
+	}
+	sch, _ := f.store.CreateSchedule(ctx, schedule.Schedule{UserID: testUser.ID, Name: "s", Prompt: "p", IntervalText: "i", CronTemplate: "0 9 * * *", Cron: "0 9 * * *", Timezone: "UTC", Enabled: true})
+	_ = f.store.SetThread(ctx, testUser.ID, sch.ID, thread.ID)
 	rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/messages/"+answer.ID+"/branch", "")
 	branch := decodeInto[chat.Thread](t, rec)
 	if rec.Code != http.StatusCreated || branch.BranchedFromMessageID == nil || *branch.BranchedFromMessageID != answer.ID {

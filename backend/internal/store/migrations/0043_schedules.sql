@@ -47,6 +47,7 @@ CREATE TABLE schedule_runs (
 );
 
 CREATE INDEX idx_schedule_runs_schedule ON schedule_runs(schedule_id, started_at DESC);
+CREATE INDEX idx_schedule_runs_user ON schedule_runs(user_id, schedule_id, started_at DESC);
 
 -- What a schedule already reported: never announced again.
 CREATE TABLE schedule_findings (

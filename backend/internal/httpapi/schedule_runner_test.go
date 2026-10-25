@@ -158,6 +158,46 @@ func TestScheduledRunRefusesToolsOutsideItsSet(t *testing.T) {
 	}
 }
 
+// stallingChatClient answers part of a sentence, then stalls.
+type stallingChatClient struct{ fakeChatClient }
+
+func (*stallingChatClient) StreamChatWithTools(context.Context, []llm.Message, []llm.Tool, func(llm.StreamEvent) error) (llm.StreamResult, error) {
+	return llm.StreamResult{Content: "One new film: A, and"}, llm.ErrStreamStalled
+}
+
+func TestScheduledRunWithACutOffAnswerRecordsNoFindings(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	f.sllm.findings = []llm.Finding{{Key: "a", Label: "A"}}
+	f.deps.LLM = &stallingChatClient{}
+	f.deps.MCP = &fakeMCPService{ToolList: webTools(), Result: "page"}
+	s := newServer(f.deps)
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error != "the answer was cut off" || runs[0].MessageID == nil {
+		t.Fatalf("run = %+v", runs)
+	}
+	if findings, _ := f.store.ListFindings(ctx, testUser.ID, sch.ID); len(findings) != 0 {
+		t.Fatalf("a cut-off answer recorded findings: %+v", findings)
+	}
+}
+
+func TestCloseInterruptedRunNotesADanglingPrompt(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	s := newServer(f.deps)
+	thread, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "s"})
+	_, _ = f.chat.AddMessageWithAttachments(ctx, testUser.ID, thread.ID, chat.RoleUser, "find films", nil, nil, "")
+	run := schedule.InterruptedRun{UserID: testUser.ID, ThreadID: thread.ID}
+	s.closeInterruptedRun(ctx, run)
+	s.closeInterruptedRun(ctx, run)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, thread.ID)
+	if len(messages) != 2 || !strings.Contains(messages[1].Content, "interrupted by a restart") {
+		t.Fatalf("thread = %+v (one note, under the prompt)", messages)
+	}
+}
+
 func TestScheduledRunCutByShutdownLeavesANote(t *testing.T) {
 	f := newScheduleFixture(t)
 	blocking := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}

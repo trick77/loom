@@ -130,7 +130,7 @@ func TestClaimIsExclusiveAndDueListsOnlyIdleEnabled(t *testing.T) {
 	if !got.Running || !got.NextRunAt.Equal(next) {
 		t.Fatalf("claimed schedule = %+v", got)
 	}
-	if err := st.Release(ctx, "u1", due.ID); err != nil {
+	if err := st.Release(ctx, "u1", due.ID, now, nil); err != nil {
 		t.Fatal(err)
 	}
 	if ok, _ := st.Claim(ctx, "u1", due.ID, now); !ok {
@@ -141,7 +141,7 @@ func TestClaimIsExclusiveAndDueListsOnlyIdleEnabled(t *testing.T) {
 		t.Fatalf("Claim moved the next run: %v", got.NextRunAt)
 	}
 	runID, _ := st.StartRun(ctx, "u1", due.ID, now)
-	if err := st.ResetInterrupted(ctx); err != nil {
+	if _, err := st.ResetInterrupted(ctx); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = st.GetSchedule(ctx, "u1", due.ID)
@@ -163,9 +163,52 @@ func TestClaimDueWithoutANextRunLeavesNoneDue(t *testing.T) {
 	if ok, err := st.ClaimDue(ctx, "u1", sch.ID, now, nil); err != nil || !ok {
 		t.Fatalf("ClaimDue = %v, %v", ok, err)
 	}
-	_ = st.Release(ctx, "u1", sch.ID)
+	_ = st.Release(ctx, "u1", sch.ID, now, nil)
 	if due, _ := st.DueSchedules(ctx, now.Add(time.Hour), 10); len(due) != 0 {
 		t.Fatalf("a schedule without a next run is still due: %+v", due)
+	}
+}
+
+func TestResetInterruptedNamesTheThreads(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	st := schedule.NewStore(db)
+	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
+	seedThread(t, db, "u1", "th1")
+	_ = st.SetThread(ctx, "u1", sch.ID, "th1")
+	_, _ = st.StartRun(ctx, "u1", sch.ID, time.Now())
+	got, err := st.ResetInterrupted(ctx)
+	if err != nil || len(got) != 1 || got[0] != (schedule.InterruptedRun{UserID: "u1", ThreadID: "th1"}) {
+		t.Fatalf("ResetInterrupted = %+v, %v", got, err)
+	}
+	if again, _ := st.ResetInterrupted(ctx); len(again) != 0 {
+		t.Fatalf("a second reset found %+v", again)
+	}
+}
+
+func TestReleaseMovesASlotThatPassedDuringTheRun(t *testing.T) {
+	ctx := context.Background()
+	st := schedule.NewStore(openDB(t))
+	slot := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", &slot))
+	// Run now at 09:58; the run ends at 10:02, past the 10:00 slot.
+	if ok, _ := st.Claim(ctx, "u1", sch.ID, slot.Add(-2*time.Minute)); !ok {
+		t.Fatal("claim failed")
+	}
+	next := slot.AddDate(0, 0, 7)
+	if err := st.Release(ctx, "u1", sch.ID, slot.Add(2*time.Minute), &next); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := st.GetSchedule(ctx, "u1", sch.ID)
+	if !got.NextRunAt.Equal(next) {
+		t.Fatalf("next run = %v, want %v: the passed slot must not run right after", got.NextRunAt, next)
+	}
+	// A slot still ahead stays.
+	_, _ = st.Claim(ctx, "u1", sch.ID, slot)
+	_ = st.Release(ctx, "u1", sch.ID, slot, &slot)
+	got, _ = st.GetSchedule(ctx, "u1", sch.ID)
+	if !got.NextRunAt.Equal(next) {
+		t.Fatalf("a future slot moved: %v", got.NextRunAt)
 	}
 }
 

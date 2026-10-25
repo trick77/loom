@@ -61,6 +61,9 @@ type LoopResult struct {
 	// limit that forced the final answer ("" when none did).
 	Rounds   int
 	LimitHit string
+	// Interrupted is a partial answer kept from a stopped or stalled round,
+	// returned without an error.
+	Interrupted bool
 }
 
 // SourceURLs are the turn's web sources by their [n] number.
@@ -127,7 +130,10 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// Stamp gathered sources onto every subsequent return (natural answer, forced
 	// final, interrupted partial) in one place. The tool-less/image fast paths
 	// return above this and never gather web sources.
-	defer func() { out.WebSources, out.Rounds, out.LimitHit = reg.all(), rounds, limitHit }()
+	interrupted := false
+	defer func() {
+		out.WebSources, out.Rounds, out.LimitHit, out.Interrupted = reg.all(), rounds, limitHit, interrupted
+	}()
 	b := &blockBuilder{}
 	// The prompt prefix before any tool round: original system prompt + prior
 	// conversation + the user's question. The forced final answer rebuilds a clean
@@ -142,7 +148,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				return LoopResult{}, err
 			}
 			b.addResult(t.titles, result)
-			if b.keepInterrupted(&result, err, artifacts) {
+			if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 				return b.result(result, artifacts, ""), nil
 			}
 			return LoopResult{}, err
@@ -353,7 +359,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	}
 	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), finalHistory, finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(t.titles, result)
-	if b.keepInterrupted(&result, err, artifacts) {
+	if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 		return b.result(result, artifacts, ""), nil
 	}
 	// Backstop: if the clean synthesis still produced no prose (e.g. the model emitted
@@ -367,7 +373,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		}
 		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), retryHistory, finalRetryInference(t.inference, result), nil)
 		b.addResult(t.titles, result)
-		if b.keepInterrupted(&result, err, artifacts) {
+		if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 			return b.result(result, artifacts, ""), nil
 		}
 		if err == nil && strings.TrimSpace(result.Content) == "" {

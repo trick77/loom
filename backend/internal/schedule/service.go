@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"strings"
 	"sync"
@@ -202,9 +203,11 @@ func (s *Service) Update(ctx context.Context, userID, id string, in Input) (Sche
 	if err != nil {
 		return Schedule{}, err
 	}
+	// The schedule is saved by now: a thread that cannot be renamed is logged,
+	// not reported as a failed save.
 	if saved.Name != oldName && saved.ThreadID != nil && s.Threads != nil {
 		if err := s.Threads.SetThreadTitle(ctx, userID, *saved.ThreadID, saved.Name); err != nil {
-			return Schedule{}, err
+			slog.Warn("rename schedule thread failed", "schedule_id", saved.ID, "err", err)
 		}
 	}
 	return saved, nil
@@ -247,7 +250,14 @@ func (s *Service) apply(ctx context.Context, sch *Schedule, in Input, creating b
 			return err
 		}
 		if in.Interval != nil {
-			sch.IntervalText = strings.TrimSpace(*in.Interval)
+			interval := strings.TrimSpace(*in.Interval)
+			if interval == "" {
+				return invalid("say when the schedule should run")
+			}
+			if len([]rune(interval)) > MaxIntervalLength {
+				return invalid("the interval is too long")
+			}
+			sch.IntervalText = interval
 		}
 		sch.CronTemplate, sch.Cron = in.Template, spec.String()
 	case creating || intervalChanged:

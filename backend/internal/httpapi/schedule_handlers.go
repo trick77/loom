@@ -399,7 +399,7 @@ func (s *server) handleBranchThread(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, chat.ErrThreadNotFound):
 		writeNotFound(w)
 		return
-	case errors.Is(err, chat.ErrNotAnAnswer):
+	case errors.Is(err, chat.ErrNotAnAnswer), errors.Is(err, chat.ErrNotBranchable):
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	case err != nil:

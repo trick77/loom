@@ -160,6 +160,36 @@ func TestCreateWithDrawnSlotSkipsTheModel(t *testing.T) {
 	}
 }
 
+type failingTitles struct{}
+
+func (failingTitles) SetThreadTitle(context.Context, string, string, string) error {
+	return errors.New("thread gone")
+}
+
+func TestUpdateKeepsTheSaveWhenTheThreadRenameFails(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := newService(t, &fakeInterpreter{template: "0 9 * * *", ok: true})
+	svc.Threads = failingTitles{}
+	sch, _ := svc.Create(ctx, "u1", schedule.Input{Prompt: ptr("p"), Interval: ptr("daily")})
+	_ = svc.Store.SetThread(ctx, "u1", sch.ID, "th1")
+	got, err := svc.Update(ctx, "u1", sch.ID, schedule.Input{Name: ptr("Renamed")})
+	if err != nil || got.Name != "Renamed" {
+		t.Fatalf("Update = %+v, %v", got, err)
+	}
+}
+
+func TestDrawnSlotStillChecksTheInterval(t *testing.T) {
+	svc, _ := newService(t, &fakeInterpreter{ok: true})
+	for _, interval := range []string{" ", strings.Repeat("x", 201)} {
+		_, err := svc.Create(context.Background(), "u1", schedule.Input{
+			Prompt: ptr("p"), Interval: ptr(interval), Template: "0 9 * * *", Cron: "0 9 * * *",
+		})
+		if !errors.As(err, new(schedule.ValidationError)) {
+			t.Errorf("interval %q err = %v, want a validation error", interval, err)
+		}
+	}
+}
+
 func TestUpdate(t *testing.T) {
 	ctx := context.Background()
 	interp := &fakeInterpreter{template: "~ 7~22 * * ~", ok: true}

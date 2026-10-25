@@ -13,19 +13,28 @@ import (
 // ErrNotAnAnswer is a branch from a message that is not an assistant answer.
 var ErrNotAnAnswer = errors.New("only an answer can be continued in a new thread")
 
+// ErrNotBranchable is a branch from a thread that is not a schedule's.
+var ErrNotBranchable = errors.New("only a schedule's answers can be continued in a new thread")
+
 // copiedMessageColumns are the message columns a branch copies; the ids,
 // timestamps and the spend stay with the original.
 const copiedMessageColumns = "role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, model, reasoning_effort"
 
-// BranchThread starts a new thread from one of the user's answers: a copy of
-// the answer and the question it answered, so the thread continues from them
-// on its own. The copy keeps no spend (it was booked on the original) and the
-// new thread names its source. The thread survives the source's deletion.
+// BranchThread starts a new thread from one of the user's answers in a
+// schedule's thread: a copy of the answer and the question it answered, so
+// the thread continues from them on its own. The copy keeps no spend (it was
+// booked on the original) and the new thread names its source. It survives
+// the source's deletion: a scheduled run creates no files, so the copy holds
+// no reference to anything that goes with the source. Branching another
+// thread's answers would first have to carry its artifacts over.
 func (s *Store) BranchThread(ctx context.Context, userID, threadID, messageID string) (Thread, error) {
 	var role Role
 	var rowid int64
-	err := s.db.QueryRowContext(ctx, `SELECT role, rowid FROM messages WHERE user_id = ? AND thread_id = ? AND id = ?`,
-		userID, threadID, messageID).Scan(&role, &rowid)
+	var scheduled bool
+	err := s.db.QueryRowContext(ctx, `
+SELECT m.role, m.rowid, EXISTS (SELECT 1 FROM schedules sc WHERE sc.user_id = m.user_id AND sc.thread_id = m.thread_id)
+FROM messages m WHERE m.user_id = ? AND m.thread_id = ? AND m.id = ?`,
+		userID, threadID, messageID).Scan(&role, &rowid, &scheduled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Thread{}, ErrThreadNotFound
 	}
@@ -34,6 +43,9 @@ func (s *Store) BranchThread(ctx context.Context, userID, threadID, messageID st
 	}
 	if role != RoleAssistant {
 		return Thread{}, ErrNotAnAnswer
+	}
+	if !scheduled {
+		return Thread{}, ErrNotBranchable
 	}
 	copies := []string{messageID}
 	var questionID string

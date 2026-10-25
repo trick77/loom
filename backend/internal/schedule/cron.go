@@ -244,14 +244,21 @@ func wallClock(t time.Time, loc *time.Location) time.Time {
 
 // ResolveTemplate draws a concrete cron from a template: "~" in a field is a
 // random value in the field's whole range, "a~b" one in that range; every
-// other token is kept. It redraws while the result runs closer together than
-// MinRunGap and returns ErrTooOften when no draw satisfies it.
+// other token is kept. It redraws while the result never runs (a drawn 30th
+// of February) or runs closer together than MinRunGap, and returns
+// ErrNeverRuns or ErrTooOften when no draw works.
 func ResolveTemplate(template string, loc *time.Location, from time.Time, rng *rand.Rand) (Spec, error) {
 	parts := strings.Fields(template)
 	if len(parts) != len(fields) {
 		return Spec{}, fmt.Errorf("cron template needs 5 fields, got %d", len(parts))
 	}
-	for attempt := 0; attempt < resolveAttempts; attempt++ {
+	drawsLeft := resolveAttempts
+	if !strings.Contains(template, "~") {
+		// Nothing to draw: one look decides.
+		drawsLeft = 1
+	}
+	failure := ErrNeverRuns
+	for ; drawsLeft > 0; drawsLeft-- {
 		drawn := make([]string, len(parts))
 		for i, part := range parts {
 			value, err := drawField(part, fields[i], rng)
@@ -264,17 +271,15 @@ func ResolveTemplate(template string, loc *time.Location, from time.Time, rng *r
 		if err != nil {
 			return Spec{}, err
 		}
-		if s := spec.Next(from, loc); s.IsZero() {
-			return Spec{}, ErrNeverRuns
+		if spec.Next(from, loc).IsZero() {
+			continue
 		}
 		if spec.minGap(from, loc) >= MinRunGap {
 			return spec, nil
 		}
-		if !strings.Contains(template, "~") {
-			break
-		}
+		failure = ErrTooOften
 	}
-	return Spec{}, ErrTooOften
+	return Spec{}, failure
 }
 
 func drawField(part string, f field, rng *rand.Rand) (string, error) {

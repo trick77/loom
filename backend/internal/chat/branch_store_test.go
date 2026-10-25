@@ -2,10 +2,32 @@ package chat
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
 )
+
+// linkSchedule makes threadID the run feed of a schedule called id.
+func linkSchedule(t *testing.T, db *sql.DB, userID, id, threadID string) {
+	t.Helper()
+	if _, err := db.Exec(`INSERT INTO schedules (id, user_id, name, prompt, interval_text, cron_template, cron, timezone, thread_id)
+VALUES (?, ?, 'n', 'p', 'i', 't', 'c', 'UTC', ?)`, id, userID, threadID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBranchThreadOnlyFromAScheduleThread(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	alice := insertTestUser(t, db, "alice")
+	st := NewStore(db)
+	plain, _ := st.CreateThread(ctx, alice, CreateThreadInput{Title: "plain"})
+	answer, _ := st.AddMessageWithCitations(ctx, alice, plain.ID, RoleAssistant, "a", MessageTokenUsage{}, nil, nil, nil, nil)
+	if _, err := st.BranchThread(ctx, alice, plain.ID, answer.ID); !errors.Is(err, ErrNotBranchable) {
+		t.Fatalf("branch from a plain thread err = %v", err)
+	}
+}
 
 func TestBranchThreadCopiesTheAnswerAndItsQuestion(t *testing.T) {
 	ctx := context.Background()
@@ -14,6 +36,7 @@ func TestBranchThreadCopiesTheAnswerAndItsQuestion(t *testing.T) {
 	bob := insertTestUser(t, db, "bob")
 	st := NewStore(db)
 	source, _ := st.CreateThread(ctx, alice, CreateThreadInput{Title: "Cinema scout"})
+	linkSchedule(t, db, alice, "s1", source.ID)
 	_, _ = st.AddMessageWithAttachments(ctx, alice, source.ID, RoleUser, "old question", nil, nil, "")
 	_, _ = st.AddMessageWithCitations(ctx, alice, source.ID, RoleAssistant, "old answer", MessageTokenUsage{}, nil, nil, nil, nil)
 	question, _ := st.AddMessageWithAttachments(ctx, alice, source.ID, RoleUser, "find films", nil, nil, "")
@@ -60,6 +83,7 @@ func TestBranchThreadWithoutAQuestion(t *testing.T) {
 	alice := insertTestUser(t, db, "alice")
 	st := NewStore(db)
 	source, _ := st.CreateThread(ctx, alice, CreateThreadInput{Title: "x"})
+	linkSchedule(t, db, alice, "s1", source.ID)
 	answer, _ := st.AddMessageWithCitations(ctx, alice, source.ID, RoleAssistant, "lonely answer", MessageTokenUsage{}, nil, nil, nil, nil)
 	branch, err := st.BranchThread(ctx, alice, source.ID, answer.ID)
 	if err != nil {
@@ -77,10 +101,7 @@ func TestThreadScheduleIDAndSetLastMessageAt(t *testing.T) {
 	alice := insertTestUser(t, db, "alice")
 	st := NewStore(db)
 	thread, _ := st.CreateThread(ctx, alice, CreateThreadInput{Title: "Cinema scout"})
-	if _, err := db.Exec(`INSERT INTO schedules (id, user_id, name, prompt, interval_text, cron_template, cron, timezone, thread_id)
-VALUES ('s1', ?, 'n', 'p', 'i', 't', 'c', 'UTC', ?)`, alice, thread.ID); err != nil {
-		t.Fatal(err)
-	}
+	linkSchedule(t, db, alice, "s1", thread.ID)
 	got, _, _ := st.GetThread(ctx, alice, thread.ID)
 	if got.ScheduleID == nil || *got.ScheduleID != "s1" {
 		t.Fatalf("ScheduleID = %v", got.ScheduleID)

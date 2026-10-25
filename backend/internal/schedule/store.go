@@ -359,9 +359,14 @@ func (st *Store) claim(ctx context.Context, query string, args ...any) (bool, er
 	return n == 1, nil
 }
 
-// Release ends the schedule's run.
-func (st *Store) Release(ctx context.Context, userID, id string) error {
-	_, err := st.db.ExecContext(ctx, `UPDATE schedules SET running_at = NULL WHERE user_id = ? AND id = ?`, userID, id)
+// Release ends the schedule's run. A slot that passed while it ran (a "Run
+// now" just before it) moves on to next, so the schedule does not run again
+// right after.
+func (st *Store) Release(ctx context.Context, userID, id string, now time.Time, next *time.Time) error {
+	_, err := st.db.ExecContext(ctx, `
+UPDATE schedules SET running_at = NULL,
+    next_run_at = CASE WHEN next_run_at IS NOT NULL AND next_run_at <= ? THEN ? ELSE next_run_at END
+WHERE user_id = ? AND id = ?`, ts(now), nullTS(next), userID, id)
 	if err != nil {
 		return fmt.Errorf("release schedule: %w", err)
 	}
@@ -381,16 +386,44 @@ WHERE user_id = ? AND id = ?`, reason, ts(at), userID, id)
 
 // ResetInterrupted clears every claim and fails every run left running: at
 // boot nothing runs yet, so they are what a previous process left behind.
-func (st *Store) ResetInterrupted(ctx context.Context) error {
+// It returns the threads those runs wrote into, so the caller can close each
+// with a note.
+func (st *Store) ResetInterrupted(ctx context.Context) ([]InterruptedRun, error) {
+	rows, err := st.db.QueryContext(ctx, `
+SELECT r.user_id, s.thread_id FROM schedule_runs r
+JOIN schedules s ON s.id = r.schedule_id AND s.user_id = r.user_id
+WHERE r.status = 'running' AND s.thread_id IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("list interrupted runs: %w", err)
+	}
+	var out []InterruptedRun
+	for rows.Next() {
+		var r InterruptedRun
+		if err := rows.Scan(&r.UserID, &r.ThreadID); err != nil {
+			_ = rows.Close()
+			return nil, fmt.Errorf("scan interrupted run: %w", err)
+		}
+		out = append(out, r)
+	}
+	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if _, err := st.db.ExecContext(ctx, `UPDATE schedules SET running_at = NULL WHERE running_at IS NOT NULL`); err != nil {
-		return fmt.Errorf("reset schedule claims: %w", err)
+		return nil, fmt.Errorf("reset schedule claims: %w", err)
 	}
 	if _, err := st.db.ExecContext(ctx, `
 UPDATE schedule_runs SET status = 'failed', error = 'interrupted by a restart', finished_at = datetime('now')
 WHERE status = 'running'`); err != nil {
-		return fmt.Errorf("fail interrupted runs: %w", err)
+		return nil, fmt.Errorf("fail interrupted runs: %w", err)
 	}
-	return nil
+	return out, nil
+}
+
+// InterruptedRun is the thread a run left behind when the process stopped.
+type InterruptedRun struct {
+	UserID   string
+	ThreadID string
 }
 
 // StartRun records a run that begins now.
@@ -489,7 +522,10 @@ func (st *Store) ListRuns(ctx context.Context, userID, scheduleID string, limit 
 func (st *Store) LastRuns(ctx context.Context, userID string) (map[string]Run, error) {
 	rows, err := st.db.QueryContext(ctx, `
 SELECT `+runColumns+` FROM schedule_runs r
-WHERE user_id = ? AND rowid = (SELECT rowid FROM schedule_runs WHERE schedule_id = r.schedule_id ORDER BY started_at DESC, rowid DESC LIMIT 1)`, userID)
+WHERE r.user_id = ? AND r.rowid = (
+    SELECT l.rowid FROM schedule_runs l
+    WHERE l.user_id = r.user_id AND l.schedule_id = r.schedule_id
+    ORDER BY l.started_at DESC, l.rowid DESC LIMIT 1)`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("last runs: %w", err)
 	}
@@ -702,6 +738,7 @@ func (st *Store) Prune(ctx context.Context, now time.Time) error {
 		age   time.Duration
 	}{
 		{`DELETE FROM notifications WHERE created_at < ?`, notificationRetention},
+		{`DELETE FROM schedule_runs WHERE started_at < ? AND status != 'running'`, runRetention},
 		{`DELETE FROM schedule_sources WHERE last_used_at < ?`, memoryRetention},
 		{`DELETE FROM schedule_queries WHERE last_used_at < ?`, memoryRetention},
 	} {
@@ -715,6 +752,8 @@ func (st *Store) Prune(ctx context.Context, now time.Time) error {
 const (
 	notificationRetention = 30 * 24 * time.Hour
 	memoryRetention       = 30 * 24 * time.Hour
+	// runRetention keeps half a year of run history; the findings outlive it.
+	runRetention = 180 * 24 * time.Hour
 )
 
 // trimText cuts s to at most n runes on a rune boundary.
