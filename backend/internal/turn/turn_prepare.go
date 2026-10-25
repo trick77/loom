@@ -53,6 +53,10 @@ type Run struct {
 	scheduledTools map[string]bool
 	// tavilyCalls counts the Tavily calls a scheduled run started.
 	tavilyCalls int
+	// readOutside is set once any tool but the schedule tools returned
+	// content into the turn: from then on its text may carry instructions
+	// the user never gave.
+	readOutside bool
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.
@@ -261,6 +265,9 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			knowledgeSources = append(append([]Citation(nil), attachmentSources...), knowledgeSources...)
 		},
 	)
+	// Attached and knowledge documents are text the user did not write in
+	// this message: they count as outside content from the first round.
+	t.readOutside = documentContext != "" || knowledgeContext != ""
 	imageArtifactRequired := imageRoute.generate
 	if imageArtifactRequired {
 		// The image path forces its own tools; the drift guess adds nothing.

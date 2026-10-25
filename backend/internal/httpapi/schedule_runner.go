@@ -49,13 +49,22 @@ func newScheduleRuns() *scheduleRuns {
 // admit takes a slot for the user; false when the user already runs one or
 // every slot is taken.
 func (r *scheduleRuns) admit(userID string) bool {
+	return r.take(userID) == nil
+}
+
+// take takes a slot for the user, or says why not: errOwnRunActive when the
+// user already runs one, errRunBusy when every slot is taken.
+func (r *scheduleRuns) take(userID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.active[userID] || len(r.active) >= r.slots {
-		return false
+	if r.active[userID] {
+		return errOwnRunActive
+	}
+	if len(r.active) >= r.slots {
+		return errRunBusy
 	}
 	r.active[userID] = true
-	return true
+	return nil
 }
 
 func (r *scheduleRuns) done(userID string) {
@@ -313,6 +322,13 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		run.Status, run.Error = schedule.StatusTimeout, "the run took longer than the time limit"
 		noteThread = ""
+		minutes := int(schedule.RunTimeout / time.Minute)
+		// A schedule off by now (run by hand while off, or paused during the
+		// run) is not turned off again; the user's own pause stays theirs.
+		if current, err := s.schedules.GetSchedule(detached, user.ID, sch.ID); err != nil || !current.Enabled {
+			s.persistRunNote(detached, user.ID, thread.ID, fmt.Sprintf("This scheduled run took longer than %d minutes and was stopped.", minutes))
+			return
+		}
 		// One slow model call is no reason to turn a schedule off; a second
 		// run in a row past the limit is.
 		if s.previousRunTimedOut(detached, sch, runID) {
@@ -320,8 +336,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 			return
 		}
 		s.persistRunNote(detached, user.ID, thread.ID, fmt.Sprintf(
-			"This scheduled run took longer than %d minutes and was stopped. A second run in a row past the limit turns the schedule off.",
-			int(schedule.RunTimeout/time.Minute)))
+			"This scheduled run took longer than %d minutes and was stopped. A second run in a row past the limit turns the schedule off.", minutes))
 		return
 	}
 	// failWith ends a run without an answer: a line in the thread says why.

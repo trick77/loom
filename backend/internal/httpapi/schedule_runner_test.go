@@ -528,6 +528,27 @@ func TestScheduledRunFirstTimeoutKeepsTheSchedule(t *testing.T) {
 	}
 }
 
+// A schedule off by the time its run passes the limit (run by hand while off,
+// or paused during the run: sch is the run's snapshot, still enabled) is not
+// disabled and announced a second time.
+func TestScheduledRunTimeoutOfAScheduleAlreadyOff(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	sch := newRunnerSchedule(t, f)
+	seedTimedOutRun(t, f, sch, time.Now())
+	if err := f.store.Disable(ctx, testUser.ID, sch.ID, schedule.DisabledTimeout, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	runPastTheTimeLimit(t, f, sch)
+	if notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 0 {
+		t.Fatalf("a schedule already off was announced again: %+v", notes)
+	}
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
+	if len(messages) != 2 || messages[1].Content != "This scheduled run took longer than 5 minutes and was stopped." {
+		t.Fatalf("thread = %+v", messages)
+	}
+}
+
 func TestScheduledRunSecondTimeoutInARowDisablesTheSchedule(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
@@ -960,6 +981,75 @@ func TestRunScheduleEndpoint(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("run now did not finish")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// "Run the cinema scout now" starts a run from the chat, as the Run now
+// button does: one at a time per user.
+func TestScheduleToolRunStartsARun(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	s := newRunnerServer(t, f, researchClient("Nothing new."))
+	tools := scheduleToolRunner{s: s}
+	sch := newRunnerSchedule(t, f)
+
+	if out := tools.Run(ctx, testUser, map[string]any{}); !strings.Contains(out, "id is required") {
+		t.Fatalf("run without id = %q", out)
+	}
+	if out := tools.Run(ctx, testUser, map[string]any{"id": "nope"}); !strings.Contains(out, "No schedule has that id") {
+		t.Fatalf("run unknown = %q", out)
+	}
+	// Another run of the user's, or other users' runs in every slot, hold it
+	// back, each with its own reason; a lost claim hands the user's slot back.
+	for _, c := range []struct {
+		holders []string
+		want    string
+	}{
+		{[]string{testUser.ID}, "Not started: another of your scheduled runs is in progress"},
+		{[]string{"u_a", "u_b"}, "Not started: loom is already running as many scheduled runs"},
+	} {
+		for _, id := range c.holders {
+			s.runs.admit(id)
+		}
+		if out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID}); !strings.Contains(out, c.want) {
+			t.Fatalf("run with %v busy = %q", c.holders, out)
+		}
+		for _, id := range c.holders {
+			s.runs.done(id)
+		}
+	}
+	if ok, _ := f.store.Claim(ctx, testUser.ID, sch.ID, time.Now()); !ok {
+		t.Fatal("claim failed")
+	}
+	if out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID}); !strings.Contains(out, "this schedule is already running") {
+		t.Fatalf("run of a running schedule = %q", out)
+	}
+	if err := f.store.Release(ctx, testUser.ID, sch.ID, time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if !s.runs.admit(testUser.ID) {
+		t.Fatal("the lost claim kept the user's slot")
+	}
+	s.runs.done(testUser.ID)
+
+	// A schedule loom turned off runs on request, with a warning.
+	if err := f.store.Disable(ctx, testUser.ID, sch.ID, schedule.DisabledTimeout, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID})
+	if !strings.HasPrefix(out, `Started a run of "Cinema scout"`) || !strings.Contains(out, "new thread") || !strings.Contains(out, "stays off") {
+		t.Fatalf("run = %q", out)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+		if len(runs) == 1 && runs[0].Status != schedule.StatusRunning && runs[0].ThreadID != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the started run did not finish: %+v", runs)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
