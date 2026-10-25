@@ -147,28 +147,40 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 	}
 }
 
-// Loom must send the token obscura expects: both services take it from one
-// anchor, production's from the env with no default.
+// Loom must send the token obscura expects. Production: loom reads it from
+// .env via env_file (an environment entry would override that), obscura gets
+// the same .env value, with no default. Dev: one literal on both sides.
 func TestComposeSharesObscuraToken(t *testing.T) {
-	for path, wantSource := range map[string]string{
-		"../../../compose.yaml":     `x-obscura-token: &obscura-token "${BACKEND_OBSCURA_MCP_TOKEN:?`,
-		"../../../compose.dev.yaml": `x-obscura-token: &obscura-token dev-`,
-	} {
-		t.Run(path, func(t *testing.T) {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("read %s: %v", path, err)
-			}
-			compose := string(data)
-			if !strings.Contains(compose, "\n"+wantSource) {
-				t.Fatalf("%s: missing %s", path, wantSource)
-			}
-			for service, key := range map[string]string{"loom": "BACKEND_OBSCURA_MCP_TOKEN", "obscura": "OBSCURA_MCP_TOKEN"} {
-				if !strings.Contains(composeService(t, compose, service), "\n      "+key+": *obscura-token\n") {
-					t.Fatalf("%s: %s service must set %s from *obscura-token", path, service, key)
-				}
-			}
-		})
+	read := func(path string) string {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		return string(data)
+	}
+
+	prod := read("../../../compose.yaml")
+	loom := composeService(t, prod, "loom")
+	if !strings.Contains(loom, "\n      - path: .env\n") {
+		t.Fatal("compose.yaml: loom must load .env through env_file")
+	}
+	if strings.Contains(loom, "BACKEND_OBSCURA_MCP_TOKEN:") {
+		t.Fatal("compose.yaml: loom must take BACKEND_OBSCURA_MCP_TOKEN from env_file, not set it")
+	}
+	if !strings.Contains(composeService(t, prod, "obscura"), "\n      OBSCURA_MCP_TOKEN: \"${BACKEND_OBSCURA_MCP_TOKEN:?") {
+		t.Fatal("compose.yaml: obscura must read OBSCURA_MCP_TOKEN from BACKEND_OBSCURA_MCP_TOKEN, required")
+	}
+
+	dev := read("../../../compose.dev.yaml")
+	value := func(service, key string) string {
+		m := regexp.MustCompile(`(?m)^      ` + key + `: (\S+)$`).FindStringSubmatch(composeService(t, dev, service))
+		if m == nil {
+			t.Fatalf("compose.dev.yaml: %s sets no %s", service, key)
+		}
+		return m[1]
+	}
+	if l, o := value("loom", "BACKEND_OBSCURA_MCP_TOKEN"), value("obscura", "OBSCURA_MCP_TOKEN"); l != o || len(l) < 32 {
+		t.Fatalf("compose.dev.yaml: loom sends %q, obscura expects %q; want one value of 32+ characters", l, o)
 	}
 }
 

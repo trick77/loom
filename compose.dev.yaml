@@ -9,10 +9,6 @@
 #
 # Built-in Tavily web search: set BACKEND_TAVILY_API_KEY to enable it (the adapter talks to
 # Tavily's hosted MCP server).
-# Shared by loom (bearer token) and obscura (v0.2.3+ refuses MCP beyond loopback
-# without a token of at least 32 characters).
-x-obscura-token: &obscura-token dev-obscura-token-please-change-0123456789
-
 services:
   # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
   loom-init:
@@ -47,7 +43,8 @@ services:
       BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:-}"
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
-      BACKEND_OBSCURA_MCP_TOKEN: *obscura-token
+      # Same value as the obscura service's OBSCURA_MCP_TOKEN.
+      BACKEND_OBSCURA_MCP_TOKEN: dev-obscura-token-please-change-0123456789
       # HTML→PDF renderer, published on a localhost port (loom is host-networked here).
       BACKEND_GOTENBERG_URL: "http://localhost:3000"
       # Python sandbox (run_python), published on a localhost port.
@@ -96,7 +93,9 @@ services:
     # http://localhost:8090/mcp.
     image: h4ckf0r0day/obscura:0.2.5
     environment:
-      OBSCURA_MCP_TOKEN: *obscura-token
+      # v0.2.3+ refuses MCP beyond loopback without a token of at least 32
+      # characters; loom sends the same value.
+      OBSCURA_MCP_TOKEN: dev-obscura-token-please-change-0123456789
     command:
       - mcp
       - --http

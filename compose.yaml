@@ -1,7 +1,3 @@
-# Shared by loom (bearer token) and obscura (v0.2.3+ refuses MCP beyond loopback
-# without a token of at least 32 characters).
-x-obscura-token: &obscura-token "${BACKEND_OBSCURA_MCP_TOKEN:?set BACKEND_OBSCURA_MCP_TOKEN in .env (openssl rand -hex 32)}"
-
 services:
   loom:
     image: ghcr.io/trick77/loom:latest
@@ -25,8 +21,8 @@ services:
       BACKEND_GOTENBERG_URL: "http://gotenberg:3000"
       BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY}"
+      # BACKEND_OBSCURA_MCP_TOKEN comes in through env_file, like the other secrets.
       BACKEND_OBSCURA_MCP_URL: "http://obscura:8090/mcp"
-      BACKEND_OBSCURA_MCP_TOKEN: *obscura-token
       # run_python sidecar; the tool is offered while it answers. The token is
       # optional (set the same BACKEND_SANDBOX_TOKEN for both services).
       BACKEND_SANDBOX_URL: "http://sandbox:8070"
@@ -127,7 +123,9 @@ services:
     image: h4ckf0r0day/obscura:0.2.5
     restart: unless-stopped
     environment:
-      OBSCURA_MCP_TOKEN: *obscura-token
+      # v0.2.3+ refuses MCP beyond loopback without a token of at least 32
+      # characters: the one loom reads from .env.
+      OBSCURA_MCP_TOKEN: "${BACKEND_OBSCURA_MCP_TOKEN:?set BACKEND_OBSCURA_MCP_TOKEN in .env (openssl rand -hex 32)}"
     command:
       - mcp
       - --http
