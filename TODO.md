@@ -77,5 +77,3 @@ Open items from the simplification and performance pass (PR #630). Each is its o
 - **Favicon candidates** are probed one after another.
 - **Removable once safe**: the ignored `ReasoningEffort` request field (kept as a sink for stale
   browser tabs) and `Message.ToolCalls` (always `[]`; API change).
-- **One-time boot fixes** (`ReconcileLegacyDocumentScopes`, `ScrubOutOfScopeMessageCitations`) still
-  open a write transaction on every boot to read their marker.

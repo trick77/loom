@@ -103,16 +103,6 @@ func runServer() error {
 		if err := ragStore.ResetStuckIngestions(context.Background()); err != nil {
 			return err
 		}
-		// One-time data fix: rebind or remove pre-thread-scoping uploads that were
-		// stored user-global and leaked into unrelated threads.
-		if err := ragStore.ReconcileLegacyDocumentScopes(context.Background()); err != nil {
-			return err
-		}
-		// One-time data fix: remove stale citation metadata from old assistant
-		// messages after legacy document scopes have been corrected.
-		if err := ragStore.ScrubOutOfScopeMessageCitations(context.Background()); err != nil {
-			return err
-		}
 		embedClient, err := rag.NewEmbedClient(rag.EmbedConfig{Model: cfg.EmbedModel.ID}, http.DefaultClient)
 		if err != nil {
 			return err
