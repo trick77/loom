@@ -980,15 +980,39 @@ func TestScheduleToolRunStartsARun(t *testing.T) {
 	if out := tools.Run(ctx, testUser, map[string]any{"id": "nope"}); !strings.Contains(out, "No schedule has that id") {
 		t.Fatalf("run unknown = %q", out)
 	}
-	// Another run of the user's holds the slot.
-	s.runs.admit(testUser.ID)
-	if out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID}); !strings.Contains(out, "another scheduled run is in progress") {
-		t.Fatalf("run while busy = %q", out)
+	// Another run of the user's, or other users' runs in every slot, hold it
+	// back; a lost claim hands the user's slot back.
+	for _, holders := range [][]string{{testUser.ID}, {"u_a", "u_b"}} {
+		for _, id := range holders {
+			s.runs.admit(id)
+		}
+		if out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID}); !strings.Contains(out, "Not started: loom is already running as many scheduled runs") {
+			t.Fatalf("run with %v busy = %q", holders, out)
+		}
+		for _, id := range holders {
+			s.runs.done(id)
+		}
+	}
+	if ok, _ := f.store.Claim(ctx, testUser.ID, sch.ID, time.Now()); !ok {
+		t.Fatal("claim failed")
+	}
+	if out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID}); !strings.Contains(out, "this schedule is already running") {
+		t.Fatalf("run of a running schedule = %q", out)
+	}
+	if err := f.store.Release(ctx, testUser.ID, sch.ID, time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if !s.runs.admit(testUser.ID) {
+		t.Fatal("the lost claim kept the user's slot")
 	}
 	s.runs.done(testUser.ID)
 
+	// A schedule loom turned off runs on request, with a warning.
+	if err := f.store.Disable(ctx, testUser.ID, sch.ID, schedule.DisabledTimeout, time.Now()); err != nil {
+		t.Fatal(err)
+	}
 	out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID})
-	if !strings.HasPrefix(out, `Started a run of "Cinema scout"`) || !strings.Contains(out, "new thread") {
+	if !strings.HasPrefix(out, `Started a run of "Cinema scout"`) || !strings.Contains(out, "new thread") || !strings.Contains(out, "stays off") {
 		t.Fatalf("run = %q", out)
 	}
 	deadline := time.Now().Add(5 * time.Second)

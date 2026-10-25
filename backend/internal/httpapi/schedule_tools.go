@@ -66,35 +66,48 @@ func (t scheduleToolRunner) Update(ctx context.Context, user auth.User, _ string
 	return "Updated. " + t.describe(sch)
 }
 
-func (t scheduleToolRunner) Delete(ctx context.Context, user auth.User, args map[string]any) string {
+// lookup finds the schedule the tool's id names; on failure it returns the
+// model-facing text instead.
+func (t scheduleToolRunner) lookup(ctx context.Context, user auth.User, args map[string]any) (schedule.Schedule, string) {
 	id := strings.TrimSpace(stringOr(toolString(args, "id")))
 	if id == "" {
-		return "tool failed: id is required; get it from schedule_list."
+		return schedule.Schedule{}, "tool failed: id is required; get it from schedule_list."
 	}
 	sch, err := t.s.schedules.GetSchedule(ctx, user.ID, id)
 	if err != nil {
-		return scheduleToolError(err)
+		return schedule.Schedule{}, scheduleToolError(err)
 	}
-	if err := t.s.deleteSchedule(ctx, user.ID, id); err != nil {
+	return sch, ""
+}
+
+func (t scheduleToolRunner) Delete(ctx context.Context, user auth.User, args map[string]any) string {
+	sch, failed := t.lookup(ctx, user, args)
+	if failed != "" {
+		return failed
+	}
+	if err := t.s.deleteSchedule(ctx, user.ID, sch.ID); err != nil {
 		return scheduleToolError(err)
 	}
 	return fmt.Sprintf("Deleted the schedule %q, with the run threads the user left untouched. Run threads they followed up in, starred, archived, shared or filed into a project stay.", sch.Name)
 }
 
 func (t scheduleToolRunner) Run(ctx context.Context, user auth.User, args map[string]any) string {
-	id := strings.TrimSpace(stringOr(toolString(args, "id")))
-	if id == "" {
-		return "tool failed: id is required; get it from schedule_list."
-	}
-	sch, err := t.s.schedules.GetSchedule(ctx, user.ID, id)
-	if err != nil {
-		return scheduleToolError(err)
+	sch, failed := t.lookup(ctx, user, args)
+	if failed != "" {
+		return failed
 	}
 	if err := t.s.runScheduleNow(ctx, sch); err != nil {
 		return scheduleToolError(err)
 	}
-	return fmt.Sprintf("Started a run of %q. It runs in the background for up to %d minutes; its answer arrives in a new thread of its own, with a notification when it finds something new.",
-		sch.Name, int(schedule.RunTimeout/time.Minute))
+	out := fmt.Sprintf("Started a run of %q. It runs in the background for up to %d minutes; its answer arrives in a new thread of its own, with a notification when it finds something new.",
+		sch.Name, int(t.s.scheduleRunTimeout()/time.Minute))
+	switch {
+	case sch.DisabledReason == schedule.DisabledTimeout:
+		out += " Tell the user: loom turned this schedule off because two runs in a row took longer than the time limit, so this run may too; the schedule stays off."
+	case !sch.Enabled:
+		out += " The schedule itself stays off."
+	}
+	return out
 }
 
 // describe is one schedule for the model: what loom resolved, never what the

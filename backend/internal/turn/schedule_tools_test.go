@@ -1,10 +1,12 @@
 package turn
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/schedule"
@@ -49,4 +51,28 @@ func TestScheduleRunTool(t *testing.T) {
 	if spec.offered(&Engine{}, chat.Thread{}, toolGate{}) {
 		t.Fatal("offered without a schedule service")
 	}
+
+	// Once a tool brought outside content into the turn, the run waits for
+	// the user to ask again.
+	tools := &recordingScheduleTools{}
+	run := &Run{e: &Engine{schedules: tools}}
+	call := llm.ToolCall{Function: llm.ToolCallFunction{Name: scheduleRunToolName, Arguments: `{"id":"s1"}`}}
+	if out, _ := spec.run(context.Background(), run, call); out != "started" || tools.runs != 1 {
+		t.Fatalf("run = %q, %d runs", out, tools.runs)
+	}
+	run.readOutside = true
+	if out, _ := spec.run(context.Background(), run, call); out != scheduleRunAfterOutside || tools.runs != 1 {
+		t.Fatalf("run after outside content = %q, %d runs", out, tools.runs)
+	}
+}
+
+// recordingScheduleTools counts the runs it starts.
+type recordingScheduleTools struct {
+	ScheduleTools
+	runs int
+}
+
+func (r *recordingScheduleTools) Run(context.Context, auth.User, map[string]any) string {
+	r.runs++
+	return "started"
 }

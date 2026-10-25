@@ -53,6 +53,9 @@ type Run struct {
 	scheduledTools map[string]bool
 	// tavilyCalls counts the Tavily calls a scheduled run started.
 	tavilyCalls int
+	// readOutside is set once an MCP tool returned content into the turn:
+	// from then on its text may carry instructions the user never gave.
+	readOutside bool
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.

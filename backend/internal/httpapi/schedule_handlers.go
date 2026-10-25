@@ -268,7 +268,7 @@ func (s *server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 var (
-	errRunBusy         = errors.New("another scheduled run is in progress, try again in a few minutes")
+	errRunBusy         = errors.New("loom is already running as many scheduled runs as it allows, try again in a few minutes")
 	errScheduleRunning = errors.New("this schedule is already running")
 )
 

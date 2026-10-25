@@ -64,6 +64,7 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", run.argsErr)
 		return capToolOutput("tool failed: invalid arguments: " + run.argsErr.Error())
 	}
+	t.readOutside = true
 	arguments, output, err, durationMS := run.arguments, run.output, run.err, run.durationMS
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
