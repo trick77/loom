@@ -249,7 +249,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		return
 	}
 	thread, err := s.thread.CreateThread(detached, user.ID, chat.CreateThreadInput{
-		Title: runThreadTitle(sch, start), ScheduleID: &sch.ID,
+		Title: sch.Name, ScheduleID: &sch.ID,
 	})
 	if err != nil {
 		slog.Warn("create run thread failed", "schedule_id", sch.ID, "err", err)
@@ -451,15 +451,6 @@ func (s *server) disableAfterTimeout(ctx context.Context, user auth.User, sch sc
 		Title:      sch.Name + " was disabled",
 		Body:       fmt.Sprintf("Two runs in a row took longer than %d minutes. Open the schedule to change it or enable it again.", minutes),
 	})
-}
-
-// runThreadTitle names a run's thread after its schedule and its start on the
-// schedule's clock, so the runs tell apart in the recents.
-func runThreadTitle(sch schedule.Schedule, start time.Time) string {
-	if loc, err := time.LoadLocation(sch.Timezone); err == nil {
-		start = start.In(loc)
-	}
-	return sch.Name + " · " + start.Format("2006-01-02 15:04")
 }
 
 // replaceRunThreads deletes the schedule's run threads before keepThreadID
