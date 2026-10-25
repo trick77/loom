@@ -625,7 +625,7 @@ export const en = {
     actionFailed: "The schedule could not be updated.",
     deleteTitle: "Delete schedule",
     deleteConfirm:
-      "Delete this schedule? Its runs and memory go with it, and so do the threads of its runs you never followed up in.",
+      "Delete this schedule? Its runs and memory go with it, and so do run threads you left untouched. Run threads you followed up in, starred, archived, shared or moved to a project stay.",
     form: {
       titleNew: "New schedule",
       titleEdit: "Edit schedule",

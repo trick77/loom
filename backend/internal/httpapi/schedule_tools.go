@@ -78,7 +78,7 @@ func (t scheduleToolRunner) Delete(ctx context.Context, user auth.User, args map
 	if err := t.s.deleteSchedule(ctx, user.ID, id); err != nil {
 		return scheduleToolError(err)
 	}
-	return fmt.Sprintf("Deleted the schedule %q. The threads of its runs the user followed up in stay.", sch.Name)
+	return fmt.Sprintf("Deleted the schedule %q, with the run threads the user left untouched. Run threads they followed up in, starred, archived, shared or filed into a project stay.", sch.Name)
 }
 
 // describe is one schedule for the model: what loom resolved, never what the

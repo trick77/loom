@@ -797,6 +797,33 @@ func TestDeletingAScheduleTakesItsUntouchedRunThreads(t *testing.T) {
 	}
 }
 
+func TestDeletingAScheduleKeepsTheThreadOfARunInProgress(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	sch := newRunnerSchedule(t, f)
+	runID, err := f.store.StartRun(ctx, testUser.ID, sch.ID, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	running, err := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: sch.Name, ScheduleID: &sch.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.AttachRunThread(ctx, testUser.ID, runID, running.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.chat.AddMessageWithAttachments(ctx, testUser.ID, running.ID, chat.RoleUser, sch.Prompt, nil, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	if rec := f.do(t, http.MethodDelete, "/api/schedules/"+sch.ID, ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete = %d %s", rec.Code, rec.Body)
+	}
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, running.ID); !found {
+		t.Fatal("deleting the schedule took the thread its running run writes into")
+	}
+}
+
 func TestPruneRunThreadsDropsOldUntouchedOnes(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
