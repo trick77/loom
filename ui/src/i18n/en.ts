@@ -654,7 +654,7 @@ export const en = {
         "Describe how often or when, e.g. “daily” or “every Friday”. The prompt itself can check conditions.",
       interpretFailed: "The interval could not be read. Try again.",
       limits:
-        "Each run: max {{tokens}} tokens, {{minutes}} minutes · web search, fetch, browser",
+        "Each run: max {{tokens}} tokens, {{minutes}} minutes · web search, fetch, browser and your connected tools",
       saveFailed: "The schedule could not be saved.",
     },
     disabled: {

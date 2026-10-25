@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"time"
 
@@ -81,14 +80,7 @@ func (r LoopResult) SourceURLs() map[int]string {
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
 	history := t.plan.history
 	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
-	tools = t.allowTools(tools)
-	if t.scheduled != nil {
-		for name := range offered {
-			if !slices.Contains(t.scheduled.Tools, name) {
-				delete(offered, name)
-			}
-		}
-	}
+	tools = t.allowTools(tools, offered)
 	t.offered = offered
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -222,9 +214,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			perToolCount[call.Function.Name]++
 			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
 			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), call.Function.Name)
-			// A scheduled run runs only its fixed set, whatever tool the
-			// model names.
-			if t.scheduled != nil && !slices.Contains(t.scheduled.Tools, call.Function.Name) {
+			if t.scheduledDenies(call.Function.Name) {
 				denied[i] = true
 			}
 			skipped[i] = deferred[i] || denied[i]

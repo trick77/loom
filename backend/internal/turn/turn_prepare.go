@@ -48,6 +48,9 @@ type Run struct {
 	timezone string
 	// scheduled is set when the turn is a schedule's headless run.
 	scheduled *ScheduledRun
+	// scheduledTools are the tools a scheduled run was offered, by name; it
+	// runs no other.
+	scheduledTools map[string]bool
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.
@@ -156,8 +159,9 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// not at all; later drift is handled per-turn just below. Titling has moved
 	// after the answer and no longer shares this gate.
 	category := t.thread.Category
-	// A scheduled run is research on a fixed tool set: no classification, no
-	// image route, no user memory and no sandbox.
+	// A scheduled run is research with the user's MCP tools: no
+	// classification, no image route and no sandbox. It reads the user memory
+	// but gets no tool to change it.
 	scheduled := t.scheduled != nil
 	freshlyClassified := !scheduled && len(in.PriorMessages) == 0 && strings.TrimSpace(category) == ""
 
@@ -215,11 +219,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			defer cancelDrift()
 			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)
 		},
-		func() {
-			if !scheduled {
-				userContext = t.e.memory.UserContext(in.ReqCtx, t.user.ID)
-			}
-		},
+		func() { userContext = t.e.memory.UserContext(in.ReqCtx, t.user.ID) },
 		func() { projectContext = t.e.memory.ProjectContext(in.ReqCtx, t.user.ID, t.thread) },
 		// run_python's guidance travels with the tool: when the sidecar is
 		// off, the prompt never mentions it.
@@ -270,7 +270,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.scheduled.Memory)
 	}
 	history := buildLLMHistory(t.user, promptBlocks{
-		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate, t.scheduled)),
+		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate)),
 		schedule:     scheduleBlock,
 		classifier:   classifier.Block(category),
 		user:         userContext,
