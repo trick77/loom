@@ -247,7 +247,7 @@ func (s *server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusConflict, "another scheduled run is in progress, try again in a few minutes")
 		return
 	}
-	claimed, err := s.schedules.Claim(r.Context(), user.ID, sch.ID, s.clock(), nil)
+	claimed, err := s.schedules.Claim(r.Context(), user.ID, sch.ID, s.clock())
 	if err != nil || !claimed {
 		s.runs.done(user.ID)
 		if err != nil {

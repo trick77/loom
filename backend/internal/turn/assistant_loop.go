@@ -216,6 +216,11 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			perToolCount[call.Function.Name]++
 			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
 			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), call.Function.Name)
+			// A scheduled run runs only its fixed set, whatever tool the
+			// model names.
+			if t.scheduled != nil && !slices.Contains(t.scheduled.Tools, call.Function.Name) {
+				denied[i] = true
+			}
 			skipped[i] = deferred[i] || denied[i]
 		}
 		// The round's independent web reads start now and overlap; everything

@@ -127,6 +127,60 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if known := f.sllm.known[1]; len(known) != 1 || known[0] != "dune-part-three" {
 		t.Fatalf("known keys = %v", known)
 	}
+	// The note is about the previous run, never the one in progress.
+	if !strings.Contains(last, "Last run took") || !strings.Contains(last, "1 new items") {
+		t.Fatalf("second run's prompt lacks the last-run note:\n%s", last)
+	}
+}
+
+func TestScheduledRunRefusesToolsOutsideItsSet(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	var called []string
+	client := &fakeToolChatClient{Results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: "context7__docs", Arguments: `{}`}}}},
+		{Content: "Nothing new."},
+	}}
+	deps := f.deps
+	deps.LLM = client
+	deps.MCP = &fakeMCPService{ToolList: webTools(), CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+		called = append(called, name)
+		return "docs", nil
+	}}
+	s := newServer(deps)
+	s.runSchedule(ctx, newRunnerSchedule(t, f))
+	if len(called) != 0 {
+		t.Fatalf("a tool outside the run's set ran: %v", called)
+	}
+	last := client.Histories[len(client.Histories)-1]
+	if !strings.Contains(last[len(last)-1].Content, "unknown tool") {
+		t.Fatalf("the model was not told the tool is unknown: %+v", last[len(last)-1])
+	}
+}
+
+func TestScheduledRunCutByShutdownLeavesANote(t *testing.T) {
+	f := newScheduleFixture(t)
+	blocking := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
+	f.deps.LLM = blocking
+	s := newServer(f.deps)
+	sch := newRunnerSchedule(t, f)
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan struct{})
+	go func() {
+		s.runSchedule(ctx, sch)
+		close(finished)
+	}()
+	<-blocking.started
+	cancel()
+	<-finished
+	got, _ := f.store.GetSchedule(context.Background(), testUser.ID, sch.ID)
+	messages, _, _ := f.chat.ListMessages(context.Background(), testUser.ID, *got.ThreadID)
+	if len(messages) != 2 || !strings.Contains(messages[1].Content, "interrupted by a restart") {
+		t.Fatalf("thread = %+v", messages)
+	}
+	if !got.Enabled {
+		t.Fatal("a shutdown disabled the schedule")
+	}
 }
 
 func TestScheduledRunStopsAtTheTokenBudget(t *testing.T) {

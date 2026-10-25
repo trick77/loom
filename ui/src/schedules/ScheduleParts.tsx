@@ -220,9 +220,15 @@ export function ScheduleEditDialog({
     if (!canSave) return;
     setSaving(true);
     setError("");
+    // The slot is saved in the timezone it was previewed in, so it runs at
+    // the times the dialog showed.
     const slot =
       preview.kind === "ok"
-        ? { template: preview.preview.template, cron: preview.preview.cron }
+        ? {
+            template: preview.preview.template,
+            cron: preview.preview.cron,
+            timezone: preview.preview.timezone,
+          }
         : {};
     try {
       const input = {

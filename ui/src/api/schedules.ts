@@ -178,6 +178,8 @@ export type ScheduleInput = {
   enabled?: boolean;
   template?: string;
   cron?: string;
+  /** The IANA zone a drawn slot was previewed in. */
+  timezone?: string;
   reroll?: boolean;
 };
 
@@ -185,7 +187,7 @@ export async function createSchedule(input: ScheduleInput): Promise<Schedule> {
   return sendSchedule(
     `/api/schedules`,
     "POST",
-    { ...input, timezone: browserTimezone() },
+    { timezone: browserTimezone(), ...input },
     "failed to create schedule",
   );
 }

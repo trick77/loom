@@ -27,6 +27,10 @@ const resolveAttempts = 50
 // ErrTooOften is a schedule that would run more often than MinRunGap allows.
 var ErrTooOften = errors.New("schedules run at most every 12 hours")
 
+// ErrNeverRuns is a schedule with no run in the next five years (a 30th of
+// February).
+var ErrNeverRuns = errors.New("the schedule never runs")
+
 // field is one cron field's range and its set of allowed values.
 type field struct {
 	name     string
@@ -211,8 +215,10 @@ func (s Spec) NextRuns(after time.Time, loc *time.Location, n int) []time.Time {
 	return runs
 }
 
-// minGap is the shortest time between two consecutive runs within the
-// horizon after from; MinRunGap's double when there are fewer than two.
+// minGap is the shortest wall-clock time between two consecutive runs within
+// the horizon after from; MinRunGap's double when there are fewer than two.
+// It reads the wall clock, not elapsed time: 20:00 to 08:00 is twelve hours
+// even on the night a daylight-saving switch makes it eleven.
 func (s Spec) minGap(from time.Time, loc *time.Location) time.Duration {
 	gap := 2 * MinRunGap
 	prev := s.Next(from, loc)
@@ -225,9 +231,15 @@ func (s Spec) minGap(from time.Time, loc *time.Location) time.Duration {
 		if next.IsZero() || next.After(end) {
 			return gap
 		}
-		gap = min(gap, next.Sub(prev))
+		gap = min(gap, wallClock(next, loc).Sub(wallClock(prev, loc)))
 		prev = next
 	}
+}
+
+// wallClock is t's local date and time in loc, read as if it were UTC.
+func wallClock(t time.Time, loc *time.Location) time.Time {
+	l := t.In(loc)
+	return time.Date(l.Year(), l.Month(), l.Day(), l.Hour(), l.Minute(), 0, 0, time.UTC)
 }
 
 // ResolveTemplate draws a concrete cron from a template: "~" in a field is a
@@ -253,7 +265,7 @@ func ResolveTemplate(template string, loc *time.Location, from time.Time, rng *r
 			return Spec{}, err
 		}
 		if s := spec.Next(from, loc); s.IsZero() {
-			return Spec{}, errors.New("the schedule never runs")
+			return Spec{}, ErrNeverRuns
 		}
 		if spec.minGap(from, loc) >= MinRunGap {
 			return spec, nil
@@ -270,6 +282,10 @@ func drawField(part string, f field, rng *rand.Rand) (string, error) {
 	for i, item := range items {
 		if !strings.Contains(item, "~") {
 			continue
+		}
+		// A step on a drawn range ("1~5/2") has no single value to draw.
+		if strings.Contains(item, "/") {
+			return "", fmt.Errorf("%s: a drawn range takes no step: %q", f.name, item)
 		}
 		lo, hi := f.min, f.max
 		if item != "~" {
@@ -300,6 +316,9 @@ func ValidTemplate(template string) bool {
 	for i, part := range parts {
 		items := strings.Split(part, ",")
 		for j, item := range items {
+			if strings.Contains(item, "~") && strings.Contains(item, "/") {
+				return false
+			}
 			if item == "~" {
 				items[j] = "*"
 			} else {

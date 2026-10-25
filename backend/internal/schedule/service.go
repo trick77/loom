@@ -66,7 +66,15 @@ func (s *Service) resolve(template string, loc *time.Location) (Spec, error) {
 	if rng == nil {
 		rng = rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64())) //nolint:gosec // a slot draw spreads load, it guards nothing
 	}
-	return ResolveTemplate(template, loc, s.now(), rng)
+	spec, err := ResolveTemplate(template, loc, s.now(), rng)
+	switch {
+	case err == nil, errors.Is(err, ErrTooOften):
+		return spec, err
+	default:
+		// A template of known tokens that still cannot be drawn or never
+		// fires ("February 30th") is an interval the user can rephrase.
+		return Spec{}, ErrNotUnderstood
+	}
 }
 
 // Preview is an interval read and drawn, before anything is saved.

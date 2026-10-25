@@ -335,12 +335,23 @@ ORDER BY next_run_at LIMIT ?`, ts(now), limit)
 	return out, rows.Err()
 }
 
-// Claim marks the schedule running and moves its next run to next (nil keeps
-// it). It reports false when another run already holds it.
-func (st *Store) Claim(ctx context.Context, userID, id string, now time.Time, next *time.Time) (bool, error) {
-	res, err := st.db.ExecContext(ctx, `
-UPDATE schedules SET running_at = ?, next_run_at = COALESCE(?, next_run_at)
+// Claim marks the schedule running for a run outside its slots ("Run now"),
+// keeping its next run. It reports false when another run already holds it.
+func (st *Store) Claim(ctx context.Context, userID, id string, now time.Time) (bool, error) {
+	return st.claim(ctx, `UPDATE schedules SET running_at = ?
+WHERE user_id = ? AND id = ? AND running_at IS NULL`, ts(now), userID, id)
+}
+
+// ClaimDue marks a due schedule running and moves its next run to next. nil
+// leaves it without one: a schedule whose next slot cannot be computed must
+// not stay due and run on every tick.
+func (st *Store) ClaimDue(ctx context.Context, userID, id string, now time.Time, next *time.Time) (bool, error) {
+	return st.claim(ctx, `UPDATE schedules SET running_at = ?, next_run_at = ?
 WHERE user_id = ? AND id = ? AND running_at IS NULL`, ts(now), nullTS(next), userID, id)
+}
+
+func (st *Store) claim(ctx context.Context, query string, args ...any) (bool, error) {
+	res, err := st.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return false, fmt.Errorf("claim schedule: %w", err)
 	}

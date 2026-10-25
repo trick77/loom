@@ -120,7 +120,7 @@ func (w *ScheduleWorker) startDue(ctx context.Context) {
 		if !s.runs.admit(sch.UserID) {
 			continue
 		}
-		claimed, err := s.schedules.Claim(ctx, sch.UserID, sch.ID, now, schedule.NextRun(sch, now))
+		claimed, err := s.schedules.ClaimDue(ctx, sch.UserID, sch.ID, now, schedule.NextRun(sch, now))
 		if err != nil || !claimed {
 			s.runs.done(sch.UserID)
 			if err != nil {
@@ -177,12 +177,21 @@ func (o *observations) list() []schedule.ToolOutcome {
 func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	detached := context.WithoutCancel(ctx)
 	start := s.clock()
+	// The memory is read before this run is recorded, so its last run is the
+	// previous one, not this run in progress.
+	memory, err := s.schedules.LoadMemory(detached, sch.UserID, sch.ID)
+	if err != nil {
+		slog.Warn("load schedule memory failed", "schedule_id", sch.ID, "err", err)
+	}
 	runID, err := s.schedules.StartRun(detached, sch.UserID, sch.ID, start)
 	if err != nil {
 		slog.Warn("start schedule run failed", "schedule_id", sch.ID, "err", err)
 		return
 	}
 	run := schedule.Run{ID: runID, Status: schedule.StatusFailed}
+	// noteThread is set while the thread holds this run's prompt without a
+	// reply; whatever ends the run then leaves a line saying why.
+	var noteThread string
 	finish := func() {
 		run.DurationMS = s.clock().Sub(start).Milliseconds()
 		if err := s.schedules.FinishRun(detached, sch.UserID, run, s.clock()); err != nil {
@@ -193,6 +202,9 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		if p := recover(); p != nil {
 			slog.Error("panic recovered in scheduled run", "err", p, "schedule_id", sch.ID, "stack", string(debug.Stack()))
 			run.Status, run.Error = schedule.StatusFailed, "internal error"
+			if noteThread != "" {
+				s.persistRunNote(detached, sch.UserID, noteThread, "This scheduled run failed: internal error")
+			}
 		}
 		finish()
 	}()
@@ -209,16 +221,13 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		return
 	}
 	previousActivity := thread.LastMessageAt
-	memory, err := s.schedules.LoadMemory(detached, user.ID, sch.ID)
-	if err != nil {
-		slog.Warn("load schedule memory failed", "schedule_id", sch.ID, "err", err)
-	}
 	userMessage, err := s.thread.AddMessageWithAttachments(detached, user.ID, thread.ID, chat.RoleUser, sch.Prompt, nil, nil, "")
 	if err != nil {
 		slog.Warn("persist schedule prompt failed", "schedule_id", sch.ID, "err", err)
 		run.Error = "could not store the prompt"
 		return
 	}
+	noteThread = thread.ID
 
 	runCtx, cancel := context.WithTimeout(ctx, s.scheduleRunTimeout())
 	defer cancel()
@@ -255,13 +264,21 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		run.Status, run.Error = schedule.StatusTimeout, "the run took longer than the time limit"
+		noteThread = ""
 		s.disableAfterTimeout(detached, user, sch, thread)
 		return
 	}
+	// failWith ends a run without an answer: a line in the thread says why,
+	// and the thread keeps its place in the recents.
+	failWith := func(message, note string) {
+		run.Error = message
+		noteThread = ""
+		s.persistRunNote(detached, user.ID, thread.ID, note)
+		s.restoreActivity(detached, user.ID, thread.ID, previousActivity)
+	}
 	if ctx.Err() != nil {
 		// Shutdown: the run is not the schedule's fault.
-		run.Error = "interrupted by a shutdown"
-		s.restoreActivity(detached, user.ID, thread.ID, previousActivity)
+		failWith("interrupted by a shutdown", "This scheduled run was interrupted by a restart.")
 		return
 	}
 	if loopErr != nil || strings.TrimSpace(result.Content) == "" {
@@ -269,18 +286,16 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		if loopErr != nil {
 			message = turn.StreamFailureMessage(loopErr, result, "schedule", thread.ID)
 		}
-		run.Error = message
-		s.persistRunNote(detached, user.ID, thread.ID, "This scheduled run failed: "+message)
-		s.restoreActivity(detached, user.ID, thread.ID, previousActivity)
+		failWith(message, "This scheduled run failed: "+message)
 		return
 	}
 	assistant, err := turnRun.PersistAssistantTurn(detached, &result)
 	if err != nil {
 		slog.Warn("persist scheduled answer failed", "schedule_id", sch.ID, "err", err)
-		run.Error = "could not store the answer"
-		s.restoreActivity(detached, user.ID, thread.ID, previousActivity)
+		failWith("could not store the answer", "This scheduled run failed: its answer could not be stored.")
 		return
 	}
+	noteThread = ""
 	costs.SetAssistant(assistant)
 	run.MessageID = &assistant.ID
 

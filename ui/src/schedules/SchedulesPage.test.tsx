@@ -125,6 +125,17 @@ test("toggles, runs now, opens the thread and deletes", async () => {
   );
 });
 
+test("a running schedule's row refreshes until its run lands", async () => {
+  vi.mocked(api.listSchedules)
+    .mockResolvedValueOnce([makeSchedule({ running: true, lastRun: null })])
+    .mockResolvedValue([makeSchedule()]);
+  render(<SchedulesPage {...props()} />);
+  expect(await screen.findByText("running")).toBeInTheDocument();
+  expect(
+    await screen.findByText("2 new", {}, { timeout: 8000 }),
+  ).toBeInTheDocument();
+}, 10000);
+
 test("a busy run now shows the server's message", async () => {
   vi.mocked(api.listSchedules).mockResolvedValue([makeSchedule()]);
   vi.mocked(api.runScheduleNow).mockRejectedValue(
@@ -177,6 +188,7 @@ test("creates a schedule with the slot the preview showed", async () => {
       interval: "once a week",
       template: "~ 7~22 * * ~",
       cron: "37 14 * * 4",
+      timezone: "Europe/Zurich",
     }),
   );
   expect(await screen.findByText("Cinema scout")).toBeInTheDocument();

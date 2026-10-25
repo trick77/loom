@@ -24,6 +24,7 @@ import {
 } from "./ScheduleParts";
 import {
   DeleteScheduleModal,
+  RUNNING_POLL_MS,
   ScheduleSlotLine,
   useScheduleActions,
 } from "./SchedulesPage";
@@ -102,7 +103,10 @@ export function ScheduleDetailPage({
   const running = schedule?.running === true;
   useEffect(() => {
     if (!running) return;
-    const handle = window.setTimeout(() => setReload((n) => n + 1), 5000);
+    const handle = window.setTimeout(
+      () => setReload((n) => n + 1),
+      RUNNING_POLL_MS,
+    );
     return () => window.clearTimeout(handle);
   }, [running, reload]);
 

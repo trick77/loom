@@ -82,6 +82,7 @@ func TestInterpretErrors(t *testing.T) {
 		{&fakeInterpreter{ok: false}, "when it rains", "", func(err error) bool { return errors.Is(err, schedule.ErrNotUnderstood) }},
 		{&fakeInterpreter{template: "garbage", ok: true}, "x", "", func(err error) bool { return errors.Is(err, schedule.ErrNotUnderstood) }},
 		{&fakeInterpreter{template: "*/5 * * * *", ok: true}, "every 5 minutes", "", func(err error) bool { return errors.Is(err, schedule.ErrTooOften) }},
+		{&fakeInterpreter{template: "0 9 30 2 *", ok: true}, "every February 30th", "", func(err error) bool { return errors.Is(err, schedule.ErrNotUnderstood) }},
 		{&fakeInterpreter{err: errors.New("down")}, "daily", "", func(err error) bool { return err != nil && !errors.As(err, new(schedule.ValidationError)) }},
 		{&fakeInterpreter{ok: true}, "  ", "", func(err error) bool { return errors.As(err, new(schedule.ValidationError)) }},
 		{&fakeInterpreter{ok: true}, strings.Repeat("x", 201), "", func(err error) bool { return errors.As(err, new(schedule.ValidationError)) }},

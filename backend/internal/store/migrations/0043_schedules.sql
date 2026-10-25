@@ -104,3 +104,14 @@ CREATE INDEX idx_notifications_user ON notifications(user_id, created_at DESC);
 -- A thread continued from another thread's answer ("Continue in new thread").
 ALTER TABLE threads ADD COLUMN branched_from_thread_id TEXT REFERENCES threads(id) ON DELETE SET NULL;
 ALTER TABLE threads ADD COLUMN branched_from_message_id TEXT REFERENCES messages(id) ON DELETE SET NULL;
+
+-- Every foreign key child column gets an index: deleting a parent row (a
+-- thread with hundreds of messages) looks its children up once per row, and
+-- without one each lookup scans the whole table under the write lock.
+CREATE INDEX idx_threads_branched_thread ON threads(branched_from_thread_id) WHERE branched_from_thread_id IS NOT NULL;
+CREATE INDEX idx_threads_branched_message ON threads(branched_from_message_id) WHERE branched_from_message_id IS NOT NULL;
+CREATE INDEX idx_notifications_schedule ON notifications(schedule_id) WHERE schedule_id IS NOT NULL;
+CREATE INDEX idx_notifications_thread ON notifications(thread_id) WHERE thread_id IS NOT NULL;
+CREATE INDEX idx_notifications_message ON notifications(message_id) WHERE message_id IS NOT NULL;
+CREATE INDEX idx_schedule_runs_message ON schedule_runs(message_id) WHERE message_id IS NOT NULL;
+CREATE INDEX idx_schedule_findings_run ON schedule_findings(run_id) WHERE run_id IS NOT NULL;

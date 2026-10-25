@@ -36,6 +36,9 @@ import {
 
 type Tab = "all" | "active" | "paused";
 
+// RUNNING_POLL_MS is how often a page reloads while a schedule runs.
+export const RUNNING_POLL_MS = 5000;
+
 // useScheduleActions are the actions the list and the detail page share.
 export function useScheduleActions(
   onChanged: (schedule: Schedule) => void,
@@ -256,6 +259,7 @@ export function SchedulesPage({
   }, []);
   const actions = useScheduleActions(replace, onSessionExpired);
 
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     let cancelled = false;
     listSchedules().then(
@@ -272,7 +276,18 @@ export function SchedulesPage({
     return () => {
       cancelled = true;
     };
-  }, [t, onSessionExpired]);
+  }, [t, onSessionExpired, reload]);
+
+  // While a schedule runs, the list reloads until its run lands.
+  const anyRunning = (schedules ?? []).some((s) => s.running);
+  useEffect(() => {
+    if (!anyRunning) return;
+    const handle = window.setTimeout(
+      () => setReload((n) => n + 1),
+      RUNNING_POLL_MS,
+    );
+    return () => window.clearTimeout(handle);
+  }, [anyRunning, reload]);
 
   const all = schedules ?? [];
   const active = all.filter((s) => s.enabled);

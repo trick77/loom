@@ -166,6 +166,35 @@ func TestResolveTemplateAcceptsTwelveHoursApart(t *testing.T) {
 	}
 }
 
+func TestTwiceADayAcrossADaylightSavingSwitch(t *testing.T) {
+	loc := zurich(t)
+	// A week before 28 March 2027, when the night of the switch makes 20:00
+	// to 08:00 last eleven hours of elapsed time.
+	from := time.Date(2027, 3, 22, 12, 0, 0, 0, loc)
+	if _, err := ResolveTemplate("0 8,20 * * *", loc, from, rand.New(rand.NewPCG(1, 1))); err != nil {
+		t.Fatalf("08:00 and 20:00 rejected before spring forward: %v", err)
+	}
+	if _, err := ResolveTemplate("~ 7~10,19~22 * * *", loc, from, rand.New(rand.NewPCG(5, 6))); err != nil {
+		t.Fatalf("twice a day rejected before spring forward: %v", err)
+	}
+	autumn := time.Date(2026, 10, 20, 12, 0, 0, 0, loc)
+	if _, err := ResolveTemplate("0 8,20 * * *", loc, autumn, rand.New(rand.NewPCG(1, 1))); err != nil {
+		t.Fatalf("08:00 and 20:00 rejected before fall back: %v", err)
+	}
+}
+
+func TestResolveTemplateNeverRunsAndSteppedDraws(t *testing.T) {
+	if _, err := ResolveTemplate("0 9 30 2 *", time.UTC, time.Now(), rand.New(rand.NewPCG(1, 1))); !errors.Is(err, ErrNeverRuns) {
+		t.Fatalf("30 February err = %v, want ErrNeverRuns", err)
+	}
+	if _, err := ResolveTemplate("0 9 1~5/2 * *", time.UTC, time.Now(), rand.New(rand.NewPCG(1, 1))); err == nil {
+		t.Fatal("a stepped drawn range was drawn")
+	}
+	if ValidTemplate("0 9 1~5/2 * *") {
+		t.Fatal("ValidTemplate accepted a stepped drawn range")
+	}
+}
+
 func TestResolveTemplateRejectsBadTemplates(t *testing.T) {
 	for _, template := range []string{"~ ~ ~", "~ 30~2 * * *", "0 0 31 2 *", "x * * * *"} {
 		if _, err := ResolveTemplate(template, time.UTC, time.Now(), rand.New(rand.NewPCG(1, 1))); err == nil || errors.Is(err, ErrTooOften) {

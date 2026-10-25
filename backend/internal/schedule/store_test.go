@@ -116,11 +116,11 @@ func TestClaimIsExclusiveAndDueListsOnlyIdleEnabled(t *testing.T) {
 		t.Fatalf("DueSchedules = %+v, %v", list, err)
 	}
 	next := now.Add(7 * 24 * time.Hour)
-	ok, err := st.Claim(ctx, "u1", due.ID, now, &next)
+	ok, err := st.ClaimDue(ctx, "u1", due.ID, now, &next)
 	if err != nil || !ok {
 		t.Fatalf("first claim = %v, %v", ok, err)
 	}
-	if ok, _ := st.Claim(ctx, "u1", due.ID, now, nil); ok {
+	if ok, _ := st.Claim(ctx, "u1", due.ID, now); ok {
 		t.Fatal("second claim succeeded while the first holds it")
 	}
 	if list, _ := st.DueSchedules(ctx, now.Add(30*24*time.Hour), 10); len(list) != 1 || list[0].Name != "later" {
@@ -133,8 +133,12 @@ func TestClaimIsExclusiveAndDueListsOnlyIdleEnabled(t *testing.T) {
 	if err := st.Release(ctx, "u1", due.ID); err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := st.Claim(ctx, "u1", due.ID, now, nil); !ok {
+	if ok, _ := st.Claim(ctx, "u1", due.ID, now); !ok {
 		t.Fatal("claim after release failed")
+	}
+	got, _ = st.GetSchedule(ctx, "u1", due.ID)
+	if !got.NextRunAt.Equal(next) {
+		t.Fatalf("Claim moved the next run: %v", got.NextRunAt)
 	}
 	runID, _ := st.StartRun(ctx, "u1", due.ID, now)
 	if err := st.ResetInterrupted(ctx); err != nil {
@@ -147,6 +151,21 @@ func TestClaimIsExclusiveAndDueListsOnlyIdleEnabled(t *testing.T) {
 	runs, _ := st.ListRuns(ctx, "u1", due.ID, 5)
 	if len(runs) != 1 || runs[0].ID != runID || runs[0].Status != schedule.StatusFailed || runs[0].FinishedAt == nil {
 		t.Fatalf("interrupted run = %+v", runs)
+	}
+}
+
+func TestClaimDueWithoutANextRunLeavesNoneDue(t *testing.T) {
+	ctx := context.Background()
+	st := schedule.NewStore(openDB(t))
+	now := time.Date(2026, 10, 29, 14, 0, 0, 0, time.UTC)
+	past := now.Add(-time.Minute)
+	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "broken", &past))
+	if ok, err := st.ClaimDue(ctx, "u1", sch.ID, now, nil); err != nil || !ok {
+		t.Fatalf("ClaimDue = %v, %v", ok, err)
+	}
+	_ = st.Release(ctx, "u1", sch.ID)
+	if due, _ := st.DueSchedules(ctx, now.Add(time.Hour), 10); len(due) != 0 {
+		t.Fatalf("a schedule without a next run is still due: %+v", due)
 	}
 }
 
