@@ -10,7 +10,6 @@ require (
 	github.com/trick77/ship/kit v0.17.5
 	github.com/trick77/ship/kit/auth v0.3.1
 	github.com/trick77/webfetch v0.4.5
-	github.com/xuri/excelize/v2 v2.11.1-0.20261020033641-611b222fd8f7
 	github.com/yuin/goldmark v1.8.6
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	golang.org/x/image v0.47.0
@@ -31,12 +30,8 @@ require (
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 	github.com/itlightning/dateparse v0.2.1 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
-	github.com/richardlehane/mscfb v1.0.8 // indirect
-	github.com/richardlehane/msoleps v1.0.6 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
-	github.com/tiendc/go-deepcopy v1.7.2 // indirect
-	github.com/xuri/efp v0.0.2 // indirect
-	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
