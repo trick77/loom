@@ -22,14 +22,17 @@ type ThreadStore struct {
 	// UserClientMessageID is the send id the last user message was stored with.
 	UserClientMessageID string
 	// Queue holds the messages queued on Thread.
-	Queue                     MessageQueue
-	LastCitations             json.RawMessage
-	LastContentBlocks         json.RawMessage
-	LastAttachments           json.RawMessage
-	LastPastedTexts           json.RawMessage
-	CreateThreadErr           error
-	DeleteThreadErr           error
-	DeletedThreads            []string
+	Queue             MessageQueue
+	LastCitations     json.RawMessage
+	LastContentBlocks json.RawMessage
+	LastAttachments   json.RawMessage
+	LastPastedTexts   json.RawMessage
+	CreateThreadErr   error
+	DeleteThreadErr   error
+	DeletedThreads    []string
+	// RunThreads is what both run-thread listings return, with RunThreadsErr.
+	RunThreads                []chat.ThreadRef
+	RunThreadsErr             error
 	UpdateThreadInput         chat.UpdateThreadInput
 	UpdateThreadErr           error
 	ProjectMemory             chat.ProjectMemory
@@ -516,4 +519,19 @@ func (f *ThreadStore) ListSharesForUser(_ context.Context, _ string) ([]chat.Sha
 		shares = append(shares, share)
 	}
 	return shares, nil
+}
+
+// ReplaceableScheduleThreads returns the ids in RunThreads, or fails with
+// RunThreadsErr.
+func (f *ThreadStore) ReplaceableScheduleThreads(context.Context, string, string, string) ([]string, error) {
+	ids := make([]string, len(f.RunThreads))
+	for i, ref := range f.RunThreads {
+		ids[i] = ref.ThreadID
+	}
+	return ids, f.RunThreadsErr
+}
+
+// StaleScheduleThreads returns RunThreads, or fails with RunThreadsErr.
+func (f *ThreadStore) StaleScheduleThreads(context.Context, time.Time, int) ([]chat.ThreadRef, error) {
+	return f.RunThreads, f.RunThreadsErr
 }

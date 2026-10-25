@@ -164,6 +164,8 @@ type ThreadStore interface {
 	SetThreadTitleIfUnchanged(context.Context, string, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
+	ReplaceableScheduleThreads(context.Context, string, string, string) ([]string, error)
+	StaleScheduleThreads(context.Context, time.Time, int) ([]chat.ThreadRef, error)
 
 	// Messages.
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage, string) (chat.Message, error)
