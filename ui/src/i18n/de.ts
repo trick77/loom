@@ -611,12 +611,13 @@ export const de = {
     next: "nächster {{date}}",
     pausedNote: "pausiert",
     disabledNote:
-      "deaktiviert {{date}}: der Lauf dauerte länger als {{minutes}} Minuten",
+      "deaktiviert {{date}}: zwei Läufe nacheinander dauerten länger als {{minutes}} Minuten",
     status: {
       new: "{{count}} neu",
       nothing_new: "nichts Neues",
       token_limit: "Token-Limit erreicht",
-      timeout: "deaktiviert · Zeitlimit",
+      timeout: "Zeitlimit",
+      disabled: "deaktiviert · Zeitlimit",
       failed: "fehlgeschlagen",
       running: "läuft",
       paused: "pausiert",
@@ -650,6 +651,9 @@ export const de = {
       nameHint: "Leer lassen, dann benennt Loom ihn nach dem Prompt.",
       prompt: "Prompt",
       promptPlaceholder: "Wonach soll jeder Lauf suchen?",
+      promptCount: "{{length}} / {{max}}",
+      promptHint:
+        "Ein Lauf ist kurz: nenne, was er finden soll, und ein bis zwei Quellen.",
       when: "Wann",
       whenPlaceholder: "z. B. einmal pro Woche",
       whenHint:
@@ -672,7 +676,7 @@ export const de = {
     },
     disabled: {
       title: "Automatisch deaktiviert am {{date}}",
-      body: "Der Lauf dauerte länger als {{minutes}} Minuten. Vereinfache den Prompt oder aktiviere ihn unverändert wieder.",
+      body: "Zwei Läufe nacheinander dauerten länger als {{minutes}} Minuten. Vereinfache den Prompt oder aktiviere ihn unverändert wieder.",
       enable: "Wieder aktivieren",
     },
     detail: {

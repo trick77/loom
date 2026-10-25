@@ -602,12 +602,13 @@ export const en = {
     next: "next {{date}}",
     pausedNote: "paused",
     disabledNote:
-      "disabled {{date}}: the run took longer than {{minutes}} minutes",
+      "disabled {{date}}: two runs in a row took longer than {{minutes}} minutes",
     status: {
       new: "{{count}} new",
       nothing_new: "nothing new",
       token_limit: "token limit reached",
-      timeout: "disabled · timeout",
+      timeout: "timeout",
+      disabled: "disabled · timeout",
       failed: "failed",
       running: "running",
       paused: "paused",
@@ -640,6 +641,8 @@ export const en = {
       nameHint: "Leave empty and loom names it from the prompt.",
       prompt: "Prompt",
       promptPlaceholder: "What should each run look for?",
+      promptCount: "{{length}} / {{max}}",
+      promptHint: "A run is short: name what to find and one or two sources.",
       when: "When",
       whenPlaceholder: "e.g. once a week",
       whenHint:
@@ -661,7 +664,7 @@ export const en = {
     },
     disabled: {
       title: "Disabled automatically on {{date}}",
-      body: "The run took longer than {{minutes}} minutes. Simplify the prompt, or enable it again as it is.",
+      body: "Two runs in a row took longer than {{minutes}} minutes. Simplify the prompt, or enable it again as it is.",
       enable: "Enable again",
     },
     detail: {

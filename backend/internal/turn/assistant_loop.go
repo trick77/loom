@@ -136,7 +136,17 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// this prefix.
 	initialHistoryLen := len(history)
 	for round := 1; round <= maxToolRounds; round++ {
-		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat_tool_round", round), tools)
+		roundCtx, cancelRound := t.roundContext(ctx)
+		result, err := t.streamAssistantTurn(roundCtx, b.nextReasoningID(), history, t.toolRoundInference(round), tools)
+		pastSoftDeadline := err != nil && roundCtx.Err() != nil && ctx.Err() == nil
+		cancelRound()
+		if pastSoftDeadline {
+			// A scheduled run's soft deadline cut this round: its partial is
+			// dropped and the run answers from what earlier rounds gathered.
+			limitHit = LimitTime
+			slog.Info("forcing final answer", "reason", "scheduled_limit", "limit", limitHit, "round", round, "mid_round", true)
+			break
+		}
 		if err != nil {
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, llm.ErrStreamStalled) {
 				return LoopResult{}, err
@@ -151,8 +161,13 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			// A scheduled run answers only from the tool-free final call, the
 			// one that sees the memory; a round that stops calling tools ends
 			// the research (scheduledResearchNote) and its text is dropped.
+			// That round also ran at the least reasoning: wrong on prose.
 			slog.Info("forcing final answer", "reason", "scheduled_research_done", "round", round)
 			break
+		}
+		// Clamped before anything records the calls, so the thread shows what ran.
+		for i := range result.ToolCalls {
+			t.clampScheduledCall(&result.ToolCalls[i])
 		}
 		b.addResult(t.titles, result)
 		if len(result.ToolCalls) == 0 {
@@ -218,6 +233,8 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		// A call to an MCP tool this user may not use (a server limited to other
 		// accounts) never runs, even when the model names it unprompted.
 		denied := make([]bool, len(result.ToolCalls))
+		// A scheduled run's Tavily calls past its limit never start either.
+		capped := make([]bool, len(result.ToolCalls))
 		skipped := make([]bool, len(result.ToolCalls))
 		for i, call := range result.ToolCalls {
 			perToolCount[call.Function.Name]++
@@ -226,11 +243,14 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			if t.scheduledDenies(call.Function.Name) {
 				denied[i] = true
 			}
-			skipped[i] = deferred[i] || denied[i]
+			capped[i] = !deferred[i] && !denied[i] && t.tavilyCapped(call.Function.Name)
+			skipped[i] = deferred[i] || denied[i] || capped[i]
 		}
 		// The round's independent web reads start now and overlap; everything
 		// below still handles the calls one at a time, in the model's order.
-		runsCtx, cancelRuns := context.WithCancel(ctx)
+		// A scheduled run's soft deadline also cuts the round's tool calls.
+		toolsCtx, cancelTools := t.roundContext(ctx)
+		runsCtx, cancelRuns := context.WithCancel(toolsCtx)
 		runs := t.e.startToolRuns(runsCtx, result.ToolCalls, skipped)
 		lastRoundDeferred = false
 		for i, call := range result.ToolCalls {
@@ -243,6 +263,8 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
 			} else if denied[i] {
 				output = fmt.Sprintf("tool failed: unknown tool %q", call.Function.Name)
+			} else if capped[i] {
+				output = tavilyLimitReached
 			} else if deferred[i] {
 				cap := t.e.toolCallCapPerRound(call.Function.Name)
 				// The instruction rides with the deferral in history so the model sees
@@ -263,13 +285,14 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 						imageGenerated = true
 					}
 				} else if runs[i] != nil {
-					output = t.finishToolCall(ctx, call, round, reg, <-runs[i])
+					output = t.finishToolCall(toolsCtx, call, round, reg, <-runs[i])
 				} else {
-					output = t.finishToolCall(ctx, call, round, reg, t.e.runToolCall(ctx, call))
+					output = t.finishToolCall(toolsCtx, call, round, reg, t.e.runToolCall(toolsCtx, call))
 				}
 			}
 			if err := t.stream.SendJSON("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 				cancelRuns()
+				cancelTools()
 				return LoopResult{}, err
 			}
 			b.setToolResult(call.ID, output)
@@ -280,6 +303,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			})
 		}
 		cancelRuns()
+		cancelTools()
 		// Push the sources gathered so far so the browser can resolve [n] markers
 		// while the next round's answer streams, instead of waiting for the settled
 		// message. A full snapshot, not a delta: idempotent, and the frontend just

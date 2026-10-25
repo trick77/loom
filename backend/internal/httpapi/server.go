@@ -127,10 +127,12 @@ type server struct {
 	runs        *scheduleRuns
 	// timezones holds each user's browser timezone, by user id.
 	timezones sync.Map
-	// now is the clock scheduled runs read; nil is time.Now. runTimeout
-	// replaces schedule.RunTimeout when set (tests).
-	now        func() time.Time
-	runTimeout time.Duration
+	// now is the clock scheduled runs read; nil is time.Now. runTimeout and
+	// runSoftDeadline replace schedule.RunTimeout and RunSoftDeadline when set
+	// (tests).
+	now             func() time.Time
+	runTimeout      time.Duration
+	runSoftDeadline time.Duration
 }
 
 // The stores and services below are the HTTP layer's full dependencies. Each

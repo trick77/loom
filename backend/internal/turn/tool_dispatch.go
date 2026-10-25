@@ -89,7 +89,7 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 	if reg != nil {
 		before = reg.len()
 	}
-	relabeled := t.e.relabelWebToolOutput(call.Function.Name, arguments, output, run.sources, reg)
+	relabeled := t.e.relabelWebToolOutput(call.Function.Name, arguments, t.capScheduledOutput(output), run.sources, reg)
 	sources := run.sources
 	if len(sources) == 0 && reg != nil {
 		for _, s := range reg.all()[before:] {
@@ -223,7 +223,7 @@ func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, argumen
 	usage.Record(t.e.usage, "obscura_fetch", func() error { return t.e.usage.IncObscuraFetch(ctx, t.user.ID) })
 	// The requested fetch URL is the source; annotate the rendered snapshot with
 	// its [n] marker so the model cites it inline like any other web source.
-	return capToolOutput(prependURLSource(url, snapshot, reg)), true
+	return capToolOutput(prependURLSource(url, t.capScheduledOutput(snapshot), reg)), true
 }
 
 // offerTools assembles the tool set injected into the prompt for this turn:

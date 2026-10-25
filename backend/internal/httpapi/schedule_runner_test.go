@@ -3,12 +3,15 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/schedule"
 )
@@ -42,6 +45,11 @@ func researchRound(answer string) []llm.StreamResult {
 	}
 }
 
+// researchClient is a model that researches one page and answers answer.
+func researchClient(answer string) *fakeToolChatClient {
+	return &fakeToolChatClient{Results: researchRound(answer), Plain: answer}
+}
+
 func newRunnerSchedule(t *testing.T, f *scheduleFixture) schedule.Schedule {
 	t.Helper()
 	sch, err := f.store.CreateSchedule(context.Background(), schedule.Schedule{
@@ -58,7 +66,7 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
 	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
-	client := &fakeToolChatClient{Results: researchRound("New: Dune: Part Three [1].")}
+	client := researchClient("New: Dune: Part Three [1].")
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
 
@@ -106,7 +114,7 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	// The second run reports the same film: nothing new, no notification, and
 	// the thread stays where it was in the recents.
 	time.Sleep(1100 * time.Millisecond)
-	client.Results = researchRound("Still Dune: Part Three [1].")
+	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
 	s.runSchedule(ctx, got)
 	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 2 || runs[0].Status != schedule.StatusNothingNew || runs[0].NewCount != 0 {
@@ -162,8 +170,8 @@ func TestScheduledRunRefusesToolsOutsideItsSet(t *testing.T) {
 			call("c1", "schedule_create", `{"prompt":"more films","interval":"daily"}`),
 			call("c2", "peeq__search", `{"query":"films"}`),
 		}},
-		{Content: "Nothing new."},
-	}}
+		{Content: "Done."},
+	}, Plain: "Nothing new."}
 	deps := f.deps
 	deps.LLM = client
 	// peeq belongs to another account.
@@ -440,30 +448,259 @@ func TestScheduledRunStopsAtTheTokenBudget(t *testing.T) {
 	}
 }
 
-func TestScheduledRunPastTheTimeLimitDisablesTheSchedule(t *testing.T) {
-	ctx := context.Background()
-	f := newScheduleFixture(t)
+// runPastTheTimeLimit runs sch with a model that never answers before the
+// (shortened) hard limit.
+func runPastTheTimeLimit(t *testing.T, f *scheduleFixture, sch schedule.Schedule) {
+	t.Helper()
 	f.deps.LLM = &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
 	s := newServer(f.deps)
 	s.runTimeout = 50 * time.Millisecond
+	s.runSchedule(context.Background(), sch)
+}
+
+// seedTimedOutRun stores an earlier run of sch that went past the limit.
+func seedTimedOutRun(t *testing.T, f *scheduleFixture, sch schedule.Schedule, start time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	runID, err := f.store.StartRun(ctx, testUser.ID, sch.ID, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.FinishRun(ctx, testUser.ID, schedule.Run{ID: runID, Status: schedule.StatusTimeout}, start); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A timeout before the schedule was last edited or enabled again does not
+// count: the user changed something since.
+func TestScheduledRunTimeoutAfterAnEditStartsTheCountAnew(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	sch := newRunnerSchedule(t, f)
+	seedTimedOutRun(t, f, sch, time.Now().Add(-time.Hour))
+	runPastTheTimeLimit(t, f, sch)
+	if got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID); !got.Enabled {
+		t.Fatalf("a timeout from before the last edit disabled the schedule: %+v", got)
+	}
+}
+
+// A tool still running at the soft deadline is cut too, so the final answer
+// keeps its time.
+func TestScheduledRunSoftDeadlineCutsARunningTool(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := researchClient("Nothing new.")
+	deps := f.deps
+	deps.LLM = client
+	deps.MCP = &fakeMCPService{ToolList: webTools(), CallFunc: func(ctx context.Context, _ string, _ map[string]any) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}}
+	s := newServer(deps)
+	s.runTimeout, s.runSoftDeadline = 10*time.Second, 300*time.Millisecond
 	sch := newRunnerSchedule(t, f)
 	s.runSchedule(ctx, sch)
+	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+	if len(runs) != 1 || runs[0].Status != schedule.StatusNothingNew || runs[0].MessageID == nil {
+		t.Fatalf("run = %+v, want an answer after the cut tool", runs)
+	}
+}
+
+func TestScheduledRunFirstTimeoutKeepsTheSchedule(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	sch := newRunnerSchedule(t, f)
+	runPastTheTimeLimit(t, f, sch)
 
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 1 || runs[0].Status != schedule.StatusTimeout {
 		t.Fatalf("run = %+v", runs)
 	}
 	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
+	if !got.Enabled || got.DisabledReason != "" {
+		t.Fatalf("one timeout disabled the schedule: %+v", got)
+	}
+	if notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 0 {
+		t.Fatalf("one timeout notified: %+v", notes)
+	}
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	if len(messages) != 2 || !strings.Contains(messages[1].Content, "took longer than 5 minutes and was stopped") {
+		t.Fatalf("thread = %+v", messages)
+	}
+}
+
+func TestScheduledRunSecondTimeoutInARowDisablesTheSchedule(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	sch := newRunnerSchedule(t, f)
+	seedTimedOutRun(t, f, sch, time.Now())
+	runPastTheTimeLimit(t, f, sch)
+
+	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
 	if got.Enabled || got.DisabledReason != schedule.DisabledTimeout || got.DisabledAt == nil {
-		t.Fatalf("schedule after timeout = %+v", got)
+		t.Fatalf("schedule after the second timeout = %+v", got)
 	}
 	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
-	if len(notes) != 1 || notes[0].Kind != schedule.KindScheduleDisabled || !strings.Contains(notes[0].Body, "3 minutes") {
+	if len(notes) != 1 || notes[0].Kind != schedule.KindScheduleDisabled || !strings.Contains(notes[0].Body, "Two runs in a row took longer than 5 minutes") {
 		t.Fatalf("notifications = %+v", notes)
 	}
 	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
 	if len(messages) != 2 || !strings.Contains(messages[1].Content, "disabled") {
 		t.Fatalf("thread = %+v", messages)
+	}
+}
+
+// pacedChatClient is a model whose tool rounds answer from Results, except
+// round blockRound, which runs until its context ends. It records each call's
+// inference metadata.
+type pacedChatClient struct {
+	*fakeToolChatClient
+	blockRound int
+	rounds     int
+	metas      []inference.Metadata
+}
+
+func (c *pacedChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
+	c.metas = append(c.metas, inference.MetadataFromContext(ctx))
+	if len(tools) > 0 {
+		c.rounds++
+		if c.rounds == c.blockRound {
+			c.Histories = append(c.Histories, history)
+			c.Tools = append(c.Tools, tools)
+			<-ctx.Done()
+			return llm.StreamResult{}, ctx.Err()
+		}
+	}
+	return c.fakeToolChatClient.StreamChatWithTools(ctx, history, tools, onEvent)
+}
+
+func pacedServer(t *testing.T, f *scheduleFixture, client *pacedChatClient, mcp *fakeMCPService) *server {
+	t.Helper()
+	deps := f.deps
+	deps.LLM = client
+	deps.MCP = mcp
+	return newServer(deps)
+}
+
+func TestScheduledRunSoftDeadlineCutsTheRunningRound(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := &pacedChatClient{
+		fakeToolChatClient: &fakeToolChatClient{Results: researchRound("Nothing new."), Plain: "Nothing new."},
+		blockRound:         2,
+	}
+	s := pacedServer(t, f, client, &fakeMCPService{ToolList: webTools(), Result: "page"})
+	s.runTimeout, s.runSoftDeadline = 10*time.Second, 300*time.Millisecond
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+
+	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+	if len(runs) != 1 || runs[0].Status != schedule.StatusNothingNew || runs[0].MessageID == nil || runs[0].Rounds != 1 {
+		t.Fatalf("run = %+v, want an answer after the cut round", runs)
+	}
+	if len(client.metas) != 3 || client.metas[2].Purpose != "chat_final" {
+		t.Fatalf("calls = %+v, want two tool rounds and the final", client.metas)
+	}
+	if len(client.Tools[len(client.Tools)-1]) != 0 {
+		t.Fatal("the final answer after the soft deadline still offered tools")
+	}
+}
+
+func TestScheduledToolRoundsAskForTheLeastReasoning(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	// The model answers in its first round; the run still answers from the
+	// final, never from a least-reasoning round.
+	client := &pacedChatClient{fakeToolChatClient: &fakeToolChatClient{
+		Results: []llm.StreamResult{{Content: "A quick draft."}},
+		Plain:   "Nothing new.",
+	}}
+	s := pacedServer(t, f, client, &fakeMCPService{ToolList: webTools(), Result: "page"})
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+
+	if len(client.metas) != 2 {
+		t.Fatalf("calls = %+v", client.metas)
+	}
+	if round := client.metas[0]; round.Purpose != "chat_tool_round" || !round.LeastReasoning {
+		t.Fatalf("tool round = %+v, want the least reasoning", round)
+	}
+	if final := client.metas[1]; final.Purpose != "chat_final" || final.LeastReasoning {
+		t.Fatalf("final = %+v, want the turn's level", final)
+	}
+	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	if len(messages) != 2 || messages[1].Content != "Nothing new." {
+		t.Fatalf("thread = %+v, want the final's answer", messages)
+	}
+}
+
+func TestScheduledRunBoundsItsTools(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	search := func(id string) llm.ToolCall {
+		return llm.ToolCall{ID: id, Type: "function", Function: llm.ToolCallFunction{Name: "tavily__tavily_search",
+			Arguments: `{"query":"films ` + id + `","max_results":10,"search_depth":"advanced","include_raw_content":true}`}}
+	}
+	var round1, round2 []llm.ToolCall
+	round1 = append(round1, llm.ToolCall{ID: "f1", Type: "function", Function: llm.ToolCallFunction{Name: "fetch__fetch",
+		Arguments: `{"url":"https://outnow.ch/Starts/Kinostarts","max_length":30000,"full_page":true}`}})
+	round1 = append(round1, llm.ToolCall{ID: "f2", Type: "function", Function: llm.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url":"https://www.arena.ch/programm"}`}})
+	for i := range 8 {
+		round1 = append(round1, search(fmt.Sprintf("a%d", i)))
+	}
+	for i := range 4 {
+		round2 = append(round2, search(fmt.Sprintf("b%d", i)))
+	}
+	client := &fakeToolChatClient{Results: []llm.StreamResult{{ToolCalls: round1}, {ToolCalls: round2}, {Content: "Done."}}, Plain: "Nothing new."}
+	var mu sync.Mutex
+	calls := map[string][]map[string]any{}
+	mcp := &fakeMCPService{ToolList: webTools(), CallFunc: func(_ context.Context, name string, args map[string]any) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls[name] = append(calls[name], args)
+		return strings.Repeat("x", 50<<10), nil
+	}}
+	deps := f.deps
+	deps.LLM, deps.MCP = client, mcp
+	newServer(deps).runSchedule(ctx, newRunnerSchedule(t, f))
+
+	if n := len(calls["tavily__tavily_search"]); n != 10 {
+		t.Fatalf("tavily calls = %d, want the run's limit of 10", n)
+	}
+	for _, args := range calls["tavily__tavily_search"] {
+		if args["max_results"] != float64(5) || args["search_depth"] != "basic" || args["include_raw_content"] != nil {
+			t.Fatalf("search args = %v, want 5 basic results without raw content", args)
+		}
+	}
+	for _, args := range calls["fetch__fetch"] {
+		// A size the model set is lowered; a missing one keeps the tool's smaller default.
+		want := any(float64(8000))
+		if args["url"] == "https://www.arena.ch/programm" {
+			want = nil
+		}
+		if args["max_length"] != want {
+			t.Fatalf("fetch args = %v, want max_length %v", args, want)
+		}
+	}
+	if n := len(calls["fetch__fetch"]); n != 2 {
+		t.Fatalf("fetch calls = %d", n)
+	}
+	var limited int
+	for _, m := range client.Histories[2] {
+		if m.Role != "tool" {
+			continue
+		}
+		// 12 KB of output, plus the [n] source label added after the cap.
+		if len(m.Content) > 12<<10+256 {
+			t.Fatalf("a tool result of %d bytes entered the history", len(m.Content))
+		}
+		if strings.Contains(m.Content, "search limit of this run") {
+			limited++
+		}
+	}
+	if limited != 2 {
+		t.Fatalf("calls past the limit = %d, want 2", limited)
 	}
 }
 
@@ -494,7 +731,7 @@ func TestScheduledRunFailureLeavesANote(t *testing.T) {
 func TestScheduledRunRecreatesADeletedThread(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
-	client := &fakeToolChatClient{Results: researchRound("Nothing new.")}
+	client := researchClient("Nothing new.")
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
 	gone := "gone"
@@ -509,7 +746,7 @@ func TestScheduledRunRecreatesADeletedThread(t *testing.T) {
 func TestScheduleWorkerStartsDueRuns(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
-	client := &fakeToolChatClient{Results: researchRound("Nothing new.")}
+	client := researchClient("Nothing new.")
 	s := newRunnerServer(t, f, client)
 	past := time.Now().Add(-time.Minute)
 	sch := newRunnerSchedule(t, f)
@@ -556,7 +793,7 @@ func TestScheduleWorkerRunResetsAndStops(t *testing.T) {
 
 func TestRunScheduleEndpoint(t *testing.T) {
 	f := newScheduleFixture(t)
-	client := &fakeToolChatClient{Results: researchRound("Nothing new.")}
+	client := researchClient("Nothing new.")
 	f.deps.LLM = client
 	f.deps.MCP = &fakeMCPService{ToolList: webTools(), Result: "page"}
 	f.handler = newAuthenticatedServer(t, f.deps)
@@ -595,8 +832,22 @@ func TestScheduleToolRunner(t *testing.T) {
 	if out := tools.List(ctx, testUser); !strings.Contains(out, id) {
 		t.Fatalf("list = %q", out)
 	}
-	if out := tools.Update(ctx, testUser, "", map[string]any{"id": id, "enabled": false}); !strings.Contains(out, "paused") {
-		t.Fatalf("pause = %q", out)
+	// "Disable the cinema scout" is an update to enabled=false; "enable it"
+	// turns it on again, also after loom disabled it for its time.
+	if out := tools.Update(ctx, testUser, "", map[string]any{"id": id, "enabled": false}); !strings.Contains(out, "next run none, off.") {
+		t.Fatalf("disable = %q", out)
+	}
+	if err := f.store.Disable(ctx, testUser.ID, id, schedule.DisabledTimeout, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if out := tools.List(ctx, testUser); !strings.Contains(out, "off, disabled automatically: two runs in a row") {
+		t.Fatalf("list after a timeout = %q", out)
+	}
+	if out := tools.Update(ctx, testUser, "", map[string]any{"id": id, "enabled": true}); !strings.Contains(out, ", on.") {
+		t.Fatalf("enable = %q", out)
+	}
+	if got, _ := f.store.GetSchedule(ctx, testUser.ID, id); !got.Enabled || got.DisabledReason != "" || got.NextRunAt == nil {
+		t.Fatalf("schedule after enable = %+v", got)
 	}
 	if out := tools.Update(ctx, testUser, "", map[string]any{}); !strings.Contains(out, "id is required") {
 		t.Fatalf("update without id = %q", out)

@@ -38,7 +38,7 @@ const disabled: api.AppNotification = {
   id: "n2",
   kind: "schedule_disabled",
   title: "Hallenstadion tickets was disabled",
-  body: "The run took longer than 3 minutes.",
+  body: "Two runs in a row took longer than 5 minutes.",
   readAt: "2026-10-23T10:00:00Z",
 };
 

@@ -85,12 +85,12 @@ func (t scheduleToolRunner) Delete(ctx context.Context, user auth.User, args map
 // model would guess, so it reports the real time.
 func (t scheduleToolRunner) describe(sch schedule.Schedule) string {
 	p := t.s.scheduleSvc.Describe(sch)
-	state := "active"
+	state := "on"
 	switch {
 	case sch.DisabledReason == schedule.DisabledTimeout:
-		state = "disabled automatically: a run took longer than the time limit"
+		state = "off, disabled automatically: two runs in a row took longer than the time limit"
 	case !sch.Enabled:
-		state = "paused"
+		state = "off"
 	}
 	next := "none"
 	if len(p.NextRuns) > 0 {
