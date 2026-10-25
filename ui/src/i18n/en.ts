@@ -215,6 +215,8 @@ export const en = {
     threadRemoveFromProjectFailed: "Thread failed to remove from project.",
   },
   messages: {
+    loadImage: "Load image from {{host}}",
+    loadImageNamed: "Load image from {{host}}: {{name}}",
     copyFailed: "Couldn’t copy.",
     copyMessage: "Copy message",
     retryMessage: "Retry message",

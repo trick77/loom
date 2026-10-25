@@ -1011,6 +1011,31 @@ a.ui-activity-tool-url:hover {
   text-underline-offset: 0.16em;
 }
 
+/* A remote markdown image waits for a click (MarkdownImage): a quiet chip in the
+   link accent, so it reads as a control, not as part of the prose. */
+.ui-markdown-image-load {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.4em;
+  border: 1px solid rgba(217, 119, 87, 0.35);
+  border-radius: 6px;
+  padding: 0.2em 0.6em;
+  color: #d97757;
+  font-size: 0.9em;
+  text-align: left;
+}
+
+.ui-markdown-image-load span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-markdown-image-load:hover {
+  background: rgba(217, 119, 87, 0.1);
+}
+
 /* Inline web-source citation pill: overrides the prose link color/underline above
    (higher specificity) so it reads as a marker, not a body link. */
 /* Inline citation marker: a raised numeral, not a chip. The chip form carried a
