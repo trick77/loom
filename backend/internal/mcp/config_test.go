@@ -60,7 +60,7 @@ func TestFetchServerConfigAllowlistsFetchTool(t *testing.T) {
 }
 
 func TestObscuraServerConfigAllowlistsNavigateAndSnapshot(t *testing.T) {
-	cfg := ObscuraServerConfig("http://obscura:8090/mcp")
+	cfg := ObscuraServerConfig("http://obscura:8090/mcp", "")
 	if cfg.Transport != TransportStreamableHTTP {
 		t.Fatalf("Transport = %q, want streamable-http", cfg.Transport)
 	}
@@ -73,5 +73,16 @@ func TestObscuraServerConfigAllowlistsNavigateAndSnapshot(t *testing.T) {
 	want := []string{"browser_navigate", "browser_snapshot"}
 	if !reflect.DeepEqual(cfg.Tools, want) {
 		t.Fatalf("Tools = %#v, want %#v", cfg.Tools, want)
+	}
+	if len(cfg.Headers) != 0 {
+		t.Fatalf("Headers = %#v, want none without a token", cfg.Headers)
+	}
+}
+
+func TestObscuraServerConfigSendsTokenAsBearer(t *testing.T) {
+	cfg := ObscuraServerConfig("http://obscura:8090/mcp", "tok-0123456789abcdef0123456789abcdef")
+	want := map[string]string{"Authorization": "Bearer tok-0123456789abcdef0123456789abcdef"}
+	if !reflect.DeepEqual(cfg.Headers, want) {
+		t.Fatalf("Headers = %#v, want %#v", cfg.Headers, want)
 	}
 }

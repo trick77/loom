@@ -155,6 +155,7 @@ func TestLoad_rejectsInvalidChatGenerationBounds(t *testing.T) {
 func TestLoad_firstClassMCPToolURLs(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_OBSCURA_MCP_URL", "http://obscura:8090/mcp")
+	t.Setenv("BACKEND_OBSCURA_MCP_TOKEN", "obscura-token-0123456789abcdef0123")
 
 	cfg, err := Load()
 	if err != nil {
@@ -162,6 +163,33 @@ func TestLoad_firstClassMCPToolURLs(t *testing.T) {
 	}
 	if cfg.ObscuraMCPURL != "http://obscura:8090/mcp" {
 		t.Fatalf("ObscuraMCPURL = %q, want obscura MCP URL", cfg.ObscuraMCPURL)
+	}
+	if cfg.ObscuraMCPToken != "obscura-token-0123456789abcdef0123" {
+		t.Fatalf("ObscuraMCPToken = %q, want the configured token", cfg.ObscuraMCPToken)
+	}
+}
+
+func TestLoad_obscuraURLNeedsToken(t *testing.T) {
+	for name, token := range map[string]string{
+		"missing": "",
+		"short":   "obscura-token-0123456789abcdef",
+	} {
+		t.Run(name, func(t *testing.T) {
+			requiredEnv(t)
+			t.Setenv("BACKEND_OBSCURA_MCP_URL", "http://obscura:8090/mcp")
+			t.Setenv("BACKEND_OBSCURA_MCP_TOKEN", token)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), "BACKEND_OBSCURA_MCP_TOKEN must be at least 32 characters") {
+				t.Fatalf("Load() error = %v, want the obscura token error", err)
+			}
+		})
+	}
+}
+
+func TestLoad_obscuraTokenNotNeededWithoutURL(t *testing.T) {
+	requiredEnv(t)
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load() error = %v, want none: obscura is off", err)
 	}
 }
 

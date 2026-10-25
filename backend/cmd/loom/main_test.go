@@ -122,7 +122,8 @@ func TestTavilyConfiguredDetectsEnv(t *testing.T) {
 
 func TestToolConfigForConfigAddsFirstClassMCPTools(t *testing.T) {
 	cfg := config.Config{
-		ObscuraMCPURL: "http://obscura:8090/mcp",
+		ObscuraMCPURL:   "http://obscura:8090/mcp",
+		ObscuraMCPToken: "obscura-token-0123456789abcdef0123",
 	}
 
 	got := mustToolConfig(t, cfg)
@@ -146,6 +147,9 @@ func TestToolConfigForConfigAddsFirstClassMCPTools(t *testing.T) {
 	wantObscuraTools := []string{"browser_navigate", "browser_snapshot"}
 	if !reflect.DeepEqual(obscura.Tools, wantObscuraTools) {
 		t.Fatalf("obscura tools = %#v, want %#v", obscura.Tools, wantObscuraTools)
+	}
+	if got := obscura.Headers["Authorization"]; got != "Bearer obscura-token-0123456789abcdef0123" {
+		t.Fatalf("obscura Authorization = %q, want the configured token as bearer", got)
 	}
 }
 

@@ -22,6 +22,7 @@ services:
       BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY}"
       BACKEND_OBSCURA_MCP_URL: "http://obscura:8090/mcp"
+      BACKEND_OBSCURA_MCP_TOKEN: "${BACKEND_OBSCURA_MCP_TOKEN:?set BACKEND_OBSCURA_MCP_TOKEN in .env (openssl rand -hex 32)}"
       # run_python sidecar; the tool is offered while it answers. The token is
       # optional (set the same BACKEND_SANDBOX_TOKEN for both services).
       BACKEND_SANDBOX_URL: "http://sandbox:8070"
@@ -119,8 +120,12 @@ services:
     # 0.0.0.0, so no local wrapper or stdio bridge is needed.
     # Loom reaches it via BACKEND_OBSCURA_MCP_URL; tools are
     # surfaced to the LLM as obscura__<tool>.
-    image: h4ckf0r0day/obscura:0.2.2
+    image: h4ckf0r0day/obscura:0.2.5
     restart: unless-stopped
+    environment:
+      # v0.2.3+ refuses MCP beyond loopback without a token of at least 32
+      # characters; loom sends the same value as a bearer token.
+      OBSCURA_MCP_TOKEN: "${BACKEND_OBSCURA_MCP_TOKEN:?set BACKEND_OBSCURA_MCP_TOKEN in .env (openssl rand -hex 32)}"
     command:
       - mcp
       - --http

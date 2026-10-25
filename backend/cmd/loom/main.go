@@ -471,7 +471,7 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// PDFs are parsed in the Tika sidecar (pdf), never in the backend.
 	required.Servers["fetch"] = mcp.FetchServerConfig(pdf)
 	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
-		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL)
+		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL, cfg.ObscuraMCPToken)
 	}
 	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
 		required.Servers["tavily"] = mcp.TavilyServerConfig(cfg.TavilyURL, cfg.TavilyAPIKey)
