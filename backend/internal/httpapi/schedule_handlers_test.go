@@ -239,10 +239,18 @@ func TestNotificationEndpoints(t *testing.T) {
 func TestRunThreadTakesAFollowUp(t *testing.T) {
 	f := newScheduleFixture(t)
 	ctx := context.Background()
-	thread, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Cinema scout"})
 	sch, _ := f.store.CreateSchedule(ctx, schedule.Schedule{UserID: testUser.ID, Name: "s", Prompt: "p", IntervalText: "i", CronTemplate: "0 9 * * *", Cron: "0 9 * * *", Timezone: "UTC", Enabled: true})
+	thread, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Cinema scout", ScheduleID: &sch.ID})
 	runID, _ := f.store.StartRun(ctx, testUser.ID, sch.ID, time.Now())
 	_ = f.store.AttachRunThread(ctx, testUser.ID, runID, thread.ID)
+	// While the run still writes the thread, nothing joins it.
+	for _, path := range []string{"messages:stream", "messages:queue"} {
+		rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/"+path, `{"content":"too early","clientMessageId":"c0"}`)
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("%s during the run = %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	_ = f.store.FinishRun(ctx, testUser.ID, schedule.Run{ID: runID, Status: schedule.StatusNothingNew}, time.Now())
 	rec := f.do(t, http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"tell me more","clientMessageId":"c1"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("follow-up in a run thread = %d %s", rec.Code, rec.Body)

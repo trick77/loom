@@ -35,6 +35,12 @@ func TestMigration0044_runsCarryTheirThread(t *testing.T) {
 			t.Fatalf("run %s thread = %v (err %v), want %s", run, got, err, want)
 		}
 	}
+	for thread, want := range map[string]string{"feed": "s", "other": ""} {
+		var got sql.NullString
+		if err := db.QueryRow(`SELECT schedule_id FROM threads WHERE id = ?`, thread).Scan(&got); err != nil || got.String != want {
+			t.Fatalf("thread %s schedule = %v (err %v), want %q", thread, got, err, want)
+		}
+	}
 	for table, column := range map[string]string{"schedules": "thread_id", "threads": "branched_from_thread_id"} {
 		var n int
 		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n); err != nil || n != 0 {

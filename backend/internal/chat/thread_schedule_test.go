@@ -5,24 +5,24 @@ import (
 	"testing"
 )
 
-func TestThreadScheduleIDComesFromItsRun(t *testing.T) {
+func TestThreadScheduleID(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	alice := insertTestUser(t, db, "alice")
 	st := NewStore(db)
-	run, _ := st.CreateThread(ctx, alice, CreateThreadInput{Title: "Cinema scout"})
-	plain, _ := st.CreateThread(ctx, alice, CreateThreadInput{Title: "Plain"})
 	if _, err := db.Exec(`INSERT INTO schedules (id, user_id, name, prompt, interval_text, cron_template, cron, timezone)
 VALUES ('s1', ?, 'n', 'p', 'i', 't', 'c', 'UTC')`, alice); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO schedule_runs (id, schedule_id, user_id, thread_id) VALUES ('r1', 's1', ?, ?)`, alice, run.ID); err != nil {
+	scheduleID := "s1"
+	run, err := st.CreateThread(ctx, alice, CreateThreadInput{Title: "Cinema scout", ScheduleID: &scheduleID})
+	if err != nil {
 		t.Fatal(err)
 	}
+	plain, _ := st.CreateThread(ctx, alice, CreateThreadInput{Title: "Plain"})
 
-	got, _, _ := st.GetThread(ctx, alice, run.ID)
-	if got.ScheduleID == nil || *got.ScheduleID != "s1" {
-		t.Fatalf("run thread ScheduleID = %v, want s1", got.ScheduleID)
+	if run.ScheduleID == nil || *run.ScheduleID != "s1" {
+		t.Fatalf("run thread ScheduleID = %v, want s1", run.ScheduleID)
 	}
 	listed, _ := st.ListThreads(ctx, alice, ListThreadsOptions{})
 	for _, th := range listed {
@@ -32,5 +32,12 @@ VALUES ('s1', ?, 'n', 'p', 'i', 't', 'c', 'UTC')`, alice); err != nil {
 	}
 	if got, _, _ := st.GetThread(ctx, alice, plain.ID); got.ScheduleID != nil {
 		t.Fatalf("plain thread ScheduleID = %v, want nil", got.ScheduleID)
+	}
+	// Deleting the schedule keeps the thread, unlinked.
+	if _, err := db.Exec(`DELETE FROM schedules WHERE id = 's1'`); err != nil {
+		t.Fatal(err)
+	}
+	if got, found, _ := st.GetThread(ctx, alice, run.ID); !found || got.ScheduleID != nil {
+		t.Fatalf("thread after schedule delete = %+v (found %v)", got, found)
 	}
 }

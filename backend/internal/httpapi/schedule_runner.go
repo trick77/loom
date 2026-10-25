@@ -234,19 +234,30 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		run.Error = "the account is gone"
 		return
 	}
-	thread, err := s.thread.CreateThread(detached, user.ID, chat.CreateThreadInput{Title: sch.Name})
+	thread, err := s.thread.CreateThread(detached, user.ID, chat.CreateThreadInput{
+		Title: runThreadTitle(sch, start), ScheduleID: &sch.ID,
+	})
 	if err != nil {
 		slog.Warn("create run thread failed", "schedule_id", sch.ID, "err", err)
 		run.Error = "could not open a thread for the run"
 		return
 	}
+	// A thread the run cannot record or give its prompt would sit in the
+	// recents empty, unreachable from the run: it goes again.
+	dropThread := func(message string, err error) {
+		slog.Warn("set up run thread failed", "schedule_id", sch.ID, "err", err)
+		run.Error = message
+		if _, err := s.thread.DeleteThread(detached, user.ID, thread.ID); err != nil {
+			slog.Warn("delete run thread failed", "thread_id", thread.ID, "err", err)
+		}
+	}
 	if err := s.schedules.AttachRunThread(detached, user.ID, runID, thread.ID); err != nil {
-		slog.Warn("attach run thread failed", "schedule_id", sch.ID, "err", err)
+		dropThread("could not record the run's thread", err)
+		return
 	}
 	userMessage, err := s.thread.AddMessageWithAttachments(detached, user.ID, thread.ID, chat.RoleUser, sch.Prompt, nil, nil, "")
 	if err != nil {
-		slog.Warn("persist schedule prompt failed", "schedule_id", sch.ID, "err", err)
-		run.Error = "could not store the prompt"
+		dropThread("could not store the prompt", err)
 		return
 	}
 	noteThread = thread.ID
@@ -426,6 +437,15 @@ func (s *server) disableAfterTimeout(ctx context.Context, user auth.User, sch sc
 		Title:      sch.Name + " was disabled",
 		Body:       fmt.Sprintf("Two runs in a row took longer than %d minutes. Open the schedule to change it or enable it again.", minutes),
 	})
+}
+
+// runThreadTitle names a run's thread after its schedule and its start on the
+// schedule's clock, so the runs tell apart in the recents.
+func runThreadTitle(sch schedule.Schedule, start time.Time) string {
+	if loc, err := time.LoadLocation(sch.Timezone); err == nil {
+		start = start.In(loc)
+	}
+	return sch.Name + " · " + start.Format("2006-01-02 15:04")
 }
 
 // closeInterruptedRun notes under a prompt the previous process left without

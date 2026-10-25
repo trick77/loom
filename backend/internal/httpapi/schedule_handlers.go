@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/ship/kit/httpx"
 )
@@ -385,4 +386,22 @@ func (s *server) markNotificationsRead(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// rejectWhileRunning answers 409 while a scheduled run still writes the
+// thread: the run's turn is not a stream the user's message could queue on,
+// and a second turn beside it would interleave the two answers.
+func (s *server) rejectWhileRunning(w http.ResponseWriter, r *http.Request, userID string, thread chat.Thread) bool {
+	if thread.ScheduleID == nil || s.schedules == nil {
+		return false
+	}
+	running, err := s.schedules.RunningInThread(r.Context(), userID, thread.ID)
+	if err != nil {
+		serverError(w, r, err, "check scheduled run failed")
+		return true
+	}
+	if running {
+		httpx.WriteError(w, http.StatusConflict, "the scheduled run is still writing this thread; send your message once it is done")
+	}
+	return running
 }

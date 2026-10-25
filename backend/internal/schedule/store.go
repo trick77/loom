@@ -425,6 +425,19 @@ func (st *Store) AttachRunThread(ctx context.Context, userID, runID, threadID st
 	return nil
 }
 
+// RunningInThread reports whether a run of the user's is still writing into
+// threadID.
+func (st *Store) RunningInThread(ctx context.Context, userID, threadID string) (bool, error) {
+	var running bool
+	err := st.db.QueryRowContext(ctx, `
+SELECT EXISTS (SELECT 1 FROM schedule_runs WHERE user_id = ? AND thread_id = ? AND status = 'running')`,
+		userID, threadID).Scan(&running)
+	if err != nil {
+		return false, fmt.Errorf("running in thread: %w", err)
+	}
+	return running, nil
+}
+
 // FinishRun writes a finished run's outcome.
 func (st *Store) FinishRun(ctx context.Context, userID string, r Run, at time.Time) error {
 	_, err := st.db.ExecContext(ctx, `

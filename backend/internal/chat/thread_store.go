@@ -39,9 +39,9 @@ func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThread
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `
-INSERT INTO threads (id, user_id, project_id, title)
-VALUES (?, ?, ?, ?)`,
-		threadID, userID, projectID, title,
+INSERT INTO threads (id, user_id, project_id, title, schedule_id)
+VALUES (?, ?, ?, ?, ?)`,
+		threadID, userID, projectID, title, in.ScheduleID,
 	)
 	if err != nil {
 		return Thread{}, fmt.Errorf("insert thread: %w", err)

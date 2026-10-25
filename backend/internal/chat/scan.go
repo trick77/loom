@@ -97,13 +97,11 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	return thread, nil
 }
 
-// threadColumns is the threads projection scanThreadRow reads, ScheduleID
-// derived from the run that started the thread; threadColumnsT is the same
-// for a query that aliases threads as t. A thread from before every run had
-// its own holds several runs of one schedule.
+// threadColumns is the threads projection scanThreadRow reads; threadColumnsT
+// is the same for a query that aliases threads as t.
 const (
-	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, (SELECT r.schedule_id FROM schedule_runs r WHERE r.user_id = threads.user_id AND r.thread_id = threads.id LIMIT 1)"
-	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, (SELECT r.schedule_id FROM schedule_runs r WHERE r.user_id = t.user_id AND r.thread_id = t.id LIMIT 1)"
+	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, schedule_id"
+	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.schedule_id"
 )
 
 // messageColumns is the full messages projection scanMessage reads.

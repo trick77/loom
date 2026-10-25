@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
@@ -101,7 +104,7 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	}
 	firstThread := lastRunThread(t, f, sch)
 	thread, _, _ := f.chat.GetThread(ctx, testUser.ID, firstThread)
-	if thread.ScheduleID == nil || *thread.ScheduleID != sch.ID || thread.Title != "Cinema scout" {
+	if thread.ScheduleID == nil || *thread.ScheduleID != sch.ID || !strings.HasPrefix(thread.Title, "Cinema scout · ") {
 		t.Fatalf("thread = %+v", thread)
 	}
 	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
@@ -848,6 +851,55 @@ func TestScheduleToolRunner(t *testing.T) {
 	}
 	if got := scheduleToolError(errors.New("boom")); got != "tool failed: boom" {
 		t.Fatalf("other error = %q", got)
+	}
+}
+
+// promptlessStore refuses to store a message.
+type promptlessStore struct{ *chat.Store }
+
+func (promptlessStore) AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage, string) (chat.Message, error) {
+	return chat.Message{}, errors.New("database is locked")
+}
+
+func TestScheduledRunDropsAThreadItCannotFill(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	f.deps.Thread = promptlessStore{f.chat}
+	s := newServer(f.deps)
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error != "could not store the prompt" || runs[0].ThreadID != nil {
+		t.Fatalf("run = %+v", runs)
+	}
+	if threads, _ := f.chat.ListThreads(ctx, testUser.ID, chat.ListThreadsOptions{}); len(threads) != 0 {
+		t.Fatalf("an empty run thread stayed: %+v", threads)
+	}
+}
+
+func TestRejectWhileRunningReportsAStoreFailure(t *testing.T) {
+	f := newScheduleFixture(t)
+	s := newServer(f.deps)
+	scheduleID := "s1"
+	_ = f.db.Close()
+	rec := httptest.NewRecorder()
+	if !s.rejectWhileRunning(rec, httptest.NewRequest(http.MethodPost, "/", nil), testUser.ID, chat.Thread{ID: "t", ScheduleID: &scheduleID}) {
+		t.Fatal("a failed check let the message through")
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
+func TestRunThreadTitle(t *testing.T) {
+	start := time.Date(2026, 10, 22, 12, 37, 0, 0, time.UTC)
+	sch := schedule.Schedule{Name: "Cinema scout", Timezone: "Europe/Zurich"}
+	if got := runThreadTitle(sch, start); got != "Cinema scout · 2026-10-22 14:37" {
+		t.Fatalf("title = %q", got)
+	}
+	sch.Timezone = "Mars/Olympus"
+	if got := runThreadTitle(sch, start); got != "Cinema scout · 2026-10-22 12:37" {
+		t.Fatalf("title with a bad zone = %q", got)
 	}
 }
 

@@ -46,11 +46,13 @@ func (s *server) handleQueueMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	threadID := r.PathValue("threadID")
-	if _, found, err := s.thread.GetThread(r.Context(), user.ID, threadID); err != nil {
+	if thread, found, err := s.thread.GetThread(r.Context(), user.ID, threadID); err != nil {
 		serverError(w, r, err, "get thread failed")
 		return
 	} else if !found {
 		writeNotFound(w)
+		return
+	} else if s.rejectWhileRunning(w, r, user.ID, thread) {
 		return
 	}
 	s.rememberTimezone(user.ID, r)

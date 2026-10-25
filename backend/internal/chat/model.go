@@ -149,7 +149,7 @@ type Thread struct {
 	UpdatedAt     time.Time  `json:"updatedAt"`
 	LastMessageAt *time.Time `json:"lastMessageAt"`
 	// ScheduleID is the schedule whose run started this thread; nil for every
-	// other thread, and once the schedule or its run record is gone.
+	// other thread, and once the schedule is gone.
 	ScheduleID *string `json:"scheduleId"`
 	// Shared is true when an active public share link exists for this thread
 	// (a shared_threads row with shared=1). Populated by ListThreads so chat
@@ -293,6 +293,9 @@ type UpdateProjectInput struct {
 type CreateThreadInput struct {
 	ProjectID *string
 	Title     string
+	// ScheduleID marks the thread a scheduled run starts; set by the runner
+	// only, never from a request.
+	ScheduleID *string
 }
 
 // ProjectIDUpdate encodes the semantics of updating a thread's project
