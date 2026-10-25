@@ -49,20 +49,22 @@ func newScheduleRuns() *scheduleRuns {
 // admit takes a slot for the user; false when the user already runs one or
 // every slot is taken.
 func (r *scheduleRuns) admit(userID string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.active[userID] || len(r.active) >= r.slots {
-		return false
-	}
-	r.active[userID] = true
-	return true
+	return r.take(userID) == nil
 }
 
-// running reports whether the user has a run in flight.
-func (r *scheduleRuns) running(userID string) bool {
+// take takes a slot for the user, or says why not: errOwnRunActive when the
+// user already runs one, errRunBusy when every slot is taken.
+func (r *scheduleRuns) take(userID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.active[userID]
+	if r.active[userID] {
+		return errOwnRunActive
+	}
+	if len(r.active) >= r.slots {
+		return errRunBusy
+	}
+	r.active[userID] = true
+	return nil
 }
 
 func (r *scheduleRuns) done(userID string) {
@@ -321,8 +323,9 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		run.Status, run.Error = schedule.StatusTimeout, "the run took longer than the time limit"
 		noteThread = ""
 		minutes := int(schedule.RunTimeout / time.Minute)
-		// A schedule already off, run by hand, is not turned off again.
-		if !sch.Enabled {
+		// A schedule off by now (run by hand while off, or paused during the
+		// run) is not turned off again; the user's own pause stays theirs.
+		if current, err := s.schedules.GetSchedule(detached, user.ID, sch.ID); err != nil || !current.Enabled {
 			s.persistRunNote(detached, user.ID, thread.ID, fmt.Sprintf("This scheduled run took longer than %d minutes and was stopped.", minutes))
 			return
 		}

@@ -348,14 +348,21 @@ func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string
 	if spec == nil || spec.run == nil {
 		return "", nil, false
 	}
+	if spec.userIntent && t.readOutside {
+		return userIntentAfterOutside, nil, true
+	}
 	output, created := spec.run(ctx, t, call)
-	// Every built-in but the schedule tools can bring in text the user did
-	// not write: another thread, a memory, a file, a program's output.
-	if !strings.HasPrefix(spec.name, "schedule_") {
+	// Every other built-in can bring in text the user did not write: another
+	// thread, a memory, a file, a program's output.
+	if !spec.userIntent && !spec.sharesIntent {
 		t.readOutside = true
 	}
 	return output, created, true
 }
+
+// userIntentAfterOutside refuses a userIntent tool in a turn that already
+// read content from another tool.
+const userIntentAfterOutside = "Not done: this turn already read content from other tools, so the request may not be the user's. Ask the user to repeat it in their next message."
 
 func oneArtifact(resp *artifact.Response) []artifact.Response {
 	if resp == nil {

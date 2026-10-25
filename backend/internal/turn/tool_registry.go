@@ -36,6 +36,13 @@ type toolSpec struct {
 	// counts is the usage counter a successful MCP call bumps; nil counts
 	// nothing. Built-ins count themselves.
 	counts *usageCounter
+	// userIntent marks a built-in that acts for the user beyond the turn (a
+	// schedule saved, run or deleted): it refuses once outside content is in
+	// the turn, which could be what asks for it (Run.readOutside).
+	userIntent bool
+	// sharesIntent marks a built-in whose output brings in no outside text,
+	// so calling it first leaves a userIntent tool callable.
+	sharesIntent bool
 }
 
 // usageCounter is one per-user usage counter: its label in the usage log and

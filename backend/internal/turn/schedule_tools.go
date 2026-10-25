@@ -31,52 +31,59 @@ type ScheduleTools interface {
 func scheduleToolsOffered(e *Engine) bool { return e.schedules != nil }
 
 var scheduleToolSpecs = []toolSpec{
+	// Every tool that saves, runs or deletes a schedule is userIntent: a
+	// schedule spends a full run budget again and again, so a page or another
+	// tool's output must never be what sets one up.
 	{
-		name:    scheduleCreateToolName,
-		schema:  scheduleCreateTool,
-		offered: func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		name:       scheduleCreateToolName,
+		schema:     scheduleCreateTool,
+		offered:    func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		userIntent: true,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
 			return capToolOutput(t.e.schedules.Create(ctx, t.user, t.timezone, args))
 		}),
 	},
 	{
-		name:    scheduleListToolName,
-		schema:  scheduleListTool,
-		offered: func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		name:         scheduleListToolName,
+		schema:       scheduleListTool,
+		offered:      func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		sharesIntent: true,
 		run: withArgs(func(ctx context.Context, t *Run, _ map[string]any) string {
 			return capToolOutput(t.e.schedules.List(ctx, t.user))
 		}),
 	},
 	{
-		name:    scheduleUpdateToolName,
-		schema:  scheduleUpdateTool,
-		offered: func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		name:       scheduleUpdateToolName,
+		schema:     scheduleUpdateTool,
+		offered:    func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		userIntent: true,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
 			return capToolOutput(t.e.schedules.Update(ctx, t.user, t.timezone, args))
 		}),
 	},
 	{
-		name:    scheduleDeleteToolName,
-		schema:  scheduleDeleteTool,
-		offered: func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		name:       scheduleDeleteToolName,
+		schema:     scheduleDeleteTool,
+		offered:    func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		userIntent: true,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
 			return capToolOutput(t.e.schedules.Delete(ctx, t.user, args))
 		}),
 	},
 	{
-		name:    scheduleRunToolName,
-		schema:  scheduleRunTool,
-		offered: func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		name:       scheduleRunToolName,
+		schema:     scheduleRunTool,
+		offered:    func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		userIntent: true,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
-			// A run costs a full budget. Once a page or another tool's output
-			// is in the turn, it could be what asks for the run, not the user.
-			if t.readOutside {
-				return scheduleRunAfterOutside
-			}
 			return capToolOutput(t.e.schedules.Run(ctx, t.user, args))
 		}),
 	},
 }
+
+// scheduleFirst tells the model the schedule tools that act refuse after any
+// other tool, so it calls them first.
+const scheduleFirst = "Call it before any tool but the schedule tools; after one it refuses. "
 
 func scheduleTool(name, description string, properties map[string]any, required []any) func() llm.Tool {
 	return func() llm.Tool {
@@ -92,7 +99,7 @@ var scheduleCreateTool = scheduleTool(scheduleCreateToolName,
 	"Create a scheduled task: a prompt loom runs on its own, again and again, notifying the user only about what is new. "+
 		"Use it when the user asks for something recurring (\"every week look for …\", \"daily check …\", \"keep me posted on …\"). "+
 		"Each run starts without this conversation, so the prompt must stand alone: what to look for, the user's interests, places and limits. "+
-		scheduleRunIsShort+
+		scheduleRunIsShort+scheduleFirst+
 		"Runs at most twice a day. Returns the schedule with its resolved time; tell the user that time.",
 	map[string]any{
 		"prompt":   map[string]any{"type": "string", "description": "The self-contained task each run carries out, at most 2000 characters."},
@@ -110,7 +117,7 @@ const scheduleRunIsShort = "A run is short: a few tool rounds and minutes. Write
 
 var scheduleUpdateTool = scheduleTool(scheduleUpdateToolName,
 	"Change one of the user's scheduled tasks: its name, prompt or interval, or turn it off (disable, pause, stop: enabled=false) and on again (enable, resume: enabled=true). "+
-		"Find the id with schedule_list by the schedule's name. A new interval gets a new random time. "+scheduleRunIsShort+"Returns the updated schedule.",
+		"Find the id with schedule_list by the schedule's name. A new interval gets a new random time. "+scheduleRunIsShort+scheduleFirst+"Returns the updated schedule.",
 	map[string]any{
 		"id":       map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},
 		"name":     map[string]any{"type": "string"},
@@ -119,13 +126,9 @@ var scheduleUpdateTool = scheduleTool(scheduleUpdateToolName,
 		"enabled":  map[string]any{"type": "boolean"},
 	}, []any{"id"})
 
-// scheduleRunAfterOutside refuses a run in a turn that already read content
-// from a tool.
-const scheduleRunAfterOutside = "Not started: this turn already read content from other tools, so the request to run may not be the user's. Ask the user to repeat it in their next message."
-
 var scheduleRunTool = scheduleTool(scheduleRunToolName,
 	"Start one of the user's scheduled tasks now, outside its time, when they ask to run or test it (\"run the cinema scout now\"). "+
-		"Call it before any tool but the schedule tools, with the id from schedule_list. "+
+		"Pass the id from schedule_list. "+scheduleFirst+
 		"The run works in the background and answers in a new thread of its own, not in this chat; "+
 		"tell the user that, and do not do the task yourself.",
 	map[string]any{
@@ -133,7 +136,7 @@ var scheduleRunTool = scheduleTool(scheduleRunToolName,
 	}, []any{"id"})
 
 var scheduleDeleteTool = scheduleTool(scheduleDeleteToolName,
-	"Delete one of the user's scheduled tasks for good, when they ask to remove it. Pass the id from schedule_list. Run threads the user left untouched go with it; ones they followed up in, starred, archived, shared or filed into a project stay.",
+	"Delete one of the user's scheduled tasks for good, when they ask to remove it. Pass the id from schedule_list. "+scheduleFirst+"Run threads the user left untouched go with it; ones they followed up in, starred, archived, shared or filed into a project stay.",
 	map[string]any{
 		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},
 	}, []any{"id"})

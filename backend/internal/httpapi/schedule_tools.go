@@ -109,7 +109,7 @@ func (t scheduleToolRunner) Run(ctx context.Context, user auth.User, args map[st
 	out := fmt.Sprintf("Started a run of %q. It runs in the background for up to %d minutes; its answer arrives in a new thread of its own, with a notification when it finds something new.",
 		sch.Name, int(schedule.RunTimeout/time.Minute))
 	switch {
-	case sch.DisabledReason == schedule.DisabledTimeout:
+	case !sch.Enabled && sch.DisabledReason == schedule.DisabledTimeout:
 		out += " Tell the user: loom turned this schedule off because two runs in a row took longer than the time limit, so this run may too; the schedule stays off."
 	case !sch.Enabled:
 		out += " The schedule itself stays off."

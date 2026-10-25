@@ -528,8 +528,9 @@ func TestScheduledRunFirstTimeoutKeepsTheSchedule(t *testing.T) {
 	}
 }
 
-// A schedule already off, run by hand past the limit, is not disabled and
-// announced a second time.
+// A schedule off by the time its run passes the limit (run by hand while off,
+// or paused during the run: sch is the run's snapshot, still enabled) is not
+// disabled and announced a second time.
 func TestScheduledRunTimeoutOfAScheduleAlreadyOff(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
@@ -538,8 +539,7 @@ func TestScheduledRunTimeoutOfAScheduleAlreadyOff(t *testing.T) {
 	if err := f.store.Disable(ctx, testUser.ID, sch.ID, schedule.DisabledTimeout, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	off, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
-	runPastTheTimeLimit(t, f, off)
+	runPastTheTimeLimit(t, f, sch)
 	if notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 0 {
 		t.Fatalf("a schedule already off was announced again: %+v", notes)
 	}

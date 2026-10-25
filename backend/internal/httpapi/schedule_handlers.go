@@ -277,12 +277,12 @@ var (
 // schedule_run tool ask: one run per user at a time, never one the schedule
 // already has.
 func (s *server) runScheduleNow(ctx context.Context, sch schedule.Schedule) error {
-	if !s.runs.admit(sch.UserID) {
-		if s.runs.running(sch.UserID) {
-			return errOwnRunActive
-		}
-		return errRunBusy
+	if err := s.runs.take(sch.UserID); err != nil {
+		return err
 	}
+	// The claim outlives a stopped chat turn: a stop at this moment is no
+	// failure of the run.
+	ctx = context.WithoutCancel(ctx)
 	claimed, err := s.schedules.Claim(ctx, sch.UserID, sch.ID, s.clock())
 	if err != nil || !claimed {
 		s.runs.done(sch.UserID)
@@ -291,7 +291,7 @@ func (s *server) runScheduleNow(ctx context.Context, sch schedule.Schedule) erro
 		}
 		return errScheduleRunning
 	}
-	s.startScheduleRun(context.WithoutCancel(ctx), sch)
+	s.startScheduleRun(ctx, sch)
 	return nil
 }
 

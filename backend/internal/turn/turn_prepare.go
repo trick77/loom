@@ -265,6 +265,9 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			knowledgeSources = append(append([]Citation(nil), attachmentSources...), knowledgeSources...)
 		},
 	)
+	// Attached and knowledge documents are text the user did not write in
+	// this message: they count as outside content from the first round.
+	t.readOutside = documentContext != "" || knowledgeContext != ""
 	imageArtifactRequired := imageRoute.generate
 	if imageArtifactRequired {
 		// The image path forces its own tools; the drift guess adds nothing.
