@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -56,6 +57,19 @@ type LoopResult struct {
 	// order the model cites them. Persisted as citations and rendered as inline
 	// source pills + a bottom "Sources" row.
 	WebSources []webSource
+	// Rounds is how many tool rounds ran; LimitHit names the scheduled run's
+	// limit that forced the final answer ("" when none did).
+	Rounds   int
+	LimitHit string
+}
+
+// SourceURLs are the turn's web sources by their [n] number.
+func (r LoopResult) SourceURLs() map[int]string {
+	out := make(map[int]string, len(r.WebSources))
+	for _, s := range r.WebSources {
+		out[s.Index] = s.URL
+	}
+	return out
 }
 
 // RunAssistantLoop answers the turn from the history Prepare built, running
@@ -64,6 +78,14 @@ type LoopResult struct {
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
 	history := t.plan.history
 	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
+	tools = t.allowTools(tools)
+	if t.scheduled != nil {
+		for name := range offered {
+			if !slices.Contains(t.scheduled.Tools, name) {
+				delete(offered, name)
+			}
+		}
+	}
 	t.offered = offered
 	if len(tools) == 0 {
 		b := &blockBuilder{}
@@ -101,10 +123,11 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	// round (see the web_sources event below) so inline markers resolve while the
 	// answer streams; the same sources are also persisted with the message.
 	reg := newWebSourceRegistryAfter(t.plan.sourceCount)
+	rounds, limitHit := 0, ""
 	// Stamp gathered sources onto every subsequent return (natural answer, forced
 	// final, interrupted partial) in one place. The tool-less/image fast paths
 	// return above this and never gather web sources.
-	defer func() { out.WebSources = reg.all() }()
+	defer func() { out.WebSources, out.Rounds, out.LimitHit = reg.all(), rounds, limitHit }()
 	b := &blockBuilder{}
 	// The prompt prefix before any tool round: original system prompt + prior
 	// conversation + the user's question. The forced final answer rebuilds a clean
@@ -267,6 +290,13 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			}
 		}
 		toolRan = true
+		rounds++
+		// A scheduled run past its token budget or soft deadline stops
+		// researching and answers from what it has.
+		if limitHit = t.overLimit(); limitHit != "" {
+			slog.Info("forcing final answer", "reason", "scheduled_limit", "limit", limitHit, "round", round)
+			break
+		}
 		// A message the user queued while this round ran is picked up here,
 		// between the tool results and the next model call, never mid-tool.
 		// It answers in a fresh segment with a full round budget, and gets its

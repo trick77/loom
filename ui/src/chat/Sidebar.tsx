@@ -1,8 +1,9 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { Project, Thread, User } from "../api";
+import type { AppNotification, Project, Thread, User } from "../api";
 import i18n from "../i18n";
+import { NotificationBell } from "../notifications/NotificationBell";
 import { UserMenu } from "./UserMenu";
 import { Icon } from "./Icon";
 import type { RouteState } from "./routing";
@@ -44,6 +45,8 @@ export const Sidebar = memo(function Sidebar({
   onArtifacts,
   onProjects,
   onMemory,
+  onSchedules,
+  onOpenNotification,
   onOpenSearch,
   onSelectThread,
   onDeleteThread,
@@ -86,6 +89,8 @@ export const Sidebar = memo(function Sidebar({
   onArtifacts(): void;
   onProjects(): void;
   onMemory(): void;
+  onSchedules(): void;
+  onOpenNotification(notification: AppNotification): void;
   onOpenSearch(): void;
   onSelectThread(threadID: string): void;
   onDeleteThread(thread: Thread): void;
@@ -118,6 +123,13 @@ export const Sidebar = memo(function Sidebar({
             </div>
           )}
           <div className="flex items-center gap-3 text-[#aaa79e]">
+            {!railCollapsed && (
+              <NotificationBell
+                placement="header"
+                onOpen={onOpenNotification}
+                onManageSchedules={onSchedules}
+              />
+            )}
             {!railCollapsed && (
               <button
                 type="button"
@@ -202,6 +214,25 @@ export const Sidebar = memo(function Sidebar({
             active={route.view === "memory" && !showAdmin}
             onClick={onMemory}
           />
+          <SidebarPrimaryItem
+            label={t("sidebar.schedules")}
+            icon="schedules"
+            collapsed={railCollapsed}
+            active={
+              (route.view === "schedules" || route.view === "schedule") &&
+              !showAdmin
+            }
+            onClick={onSchedules}
+          />
+          {railCollapsed && (
+            <div className="mt-2.5 flex h-[26px] items-center justify-center text-[#f0eee7]">
+              <NotificationBell
+                placement="rail"
+                onOpen={onOpenNotification}
+                onManageSchedules={onSchedules}
+              />
+            </div>
+          )}
           {!railCollapsed && (
             <>
               {loadError !== "" && (

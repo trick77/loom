@@ -33,6 +33,7 @@ import (
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
+	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/store"
 	"github.com/trick77/loom/internal/usage"
 	"github.com/trick77/loom/web"
@@ -268,7 +269,13 @@ func runServer() error {
 		KnowledgeInlineTokenBudget: cfg.KnowledgeInlineTokenBudget,
 		ProjectSummaryTokenBudget:  cfg.ProjectSummaryTokenBudget,
 	}
-	handler, memoryWorker := httpapi.NewWithMemoryWorker(deps)
+	// Scheduled tasks run chat turns and read intervals with the model: they
+	// are on whenever chat is.
+	if llmClient != nil {
+		deps.Schedules = schedule.NewStore(db)
+		deps.ScheduleLLM = llmClient
+	}
+	handler, memoryWorker, scheduleWorker := httpapi.NewWithWorkers(deps)
 
 	srv := httpx.NewServer(cfg.Addr, handler)
 	srv.BaseContext = func(net.Listener) context.Context { return base }
@@ -281,7 +288,7 @@ func runServer() error {
 
 	ctx, stop := run.Context(context.Background())
 	defer stop()
-	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, sandboxWatch, reembed, mcpRefresh)
+	return serve(ctx, srv, ln, bg, cancelBase, memoryWorker.Run, memoryWorker.ResumeQueuedTurns, scheduleWorker.Run, sandboxWatch, reembed, mcpRefresh)
 }
 
 // sandboxProbeInterval is how quickly run_python follows the sidecar going

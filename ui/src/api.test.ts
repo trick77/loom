@@ -143,7 +143,10 @@ test("streamMessage sends image attachment ids", async () => {
 
   expect(fetchMock).toHaveBeenCalledWith("/api/threads/t1/messages:stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Loom-Timezone": Intl.DateTimeFormat().resolvedOptions().timeZone,
+    },
     body: JSON.stringify({
       content: "describe this",
       imageAttachmentIds: ["art_image"],

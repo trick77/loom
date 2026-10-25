@@ -33,6 +33,8 @@ type Engine struct {
 	// read_project_threads tool.
 	projectSummaryTokenBudget int
 	memory                    Memory
+	// schedules runs the schedule tools; nil keeps them off.
+	schedules ScheduleTools
 	// reasoningTitleHold and reasoningTitleStartBytes tune the reasoning title
 	// timing; zero means the default (see titleHold, titleStartBytes).
 	reasoningTitleHold       time.Duration
@@ -75,6 +77,8 @@ type Config struct {
 	// Memory supplies the user and project context; nil means none, as for a
 	// user with no memory stored.
 	Memory Memory
+	// Schedules runs the schedule tools; nil keeps them off.
+	Schedules ScheduleTools
 	// ReasoningTitleHold bounds how long the first answer word waits for its
 	// round's reasoning title; ReasoningTitleStartBytes is how much reasoning
 	// must have streamed before that title generates. Zero keeps the defaults;
@@ -108,6 +112,7 @@ func New(c Config) *Engine {
 		knowledgeInlineTokenBudget: c.KnowledgeInlineTokenBudget,
 		projectSummaryTokenBudget:  c.ProjectSummaryTokenBudget,
 		memory:                     memory,
+		schedules:                  c.Schedules,
 		reasoningTitleHold:         c.ReasoningTitleHold,
 		reasoningTitleStartBytes:   c.ReasoningTitleStartBytes,
 		turnGateTimeout:            c.TurnGateTimeout,

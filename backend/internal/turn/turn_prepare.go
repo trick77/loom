@@ -43,6 +43,11 @@ type Run struct {
 	// inbox is where the turn picks up queued messages; nil when nothing can
 	// queue.
 	inbox Inbox
+	// timezone is the asking browser's IANA zone, for the schedule tools; ""
+	// when unknown.
+	timezone string
+	// scheduled is set when the turn is a schedule's headless run.
+	scheduled *ScheduledRun
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.
@@ -60,6 +65,11 @@ type RunConfig struct {
 	// Inbox, when set, lets the turn pick up the messages the user queues
 	// while it runs (see Inbox).
 	Inbox Inbox
+	// Timezone is the asking browser's IANA zone; the schedule tools draw
+	// slots in it.
+	Timezone string
+	// Scheduled makes the turn a schedule's headless run; nil for a chat turn.
+	Scheduled *ScheduledRun
 }
 
 // PrepareInput is what the prompt-assembly phase of a persisted turn works from.
@@ -116,6 +126,8 @@ func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
 		acc:         c.Usage,
 		start:       c.Start,
 		inbox:       c.Inbox,
+		timezone:    c.Timezone,
+		scheduled:   c.Scheduled,
 	}
 	t.plan = t.prepare(in)
 	return t
@@ -144,7 +156,10 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// not at all; later drift is handled per-turn just below. Titling has moved
 	// after the answer and no longer shares this gate.
 	category := t.thread.Category
-	freshlyClassified := len(in.PriorMessages) == 0 && strings.TrimSpace(category) == ""
+	// A scheduled run is research on a fixed tool set: no classification, no
+	// image route, no user memory and no sandbox.
+	scheduled := t.scheduled != nil
+	freshlyClassified := !scheduled && len(in.PriorMessages) == 0 && strings.TrimSpace(category) == ""
 
 	// Every pre-answer load below is independent of the others, and each may be
 	// a model or database round trip, so they run concurrently: the answer
@@ -170,11 +185,13 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		docIdx                            = newDocIndexer()
 		documentContext, knowledgeContext string
 		knowledgeSources                  []Citation
-		sandboxOn                         = t.e.sandboxOffered()
+		sandboxOn                         = !scheduled && t.e.sandboxOffered()
 	)
 	parallel(
 		func() {
-			imageRoute = t.e.classifyImageTurn(in.StreamCtx, t.inference, t.userMessage.Content, len(in.ImageAttachmentIDs) > 0, in.PriorMessages)
+			if !scheduled {
+				imageRoute = t.e.classifyImageTurn(in.StreamCtx, t.inference, t.userMessage.Content, len(in.ImageAttachmentIDs) > 0, in.PriorMessages)
+			}
 		},
 		func() {
 			if freshlyClassified {
@@ -190,7 +207,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		// tools. Fail-safe: ClassifyThread returns General on failure, so a failed
 		// classification simply adds nothing.
 		func() {
-			if freshlyClassified || categoryGrantsCodingDocs(category) {
+			if scheduled || freshlyClassified || categoryGrantsCodingDocs(category) {
 				return
 			}
 			driftInference := gateInference(t.inference, "classify_drift")
@@ -198,7 +215,11 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			defer cancelDrift()
 			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)
 		},
-		func() { userContext = t.e.memory.UserContext(in.ReqCtx, t.user.ID) },
+		func() {
+			if !scheduled {
+				userContext = t.e.memory.UserContext(in.ReqCtx, t.user.ID)
+			}
+		},
 		func() { projectContext = t.e.memory.ProjectContext(in.ReqCtx, t.user.ID, t.thread) },
 		// run_python's guidance travels with the tool: when the sidecar is
 		// off, the prompt never mentions it.
@@ -244,8 +265,13 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	if len(knowledgeSources) > 0 {
 		_ = t.stream.SendJSON("knowledge_sources", map[string]any{"sources": knowledgeSources})
 	}
+	scheduleBlock := ""
+	if scheduled {
+		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.scheduled.Memory)
+	}
 	history := buildLLMHistory(t.user, promptBlocks{
-		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate)),
+		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate, t.scheduled)),
+		schedule:     scheduleBlock,
 		classifier:   classifier.Block(category),
 		user:         userContext,
 		project:      projectContext,
