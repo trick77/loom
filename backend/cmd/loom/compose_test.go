@@ -69,9 +69,6 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if !strings.Contains(compose, `image: ghcr.io/trick77/loom:latest`) {
 		t.Fatal("compose.yaml missing production image reference ghcr.io/trick77/loom:latest")
 	}
-	if !obscuraPinnedImage.MatchString(compose) {
-		t.Fatal("compose.yaml must run the upstream obscura image at a pinned version")
-	}
 	// Fetch runs in-process (github.com/trick77/webfetch), so there is no fetch
 	// sidecar image, service, or isolated network anymore.
 	if strings.Contains(compose, "loom-fetch") {
@@ -106,8 +103,19 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 			compose := string(data)
 			service := composeService(t, compose, "obscura")
 
-			if !obscuraPinnedImage.MatchString(service) {
+			// A concrete release, so a Dependabot bump needs no test edit but a
+			// floating tag fails; v0.2.3+, the first to honour OBSCURA_MCP_TOKEN
+			// (below it loom's bearer token would guard nothing).
+			m := regexp.MustCompile(`(?m)^    image: h4ckf0r0day/obscura:(\d+)\.(\d+)\.(\d+)$`).FindStringSubmatch(service)
+			if m == nil {
 				t.Fatalf("%s obscura service must run the upstream image at a pinned version", path)
+			}
+			v := [3]int{}
+			for i := range v {
+				v[i], _ = strconv.Atoi(m[i+1])
+			}
+			if v[0] == 0 && (v[1] < 2 || v[1] == 2 && v[2] < 3) {
+				t.Fatalf("%s: obscura %s.%s.%s predates OBSCURA_MCP_TOKEN (v0.2.3)", path, m[1], m[2], m[3])
 			}
 			for _, want := range []string{
 				`- mcp`,
@@ -136,32 +144,6 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 				t.Fatal("production obscura service must join the loom network")
 			}
 		})
-	}
-}
-
-// obscuraPinnedImage is the upstream obscura image at a concrete release, so a
-// Dependabot bump needs no test edit but a floating tag still fails.
-var obscuraPinnedImage = regexp.MustCompile(`(?m)^    image: h4ckf0r0day/obscura:(\d+)\.(\d+)\.(\d+)$`)
-
-// Obscura below v0.2.3 ignores OBSCURA_MCP_TOKEN: loom's bearer token would
-// guard nothing.
-func TestComposeObscuraHonoursToken(t *testing.T) {
-	for _, path := range []string{"../../../compose.yaml", "../../../compose.dev.yaml"} {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		m := obscuraPinnedImage.FindStringSubmatch(string(data))
-		if m == nil {
-			t.Fatalf("%s: no pinned obscura image", path)
-		}
-		v := [3]int{}
-		for i := range v {
-			v[i], _ = strconv.Atoi(m[i+1])
-		}
-		if v[0] == 0 && (v[1] < 2 || v[1] == 2 && v[2] < 3) {
-			t.Fatalf("%s: obscura %s.%s.%s predates OBSCURA_MCP_TOKEN (v0.2.3)", path, m[1], m[2], m[3])
-		}
 	}
 }
 

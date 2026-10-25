@@ -270,12 +270,15 @@ func NewRequiredServiceFromClients(ctx context.Context, clients map[string]Clien
 func listToolsRequired(ctx context.Context, client Client) ([]Tool, error) {
 	_, hasDeadline := ctx.Deadline()
 	tools, err := client.ListTools(ctx)
-	if err == nil || !hasDeadline {
-		return tools, err
-	}
 	for {
+		if err == nil {
+			return tools, nil
+		}
 		if isAuthError(err) {
-			return nil, fmt.Errorf("credentials rejected, check the server's token: %w", err)
+			return nil, fmt.Errorf("server refused loom's credentials (401/403: its token, or its Host/Origin rules): %w", err)
+		}
+		if !hasDeadline {
+			return nil, err
 		}
 		timer := time.NewTimer(requiredDiscoveryRetryInterval)
 		select {
@@ -286,11 +289,7 @@ func listToolsRequired(ctx context.Context, client Client) ([]Tool, error) {
 			return nil, err
 		case <-timer.C:
 		}
-		tools, nextErr := client.ListTools(ctx)
-		if nextErr == nil {
-			return tools, nil
-		}
-		err = nextErr
+		tools, err = client.ListTools(ctx)
 	}
 }
 
