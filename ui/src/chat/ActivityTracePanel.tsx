@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import Markdown from "react-markdown";
+import Markdown, { type Components } from "react-markdown";
 import type { PluggableList } from "unified";
 import rehypeHighlight from "rehype-highlight";
 
@@ -29,6 +29,7 @@ import {
 } from "../activityTrace";
 import i18n from "../i18n";
 import { Icon } from "./Icon";
+import { MarkdownImage } from "./MarkdownImage";
 import { rehypeStreamFade } from "./streamFade";
 
 export function ActivityTracePanel({
@@ -180,6 +181,7 @@ const streamingReasoningRehypePlugins: PluggableList = [
   rehypeStreamFade,
 ];
 const codeRehypePlugins: PluggableList = [rehypeHighlight];
+const reasoningComponents: Components = { img: MarkdownImage };
 
 // fencedPython wraps run_python's code in a fence longer than any backtick run
 // inside it, so the code cannot close the fence early.
@@ -272,6 +274,7 @@ const ReasoningContent = memo(function ReasoningContent({
           rehypePlugins={
             streaming ? streamingReasoningRehypePlugins : reasoningRehypePlugins
           }
+          components={reasoningComponents}
         >
           {normalized}
         </Markdown>

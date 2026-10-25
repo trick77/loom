@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import Markdown from "react-markdown";
 
+import { MarkdownImage } from "./chat/MarkdownImage";
 import {
   markdownRemarkPlugins,
   normalizeMathDelimiters,
@@ -39,6 +40,7 @@ export function MemoryMarkdown({
               </a>
             );
           },
+          img: MarkdownImage,
         }}
       >
         {normalized}

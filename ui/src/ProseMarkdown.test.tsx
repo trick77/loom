@@ -42,11 +42,15 @@ test("drops inline images with an unresolvable bare-filename src", () => {
   expect(container.querySelector("img")).toBeNull();
 });
 
-test("renders inline images with an absolute http(s) src", () => {
+test("renders a remote inline image once it is asked for", () => {
   const { container } = render(
     <ProseMarkdown>{"![x](https://example.com/img.png)"}</ProseMarkdown>,
   );
-  expect(
-    container.querySelector('img[src="https://example.com/img.png"]'),
-  ).not.toBeNull();
+  const img = () =>
+    container.querySelector('img[src="https://example.com/img.png"]');
+  expect(img()).toBeNull();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Load image from example.com: x" }),
+  );
+  expect(img()).not.toBeNull();
 });

@@ -48,6 +48,7 @@ import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { CheckIcon, DownloadIcon } from "./icons";
 import { Icon } from "./Icon";
 import { ImageLightbox } from "./ImageLightbox";
+import { MarkdownImage } from "./MarkdownImage";
 import { rehypeStreamFade } from "./streamFade";
 import {
   rehypeSourcePills,
@@ -565,15 +566,7 @@ const markdownComponents = {
   [SOURCE_PILL_TAG]: (props: Record<string, unknown>) => (
     <SourcePill {...props} />
   ),
-  img({ src, ...props }) {
-    // Only render images whose src is an absolute, loadable URL. The model
-    // sometimes embeds a generated image by its bare filename (e.g.
-    // `![Lego Set](lego-selfie-set.png)`), which can never resolve — the
-    // real image is already shown as an artifact card — so drop it instead
-    // of rendering a broken-image placeholder.
-    const ok = typeof src === "string" && /^(https?:|data:)/i.test(src);
-    return ok ? <img src={src} {...props} /> : null;
-  },
+  img: MarkdownImage,
   pre: CodeBlock,
 } as Components;
 

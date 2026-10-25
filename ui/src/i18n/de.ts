@@ -222,6 +222,8 @@ export const de = {
       "Thread konnte nicht aus dem Projekt entfernt werden.",
   },
   messages: {
+    loadImage: "Bild von {{host}} laden",
+    loadImageNamed: "Bild von {{host}} laden: {{name}}",
     copyFailed: "Kopieren fehlgeschlagen.",
     copyMessage: "Nachricht kopieren",
     retryMessage: "Nachricht wiederholen",
