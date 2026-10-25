@@ -27,12 +27,16 @@ function thread(id: string) {
 async function setup() {
   const activeThreadIDRef = { current: null as string | null };
   const onRunningTurn = vi.fn();
+  // Stable callbacks, as the shell passes them: a fresh one per render would
+  // re-run the initial load on every render.
+  const abortAllStreamRuns = vi.fn();
+  const onSessionExpired = vi.fn();
   const hook = renderHook(() =>
     useThreadData({
-      abortAllStreamRuns: vi.fn(),
+      abortAllStreamRuns,
       activeThreadIDRef,
       handleActionError: (_error, fallback, setError) => setError(fallback),
-      onSessionExpired: vi.fn(),
+      onSessionExpired,
       onRunningTurn,
     }),
   );
@@ -68,6 +72,31 @@ test("a failed thread load clears the previous thread instead of keeping it live
   expect(hook.result.current.activeThread).toBeNull();
   expect(hook.result.current.messages).toHaveLength(0);
   expect(activeThreadIDRef.current).toBeNull();
+});
+
+// A scheduled run replaced the thread an open tab still lists: opening it
+// fails, and the reloaded recents drop it.
+test("a failed thread load reloads the recents", async () => {
+  api.listThreads.mockResolvedValueOnce({
+    items: [thread("gone"), thread("kept")],
+    nextCursor: null,
+  });
+  const { hook } = await setup();
+  expect(hook.result.current.recentThreads).toHaveLength(2);
+
+  api.listThreads.mockResolvedValueOnce({
+    items: [thread("kept")],
+    nextCursor: null,
+  });
+  api.getThread.mockRejectedValueOnce(new Error("failed to load thread"));
+  act(() => {
+    hook.result.current.loadRoute({ view: "thread", threadID: "gone" });
+  });
+  await waitFor(() =>
+    expect(hook.result.current.recentThreads.map((t) => t.id)).toEqual([
+      "kept",
+    ]),
+  );
 });
 
 test("a successful load clears a previous load error", async () => {

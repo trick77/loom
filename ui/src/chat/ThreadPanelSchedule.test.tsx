@@ -76,8 +76,24 @@ test("a scheduled run's thread takes follow-ups and links to its schedule", () =
   expect(handlers.onOpenSchedule).toHaveBeenCalledWith("s1");
 });
 
+test("a scheduled run's thread hides the schedule's prompt, not follow-ups", () => {
+  panel({ ...thread, scheduleId: "s1" }, [
+    ...messages,
+    {
+      id: "u2",
+      role: "user",
+      content: "When does the first one open?",
+      createdAt: "2026-10-22T12:40:00Z",
+    } as MessageWithActivityTrace,
+  ]);
+  expect(screen.queryByText("Find new films")).not.toBeInTheDocument();
+  expect(screen.getByText("Two new films.")).toBeInTheDocument();
+  expect(screen.getByText("When does the first one open?")).toBeInTheDocument();
+});
+
 test("a plain thread shows no schedule link", () => {
   panel(thread, messages);
+  expect(screen.getByText("Find new films")).toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: /^Schedule$/ }),
   ).not.toBeInTheDocument();

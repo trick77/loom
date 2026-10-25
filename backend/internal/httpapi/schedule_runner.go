@@ -26,6 +26,12 @@ const (
 	schedulePruneEvery = time.Hour
 	// findingsTimeout bounds the gate call that lists a run's findings.
 	findingsTimeout = time.Minute
+	// runThreadRetention is how long a run thread the user never took up
+	// outlives its run, e.g. the last one of a paused schedule.
+	runThreadRetention = 30 * 24 * time.Hour
+	// runThreadPruneBatch bounds the run threads one prune deletes; the rest
+	// go on the next.
+	runThreadPruneBatch = 50
 )
 
 // scheduleRuns admits scheduled runs: at most maxConcurrentScheduleRuns in
@@ -111,6 +117,7 @@ func (w *ScheduleWorker) Run(ctx context.Context) {
 			if err := s.schedules.Prune(ctx, now); err != nil {
 				slog.Warn("prune schedule data failed", "err", err)
 			}
+			s.pruneRunThreads(ctx, now)
 		}
 		select {
 		case <-ctx.Done():
@@ -212,6 +219,10 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	// noteThread is set while the thread holds this run's prompt without a
 	// reply; whatever ends the run then leaves a line saying why.
 	var noteThread string
+	// replacing is the run's thread once it holds the prompt: however the run
+	// ends, it then replaces the earlier ones the user never took up, after the
+	// run is recorded. The old answer stays readable until then.
+	var replacing string
 	finish := func() {
 		run.DurationMS = s.clock().Sub(start).Milliseconds()
 		if err := s.schedules.FinishRun(detached, sch.UserID, run, s.clock()); err != nil {
@@ -227,6 +238,9 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 			}
 		}
 		finish()
+		if replacing != "" {
+			s.replaceRunThreads(detached, sch.UserID, sch.ID, replacing)
+		}
 	}()
 
 	user, found, err := s.users.FindByID(detached, sch.UserID)
@@ -260,7 +274,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		dropThread("could not store the prompt", err)
 		return
 	}
-	noteThread = thread.ID
+	noteThread, replacing = thread.ID, thread.ID
 
 	runCtx, cancel := context.WithTimeout(ctx, s.scheduleRunTimeout())
 	defer cancel()
@@ -446,6 +460,37 @@ func runThreadTitle(sch schedule.Schedule, start time.Time) string {
 		start = start.In(loc)
 	}
 	return sch.Name + " · " + start.Format("2006-01-02 15:04")
+}
+
+// replaceRunThreads deletes the schedule's run threads before keepThreadID
+// that the user never took up. One they asked something in, starred, filed
+// or shared stays.
+func (s *server) replaceRunThreads(ctx context.Context, userID, scheduleID, keepThreadID string) {
+	ids, err := s.thread.ReplaceableScheduleThreads(ctx, userID, scheduleID, keepThreadID)
+	if err != nil {
+		slog.Warn("list replaceable run threads failed", "schedule_id", scheduleID, "err", err)
+		return
+	}
+	for _, id := range ids {
+		if _, err := s.deleteThreadWithData(ctx, userID, id); err != nil {
+			slog.Warn("replace run thread failed", "thread_id", id, "err", err)
+		}
+	}
+}
+
+// pruneRunThreads deletes run threads the user never took up once they are
+// older than runThreadRetention.
+func (s *server) pruneRunThreads(ctx context.Context, now time.Time) {
+	refs, err := s.thread.StaleScheduleThreads(ctx, now.Add(-runThreadRetention), runThreadPruneBatch)
+	if err != nil {
+		slog.Warn("list stale run threads failed", "err", err)
+		return
+	}
+	for _, ref := range refs {
+		if _, err := s.deleteThreadWithData(ctx, ref.UserID, ref.ThreadID); err != nil {
+			slog.Warn("prune run thread failed", "thread_id", ref.ThreadID, "err", err)
+		}
+	}
 }
 
 // closeInterruptedRun notes under a prompt the previous process left without

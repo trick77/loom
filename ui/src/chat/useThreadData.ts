@@ -123,12 +123,21 @@ export function useThreadData({
             i18n.t("errors.threadLoadFailed"),
             setLoadError,
           );
+          // The thread may be gone (a scheduled run replaced it): the recents
+          // drop it once reloaded.
+          if (!(error instanceof AuthExpiredError)) reloadThreads();
         });
       return () => {
         active = false;
       };
     },
-    [activeThreadIDRef, handleActionError, onRunningTurn, onQueuedMessages],
+    [
+      activeThreadIDRef,
+      handleActionError,
+      onRunningTurn,
+      onQueuedMessages,
+      reloadThreads,
+    ],
   );
 
   const loadProjectThreads = useCallback(

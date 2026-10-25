@@ -122,27 +122,43 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	}
 
 	// The second run reports the same film: nothing new, no notification, in
-	// a fresh thread of its own.
+	// a fresh thread of its own. The first thread stays while its news is
+	// unread; once read, the third run replaces it.
 	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
 	s.runSchedule(ctx, sch)
+	last := client.Histories[len(client.Histories)-1][0].Content
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, firstThread); !found {
+		t.Fatal("a run replaced a thread whose news is unread")
+	}
+	if err := f.store.MarkRead(ctx, testUser.ID, notes[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	client.Results = researchRound("Still Dune: Part Three [1].")
+	s.runSchedule(ctx, sch)
 	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
-	if len(runs) != 2 || runs[0].Status != schedule.StatusNothingNew || runs[0].NewCount != 0 {
-		t.Fatalf("second run = %+v", runs[0])
+	if len(runs) != 3 || runs[2].ThreadID != nil || runs[1].ThreadID != nil {
+		t.Fatalf("runs = %+v, want only the latest still linked to a thread", runs)
+	}
+	if runs[0].Status != schedule.StatusNothingNew || runs[0].NewCount != 0 || runs[1].Status != schedule.StatusNothingNew {
+		t.Fatalf("later runs = %+v", runs[:2])
 	}
 	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 1 {
 		t.Fatalf("a run without news notified: %+v", notes)
 	}
-	secondThread := lastRunThread(t, f, sch)
-	if secondThread == firstThread {
-		t.Fatal("the second run wrote into the first run's thread")
+	lastThread := lastRunThread(t, f, sch)
+	if lastThread == firstThread {
+		t.Fatal("a later run wrote into the first run's thread")
 	}
-	for _, id := range []string{firstThread, secondThread} {
-		if messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, id); len(messages) != 2 || messages[0].Content != "find new films" {
-			t.Fatalf("thread %s = %+v, want the run's prompt and answer only", id, messages)
-		}
+	if messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastThread); len(messages) != 2 || messages[0].Content != "find new films" {
+		t.Fatalf("thread %s = %+v, want the run's prompt and answer only", lastThread, messages)
+	}
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, firstThread); found {
+		t.Fatal("a run kept the first run's thread after its news was read")
+	}
+	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); notes[0].ThreadID != nil {
+		t.Fatalf("the first run's notification still links its replaced thread: %+v", notes[0])
 	}
 	// The second run saw the schedule's memory, and the extractor the known key.
-	last := client.Histories[len(client.Histories)-1][0].Content
 	if !strings.Contains(last, "Already reported") || !strings.Contains(last, "Dune: Part Three") || !strings.Contains(last, "arena.ch/programm: 1 finds") {
 		t.Fatalf("second run's prompt lacks the memory:\n%s", last)
 	}
@@ -711,6 +727,115 @@ func TestScheduledRunFailureLeavesANote(t *testing.T) {
 	}
 	if notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 0 {
 		t.Fatalf("a failed run notified: %+v", notes)
+	}
+}
+
+func TestScheduledRunKeepsAThreadTheUserAskedIn(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	asked := lastRunThread(t, f, sch)
+	if _, err := f.chat.AddMessageWithAttachments(ctx, testUser.ID, asked, chat.RoleUser, "When does it open?", nil, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	s.runSchedule(ctx, sch)
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, asked); !found {
+		t.Fatal("a run replaced a thread the user asked something in")
+	}
+	if lastRunThread(t, f, sch) == asked {
+		t.Fatal("the second run wrote into the thread the user took up")
+	}
+}
+
+func TestFailedScheduledRunStillReplacesTheThreadBefore(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	first := lastRunThread(t, f, sch)
+
+	f.deps.LLM = &fakeChatClient{StreamErr: errors.New("upstream down")}
+	newServer(f.deps).runSchedule(ctx, sch)
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, first); found {
+		t.Fatal("a failed run kept the untouched thread before it")
+	}
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
+	if len(messages) != 2 || !strings.HasPrefix(messages[1].Content, "This scheduled run failed") {
+		t.Fatalf("failed run's thread = %+v", messages)
+	}
+}
+
+func TestPruneRunThreadsDropsOldUntouchedOnes(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	untouched := lastRunThread(t, f, sch)
+	now := time.Now()
+
+	s.pruneRunThreads(ctx, now)
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, untouched); !found {
+		t.Fatal("a prune dropped a run thread younger than a month")
+	}
+	asked, err := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Asked", ScheduleID: &sch.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, content := range []string{"find new films", "When does it open?"} {
+		if _, err := f.chat.AddMessageWithAttachments(ctx, testUser.ID, asked.ID, chat.RoleUser, content, nil, nil, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.db.Exec(`UPDATE threads SET created_at = ?`, now.Add(-runThreadRetention-time.Hour).UTC().Format(time.DateTime)); err != nil {
+		t.Fatal(err)
+	}
+
+	// An enabled schedule that runs less than monthly keeps its newest answer.
+	s.pruneRunThreads(ctx, now)
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, untouched); !found {
+		t.Fatal("a prune dropped an enabled schedule's newest run thread")
+	}
+	if _, err := f.db.Exec(`UPDATE schedules SET enabled = 0`); err != nil {
+		t.Fatal(err)
+	}
+	s.pruneRunThreads(ctx, now)
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, untouched); found {
+		t.Fatal("a prune kept a paused schedule's untouched run thread older than a month")
+	}
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, asked.ID); !found {
+		t.Fatal("a prune dropped a run thread the user asked something in")
+	}
+}
+
+// A store failure while replacing or purging run threads only logs: the run
+// and the worker carry on, and every thread still gets its try.
+func TestRunThreadCleanupSurvivesStoreFailures(t *testing.T) {
+	ctx := context.Background()
+	store := &fakeThreadStore{RunThreadsErr: errors.New("db down")}
+	s := newServer(Deps{Thread: store})
+	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
+	s.pruneRunThreads(ctx, time.Now())
+	if len(store.DeletedThreads) != 0 {
+		t.Fatalf("deleted %v after the listing failed", store.DeletedThreads)
+	}
+
+	store.RunThreadsErr = nil
+	store.RunThreads = []chat.ThreadRef{{UserID: testUser.ID, ThreadID: "a"}, {UserID: testUser.ID, ThreadID: "b"}}
+	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
+	s.pruneRunThreads(ctx, time.Now())
+	if want := []string{"a", "b", "a", "b"}; !slices.Equal(store.DeletedThreads, want) {
+		t.Fatalf("deleted %v, want %v", store.DeletedThreads, want)
+	}
+	store.DeleteThreadErr = errors.New("locked")
+	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
+	s.pruneRunThreads(ctx, time.Now())
+	if len(store.DeletedThreads) != 4 {
+		t.Fatalf("failed deletes recorded: %v", store.DeletedThreads)
 	}
 }
 

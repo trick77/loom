@@ -521,21 +521,30 @@ export function ThreadPanel({
           role="region"
         >
           <div className="ui-thread-rail mx-auto w-full max-w-[720px] flex-1 space-y-6 pb-8">
-            {messages.map((message, index) => (
-              // Key off clientKey when present (an optimistic message keeps it across
-              // reconcile to the persisted id) so the bubble's DOM node is stable.
-              <div key={message.clientKey ?? message.id} className="space-y-6">
-                <MessageBubble
-                  message={message}
-                  retryMessage={
-                    message.role === "assistant" ? previousUser[index] : null
-                  }
-                  onRetry={handleRetryRequest}
-                  category={thread?.category}
-                  threadCostNanoUsd={cumulativeCost[index]}
-                />
-              </div>
-            ))}
+            {messages.map((message, index) =>
+              // A scheduled run's thread opens with the schedule's prompt: the
+              // reader wants the answer, not the ask.
+              scheduleID !== null &&
+              index === 0 &&
+              message.role === "user" ? null : (
+                // Key off clientKey when present (an optimistic message keeps it across
+                // reconcile to the persisted id) so the bubble's DOM node is stable.
+                <div
+                  key={message.clientKey ?? message.id}
+                  className="space-y-6"
+                >
+                  <MessageBubble
+                    message={message}
+                    retryMessage={
+                      message.role === "assistant" ? previousUser[index] : null
+                    }
+                    onRetry={handleRetryRequest}
+                    category={thread?.category}
+                    threadCostNanoUsd={cumulativeCost[index]}
+                  />
+                </div>
+              ),
+            )}
             {/* The live streaming region is built as ONE keyed array so React's
                 keyed reconciliation preserves DOM nodes across the turn. The active
                 trace panel keeps the stable key "live-active-trace" so it reuses the
