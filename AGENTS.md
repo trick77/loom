@@ -30,6 +30,7 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 
 ## Config
 - `BACKEND_*` env (`config.go`, `.env.example`). Empty = unset (kit env); `off` disables an optional one.
+- Host only as `PUBLIC_FQDN` (Traefik rule + public URL `https://<PUBLIC_FQDN>`; dev: `http://<BACKEND_ADDR>`). Never a second var repeating it.
 - Boot needs `BACKEND_AUTH_MODE` (`oidc` + issuer/client, or `dev` on loopback) and
   `BACKEND_SESSION_SECRET` ≥ 32 chars: it signs the session cookie (kit/auth). No session table: logout only
   clears the cookie, rotating the secret signs everyone out.

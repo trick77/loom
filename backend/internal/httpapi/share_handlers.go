@@ -398,7 +398,7 @@ func (s *server) shareSummaryOf(share chat.Share) shareSummary {
 }
 
 // shareURLFor builds the absolute share link, falling back to a relative path when
-// PublicURL is unset (e.g. dev), so the UI always has something to copy.
+// PublicURL is unset (no PUBLIC_FQDN), so the UI always has something to copy.
 func (s *server) shareURLFor(shareID string) string {
 	if s.publicURL == "" {
 		return "/share/" + shareID

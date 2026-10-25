@@ -58,9 +58,9 @@ type Deps struct {
 	OIDCAdminGroup          string
 	DevAuthClaims           auth.Claims
 	PostLogoutRedirectURL   string
-	// PublicURL is the externally reachable base URL (e.g. https://loom.example.com),
-	// used to build absolute share links. Empty in dev → callers fall back to a
-	// relative /share/<id> path.
+	// PublicURL is the externally reachable base URL (https://<PUBLIC_FQDN>), used
+	// to build absolute share links. Empty without PUBLIC_FQDN → callers fall back
+	// to a relative /share/<id> path.
 	PublicURL string
 	// KnowledgeInlineTokenBudget bounds the full-document knowledge injected per
 	// turn (0 disables it, falling back to pure RAG retrieval).

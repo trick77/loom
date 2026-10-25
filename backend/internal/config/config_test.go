@@ -265,7 +265,7 @@ func TestLoadImageGenRejectsInvalidPollTimeout(t *testing.T) {
 
 func TestLoad_oidcSettings(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("BACKEND_PUBLIC_URL", "https://loom.example.com")
+	t.Setenv("PUBLIC_FQDN", "loom.example.com")
 	t.Setenv("BACKEND_OIDC_ISSUER", "https://auth.example.com/application/o/loom/")
 	t.Setenv("BACKEND_OIDC_CLIENT_ID", "loom-client")
 	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "loom-secret")
@@ -282,6 +282,23 @@ func TestLoad_oidcSettings(t *testing.T) {
 	}
 	if cfg.OIDC.AdminGroup != "loom-admins" {
 		t.Fatalf("OIDC admin group = %q", cfg.OIDC.AdminGroup)
+	}
+	if cfg.PublicURL != "https://loom.example.com" {
+		t.Fatalf("PublicURL = %q, want https://loom.example.com", cfg.PublicURL)
+	}
+}
+
+// The public URL is the hostname Traefik routes on, so it is not configured a
+// second time: without PUBLIC_FQDN there is none.
+func TestLoad_publicURLEmptyWithoutPublicFQDN(t *testing.T) {
+	requiredEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PublicURL != "" {
+		t.Fatalf("PublicURL = %q, want empty", cfg.PublicURL)
 	}
 }
 
@@ -307,14 +324,20 @@ func TestLoad_devAuthRequiresLoopbackAddr(t *testing.T) {
 	}
 }
 
-func TestLoad_devAuthRejectsPublicNonLoopbackURL(t *testing.T) {
+// compose.dev.yaml loads the production .env whole, PUBLIC_FQDN included: dev mode
+// ignores it and serves on its own loopback address.
+func TestLoad_devAuthIgnoresPublicFQDN(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_AUTH_MODE", "dev")
 	t.Setenv("BACKEND_ADDR", "localhost:8080")
-	t.Setenv("BACKEND_PUBLIC_URL", "https://loom.example.com")
+	t.Setenv("PUBLIC_FQDN", "loom.example.com")
 
-	if _, err := Load(); err == nil {
-		t.Fatal("expected error when dev auth has a non-loopback public URL")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.PublicURL != "http://localhost:8080" {
+		t.Fatalf("PublicURL = %q, want http://localhost:8080", cfg.PublicURL)
 	}
 }
 
@@ -322,7 +345,6 @@ func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_AUTH_MODE", "dev")
 	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
-	t.Setenv("BACKEND_PUBLIC_URL", "http://localhost:8080")
 
 	cfg, err := Load()
 	if err != nil {
@@ -330,6 +352,9 @@ func TestLoad_devAuthAllowsLoopbackAdmin(t *testing.T) {
 	}
 	if cfg.AuthMode != AuthModeDev {
 		t.Fatalf("AuthMode = %q, want dev", cfg.AuthMode)
+	}
+	if cfg.PublicURL != "http://127.0.0.1:8080" {
+		t.Fatalf("PublicURL = %q, want http://127.0.0.1:8080", cfg.PublicURL)
 	}
 }
 
@@ -521,6 +546,8 @@ func requiredEnv(t *testing.T) {
 	t.Setenv("BACKEND_OIDC_CLIENT_SECRET", "s3cret")
 	t.Setenv("BACKEND_OIDC_REDIRECT_URL", "https://loom.example.com/api/auth/callback")
 	t.Setenv("BACKEND_OIDC_ADMIN_GROUP", "loom-admins")
+	// Cleared: a shell that sourced .env.example has it set.
+	t.Setenv("PUBLIC_FQDN", "")
 	// Cleared: a shell that sourced .env.example sets the URL without a token.
 	t.Setenv("BACKEND_OBSCURA_MCP_URL", "")
 	t.Setenv("BACKEND_OBSCURA_MCP_TOKEN", "")
@@ -545,8 +572,8 @@ func TestLoad_validatesURLsAndDirs(t *testing.T) {
 		name, key, value, want string
 		extra                  map[string]string
 	}{
-		{"relative public url", "BACKEND_PUBLIC_URL", "loom.example.com", "BACKEND_PUBLIC_URL", nil},
-		{"public url without host", "BACKEND_PUBLIC_URL", "https://", "BACKEND_PUBLIC_URL", nil},
+		{"fqdn with scheme", "PUBLIC_FQDN", "https://loom.example.com", "PUBLIC_FQDN", nil},
+		{"fqdn with path", "PUBLIC_FQDN", "loom.example.com/app", "PUBLIC_FQDN", nil},
 		{"relative users dir", "BACKEND_USERS_DIR", "data/users", "BACKEND_USERS_DIR", nil},
 		{"image gen base url without scheme", "BACKEND_IMAGE_GEN_BASE_URL", "queue.fal.run", "BACKEND_IMAGE_GEN_BASE_URL", map[string]string{"BACKEND_IMAGE_GEN_API_KEY": "k"}},
 	} {

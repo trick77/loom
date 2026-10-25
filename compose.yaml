@@ -15,7 +15,6 @@ services:
       BACKEND_LOG_LEVEL: "${BACKEND_LOG_LEVEL:-info}"
       BACKEND_DB_PATH: "/data/loom.db"
       BACKEND_USERS_DIR: "/data/users"
-      BACKEND_PUBLIC_URL: "${BACKEND_PUBLIC_URL}"
       BACKEND_AUTH_MODE: "${BACKEND_AUTH_MODE:-oidc}"
       BACKEND_TIKA_URL: "http://tika:9998"
       BACKEND_GOTENBERG_URL: "http://gotenberg:3000"
@@ -78,7 +77,7 @@ services:
       # so it is the public service; Traefik terminates TLS in front of it.
       traefik.enable: "true"
       traefik.docker.network: traefik
-      traefik.http.routers.loom.rule: Host(`${FQDN:?set FQDN in .env, the hostname Traefik routes loom on}`)
+      traefik.http.routers.loom.rule: Host(`${PUBLIC_FQDN:?set PUBLIC_FQDN in .env, the hostname Traefik routes loom on}`)
       traefik.http.routers.loom.entrypoints: websecure
       traefik.http.routers.loom.tls: "true"
       traefik.http.services.loom.loadbalancer.server.port: "8080"
