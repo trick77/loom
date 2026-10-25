@@ -1,6 +1,9 @@
 package turn
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -17,8 +20,8 @@ type ScheduledRun struct {
 	// TokenBudget caps the tokens of every model call of the run; past it the
 	// loop takes the forced final answer. Zero means no cap.
 	TokenBudget int
-	// SoftDeadline is when the loop stops offering tools and answers; zero
-	// means none.
+	// SoftDeadline is when the loop stops offering tools and answers, cutting
+	// a tool round still running then; zero means none.
 	SoftDeadline time.Time
 	// Memory is the schedule's research memory (sources, searches, last run)
 	// for every call's system prompt.
@@ -51,6 +54,104 @@ const (
 	LimitTokens = "tokens"
 	LimitTime   = "time"
 )
+
+// Bounds on a scheduled run's tools. Every tool result is re-read by each
+// later round (a run once re-sent 131k of its 135k tokens), so a run keeps
+// them small. Tavily is the one tool with a cost per call.
+const (
+	scheduledFetchMaxLength   = 8000
+	scheduledSearchMaxResults = 5
+	scheduledTavilyCalls      = 10
+	scheduledToolResultBytes  = 12 << 10
+)
+
+// tavilyLimitReached is the tool result of a Tavily call past the run's limit.
+var tavilyLimitReached = fmt.Sprintf("The search limit of this run (%d) is reached; answer from what you have.", scheduledTavilyCalls)
+
+// toolRoundInference is a tool round's metadata. A scheduled run's rounds
+// only pick tools, so they ask for the least reasoning (a run once spent 48s
+// thinking about its next search); its answer always comes from the forced
+// final, which keeps the turn's level.
+func (t *Run) toolRoundInference(round int) llm.InferenceMetadata {
+	meta := inferenceWithPurpose(t.inference, "chat_tool_round", round)
+	meta.LeastReasoning = t.scheduled != nil
+	return meta
+}
+
+// roundContext bounds a scheduled run's tool round by its soft deadline, so a
+// model call still running at the deadline is cut and the run answers from
+// what it has instead of reaching the hard limit.
+func (t *Run) roundContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	sr := t.scheduled
+	if sr == nil || sr.SoftDeadline.IsZero() {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, sr.SoftDeadline.Sub(t.scheduledNow()))
+}
+
+func (t *Run) scheduledNow() time.Time {
+	if t.scheduled != nil && t.scheduled.Now != nil {
+		return t.scheduled.Now()
+	}
+	return time.Now()
+}
+
+// clampScheduledCall shrinks what a scheduled run's web call returns: a
+// shorter fetch, fewer and shallower search results. The model picks these
+// sizes itself and picks large ones.
+func (t *Run) clampScheduledCall(call *llm.ToolCall) {
+	if t.scheduled == nil {
+		return
+	}
+	name := call.Function.Name
+	if name != fetchToolName && name != tavilySearchExposedName {
+		return
+	}
+	args, err := parseToolArguments(call.Function.Arguments)
+	if err != nil {
+		return
+	}
+	switch name {
+	case fetchToolName:
+		if n, ok := args["max_length"].(float64); !ok || n > scheduledFetchMaxLength {
+			args["max_length"] = scheduledFetchMaxLength
+		}
+	case tavilySearchExposedName:
+		if n, ok := args["max_results"].(float64); !ok || n > scheduledSearchMaxResults {
+			args["max_results"] = scheduledSearchMaxResults
+		}
+		args["search_depth"] = "basic"
+		delete(args, "include_raw_content")
+	}
+	if raw, err := json.Marshal(args); err == nil {
+		call.Function.Arguments = string(raw)
+	}
+}
+
+// tavilyCapped counts a scheduled run's Tavily call and reports whether it is
+// past the run's limit; such a call never starts.
+func (t *Run) tavilyCapped(name string) bool {
+	if t.scheduled == nil {
+		return false
+	}
+	if server, _, ok := mcp.SplitExposedToolName(name); !ok || server != tavilyServerName {
+		return false
+	}
+	if t.tavilyCalls >= scheduledTavilyCalls {
+		return true
+	}
+	t.tavilyCalls++
+	return false
+}
+
+// capScheduledOutput bounds a tool result a scheduled run keeps in its
+// history.
+func (t *Run) capScheduledOutput(output string) string {
+	if t.scheduled == nil || len(output) <= scheduledToolResultBytes {
+		return output
+	}
+	return truncateBytesOnRuneBoundary(output, scheduledToolResultBytes-len(truncationEllipsis)) + truncationEllipsis
+}
 
 // scheduledRunPrompt tells the model it runs unattended.
 // The run sees every server's guidance and, when it writes the answer, the
@@ -97,11 +198,7 @@ func (t *Run) overLimit() string {
 	if sr.TokenBudget > 0 && t.acc != nil && t.acc.Total().TotalTokens >= sr.TokenBudget {
 		return LimitTokens
 	}
-	now := time.Now
-	if sr.Now != nil {
-		now = sr.Now
-	}
-	if !sr.SoftDeadline.IsZero() && !now().Before(sr.SoftDeadline) {
+	if !sr.SoftDeadline.IsZero() && !t.scheduledNow().Before(sr.SoftDeadline) {
 		return LimitTime
 	}
 	return ""

@@ -73,6 +73,14 @@ func (s *server) scheduleRunTimeout() time.Duration {
 	return schedule.RunTimeout
 }
 
+// scheduleSoftDeadline is schedule.RunSoftDeadline unless a test shortened it.
+func (s *server) scheduleSoftDeadline() time.Duration {
+	if s.runSoftDeadline > 0 {
+		return s.runSoftDeadline
+	}
+	return schedule.RunSoftDeadline
+}
+
 // ScheduleWorker starts the scheduled runs that are due.
 type ScheduleWorker struct {
 	s *server
@@ -265,7 +273,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		Start:       start,
 		Scheduled: &turn.ScheduledRun{
 			TokenBudget:  schedule.RunTokenBudget,
-			SoftDeadline: start.Add(schedule.RunSoftDeadline),
+			SoftDeadline: start.Add(s.scheduleSoftDeadline()),
 			Memory:       research,
 			Reported:     reported,
 			Observe:      seen.add,
@@ -278,7 +286,15 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		run.Status, run.Error = schedule.StatusTimeout, "the run took longer than the time limit"
 		noteThread = ""
-		s.disableAfterTimeout(detached, user, sch, thread)
+		// One slow model call is no reason to turn a schedule off; a second
+		// run in a row past the limit is.
+		if memory.LastRun != nil && memory.LastRun.Status == schedule.StatusTimeout {
+			s.disableAfterTimeout(detached, user, sch, thread)
+			return
+		}
+		s.persistRunNote(detached, user.ID, thread.ID, fmt.Sprintf(
+			"This scheduled run took longer than %d minutes and was stopped. A second run in a row past the limit turns the schedule off.",
+			int(schedule.RunTimeout/time.Minute)))
 		return
 	}
 	// failWith ends a run without an answer: a line in the thread says why,
@@ -403,20 +419,20 @@ func (s *server) scheduleThread(ctx context.Context, user auth.User, sch schedul
 	return thread, nil
 }
 
-// disableAfterTimeout turns a schedule off whose run went past the time limit,
-// says so in its thread and tells the user.
+// disableAfterTimeout turns a schedule off whose second run in a row went past
+// the time limit, says so in its thread and tells the user.
 func (s *server) disableAfterTimeout(ctx context.Context, user auth.User, sch schedule.Schedule, thread chat.Thread) {
 	minutes := int(schedule.RunTimeout / time.Minute)
 	if err := s.schedules.Disable(ctx, user.ID, sch.ID, schedule.DisabledTimeout, s.clock()); err != nil {
 		slog.Warn("disable schedule failed", "schedule_id", sch.ID, "err", err)
 	}
-	s.persistRunNote(ctx, user.ID, thread.ID, fmt.Sprintf("This scheduled run took longer than %d minutes, so the schedule was disabled.", minutes))
+	s.persistRunNote(ctx, user.ID, thread.ID, fmt.Sprintf("Two scheduled runs in a row took longer than %d minutes, so the schedule was disabled.", minutes))
 	s.notify(ctx, user.ID, schedule.Notification{
 		Kind:       schedule.KindScheduleDisabled,
 		ScheduleID: &sch.ID,
 		ThreadID:   &thread.ID,
 		Title:      sch.Name + " was disabled",
-		Body:       fmt.Sprintf("The run took longer than %d minutes. Open the schedule to change it or enable it again.", minutes),
+		Body:       fmt.Sprintf("Two runs in a row took longer than %d minutes. Open the schedule to change it or enable it again.", minutes),
 	})
 }
 

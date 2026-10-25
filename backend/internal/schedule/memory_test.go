@@ -181,8 +181,8 @@ func TestLastRunNote(t *testing.T) {
 		run  schedule.Run
 		want string
 	}{
-		{schedule.Run{Status: schedule.StatusNew, Rounds: 3, NewCount: 2, DurationMS: 60_000}, "took 1m0s of 3m0s, 3 rounds, 2 new items."},
-		{schedule.Run{Status: schedule.StatusNothingNew, DurationMS: 170_000}, "Be targeted"},
+		{schedule.Run{Status: schedule.StatusNew, Rounds: 3, NewCount: 2, DurationMS: 60_000}, "took 1m0s of 5m0s, 3 rounds, 2 new items."},
+		{schedule.Run{Status: schedule.StatusNothingNew, DurationMS: 250_000}, "Be targeted"},
 		{schedule.Run{Status: schedule.StatusTimeout}, "past the time limit"},
 		{schedule.Run{Status: schedule.StatusFailed, Error: "search down"}, "failed: search down."},
 	}

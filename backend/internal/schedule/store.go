@@ -16,8 +16,10 @@ const MaxSchedulesPerUser = 10
 
 // Field limits, enforced by the service before anything is stored.
 const (
-	MaxNameLength     = 120
-	MaxPromptLength   = 4000
+	MaxNameLength = 120
+	// MaxPromptLength keeps a schedule's task to what a short run covers: a
+	// 3 KB research brief once ran past the time limit.
+	MaxPromptLength   = 2000
 	MaxIntervalLength = 200
 )
 

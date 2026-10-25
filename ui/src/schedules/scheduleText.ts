@@ -3,7 +3,8 @@
 
 // Fixed per-run limits, shown next to the form; the server enforces them.
 export const RUN_TOKEN_LIMIT = 300_000;
-export const RUN_MINUTES = 3;
+export const RUN_MINUTES = 5;
+export const PROMPT_MAX_LENGTH = 2000;
 
 type Lang = string;
 

@@ -57,7 +57,9 @@ test("lists schedules with their slot and last run", async () => {
   expect(
     screen.getByText(/Weekly on Thursday at 14:37 · next/),
   ).toBeInTheDocument();
-  expect(screen.getByText(/took longer than 3 minutes/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/two runs in a row took longer than 5 minutes/),
+  ).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("tab", { name: "Paused 2" }));
   expect(screen.queryByText("Cinema scout")).not.toBeInTheDocument();
@@ -165,9 +167,13 @@ test("creates a schedule with the slot the preview showed", async () => {
   await screen.findByText("No schedules yet");
   fireEvent.click(screen.getByRole("button", { name: /New schedule/ }));
   const dialog = await screen.findByRole("dialog");
-  fireEvent.change(dialog.querySelector("textarea") as HTMLTextAreaElement, {
+  const promptField = dialog.querySelector("textarea") as HTMLTextAreaElement;
+  expect(promptField.maxLength).toBe(2000);
+  fireEvent.change(promptField, {
     target: { value: "Find new films" },
   });
+  expect(screen.getByText("14 / 2000")).toBeInTheDocument();
+  expect(screen.getByText(/A run is short/)).toBeInTheDocument();
   fireEvent.change(screen.getByPlaceholderText("e.g. once a week"), {
     target: { value: "once a week" },
   });

@@ -51,6 +51,8 @@ type Run struct {
 	// scheduledTools are the tools a scheduled run was offered, by name; it
 	// runs no other.
 	scheduledTools map[string]bool
+	// tavilyCalls counts the Tavily calls a scheduled run started.
+	tavilyCalls int
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.

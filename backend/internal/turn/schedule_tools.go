@@ -77,9 +77,10 @@ var scheduleCreateTool = scheduleTool(scheduleCreateToolName,
 	"Create a scheduled task: a prompt loom runs on its own, again and again, notifying the user only about what is new. "+
 		"Use it when the user asks for something recurring (\"every week look for …\", \"daily check …\", \"keep me posted on …\"). "+
 		"Each run starts without this conversation, so the prompt must stand alone: what to look for, the user's interests, places and limits. "+
+		scheduleRunIsShort+
 		"Runs at most twice a day. Returns the schedule with its resolved time; tell the user that time.",
 	map[string]any{
-		"prompt":   map[string]any{"type": "string", "description": "The self-contained task each run carries out."},
+		"prompt":   map[string]any{"type": "string", "description": "The self-contained task each run carries out, at most 2000 characters."},
 		"interval": map[string]any{"type": "string", "description": "When to run, in the user's words, e.g. \"once a week\", \"every weekday morning\". loom picks a random time inside it."},
 		"name":     map[string]any{"type": "string", "description": "Optional short name; generated from the prompt when left out."},
 	}, []any{"prompt", "interval"})
@@ -88,9 +89,13 @@ var scheduleListTool = scheduleTool(scheduleListToolName,
 	"List the user's scheduled tasks with their ids, prompts, times and status.",
 	map[string]any{}, nil)
 
+// scheduleRunIsShort tells the model what a run can do, so the prompt it
+// writes asks for no more: a deep-research brief once ran past the limit.
+const scheduleRunIsShort = "A run is short: a few tool rounds and minutes. Write a focused task, and name only sources the user gave or that are well known, never a site you are unsure exists. "
+
 var scheduleUpdateTool = scheduleTool(scheduleUpdateToolName,
-	"Change one of the user's scheduled tasks: its name, prompt or interval, or pause (enabled=false) and resume it (enabled=true). "+
-		"Pass the id from schedule_list. A new interval gets a new random time. Returns the updated schedule.",
+	"Change one of the user's scheduled tasks: its name, prompt or interval, or turn it off (disable, pause, stop: enabled=false) and on again (enable, resume: enabled=true). "+
+		"Find the id with schedule_list by the schedule's name. A new interval gets a new random time. "+scheduleRunIsShort+"Returns the updated schedule.",
 	map[string]any{
 		"id":       map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},
 		"name":     map[string]any{"type": "string"},

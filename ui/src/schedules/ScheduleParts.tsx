@@ -20,6 +20,7 @@ import {
   formatDay,
   formatRunDate,
   formatTokens,
+  PROMPT_MAX_LENGTH,
   RUN_MINUTES,
   RUN_TOKEN_LIMIT,
   slotText,
@@ -31,6 +32,7 @@ const pillTone: Record<string, string> = {
   token_limit: "bg-[rgba(201,162,95,0.14)] text-[#dcbc84]",
   failed: "bg-[rgba(184,92,82,0.18)] text-[#e59a90]",
   timeout: "bg-[rgba(217,83,79,0.14)] text-[#ec8f8b]",
+  disabled: "bg-[rgba(217,83,79,0.14)] text-[#ec8f8b]",
   running: "bg-[#363632] text-[#d6d3ca]",
   paused: "bg-[#2e2e2c] text-[#8f8b82]",
 };
@@ -40,6 +42,7 @@ const pillIcon: Partial<Record<string, IconName>> = {
   token_limit: "warning",
   failed: "alertCircle",
   timeout: "alertCircle",
+  disabled: "alertCircle",
   paused: "pause",
 };
 
@@ -49,7 +52,7 @@ export function StatusPill({
   status,
   count = 0,
 }: {
-  status: ScheduleRunStatus | "paused";
+  status: ScheduleRunStatus | "paused" | "disabled";
   count?: number;
 }) {
   const { t } = useTranslation();
@@ -67,9 +70,9 @@ export function StatusPill({
 // scheduleStatus is what a schedule's pill shows.
 export function scheduleStatus(
   schedule: Schedule,
-): { status: ScheduleRunStatus | "paused"; count: number } | null {
+): { status: ScheduleRunStatus | "paused" | "disabled"; count: number } | null {
   if (schedule.disabledReason === "timeout")
-    return { status: "timeout", count: 0 };
+    return { status: "disabled", count: 0 };
   if (!schedule.enabled) return { status: "paused", count: 0 };
   if (schedule.running) return { status: "running", count: 0 };
   const run = schedule.lastRun;
@@ -342,11 +345,20 @@ export function ScheduleEditDialog({
             <textarea
               className={`${inputClass} resize-none leading-normal`}
               rows={4}
-              maxLength={4000}
+              maxLength={PROMPT_MAX_LENGTH}
               value={prompt}
               placeholder={t("schedules.form.promptPlaceholder")}
               onChange={(event) => setPrompt(event.target.value)}
             />
+            <span className="mt-1.5 flex justify-between gap-3 text-[12px] text-[#807d74]">
+              <span>{t("schedules.form.promptHint")}</span>
+              <span className="shrink-0 tabular-nums">
+                {t("schedules.form.promptCount", {
+                  length: prompt.length,
+                  max: PROMPT_MAX_LENGTH,
+                })}
+              </span>
+            </span>
           </label>
           <div>
             <label className="block">

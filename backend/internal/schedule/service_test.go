@@ -119,6 +119,22 @@ func TestCreateNamesAndSchedules(t *testing.T) {
 	}
 }
 
+// A prompt past the cap is refused with a message that tells the model how to
+// shorten it: the model reads it as the tool result and retries.
+func TestCreateRefusesALongPromptWithHowToShortenIt(t *testing.T) {
+	svc, _ := newService(t, &fakeInterpreter{template: "~ 7~22 * * ~", ok: true})
+	long := strings.Repeat("ä", schedule.MaxPromptLength+1)
+	_, err := svc.Create(context.Background(), "u1", schedule.Input{Prompt: &long, Interval: ptr("daily")})
+	var invalid schedule.ValidationError
+	if !errors.As(err, &invalid) || !strings.Contains(invalid.Message, "2001 characters, at most 2000") || !strings.Contains(invalid.Message, "one or two sources") {
+		t.Fatalf("err = %v", err)
+	}
+	fits := strings.Repeat("ä", schedule.MaxPromptLength)
+	if _, err := svc.Create(context.Background(), "u1", schedule.Input{Prompt: &fits, Interval: ptr("daily")}); err != nil {
+		t.Fatalf("a prompt at the cap was refused: %v", err)
+	}
+}
+
 func TestCreateFallsBackToPromptAsName(t *testing.T) {
 	svc, _ := newService(t, &fakeInterpreter{template: "0 9 * * *", ok: true})
 	svc.Namer = nil

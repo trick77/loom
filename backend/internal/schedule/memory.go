@@ -15,12 +15,13 @@ const (
 	// RunTokenBudget caps the tokens of every model call of one run. Past it
 	// the run gets its final answer without further tools.
 	RunTokenBudget = 300_000
-	// RunTimeout is the hard wall clock of one run. A run past it is canceled
-	// and its schedule disabled.
-	RunTimeout = 3 * time.Minute
-	// RunSoftDeadline is when a run stops offering tools and answers, so a slow
-	// run still answers before RunTimeout.
-	RunSoftDeadline = 2*time.Minute + 30*time.Second
+	// RunTimeout is the hard wall clock of one run. A run past it is canceled;
+	// the second in a row disables its schedule.
+	RunTimeout = 5 * time.Minute
+	// RunSoftDeadline is when a run stops offering tools and answers, cutting
+	// a model call still running then. The 90s left are the final answer's:
+	// one tool round alone once took 58s.
+	RunSoftDeadline = 3*time.Minute + 30*time.Second
 	// MemoryTokenBudget caps the memory block a run gets.
 	MemoryTokenBudget = 1500
 )

@@ -219,8 +219,8 @@ func (s *Service) apply(ctx context.Context, sch *Schedule, in Input, creating b
 		if prompt == "" {
 			return invalid("the prompt is required")
 		}
-		if len([]rune(prompt)) > MaxPromptLength {
-			return invalid("the prompt is too long")
+		if n := len([]rune(prompt)); n > MaxPromptLength {
+			return invalid("the prompt is %d characters, at most %d: keep what to find, the user's interests and one or two sources; leave out output formatting and reference lists", n, MaxPromptLength)
 		}
 		sch.Prompt = prompt
 	}
