@@ -1,6 +1,7 @@
 package turn
 
 import (
+	"regexp"
 	"slices"
 	"time"
 
@@ -114,4 +115,46 @@ func (t *Run) observeToolCall(name string, arguments map[string]any, sources []m
 		return
 	}
 	t.scheduled.Observe(o)
+}
+
+// withFinalContext is history with a scheduled run's user memory and
+// directives added to its system prompt, for a call that offers no tools.
+// Any other turn's history comes back as it is.
+func (t *Run) withFinalContext(history []llm.Message) []llm.Message {
+	if t.plan.finalContext == "" {
+		return history
+	}
+	out := slices.Clone(history)
+	if len(out) > 0 && out[0].Role == "system" {
+		out[0].Content = joinNonEmptyBlocks(out[0].Content, t.plan.finalContext)
+		return out
+	}
+	return append([]llm.Message{{Role: "system", Content: t.plan.finalContext}}, out...)
+}
+
+// markdownImage is an inline or reference markdown image: ![alt](src) or
+// ![alt][ref].
+var markdownImage = regexp.MustCompile(`!\[([^\]]*)\](\([^)]*\)|\[[^\]]*\])`)
+
+// dropImages keeps each markdown image's alt text only. Removing one can
+// close up a new one (![![x](y)](z)), so it repeats until none is left.
+func dropImages(s string) string {
+	for markdownImage.MatchString(s) {
+		s = markdownImage.ReplaceAllString(s, "$1")
+	}
+	return s
+}
+
+// dropAnswerImages strips the images from a scheduled run's answer. Opening
+// the thread would load them, so an image an injected page slipped into the
+// answer could carry what the run knows out in its URL, without a click.
+// Links stay: they need one.
+func dropAnswerImages(out LoopResult) LoopResult {
+	out.Content = dropImages(out.Content)
+	for i := range out.Blocks {
+		if out.Blocks[i].Type == "text" {
+			out.Blocks[i].Content = dropImages(out.Blocks[i].Content)
+		}
+	}
+	return out
 }

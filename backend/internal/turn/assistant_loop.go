@@ -78,12 +78,15 @@ func (r LoopResult) SourceURLs() map[int]string {
 // tool rounds as the model asks for them, then a forced final answer if the
 // rounds run out.
 func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr error) {
+	if t.scheduled != nil {
+		defer func() { out = dropAnswerImages(out) }()
+	}
 	history := t.plan.history
 	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
 	tools, t.offered = t.allowTools(tools, offered)
 	if len(tools) == 0 {
 		b := &blockBuilder{}
-		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), history, inferenceWithPurpose(t.inference, "chat", 1), nil)
+		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(history), inferenceWithPurpose(t.inference, "chat", 1), nil)
 		b.addResult(t.titles, result)
 		if persistInterruptedPartial(result, err) {
 			return b.result(result, nil, ""), nil
@@ -143,6 +146,12 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				return b.result(result, artifacts, ""), nil
 			}
 			return LoopResult{}, err
+		}
+		if len(result.ToolCalls) == 0 && t.plan.finalContext != "" {
+			// A scheduled run with memory answers only from the tool-free final
+			// call, the one that sees the memory: this answer is dropped unseen.
+			slog.Info("forcing final answer", "reason", "scheduled_memory", "round", round)
+			break
 		}
 		b.addResult(t.titles, result)
 		if len(result.ToolCalls) == 0 {
@@ -346,7 +355,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		}
 		finalHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: directive})
 	}
-	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), finalHistory, finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
+	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(finalHistory), finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(t.titles, result)
 	if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 		return b.result(result, artifacts, ""), nil
@@ -360,7 +369,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		if !ok {
 			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}
-		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), retryHistory, finalRetryInference(t.inference, result), nil)
+		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(retryHistory), finalRetryInference(t.inference, result), nil)
 		b.addResult(t.titles, result)
 		if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 			return b.result(result, artifacts, ""), nil
