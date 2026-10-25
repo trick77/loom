@@ -9,7 +9,7 @@ import (
 )
 
 // The schedule tools let the model create and manage the user's scheduled
-// tasks from any chat. A scheduled run never gets them (see ScheduledRunTools).
+// tasks from any chat. A scheduled run never gets them (see Run.allowTools).
 const (
 	scheduleCreateToolName = "schedule_create"
 	scheduleListToolName   = "schedule_list"

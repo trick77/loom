@@ -665,7 +665,7 @@ export const de = {
       interpretFailed:
         "Das Intervall konnte nicht gelesen werden. Versuch es nochmals.",
       limits:
-        "Pro Lauf: max. {{tokens}} Tokens, {{minutes}} Minuten · Websuche, Abruf, Browser",
+        "Pro Lauf: max. {{tokens}} Tokens, {{minutes}} Minuten · Websuche, Abruf, Browser und deine verbundenen Tools",
       saveFailed: "Der Zeitplan konnte nicht gespeichert werden.",
     },
     disabled: {

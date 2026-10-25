@@ -263,7 +263,6 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		Usage:       usageTotal,
 		Start:       start,
 		Scheduled: &turn.ScheduledRun{
-			Tools:        turn.ScheduledRunTools(),
 			TokenBudget:  schedule.RunTokenBudget,
 			SoftDeadline: start.Add(schedule.RunSoftDeadline),
 			Memory:       memory.Block(schedule.MemoryTokenBudget),

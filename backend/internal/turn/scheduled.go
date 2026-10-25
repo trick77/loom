@@ -8,12 +8,10 @@ import (
 	"github.com/trick77/loom/internal/mcp"
 )
 
-// ScheduledRun makes a persisted turn a schedule's headless run: a fixed tool
-// set, a token budget and a soft deadline, the schedule's memory in the prompt,
-// and every web tool outcome reported to Observe.
+// ScheduledRun makes a persisted turn a schedule's headless run: the user's
+// MCP tools only, a token budget and a soft deadline, the schedule's memory in
+// the prompt, and every web tool outcome reported to Observe.
 type ScheduledRun struct {
-	// Tools are the only tools the run is offered (see ScheduledRunTools).
-	Tools []string
 	// TokenBudget caps the tokens of every model call of the run; past it the
 	// loop takes the forced final answer. Zero means no cap.
 	TokenBudget int
@@ -49,23 +47,32 @@ const (
 )
 
 // scheduledRunPrompt tells the model it runs unattended.
-const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools, then answer with what is NEW since earlier runs, naming each new item with its source. When nothing is new, say so in one sentence. Never ask the user anything."
+// The run sees the user's standing instructions and every server's guidance,
+// both written for a live chat, so it says which parts still apply.
+const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what is NEW since earlier runs, naming each new item with its source. When nothing is new, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
 
-// ScheduledRunTools is the research set a scheduled run gets: web search,
-// fetch and the headless browser. Never the schedule tools.
-func ScheduledRunTools() []string {
-	return []string{tavilySearchExposedName, fetchToolName, obscuraNavigateToolName, obscuraSnapshotToolName}
+// allowTools keeps the tools a scheduled run may use: every MCP tool the
+// user may use (offerTools already left out other accounts' servers), never a
+// built-in, so no memory, file, sandbox or schedule tool. It records them for
+// dispatch and returns no built-ins to offer. Any other turn keeps all of them.
+func (t *Run) allowTools(tools []llm.Tool, builtIns map[string]*toolSpec) ([]llm.Tool, map[string]*toolSpec) {
+	if t.scheduled == nil {
+		return tools, builtIns
+	}
+	tools = slices.DeleteFunc(tools, func(tool llm.Tool) bool {
+		return builtIns[tool.Function.Name] != nil
+	})
+	t.scheduledTools = make(map[string]bool, len(tools))
+	for _, tool := range tools {
+		t.scheduledTools[tool.Function.Name] = true
+	}
+	return tools, map[string]*toolSpec{}
 }
 
-// allowTools keeps the tools a scheduled run may use; any other turn keeps
-// all of them.
-func (t *Run) allowTools(tools []llm.Tool) []llm.Tool {
-	if t.scheduled == nil {
-		return tools
-	}
-	return slices.DeleteFunc(tools, func(tool llm.Tool) bool {
-		return !slices.Contains(t.scheduled.Tools, tool.Function.Name)
-	})
+// scheduledDenies reports whether a scheduled run refuses a tool call: one
+// to a tool it was not offered, whatever the model names.
+func (t *Run) scheduledDenies(name string) bool {
+	return t.scheduled != nil && !t.scheduledTools[name]
 }
 
 // overLimit reports which limit the scheduled run reached, or "".

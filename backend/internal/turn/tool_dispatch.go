@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strings"
 	"time"
 
@@ -309,13 +308,10 @@ const mcpCitationOverride = "When one of these tools' results carries Source lin
 // the turn offers, so a server can say when its tools apply (peeq: which
 // channels to search unprompted). It travels with the tools like the other
 // tool guidance and is empty when no offered server gave instructions.
-func (s *Engine) mcpServerGuidance(user auth.User, gate toolGate, scheduled *ScheduledRun) string {
+func (s *Engine) mcpServerGuidance(user auth.User, gate toolGate) string {
 	seen := map[string]bool{}
 	var blocks []string
 	for _, tool := range s.offeredMCPTools(user, gate) {
-		if scheduled != nil && !slices.Contains(scheduled.Tools, tool.Function.Name) {
-			continue
-		}
 		server, _, ok := mcp.SplitExposedToolName(tool.Function.Name)
 		if !ok || seen[server] {
 			continue

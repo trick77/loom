@@ -68,14 +68,14 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if len(runs) != 1 || runs[0].Status != schedule.StatusNew || runs[0].NewCount != 1 || runs[0].MessageID == nil || runs[0].Rounds != 1 {
 		t.Fatalf("first run = %+v", runs)
 	}
-	// Only the research tools were offered: never the schedule tools or
-	// unrelated MCP servers.
+	// Every MCP tool the user may use was offered, and no built-in: never the
+	// schedule, memory or file tools.
 	var offered []string
 	for _, tool := range client.Tools[0] {
 		offered = append(offered, tool.Function.Name)
 	}
 	slices.Sort(offered)
-	if strings.Join(offered, ",") != "fetch__fetch,tavily__tavily_search" {
+	if strings.Join(offered, ",") != "context7__docs,fetch__fetch,tavily__tavily_search" {
 		t.Fatalf("offered tools = %v", offered)
 	}
 	if !strings.Contains(client.Histories[0][0].Content, "running a scheduled task") {
@@ -133,28 +133,90 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	}
 }
 
+func peeqTools() []llm.Tool {
+	return append(webTools(), llm.Tool{Type: "function", Function: llm.ToolFunction{Name: "peeq__search", Parameters: map[string]any{"type": "object"}}})
+}
+
 func TestScheduledRunRefusesToolsOutsideItsSet(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
 	var called []string
+	call := func(id, name, args string) llm.ToolCall {
+		return llm.ToolCall{ID: id, Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: args}}
+	}
 	client := &fakeToolChatClient{Results: []llm.StreamResult{
-		{ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: "context7__docs", Arguments: `{}`}}}},
+		{ToolCalls: []llm.ToolCall{
+			call("c1", "schedule_create", `{"prompt":"more films","interval":"daily"}`),
+			call("c2", "peeq__search", `{"query":"films"}`),
+		}},
 		{Content: "Nothing new."},
 	}}
 	deps := f.deps
 	deps.LLM = client
-	deps.MCP = &fakeMCPService{ToolList: webTools(), CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+	// peeq belongs to another account.
+	deps.MCP = &fakeMCPService{ToolList: peeqTools(), Users: map[string][]string{"peeq": {"usr_other"}}, CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
 		called = append(called, name)
-		return "docs", nil
+		return "videos", nil
 	}}
 	s := newServer(deps)
 	s.runSchedule(ctx, newRunnerSchedule(t, f))
 	if len(called) != 0 {
 		t.Fatalf("a tool outside the run's set ran: %v", called)
 	}
+	for _, tool := range client.Tools[0] {
+		if tool.Function.Name == "peeq__search" {
+			t.Fatal("another account's MCP server was offered")
+		}
+	}
+	if list, _ := f.store.ListSchedules(ctx, testUser.ID); len(list) != 1 {
+		t.Fatalf("a scheduled run created a schedule: %+v", list)
+	}
 	last := client.Histories[len(client.Histories)-1]
-	if !strings.Contains(last[len(last)-1].Content, "unknown tool") {
-		t.Fatalf("the model was not told the tool is unknown: %+v", last[len(last)-1])
+	for _, m := range last[len(last)-2:] {
+		if !strings.Contains(m.Content, "unknown tool") {
+			t.Fatalf("the model was not told the tool is unknown: %+v", m)
+		}
+	}
+}
+
+func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	if _, err := f.chat.UpsertUserMemory(ctx, testUser.ID, "Works as a platform engineer at a bank.", 1); err != nil {
+		t.Fatal(err)
+	}
+	client := &fakeToolChatClient{Results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: "peeq__search", Arguments: `{"query":"agents","channel":"AI Engineer"}`}}}},
+		{Content: "Nothing new."},
+	}}
+	var called []string
+	deps := f.deps
+	deps.LLM = client
+	deps.MCP = &fakeMCPService{
+		ToolList:     peeqTools(),
+		Users:        map[string][]string{"peeq": {testUser.ID}},
+		Instructions: map[string]string{"peeq": "Search the AI Engineer channel unprompted."},
+		CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
+			called = append(called, name)
+			return "one video", nil
+		},
+	}
+	s := newServer(deps)
+	sch := newRunnerSchedule(t, f)
+	// A file format in the prompt brings no file tools, so no guidance for them.
+	sch.Prompt = "summarize new videos as a PDF"
+	s.runSchedule(ctx, sch)
+	if strings.Join(called, ",") != "peeq__search" {
+		t.Fatalf("called = %v, want the user's peeq search", called)
+	}
+	system := client.Histories[0][0].Content
+	for _, want := range []string{"platform engineer at a bank", "Search the AI Engineer channel unprompted."} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("the run's system prompt lacks %q:\n%s", want, system)
+		}
+	}
+	if strings.Contains(system, "create_pdf_file") {
+		t.Fatalf("the run's system prompt guides file tools it does not have:\n%s", system)
 	}
 }
 
