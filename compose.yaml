@@ -78,7 +78,7 @@ services:
       # so it is the public service; Traefik terminates TLS in front of it.
       traefik.enable: "true"
       traefik.docker.network: traefik
-      traefik.http.routers.loom.rule: Host(`loom.trick77.com`)
+      traefik.http.routers.loom.rule: Host(`${FQDN:?set FQDN in .env, the hostname Traefik routes loom on}`)
       traefik.http.routers.loom.entrypoints: websecure
       traefik.http.routers.loom.tls: "true"
       traefik.http.services.loom.loadbalancer.server.port: "8080"
