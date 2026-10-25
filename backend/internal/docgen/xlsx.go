@@ -83,6 +83,7 @@ func (g XLSXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta
 </Relationships>`,
 		"xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <bookViews><workbookView/></bookViews>
   <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
 </workbook>`,
 		"xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -97,22 +98,30 @@ func (g XLSXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta
 	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "xlsx", MIMEType: artifact.MIMEType("xlsx")}, nil
 }
 
-// xlsxSheetXML renders the worksheet with the header row frozen. sheetViews
-// must precede sheetData (the schema is a strict sequence).
+// xlsxSheetXML renders the worksheet with the header row frozen. dimension,
+// sheetViews and sheetData must stay in that order (the schema is a strict
+// sequence).
 func xlsxSheetXML(rows [][]any) (string, error) {
 	var data strings.Builder
+	columns := 1
 	for r, row := range rows {
 		if len(row) > maxXLSXColumns {
 			return "", fmt.Errorf("too many columns in row %d", r+1)
 		}
+		columns = max(columns, len(row))
 		fmt.Fprintf(&data, `<row r="%d">`, r+1)
 		for c, value := range row {
 			data.WriteString(xlsxCell(xlsxCellName(c+1, r+1), value))
 		}
 		data.WriteString(`</row>`)
 	}
+	dimension := "A1"
+	if last := xlsxCellName(columns, len(rows)); last != dimension {
+		dimension += ":" + last
+	}
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="` + dimension + `"/>
   <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>
   <sheetData>` + data.String() + `</sheetData>
 </worksheet>`, nil
@@ -196,9 +205,11 @@ func spreadsheetRows(payload map[string]any) ([][]any, error) {
 	return rows, nil
 }
 
+// spreadsheetCellValue types a CSV field as a number when it parses as a
+// finite one. NaN and Inf stay the original text: Excel has no such number.
 func spreadsheetCellValue(value string) any {
 	trimmed := strings.TrimSpace(value)
-	if parsed, err := strconv.ParseFloat(trimmed, 64); err == nil {
+	if parsed, err := strconv.ParseFloat(trimmed, 64); err == nil && !math.IsNaN(parsed) && !math.IsInf(parsed, 0) {
 		return parsed
 	}
 	return value

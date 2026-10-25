@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,8 +34,10 @@ func TestXLSXGeneratorWritesRows(t *testing.T) {
 	}
 
 	assertWellFormedPackage(t, out.Bytes())
+	assertConsistentPackage(t, out.Bytes())
 	sheet := zipEntry(t, out.Bytes(), "xl/worksheets/sheet1.xml")
 	for _, want := range []string{
+		`<dimension ref="A1:D3"/>`,
 		`<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>`,
 		`<c r="A1" t="inlineStr"><is><t xml:space="preserve">Region</t></is></c>`,
 		`<c r="A2" t="inlineStr"><is><t xml:space="preserve">CH</t></is></c>`,
@@ -59,7 +62,7 @@ func TestXLSXGeneratorTypesCSVCells(t *testing.T) {
 	var out bytes.Buffer
 	_, err := gen.Generate(GenerateRequest{
 		Filename: "csv.xlsx",
-		Payload:  map[string]any{"csvData": "name,value\nalpha, 7 \nbeta,NaN\n"},
+		Payload:  map[string]any{"csvData": "name,value\nalpha, 7 \nbeta,NaN\ngamma,inf\ndelta, -Infinity\n"},
 	}, &out)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
@@ -68,6 +71,8 @@ func TestXLSXGeneratorTypesCSVCells(t *testing.T) {
 	for _, want := range []string{
 		`<c r="B2"><v>7</v></c>`,
 		`<c r="B3" t="inlineStr"><is><t xml:space="preserve">NaN</t></is></c>`,
+		`<c r="B4" t="inlineStr"><is><t xml:space="preserve">inf</t></is></c>`,
+		`<c r="B5" t="inlineStr"><is><t xml:space="preserve"> -Infinity</t></is></c>`,
 	} {
 		if !strings.Contains(sheet, want) {
 			t.Fatalf("sheet1.xml lacks %s:\n%s", want, sheet)
@@ -152,6 +157,106 @@ func TestGenerateVerifyXLSX(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(outDir, "verify.xlsx"), out.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestXLSXDimensionSingleCell(t *testing.T) {
+	sheet, err := xlsxSheetXML([][]any{{"only"}})
+	if err != nil {
+		t.Fatalf("xlsxSheetXML() error = %v", err)
+	}
+	if !strings.Contains(sheet, `<dimension ref="A1"/>`) {
+		t.Fatalf("sheet lacks single-cell dimension:\n%s", sheet)
+	}
+}
+
+// assertConsistentPackage checks what a spreadsheet reader resolves: every
+// part has a content type, every override and relationship target exists,
+// and the worksheet children keep the schema's sequence.
+func assertConsistentPackage(t *testing.T, data []byte) {
+	t.Helper()
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatalf("NewReader() error = %v", err)
+	}
+	parts := map[string]bool{}
+	for _, file := range reader.File {
+		parts[file.Name] = true
+	}
+
+	var types struct {
+		Defaults []struct {
+			Extension string `xml:"Extension,attr"`
+		} `xml:"Default"`
+		Overrides []struct {
+			PartName string `xml:"PartName,attr"`
+		} `xml:"Override"`
+	}
+	if err := xml.Unmarshal([]byte(zipEntry(t, data, "[Content_Types].xml")), &types); err != nil {
+		t.Fatalf("[Content_Types].xml: %v", err)
+	}
+	typed := map[string]bool{}
+	for _, override := range types.Overrides {
+		name := strings.TrimPrefix(override.PartName, "/")
+		if !parts[name] {
+			t.Fatalf("content type override for missing part %s", override.PartName)
+		}
+		typed[name] = true
+	}
+	extensions := map[string]bool{}
+	for _, def := range types.Defaults {
+		extensions[def.Extension] = true
+	}
+	for name := range parts {
+		if name != "[Content_Types].xml" && !typed[name] && !extensions[strings.TrimPrefix(path.Ext(name), ".")] {
+			t.Fatalf("part %s has no content type", name)
+		}
+	}
+
+	for name := range parts {
+		if !strings.HasSuffix(name, ".rels") {
+			continue
+		}
+		var rels struct {
+			Relationships []struct {
+				Target string `xml:"Target,attr"`
+			} `xml:"Relationship"`
+		}
+		if err := xml.Unmarshal([]byte(zipEntry(t, data, name)), &rels); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		// "xl/_rels/workbook.xml.rels" resolves relative to "xl/".
+		base := path.Dir(path.Dir(name))
+		for _, rel := range rels.Relationships {
+			if target := path.Join(base, rel.Target); !parts[target] {
+				t.Fatalf("%s targets missing part %s", name, target)
+			}
+		}
+	}
+
+	decoder := xml.NewDecoder(strings.NewReader(zipEntry(t, data, "xl/worksheets/sheet1.xml")))
+	var children []string
+	depth := 0
+	for {
+		token, err := decoder.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("sheet1.xml: %v", err)
+		}
+		switch el := token.(type) {
+		case xml.StartElement:
+			if depth == 1 {
+				children = append(children, el.Name.Local)
+			}
+			depth++
+		case xml.EndElement:
+			depth--
+		}
+	}
+	if got := strings.Join(children, ","); got != "dimension,sheetViews,sheetData" {
+		t.Fatalf("worksheet children = %s", got)
 	}
 }
 
