@@ -5,14 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 
 	"github.com/trick77/loom/internal/artifact"
-	"github.com/xuri/excelize/v2"
 )
 
-const maxXLSXRows = 5000
+const (
+	maxXLSXRows = 5000
+	// Excel's sheet limits: 16384 columns (XFD), 32767 UTF-16 units per cell.
+	maxXLSXColumns   = 16384
+	maxXLSXCellChars = 32767
+)
 
 // XLSXGenerator generates XLSX spreadsheets.
 type XLSXGenerator struct{}
@@ -59,24 +65,112 @@ func (g XLSXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta
 		return GeneratedMeta{}, fmt.Errorf("too many rows")
 	}
 
-	book := excelize.NewFile()
-	defer func() { _ = book.Close() }()
-	for r, row := range rows {
-		for c, value := range row {
-			cell, err := excelize.CoordinatesToCellName(c+1, r+1)
-			if err != nil {
-				return GeneratedMeta{}, err
-			}
-			if err := book.SetCellValue("Sheet1", cell, value); err != nil {
-				return GeneratedMeta{}, err
-			}
-		}
+	sheet, err := xlsxSheetXML(rows)
+	if err != nil {
+		return GeneratedMeta{}, err
 	}
-	_ = book.SetPanes("Sheet1", &excelize.Panes{Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft"})
-	if err := book.Write(w); err != nil {
+	files := map[string]string{
+		"[Content_Types].xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`,
+		"_rels/.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`,
+		"xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <bookViews><workbookView/></bookViews>
+  <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`,
+		"xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`,
+		"xl/worksheets/sheet1.xml": sheet,
+	}
+	if err := writeZipPackage(w, files); err != nil {
 		return GeneratedMeta{}, err
 	}
 	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "xlsx", MIMEType: artifact.MIMEType("xlsx")}, nil
+}
+
+// xlsxSheetXML renders the worksheet with the header row frozen. dimension,
+// sheetViews and sheetData must stay in that order (the schema is a strict
+// sequence).
+func xlsxSheetXML(rows [][]any) (string, error) {
+	var data strings.Builder
+	columns := 1
+	for r, row := range rows {
+		if len(row) > maxXLSXColumns {
+			return "", fmt.Errorf("too many columns in row %d", r+1)
+		}
+		columns = max(columns, len(row))
+		fmt.Fprintf(&data, `<row r="%d">`, r+1)
+		for c, value := range row {
+			data.WriteString(xlsxCell(xlsxCellName(c+1, r+1), value))
+		}
+		data.WriteString(`</row>`)
+	}
+	dimension := "A1"
+	if last := xlsxCellName(columns, len(rows)); last != dimension {
+		dimension += ":" + last
+	}
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="` + dimension + `"/>
+  <sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews>
+  <sheetData>` + data.String() + `</sheetData>
+</worksheet>`, nil
+}
+
+// xlsxCell renders one cell: numbers and booleans typed, everything else an
+// inline string. A null is no cell at all.
+func xlsxCell(ref string, value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case float64:
+		if !math.IsNaN(v) && !math.IsInf(v, 0) {
+			return `<c r="` + ref + `"><v>` + strconv.FormatFloat(v, 'g', -1, 64) + `</v></c>`
+		}
+	case bool:
+		if v {
+			return `<c r="` + ref + `" t="b"><v>1</v></c>`
+		}
+		return `<c r="` + ref + `" t="b"><v>0</v></c>`
+	case string:
+		return xlsxStringCell(ref, v)
+	}
+	return xlsxStringCell(ref, fmt.Sprint(value))
+}
+
+func xlsxStringCell(ref, value string) string {
+	return `<c r="` + ref + `" t="inlineStr"><is><t xml:space="preserve">` + xmlText(truncateUTF16(value, maxXLSXCellChars)) + `</t></is></c>`
+}
+
+// xlsxCellName converts 1-based coordinates to an A1 reference (27 → AA).
+func xlsxCellName(col, row int) string {
+	var name []byte
+	for ; col > 0; col = (col - 1) / 26 {
+		name = append([]byte{byte('A' + (col-1)%26)}, name...)
+	}
+	return string(name) + strconv.Itoa(row)
+}
+
+func truncateUTF16(value string, limit int) string {
+	units := 0
+	for i, r := range value {
+		n := utf16.RuneLen(r)
+		if units+n > limit {
+			return value[:i]
+		}
+		units += n
+	}
+	return value
 }
 
 func spreadsheetRows(payload map[string]any) ([][]any, error) {
@@ -111,9 +205,11 @@ func spreadsheetRows(payload map[string]any) ([][]any, error) {
 	return rows, nil
 }
 
+// spreadsheetCellValue types a CSV field as a number when it parses as a
+// finite one. NaN and Inf stay the original text: Excel has no such number.
 func spreadsheetCellValue(value string) any {
 	trimmed := strings.TrimSpace(value)
-	if parsed, err := strconv.ParseFloat(trimmed, 64); err == nil {
+	if parsed, err := strconv.ParseFloat(trimmed, 64); err == nil && !math.IsNaN(parsed) && !math.IsInf(parsed, 0) {
 		return parsed
 	}
 	return value
