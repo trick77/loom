@@ -168,7 +168,6 @@ test("creates a schedule with the slot the preview showed", async () => {
   fireEvent.click(screen.getByRole("button", { name: /New schedule/ }));
   const dialog = await screen.findByRole("dialog");
   const promptField = dialog.querySelector("textarea") as HTMLTextAreaElement;
-  expect(promptField.maxLength).toBe(2000);
   fireEvent.change(promptField, {
     target: { value: "Find new films" },
   });
@@ -185,6 +184,13 @@ test("creates a schedule with the slot the preview showed", async () => {
     ),
   ).toBeInTheDocument();
   expect(screen.getByText("37 14 * * 4")).toBeInTheDocument();
+
+  // Past the cap, counted in characters as the server counts them, the
+  // schedule cannot be saved.
+  fireEvent.change(promptField, { target: { value: "🎬".repeat(2001) } });
+  expect(screen.getByText("2001 / 2000")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  fireEvent.change(promptField, { target: { value: "Find new films" } });
 
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>

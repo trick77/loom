@@ -288,7 +288,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		noteThread = ""
 		// One slow model call is no reason to turn a schedule off; a second
 		// run in a row past the limit is.
-		if memory.LastRun != nil && memory.LastRun.Status == schedule.StatusTimeout {
+		if s.previousRunTimedOut(detached, sch, runID) {
 			s.disableAfterTimeout(detached, user, sch, thread)
 			return
 		}
@@ -417,6 +417,23 @@ func (s *server) scheduleThread(ctx context.Context, user auth.User, sch schedul
 	}
 	thread.ScheduleID = &sch.ID
 	return thread, nil
+}
+
+// previousRunTimedOut reports whether the run before runID also went past the
+// time limit, with no edit or re-enable of the schedule since: either starts
+// the count anew.
+func (s *server) previousRunTimedOut(ctx context.Context, sch schedule.Schedule, runID string) bool {
+	runs, err := s.schedules.ListRuns(ctx, sch.UserID, sch.ID, 2)
+	if err != nil {
+		slog.Warn("list schedule runs failed", "schedule_id", sch.ID, "err", err)
+		return false
+	}
+	for _, r := range runs {
+		if r.ID != runID {
+			return r.Status == schedule.StatusTimeout && !r.StartedAt.Before(sch.UpdatedAt)
+		}
+	}
+	return false
 }
 
 // disableAfterTimeout turns a schedule off whose second run in a row went past

@@ -111,13 +111,15 @@ func (t *Run) clampScheduledCall(call *llm.ToolCall) {
 	if err != nil {
 		return
 	}
+	// Only a size the model set is lowered: the tools' own defaults are
+	// smaller than the caps.
 	switch name {
 	case fetchToolName:
-		if n, ok := args["max_length"].(float64); !ok || n > scheduledFetchMaxLength {
+		if n, ok := args["max_length"].(float64); ok && n > scheduledFetchMaxLength {
 			args["max_length"] = scheduledFetchMaxLength
 		}
 	case tavilySearchExposedName:
-		if n, ok := args["max_results"].(float64); !ok || n > scheduledSearchMaxResults {
+		if n, ok := args["max_results"].(float64); ok && n > scheduledSearchMaxResults {
 			args["max_results"] = scheduledSearchMaxResults
 		}
 		args["search_depth"] = "basic"
@@ -144,8 +146,8 @@ func (t *Run) tavilyCapped(name string) bool {
 	return false
 }
 
-// capScheduledOutput bounds a tool result a scheduled run keeps in its
-// history.
+// capScheduledOutput bounds a scheduled run's raw tool output before its
+// sources are numbered, so no [n] points into a cut-off tail.
 func (t *Run) capScheduledOutput(output string) string {
 	if t.scheduled == nil || len(output) <= scheduledToolResultBytes {
 		return output

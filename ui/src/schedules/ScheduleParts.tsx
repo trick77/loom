@@ -212,10 +212,17 @@ export function ScheduleEditDialog({
   }, [debounced, unchanged, rerolls, onSessionExpired]);
 
   const typing = interval.trim() !== debounced;
+  // Characters as the server counts them (code points). A prompt stored
+  // before the cap was lowered still saves unchanged, as the server allows.
+  const promptLength = Array.from(prompt.trim()).length;
+  const promptTooLong =
+    promptLength > PROMPT_MAX_LENGTH &&
+    prompt.trim() !== (schedule?.prompt ?? "");
   const canSave =
     !saving &&
     !typing &&
     prompt.trim() !== "" &&
+    !promptTooLong &&
     interval.trim() !== "" &&
     (preview.kind === "ok" || (unchanged && preview.kind === "idle"));
 
@@ -345,16 +352,17 @@ export function ScheduleEditDialog({
             <textarea
               className={`${inputClass} resize-none leading-normal`}
               rows={4}
-              maxLength={PROMPT_MAX_LENGTH}
               value={prompt}
               placeholder={t("schedules.form.promptPlaceholder")}
               onChange={(event) => setPrompt(event.target.value)}
             />
             <span className="mt-1.5 flex justify-between gap-3 text-[12px] text-[#807d74]">
               <span>{t("schedules.form.promptHint")}</span>
-              <span className="shrink-0 tabular-nums">
+              <span
+                className={`shrink-0 tabular-nums ${promptTooLong ? "text-[#ec8f8b]" : ""}`}
+              >
                 {t("schedules.form.promptCount", {
-                  length: prompt.length,
+                  length: promptLength,
                   max: PROMPT_MAX_LENGTH,
                 })}
               </span>

@@ -130,8 +130,18 @@ func TestCreateRefusesALongPromptWithHowToShortenIt(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	fits := strings.Repeat("ä", schedule.MaxPromptLength)
-	if _, err := svc.Create(context.Background(), "u1", schedule.Input{Prompt: &fits, Interval: ptr("daily")}); err != nil {
+	sch, err := svc.Create(context.Background(), "u1", schedule.Input{Prompt: &fits, Interval: ptr("daily")})
+	if err != nil {
 		t.Fatalf("a prompt at the cap was refused: %v", err)
+	}
+	// A prompt stored before the cap was lowered still saves unchanged, as
+	// the edit dialog sends it back with every other change.
+	sch.Prompt = long
+	if _, err := svc.Store.SaveSchedule(context.Background(), sch); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Update(context.Background(), "u1", sch.ID, schedule.Input{Prompt: &long, Name: ptr("Renamed")}); err != nil {
+		t.Fatalf("an unchanged long prompt blocked another edit: %v", err)
 	}
 }
 

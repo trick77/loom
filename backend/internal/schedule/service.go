@@ -219,7 +219,9 @@ func (s *Service) apply(ctx context.Context, sch *Schedule, in Input, creating b
 		if prompt == "" {
 			return invalid("the prompt is required")
 		}
-		if n := len([]rune(prompt)); n > MaxPromptLength {
+		// A prompt saved before the cap was lowered keeps working until it is
+		// edited: the dialog sends it back with every other change.
+		if n := len([]rune(prompt)); n > MaxPromptLength && prompt != sch.Prompt {
 			return invalid("the prompt is %d characters, at most %d: keep what to find, the user's interests and one or two sources; leave out output formatting and reference lists", n, MaxPromptLength)
 		}
 		sch.Prompt = prompt

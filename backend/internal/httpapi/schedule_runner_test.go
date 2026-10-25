@@ -458,6 +458,54 @@ func runPastTheTimeLimit(t *testing.T, f *scheduleFixture, sch schedule.Schedule
 	s.runSchedule(context.Background(), sch)
 }
 
+// seedTimedOutRun stores an earlier run of sch that went past the limit.
+func seedTimedOutRun(t *testing.T, f *scheduleFixture, sch schedule.Schedule, start time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	runID, err := f.store.StartRun(ctx, testUser.ID, sch.ID, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.FinishRun(ctx, testUser.ID, schedule.Run{ID: runID, Status: schedule.StatusTimeout}, start); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A timeout before the schedule was last edited or enabled again does not
+// count: the user changed something since.
+func TestScheduledRunTimeoutAfterAnEditStartsTheCountAnew(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	sch := newRunnerSchedule(t, f)
+	seedTimedOutRun(t, f, sch, time.Now().Add(-time.Hour))
+	runPastTheTimeLimit(t, f, sch)
+	if got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID); !got.Enabled {
+		t.Fatalf("a timeout from before the last edit disabled the schedule: %+v", got)
+	}
+}
+
+// A tool still running at the soft deadline is cut too, so the final answer
+// keeps its time.
+func TestScheduledRunSoftDeadlineCutsARunningTool(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := researchClient("Nothing new.")
+	deps := f.deps
+	deps.LLM = client
+	deps.MCP = &fakeMCPService{ToolList: webTools(), CallFunc: func(ctx context.Context, _ string, _ map[string]any) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}}
+	s := newServer(deps)
+	s.runTimeout, s.runSoftDeadline = 10*time.Second, 300*time.Millisecond
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+	if len(runs) != 1 || runs[0].Status != schedule.StatusNothingNew || runs[0].MessageID == nil {
+		t.Fatalf("run = %+v, want an answer after the cut tool", runs)
+	}
+}
+
 func TestScheduledRunFirstTimeoutKeepsTheSchedule(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
@@ -485,14 +533,7 @@ func TestScheduledRunSecondTimeoutInARowDisablesTheSchedule(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
 	sch := newRunnerSchedule(t, f)
-	start := time.Now().Add(-time.Hour)
-	runID, err := f.store.StartRun(ctx, testUser.ID, sch.ID, start)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.store.FinishRun(ctx, testUser.ID, schedule.Run{ID: runID, Status: schedule.StatusTimeout}, start.Add(5*time.Minute)); err != nil {
-		t.Fatal(err)
-	}
+	seedTimedOutRun(t, f, sch, time.Now())
 	runPastTheTimeLimit(t, f, sch)
 
 	got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
@@ -604,6 +645,7 @@ func TestScheduledRunBoundsItsTools(t *testing.T) {
 	var round1, round2 []llm.ToolCall
 	round1 = append(round1, llm.ToolCall{ID: "f1", Type: "function", Function: llm.ToolCallFunction{Name: "fetch__fetch",
 		Arguments: `{"url":"https://outnow.ch/Starts/Kinostarts","max_length":30000,"full_page":true}`}})
+	round1 = append(round1, llm.ToolCall{ID: "f2", Type: "function", Function: llm.ToolCallFunction{Name: "fetch__fetch", Arguments: `{"url":"https://www.arena.ch/programm"}`}})
 	for i := range 8 {
 		round1 = append(round1, search(fmt.Sprintf("a%d", i)))
 	}
@@ -631,15 +673,26 @@ func TestScheduledRunBoundsItsTools(t *testing.T) {
 			t.Fatalf("search args = %v, want 5 basic results without raw content", args)
 		}
 	}
-	if fetch := calls["fetch__fetch"]; len(fetch) != 1 || fetch[0]["max_length"] != float64(8000) {
-		t.Fatalf("fetch args = %v, want max_length 8000", fetch)
+	for _, args := range calls["fetch__fetch"] {
+		// A size the model set is lowered; a missing one keeps the tool's smaller default.
+		want := any(float64(8000))
+		if args["url"] == "https://www.arena.ch/programm" {
+			want = nil
+		}
+		if args["max_length"] != want {
+			t.Fatalf("fetch args = %v, want max_length %v", args, want)
+		}
+	}
+	if n := len(calls["fetch__fetch"]); n != 2 {
+		t.Fatalf("fetch calls = %d", n)
 	}
 	var limited int
 	for _, m := range client.Histories[2] {
 		if m.Role != "tool" {
 			continue
 		}
-		if len(m.Content) > 12<<10 {
+		// 12 KB of output, plus the [n] source label added after the cap.
+		if len(m.Content) > 12<<10+256 {
 			t.Fatalf("a tool result of %d bytes entered the history", len(m.Content))
 		}
 		if strings.Contains(m.Content, "search limit of this run") {
