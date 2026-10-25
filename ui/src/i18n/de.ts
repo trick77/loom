@@ -635,7 +635,7 @@ export const de = {
     actionFailed: "Der Zeitplan konnte nicht aktualisiert werden.",
     deleteTitle: "Zeitplan löschen",
     deleteConfirm:
-      "Diesen Zeitplan löschen? Seine Läufe und sein Gedächtnis werden mitgelöscht, die Threads seiner Läufe bleiben.",
+      "Diesen Zeitplan löschen? Seine Läufe und sein Gedächtnis werden mitgelöscht, ebenso unberührte Threads seiner Läufe. Threads, in denen du nachgefragt hast oder die du mit einem Stern versehen, archiviert, geteilt oder einem Projekt zugeordnet hast, bleiben.",
     form: {
       titleNew: "Neuer Zeitplan",
       titleEdit: "Zeitplan bearbeiten",

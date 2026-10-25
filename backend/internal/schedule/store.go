@@ -280,8 +280,8 @@ WHERE user_id = ? AND id = ?`,
 	return st.GetSchedule(ctx, s.UserID, s.ID)
 }
 
-// DeleteSchedule removes the schedule with its runs and memory. Its runs'
-// threads stay, as ordinary threads.
+// DeleteSchedule removes the schedule with its runs and memory. Run threads
+// still here stay, as ordinary threads.
 func (st *Store) DeleteSchedule(ctx context.Context, userID, id string) error {
 	res, err := st.db.ExecContext(ctx, `DELETE FROM schedules WHERE user_id = ? AND id = ?`, userID, id)
 	if err != nil {
