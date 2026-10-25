@@ -257,22 +257,38 @@ func (s *server) handleRunSchedule(w http.ResponseWriter, r *http.Request) {
 		writeScheduleError(w, r, err)
 		return
 	}
-	if !s.runs.admit(user.ID) {
-		httpx.WriteError(w, http.StatusConflict, "another scheduled run is in progress, try again in a few minutes")
-		return
+	switch err := s.runScheduleNow(r.Context(), sch); {
+	case errors.Is(err, errRunBusy), errors.Is(err, errScheduleRunning):
+		httpx.WriteError(w, http.StatusConflict, err.Error())
+	case err != nil:
+		serverError(w, r, err, "start schedule run failed")
+	default:
+		w.WriteHeader(http.StatusAccepted)
 	}
-	claimed, err := s.schedules.Claim(r.Context(), user.ID, sch.ID, s.clock())
+}
+
+var (
+	errRunBusy         = errors.New("another scheduled run is in progress, try again in a few minutes")
+	errScheduleRunning = errors.New("this schedule is already running")
+)
+
+// runScheduleNow starts a run of sch outside its slot, as Run now and the
+// schedule_run tool ask: one run per user at a time, never one the schedule
+// already has.
+func (s *server) runScheduleNow(ctx context.Context, sch schedule.Schedule) error {
+	if !s.runs.admit(sch.UserID) {
+		return errRunBusy
+	}
+	claimed, err := s.schedules.Claim(ctx, sch.UserID, sch.ID, s.clock())
 	if err != nil || !claimed {
-		s.runs.done(user.ID)
+		s.runs.done(sch.UserID)
 		if err != nil {
-			serverError(w, r, err, "start schedule run failed")
-			return
+			return err
 		}
-		httpx.WriteError(w, http.StatusConflict, "this schedule is already running")
-		return
+		return errScheduleRunning
 	}
-	s.startScheduleRun(context.WithoutCancel(r.Context()), sch)
-	w.WriteHeader(http.StatusAccepted)
+	s.startScheduleRun(context.WithoutCancel(ctx), sch)
+	return nil
 }
 
 func (s *server) handleListScheduleRuns(w http.ResponseWriter, r *http.Request) {

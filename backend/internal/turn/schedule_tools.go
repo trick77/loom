@@ -15,6 +15,7 @@ const (
 	scheduleListToolName   = "schedule_list"
 	scheduleUpdateToolName = "schedule_update"
 	scheduleDeleteToolName = "schedule_delete"
+	scheduleRunToolName    = "schedule_run"
 )
 
 // ScheduleTools runs the schedule tools for the user and answers with the
@@ -24,6 +25,7 @@ type ScheduleTools interface {
 	List(ctx context.Context, user auth.User) string
 	Update(ctx context.Context, user auth.User, timezone string, args map[string]any) string
 	Delete(ctx context.Context, user auth.User, args map[string]any) string
+	Run(ctx context.Context, user auth.User, args map[string]any) string
 }
 
 func scheduleToolsOffered(e *Engine) bool { return e.schedules != nil }
@@ -59,6 +61,14 @@ var scheduleToolSpecs = []toolSpec{
 		offered: func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
 			return capToolOutput(t.e.schedules.Delete(ctx, t.user, args))
+		}),
+	},
+	{
+		name:    scheduleRunToolName,
+		schema:  scheduleRunTool,
+		offered: func(e *Engine, _ chat.Thread, _ toolGate) bool { return scheduleToolsOffered(e) },
+		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
+			return capToolOutput(t.e.schedules.Run(ctx, t.user, args))
 		}),
 	},
 }
@@ -102,6 +112,14 @@ var scheduleUpdateTool = scheduleTool(scheduleUpdateToolName,
 		"prompt":   map[string]any{"type": "string"},
 		"interval": map[string]any{"type": "string"},
 		"enabled":  map[string]any{"type": "boolean"},
+	}, []any{"id"})
+
+var scheduleRunTool = scheduleTool(scheduleRunToolName,
+	"Start one of the user's scheduled tasks now, outside its time, when they ask to run or test it (\"run the cinema scout now\"). "+
+		"Pass the id from schedule_list. The run works in the background and answers in a new thread of its own, not in this chat; "+
+		"tell the user that, and do not do the task yourself. Its next regular time stays.",
+	map[string]any{
+		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},
 	}, []any{"id"})
 
 var scheduleDeleteTool = scheduleTool(scheduleDeleteToolName,

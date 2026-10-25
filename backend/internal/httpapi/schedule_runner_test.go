@@ -965,6 +965,45 @@ func TestRunScheduleEndpoint(t *testing.T) {
 	}
 }
 
+// "Run the cinema scout now" starts a run from the chat, as the Run now
+// button does: one at a time per user.
+func TestScheduleToolRunStartsARun(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	s := newRunnerServer(t, f, researchClient("Nothing new."))
+	tools := scheduleToolRunner{s: s}
+	sch := newRunnerSchedule(t, f)
+
+	if out := tools.Run(ctx, testUser, map[string]any{}); !strings.Contains(out, "id is required") {
+		t.Fatalf("run without id = %q", out)
+	}
+	if out := tools.Run(ctx, testUser, map[string]any{"id": "nope"}); !strings.Contains(out, "No schedule has that id") {
+		t.Fatalf("run unknown = %q", out)
+	}
+	// Another run of the user's holds the slot.
+	s.runs.admit(testUser.ID)
+	if out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID}); !strings.Contains(out, "another scheduled run is in progress") {
+		t.Fatalf("run while busy = %q", out)
+	}
+	s.runs.done(testUser.ID)
+
+	out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID})
+	if !strings.HasPrefix(out, `Started a run of "Cinema scout"`) || !strings.Contains(out, "new thread") {
+		t.Fatalf("run = %q", out)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+		if len(runs) == 1 && runs[0].Status != schedule.StatusRunning && runs[0].ThreadID != nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the started run did not finish: %+v", runs)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestScheduleToolRunner(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)

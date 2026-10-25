@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/schedule"
 )
@@ -23,5 +24,29 @@ func TestScheduleCreateToolNamesThePromptCap(t *testing.T) {
 	}
 	if !strings.Contains(scheduleUpdateTool().Function.Description, "disable") {
 		t.Fatal("schedule_update does not name disabling")
+	}
+}
+
+// schedule_run is offered with the other schedule tools and says the answer
+// lands elsewhere, so the model does not also do the task in the chat.
+func TestScheduleRunTool(t *testing.T) {
+	var spec *toolSpec
+	for i := range scheduleToolSpecs {
+		if scheduleToolSpecs[i].name == scheduleRunToolName {
+			spec = &scheduleToolSpecs[i]
+		}
+	}
+	if spec == nil {
+		t.Fatal("schedule_run is not registered")
+	}
+	tool := spec.schema()
+	if tool.Function.Name != "schedule_run" || !strings.Contains(tool.Function.Description, "new thread") {
+		t.Fatalf("tool = %+v", tool.Function)
+	}
+	if req, _ := tool.Function.Parameters["required"].([]any); len(req) != 1 || req[0] != "id" {
+		t.Fatalf("required = %v", tool.Function.Parameters["required"])
+	}
+	if spec.offered(&Engine{}, chat.Thread{}, toolGate{}) {
+		t.Fatal("offered without a schedule service")
 	}
 }

@@ -81,6 +81,22 @@ func (t scheduleToolRunner) Delete(ctx context.Context, user auth.User, args map
 	return fmt.Sprintf("Deleted the schedule %q, with the run threads the user left untouched. Run threads they followed up in, starred, archived, shared or filed into a project stay.", sch.Name)
 }
 
+func (t scheduleToolRunner) Run(ctx context.Context, user auth.User, args map[string]any) string {
+	id := strings.TrimSpace(stringOr(toolString(args, "id")))
+	if id == "" {
+		return "tool failed: id is required; get it from schedule_list."
+	}
+	sch, err := t.s.schedules.GetSchedule(ctx, user.ID, id)
+	if err != nil {
+		return scheduleToolError(err)
+	}
+	if err := t.s.runScheduleNow(ctx, sch); err != nil {
+		return scheduleToolError(err)
+	}
+	return fmt.Sprintf("Started a run of %q. It runs in the background for up to %d minutes; its answer arrives in a new thread of its own, with a notification when it finds something new.",
+		sch.Name, int(schedule.RunTimeout/time.Minute))
+}
+
 // describe is one schedule for the model: what loom resolved, never what the
 // model would guess, so it reports the real time.
 func (t scheduleToolRunner) describe(sch schedule.Schedule) string {
@@ -123,6 +139,8 @@ func scheduleToolError(err error) string {
 		return fmt.Sprintf("Could not save: the user already has %d schedules, the most allowed. Ask which one to delete first.", schedule.MaxSchedulesPerUser)
 	case errors.Is(err, schedule.ErrNotFound):
 		return "No schedule has that id; get the ids from schedule_list."
+	case errors.Is(err, errRunBusy), errors.Is(err, errScheduleRunning):
+		return "Not started: " + err.Error() + ". Tell the user."
 	default:
 		return "tool failed: " + err.Error()
 	}
