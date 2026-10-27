@@ -141,6 +141,18 @@ const STOP_ABORT_FALLBACK_MS = 15_000;
 const SENT_MESSAGE_LOOKS = 3;
 const SENT_MESSAGE_LOOK_DELAY_MS = 1000;
 
+// withScheduleReplied marks the run thread threadID as replied in threads,
+// returning threads itself when nothing changes.
+function withScheduleReplied(threads: Thread[], threadID: string): Thread[] {
+  const index = threads.findIndex(
+    (item) => item.id === threadID && item.scheduleId && !item.scheduleReplied,
+  );
+  if (index < 0) return threads;
+  const next = [...threads];
+  next[index] = { ...threads[index], scheduleReplied: true };
+  return next;
+}
+
 // foldAssistantMessage puts a finished assistant message into the transcript.
 // The persisted message may already carry the backend's ordered contentBlocks.
 // When it doesn't (older backends / lag), the just-streamed blocks are grafted
@@ -1191,6 +1203,7 @@ export function ThreadShell({
         createTurnHandlers({
           patch: (next) => patchStreamRun(runKey, next),
           onUserMessage: (message) => {
+            markScheduleReplied(threadIDForRun);
             // A message queued behind this turn, now picked up.
             if (
               message.clientMessageId !== undefined &&
@@ -1201,15 +1214,6 @@ export function ThreadShell({
               return;
             }
             userMessageConfirmed = true;
-            // A reply makes a run thread the user's: its schedule clock goes
-            // now, not when the thread event arrives after the answer.
-            setThreads((current) =>
-              current.map((item) =>
-                item.id === threadIDForRun && item.scheduleId
-                  ? { ...item, scheduleReplied: true }
-                  : item,
-              ),
-            );
             if (!isCurrentThread()) return;
             const confirmed =
               options.attachments.length > 0
@@ -1420,6 +1424,15 @@ export function ThreadShell({
   // confirmQueuedMessage settles a queued bubble once a turn picked its
   // message up: it leaves the queue and joins the transcript as sent. A
   // previous turn's error on the thread is done with.
+  // markScheduleReplied drops a run thread's schedule clock once the server
+  // stored a user message in it, not when the thread event arrives after the
+  // answer. Scheduled runs stream to no one, so every user message confirmed
+  // here is the user's reply.
+  function markScheduleReplied(threadID: string) {
+    setThreads((current) => withScheduleReplied(current, threadID));
+    setProjectThreads((current) => withScheduleReplied(current, threadID));
+  }
+
   function confirmQueuedMessage(
     threadID: string,
     message: Message,
@@ -1506,8 +1519,10 @@ export function ThreadShell({
     const makeTurn = () =>
       createTurnHandlers({
         patch: (next) => patchStreamRun(runKey, next),
-        onUserMessage: (message) =>
-          confirmQueuedMessage(thread.id, message, isCurrentThread()),
+        onUserMessage: (message) => {
+          markScheduleReplied(thread.id);
+          confirmQueuedMessage(thread.id, message, isCurrentThread());
+        },
         onQueueReturned: (queued) => returnQueued(thread.id, queued),
         onAssistantMessage: (message, liveBlocks) => {
           if (isCurrentThread())
