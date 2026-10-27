@@ -142,6 +142,40 @@ test("a failed inbox load says so", async () => {
   ).toBeInTheDocument();
 });
 
+test("a toast stays up until it is dismissed", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    vi.mocked(api.unreadNotificationCount)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValue(1);
+    render(
+      <NotificationBell
+        placement="header"
+        onOpen={vi.fn()}
+        onManageSchedules={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(api.unreadNotificationCount).toHaveBeenCalledTimes(1),
+    );
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await screen.findByRole("status");
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Cinema scout");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Dismiss" })[0]);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("a poll that finds something new shows a toast", async () => {
   vi.mocked(api.unreadNotificationCount)
     .mockResolvedValueOnce(0)

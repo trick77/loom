@@ -19,8 +19,6 @@ import { formatTimeAgo } from "../timeago";
 
 // POLL_MS is how often the unread count is read; it is read on focus too.
 export const POLL_MS = 60_000;
-// TOAST_MS is how long a toast stays up.
-export const TOAST_MS = 8_000;
 
 type Toast =
   | { kind: "one"; notification: AppNotification }
@@ -28,7 +26,7 @@ type Toast =
 
 // NotificationBell is the sidebar's bell: a gold dot while anything is unread,
 // the inbox in a popover, and a toast when a poll finds something new while
-// the app is open.
+// the app is open. The toast stays until the user clicks it away.
 export function NotificationBell({
   onOpen,
   onManageSchedules,
@@ -100,12 +98,6 @@ export function NotificationBell({
       window.removeEventListener(NOTIFICATIONS_CHANGED, onFocus);
     };
   }, [poll]);
-
-  useEffect(() => {
-    if (toast === null) return;
-    const handle = window.setTimeout(() => setToast(null), TOAST_MS);
-    return () => window.clearTimeout(handle);
-  }, [toast]);
 
   useEffect(() => {
     if (!open) return;
