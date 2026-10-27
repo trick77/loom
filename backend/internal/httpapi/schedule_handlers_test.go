@@ -245,14 +245,23 @@ func TestNotificationEndpoints(t *testing.T) {
 	for _, id := range []string{news.ID, news.ID, other.ID} {
 		_ = f.store.CreateNotification(ctx, testUser.ID, schedule.Notification{Kind: schedule.KindScheduleRun, ThreadID: &id, Title: "n"})
 	}
+	// A notice that the schedule was disabled is no news and stays for the bell.
+	disabled, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Disabled"})
+	_ = f.store.CreateNotification(ctx, testUser.ID, schedule.Notification{Kind: schedule.KindScheduleDisabled, ThreadID: &disabled.ID, Title: "off"})
+	if got, _, _ := f.chat.GetThread(ctx, testUser.ID, disabled.ID); got.ScheduleUnread {
+		t.Fatal("a disabled notice marks its thread as unread news")
+	}
+	if rec = f.do(t, http.MethodPost, "/api/threads/"+disabled.ID+"/notifications/read", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("read disabled thread = %d", rec.Code)
+	}
 	if got, _, _ := f.chat.GetThread(ctx, testUser.ID, news.ID); !got.ScheduleUnread {
 		t.Fatal("a thread with unread news is not marked unread")
 	}
 	if rec = f.do(t, http.MethodPost, "/api/threads/"+news.ID+"/notifications/read", ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("read thread = %d", rec.Code)
 	}
-	if rec = f.do(t, http.MethodGet, "/api/notifications/unread", ""); !strings.Contains(rec.Body.String(), `"count":1`) {
-		t.Fatalf("unread after reading one thread = %s", rec.Body)
+	if rec = f.do(t, http.MethodGet, "/api/notifications/unread", ""); !strings.Contains(rec.Body.String(), `"count":2`) {
+		t.Fatalf("unread after reading one thread = %s, want the other's news and the disabled notice", rec.Body)
 	}
 	if got, _, _ := f.chat.GetThread(ctx, testUser.ID, news.ID); got.ScheduleUnread {
 		t.Fatal("a read thread is still marked unread")

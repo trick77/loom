@@ -277,9 +277,16 @@ export async function markThreadNotificationsRead(
   );
 }
 
-// NOTIFICATIONS_CHANGED is the window event that has the bell recount after
-// notifications were read outside it.
+// Window events between the bell and the sidebar, one way each so neither
+// echoes the other: NOTIFICATIONS_CHANGED has the bell recount after news was
+// read outside it, THREAD_NEWS_CHANGED has the sidebar reload its dots after
+// the bell read news or found new.
 export const NOTIFICATIONS_CHANGED = "loom:notifications-changed";
+export const THREAD_NEWS_CHANGED = "loom:thread-news-changed";
+
+export function announce(event: string) {
+  window.dispatchEvent(new Event(event));
+}
 
 export async function markAllNotificationsRead(): Promise<void> {
   await request(`/api/notifications/read-all`, "failed to mark read", {

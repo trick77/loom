@@ -9,6 +9,7 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import App from "../App";
+import { announce, THREAD_NEWS_CHANGED } from "../api";
 
 // Opening a run thread with unread news reads it: the sidebar dot goes and
 // the server marks the thread's notifications read.
@@ -72,5 +73,39 @@ test("opening a run thread with unread news reads it", async () => {
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/threads/t1/notifications/read",
     expect.objectContaining({ method: "POST" }),
+  );
+});
+
+test("news read in the bell reloads the sidebar's dots", async () => {
+  let listed = thread;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [listed], nextCursor: null });
+      return Response.json({});
+    }),
+  );
+
+  render(<App />);
+  const row = await screen.findByRole("button", { name: /^Cinema scout/ });
+  expect(
+    within(row).getByRole("img", { name: "Unread news" }),
+  ).toBeInTheDocument();
+
+  listed = { ...thread, scheduleUnread: false };
+  announce(THREAD_NEWS_CHANGED);
+
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole("button", { name: /^Cinema scout/ })).queryByRole(
+        "img",
+        { name: "Unread news" },
+      ),
+    ).not.toBeInTheDocument(),
   );
 });

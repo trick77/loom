@@ -112,10 +112,10 @@ func scheduleReplied(table string) string {
 }
 
 // scheduleUnread computes Thread.ScheduleUnread for the threads row named
-// table: an unread notification points at the thread.
+// table: unread run news points at the thread.
 func scheduleUnread(table string) string {
 	return strings.NewReplacer("{t}", table).Replace(
-		"EXISTS (SELECT 1 FROM notifications un WHERE un.user_id = {t}.user_id AND un.thread_id = {t}.id AND un.read_at IS NULL)")
+		"EXISTS (SELECT 1 FROM notifications un WHERE un.user_id = {t}.user_id AND un.thread_id = {t}.id AND un.kind = 'schedule_run' AND un.read_at IS NULL)")
 }
 
 // messageColumns is the full messages projection scanMessage reads.

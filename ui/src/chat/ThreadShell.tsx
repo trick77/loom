@@ -16,9 +16,11 @@ import {
   createThread,
   type AppNotification,
   deleteQueuedMessage,
+  announce,
   getThread,
   markThreadNotificationsRead,
   NOTIFICATIONS_CHANGED,
+  THREAD_NEWS_CHANGED,
   queueMessage,
   setProjectStarred,
   setThreadStarred,
@@ -418,7 +420,7 @@ export function ThreadShell({
     setProjectThreads((current) => current.map(read));
     setActiveThread((current) => (current === null ? current : read(current)));
     void markThreadNotificationsRead(openedThreadID)
-      .then(() => window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED)))
+      .then(() => announce(NOTIFICATIONS_CHANGED))
       .catch(() => undefined);
   }, [
     openedThreadID,
@@ -427,6 +429,11 @@ export function ThreadShell({
     setProjectThreads,
     setThreads,
   ]);
+  // News read in the bell, or newly arrived, reloads the sidebar's dots.
+  useEffect(() => {
+    window.addEventListener(THREAD_NEWS_CHANGED, reloadThreads);
+    return () => window.removeEventListener(THREAD_NEWS_CHANGED, reloadThreads);
+  }, [reloadThreads]);
 
   // The composer surface currently on screen, and the draft that belongs to it.
   // Keyed off `activeThread`, not `route`: the route flips the instant a thread is
