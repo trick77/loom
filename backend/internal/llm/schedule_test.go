@@ -61,11 +61,35 @@ func TestExtractFindings(t *testing.T) {
 
 func TestParseFindingsBounds(t *testing.T) {
 	long := strings.Repeat("a", 100)
-	items := parseFindings(`{"items":[{"key":"` + long + `","label":"` + long + `"}]}`)
-	if len(items) != 1 || len(items[0].Key) != 80 || len([]rune(items[0].Label)) != 80 {
-		t.Fatalf("items = %+v", items)
+	items, ok := parseFindings(`{"items":[{"key":"` + long + `","label":"` + long + `"}]}`)
+	if !ok || len(items) != 1 || len(items[0].Key) != 80 || len([]rune(items[0].Label)) != 80 {
+		t.Fatalf("items = %+v (ok %v)", items, ok)
 	}
-	if parseFindings("nothing") != nil || parseFindings(`{"items":"x"}`) != nil {
-		t.Fatal("bad replies yielded items")
+	for _, bad := range []string{"nothing", `{"items":"x"}`, `{}`, `{"items":[{"key":"デューン","label":"Dune"},{"key":""}]}`} {
+		if items, ok := parseFindings(bad); ok || items != nil {
+			t.Fatalf("parseFindings(%q) = %+v, %v; want no items, not ok", bad, items, ok)
+		}
+	}
+	if items, ok := parseFindings(`{"items":[]}`); !ok || len(items) != 0 {
+		t.Fatalf("an empty list = %+v, %v; want ok with no items", items, ok)
+	}
+}
+
+// A reply the extractor cannot read is an error, never "nothing new": the
+// runner drops a nothing-new run's thread, and must not drop a real answer.
+func TestExtractFindingsUnreadableReplyIsAnError(t *testing.T) {
+	for _, reply := range []string{"I found nothing new.", `{"items":"x"}`} {
+		srv := intentServer(t, reply, new(string))
+		c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+		if items, err := c.ExtractFindings(context.Background(), "find films", "answer", nil); err == nil {
+			t.Fatalf("reply %q: items %+v, no error", reply, items)
+		}
+		srv.Close()
+	}
+	srv := intentServer(t, `{"items":[]}`, new(string))
+	defer srv.Close()
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	if items, err := c.ExtractFindings(context.Background(), "find films", "nothing new", nil); err != nil || len(items) != 0 {
+		t.Fatalf("an empty list = %+v, %v; want no items and no error", items, err)
 	}
 }

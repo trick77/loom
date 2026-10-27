@@ -165,6 +165,7 @@ type ThreadStore interface {
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
 	ReplaceableScheduleThreads(context.Context, string, string, string) ([]string, error)
+	IsUntouchedRunThread(context.Context, string, string) (bool, error)
 	StaleScheduleThreads(context.Context, time.Time, int) ([]chat.ThreadRef, error)
 
 	// Messages.

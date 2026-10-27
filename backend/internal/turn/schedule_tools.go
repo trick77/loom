@@ -130,6 +130,7 @@ var scheduleRunTool = scheduleTool(scheduleRunToolName,
 	"Start one of the user's scheduled tasks now, outside its time, when they ask to run or test it (\"run the cinema scout now\"). "+
 		"Pass the id from schedule_list. "+scheduleFirst+
 		"The run works in the background and answers in a new thread of its own, not in this chat; "+
+		"a run that finds nothing new leaves no thread, only a line on the schedule's page; "+
 		"tell the user that, and do not do the task yourself.",
 	map[string]any{
 		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},

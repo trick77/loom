@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -108,8 +109,8 @@ const findingsSystemPrompt = `You read the answer of a recurring research task a
 var slugInvalid = regexp.MustCompile(`[^a-z0-9]+`)
 
 // ExtractFindings lists the items a scheduled run's answer reports as new,
-// reusing knownKeys for items reported before. It never fails a run: a bad
-// reply yields no items and the error is for the log.
+// reusing knownKeys for items reported before. An empty or unreadable reply
+// is an error, unlike an empty list, which says there is nothing new.
 func (c *Client) ExtractFindings(ctx context.Context, task, answer string, knownKeys []string) ([]Finding, error) {
 	if len(knownKeys) > maxKnownKeys {
 		knownKeys = knownKeys[:maxKnownKeys]
@@ -125,35 +126,43 @@ func (c *Client) ExtractFindings(ctx context.Context, task, answer string, known
 		{Role: "user", Content: framed},
 	}
 	reply, err := c.shortGate(ctx, messages, findingsMaxCompletionTokens, func(reply completion) []slog.Attr {
-		return []slog.Attr{slog.Int("items", len(parseFindings(reply.Content)))}
+		items, _ := parseFindings(reply.Content)
+		return []slog.Attr{slog.Int("items", len(items))}
 	})
 	if err != nil {
 		return nil, err
 	}
 	if reply.Empty {
-		return nil, nil
+		return nil, errors.New("findings reply is empty")
 	}
-	return parseFindings(reply.Content), nil
+	items, ok := parseFindings(reply.Content)
+	if !ok {
+		return nil, errors.New("findings reply is not an items object")
+	}
+	return items, nil
 }
 
-func parseFindings(reply string) []Finding {
+// parseFindings reads the extractor's reply; ok is false when it holds no
+// items object, or items of which none has a usable key: neither is an empty
+// list.
+func parseFindings(reply string) ([]Finding, bool) {
 	raw, found := llmwire.JSONObject(reply)
 	if !found {
-		return nil
+		return nil, false
 	}
 	var decoded struct {
-		Items []struct {
+		Items *[]struct {
 			Key    string `json:"key"`
 			Label  string `json:"label"`
 			Source int    `json:"source"`
 		} `json:"items"`
 	}
-	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-		return nil
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil || decoded.Items == nil {
+		return nil, false
 	}
 	seen := map[string]bool{}
 	var out []Finding
-	for _, item := range decoded.Items {
+	for _, item := range *decoded.Items {
 		key := strings.Trim(slugInvalid.ReplaceAllString(strings.ToLower(item.Key), "-"), "-")
 		label := strings.Join(strings.Fields(item.Label), " ")
 		if len(key) > 80 {
@@ -171,5 +180,5 @@ func parseFindings(reply string) []Finding {
 		seen[key] = true
 		out = append(out, Finding{Key: key, Label: label, Source: max(item.Source, 0)})
 	}
-	return out
+	return out, len(out) > 0 || len(*decoded.Items) == 0
 }

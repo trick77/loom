@@ -37,6 +37,13 @@ func (s *Store) ReplaceableScheduleThreads(ctx context.Context, userID, schedule
 	return ids, err
 }
 
+// IsUntouchedRunThread reports whether the user's thread is a run thread
+// they never took up.
+func (s *Store) IsUntouchedRunThread(ctx context.Context, userID, threadID string) (bool, error) {
+	refs, err := s.untouchedRunThreads(ctx, `t.user_id = ? AND t.id = ?`, userID, threadID)
+	return len(refs) > 0, err
+}
+
 // StaleScheduleThreads lists up to limit untouched run threads, across all
 // users, created before the cutoff, oldest first. An enabled schedule's newest
 // run thread stays: a schedule that runs less than monthly keeps its answer
