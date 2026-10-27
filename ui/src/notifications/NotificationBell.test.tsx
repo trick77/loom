@@ -178,7 +178,9 @@ test("a toast stays up until it is dismissed", async () => {
 
 // showToast renders the bell and lets a focus poll find one new notification.
 async function showToast(...later: number[]) {
-  const counts = vi.mocked(api.unreadNotificationCount).mockResolvedValueOnce(0);
+  const counts = vi
+    .mocked(api.unreadNotificationCount)
+    .mockResolvedValueOnce(0);
   for (const n of [1, ...later]) counts.mockResolvedValueOnce(n);
   render(
     <NotificationBell
