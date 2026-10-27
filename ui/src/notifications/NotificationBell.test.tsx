@@ -9,37 +9,30 @@ import {
 import { beforeEach, expect, test, vi } from "vitest";
 
 import * as api from "../api";
-import {
-  NotificationBell,
-  NotificationToast,
-  useNotifications,
-  type Placement,
-} from "./NotificationBell";
+import { NotificationBell, NotificationsProvider } from "./NotificationBell";
 
-// Bell mounts the bell where the sidebar would: header and rail are different
-// parents, so a placement switch remounts the bell but not the toast.
+// Bell mounts the bell as the shell does: under the provider, in the sidebar
+// header or the rail. Those are different parents, so a placement switch
+// remounts the bell but not the provider that holds the toast.
 function Bell({
   placement,
   onOpen,
   onManageSchedules,
 }: {
-  placement: Placement;
+  placement: "header" | "rail";
   onOpen(notification: api.AppNotification): void;
   onManageSchedules(): void;
 }) {
-  const notifications = useNotifications({ onOpen, placement });
   const bell = (
     <NotificationBell
-      notifications={notifications}
       placement={placement}
       onManageSchedules={onManageSchedules}
     />
   );
   return (
-    <>
-      <NotificationToast notifications={notifications} />
+    <NotificationsProvider onOpen={onOpen}>
       {placement === "header" ? <header>{bell}</header> : <nav>{bell}</nav>}
-    </>
+    </NotificationsProvider>
   );
 }
 
@@ -224,6 +217,46 @@ test("news while a toast is up counts into it", async () => {
     window.dispatchEvent(new Event("focus"));
   });
   expect(await screen.findByText("2 new notifications")).toBeInTheDocument();
+});
+
+test("a read elsewhere trims a stacked toast to what is unread", async () => {
+  vi.mocked(api.unreadNotificationCount).mockReset();
+  await showToast(3, 2);
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(await screen.findByText("3 new notifications")).toBeInTheDocument();
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(await screen.findByText("2 new notifications")).toBeInTheDocument();
+});
+
+test("a toast whose news is still unread survives another read", async () => {
+  vi.mocked(api.unreadNotificationCount)
+    .mockReset()
+    .mockResolvedValueOnce(1)
+    .mockResolvedValueOnce(2)
+    .mockResolvedValueOnce(1);
+  render(
+    <Bell placement="header" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
+  );
+  await waitFor(() =>
+    expect(api.unreadNotificationCount).toHaveBeenCalledTimes(1),
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  await screen.findByRole("status");
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  await waitFor(() =>
+    expect(api.unreadNotificationCount).toHaveBeenCalledTimes(3),
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(screen.getByRole("status")).toHaveTextContent("Cinema scout");
 });
 
 test("news read elsewhere takes the toast with it", async () => {

@@ -90,6 +90,7 @@ import { DeleteThreadModal, RenameThreadModal } from "./threadModals";
 import { SearchModal } from "./SearchModal";
 import { ArchiveProjectModal } from "../projects/ArchiveProjectModal";
 import { DeleteProjectModal } from "../projects/DeleteProjectModal";
+import { NotificationsProvider } from "../notifications/NotificationBell";
 import { ProjectDetailPage } from "../projects/ProjectDetailPage";
 import { ProjectDialog } from "../projects/ProjectDialog";
 import { ProjectPickerDialog } from "../projects/ProjectPickerDialog";
@@ -1696,51 +1697,52 @@ export function ThreadShell({
           : "md:grid-cols-[var(--ui-sidebar-w)_1fr]"
       }`}
     >
-      <Sidebar
-        user={user}
-        displayName={displayName}
-        route={route}
-        showAdmin={showAdmin}
-        isMobile={isMobile}
-        sidebarCollapsed={sidebarCollapsed}
-        railCollapsed={railCollapsed}
-        mobileSidebarOpen={mobileSidebarOpen}
-        userMenuOpen={userMenuOpen}
-        loadError={loadError}
-        projectsAvailable={projects.length > 0}
-        starredThreads={starredThreads}
-        recentThreads={recentThreads}
-        starredProjects={starredProjects}
-        unstarredProjects={unstarredProjects}
-        openThreadMenuID={openThreadMenuID}
-        onToggleDesktopCollapsed={toggleDesktopCollapsed}
-        onCloseMobileSidebar={closeMobileSidebar}
-        onToggleUserMenu={toggleUserMenu}
-        onCloseUserMenu={closeUserMenu}
-        onOpenSettings={openSettings}
-        onLogout={onLogout}
-        onAdmin={onAdmin}
-        onNewThread={navigateToNew}
-        onThreads={navigateToThreads}
-        onArtifacts={navigateToArtifacts}
-        onProjects={navigateToProjects}
-        onMemory={navigateToMemory}
-        onSchedules={navigateToSchedules}
-        onOpenNotification={openNotification}
-        onOpenSearch={openSearch}
-        onSelectThread={selectThread}
-        onDeleteThread={openDeleteModal}
-        onRenameThread={openRenameModal}
-        onAddThreadToProject={openMoveThreadModal}
-        onStarThread={handleSetThreadStarred}
-        onNavigateProject={navigateToProject}
-        onStarProject={handleSetProjectStarred}
-        onEditProject={openProjectDialog}
-        onArchiveProject={openArchiveProjectModal}
-        onDeleteProject={openDeleteProjectModal}
-        onToggleThreadMenu={toggleThreadMenu}
-        onCloseThreadMenu={closeThreadMenu}
-      />
+      <NotificationsProvider onOpen={openNotification}>
+        <Sidebar
+          user={user}
+          displayName={displayName}
+          route={route}
+          showAdmin={showAdmin}
+          isMobile={isMobile}
+          sidebarCollapsed={sidebarCollapsed}
+          railCollapsed={railCollapsed}
+          mobileSidebarOpen={mobileSidebarOpen}
+          userMenuOpen={userMenuOpen}
+          loadError={loadError}
+          projectsAvailable={projects.length > 0}
+          starredThreads={starredThreads}
+          recentThreads={recentThreads}
+          starredProjects={starredProjects}
+          unstarredProjects={unstarredProjects}
+          openThreadMenuID={openThreadMenuID}
+          onToggleDesktopCollapsed={toggleDesktopCollapsed}
+          onCloseMobileSidebar={closeMobileSidebar}
+          onToggleUserMenu={toggleUserMenu}
+          onCloseUserMenu={closeUserMenu}
+          onOpenSettings={openSettings}
+          onLogout={onLogout}
+          onAdmin={onAdmin}
+          onNewThread={navigateToNew}
+          onThreads={navigateToThreads}
+          onArtifacts={navigateToArtifacts}
+          onProjects={navigateToProjects}
+          onMemory={navigateToMemory}
+          onSchedules={navigateToSchedules}
+          onOpenSearch={openSearch}
+          onSelectThread={selectThread}
+          onDeleteThread={openDeleteModal}
+          onRenameThread={openRenameModal}
+          onAddThreadToProject={openMoveThreadModal}
+          onStarThread={handleSetThreadStarred}
+          onNavigateProject={navigateToProject}
+          onStarProject={handleSetProjectStarred}
+          onEditProject={openProjectDialog}
+          onArchiveProject={openArchiveProjectModal}
+          onDeleteProject={openDeleteProjectModal}
+          onToggleThreadMenu={toggleThreadMenu}
+          onCloseThreadMenu={closeThreadMenu}
+        />
+      </NotificationsProvider>
       {/* The sidebar's right edge, draggable from md up. Not while collapsed:
           the rail is a fixed 56px then, and there is nothing to size. */}
       {!sidebarCollapsed && <SidebarResizer />}
