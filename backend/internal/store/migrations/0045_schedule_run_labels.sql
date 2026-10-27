@@ -6,10 +6,8 @@ ALTER TABLE schedule_runs ADD COLUMN labels TEXT NOT NULL DEFAULT '[]';
 
 UPDATE schedule_runs
 SET labels = (
-    SELECT json_group_array(label) FROM (
-        SELECT f.label FROM schedule_findings f
-        WHERE f.run_id = schedule_runs.id
-        ORDER BY f.first_seen_at, f.rowid))
+    SELECT json_group_array(f.label ORDER BY f.first_seen_at, f.rowid) FROM schedule_findings f
+    WHERE f.run_id = schedule_runs.id)
 WHERE EXISTS (SELECT 1 FROM schedule_findings f WHERE f.run_id = schedule_runs.id);
 
 DROP TABLE schedule_findings;

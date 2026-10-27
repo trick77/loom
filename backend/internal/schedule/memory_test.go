@@ -164,8 +164,6 @@ func TestLastRunNote(t *testing.T) {
 		{schedule.Run{Status: schedule.StatusNothingNew, DurationMS: 250_000}, "Be targeted"},
 		{schedule.Run{Status: schedule.StatusTimeout}, "past the time limit"},
 		{schedule.Run{Status: schedule.StatusFailed, Error: "search down"}, "failed: search down."},
-		// A task naming no time span asks for what is new since then.
-		{schedule.Run{Status: schedule.StatusNew, StartedAt: time.Date(2026, 10, 26, 7, 0, 0, 0, time.FixedZone("CET", 3600))}, "It started 2026-10-26 06:00 UTC."},
 	}
 	for _, c := range cases {
 		run := c.run
@@ -186,7 +184,27 @@ func TestLoadMemory(t *testing.T) {
 	run, _ := st.StartRun(ctx, "u1", sch.ID, time.Now())
 	_ = st.RecordRun(ctx, "u1", sch.ID, []schedule.ToolOutcome{{Kind: schedule.ToolFetch, URL: "https://a.example", OK: true}}, nil, time.Now())
 	m, err := st.LoadMemory(ctx, "u1", sch.ID)
-	if err != nil || m.LastRun == nil || m.LastRun.ID != run || len(m.Sources) != 1 {
+	if err != nil || m.LastRun == nil || m.LastRun.ID != run || len(m.Sources) != 1 || !m.Since.IsZero() {
 		t.Fatalf("LoadMemory = %+v, %v", m, err)
+	}
+	// Since is the last run that answered: a failed or running one reported
+	// nothing and never moves the window on.
+	answered := time.Date(2026, 10, 25, 7, 0, 0, 0, time.UTC)
+	for _, r := range []struct {
+		at     time.Time
+		status string
+	}{
+		{answered.AddDate(0, 0, -1), schedule.StatusNew},
+		{answered, schedule.StatusNothingNew},
+		{answered.AddDate(0, 0, 1), schedule.StatusFailed},
+		{answered.AddDate(0, 0, 2), schedule.StatusRunning},
+	} {
+		id, _ := st.StartRun(ctx, "u1", sch.ID, r.at)
+		if r.status != schedule.StatusRunning {
+			_ = st.FinishRun(ctx, "u1", schedule.Run{ID: id, Status: r.status}, r.at)
+		}
+	}
+	if m, err = st.LoadMemory(ctx, "u1", sch.ID); err != nil || !m.Since.Equal(answered) {
+		t.Fatalf("Since = %v, %v; want %v", m.Since, err, answered)
 	}
 }

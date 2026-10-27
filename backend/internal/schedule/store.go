@@ -500,6 +500,24 @@ func (st *Store) ListRuns(ctx context.Context, userID, scheduleID string, limit 
 	return runs, rows.Err()
 }
 
+// lastAnsweredRunStart is when the schedule's latest run that reported
+// (news, nothing new or as much as the token limit allowed) started; zero
+// before any.
+func (st *Store) lastAnsweredRunStart(ctx context.Context, userID, scheduleID string) (time.Time, error) {
+	var started string
+	err := st.db.QueryRowContext(ctx, `
+SELECT started_at FROM schedule_runs
+WHERE user_id = ? AND schedule_id = ? AND status IN (?, ?, ?)
+ORDER BY started_at DESC, rowid DESC LIMIT 1`, userID, scheduleID, StatusNew, StatusNothingNew, StatusTokenLimit).Scan(&started)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("last answered run: %w", err)
+	}
+	return sqlutil.ParseTime(started)
+}
+
 // LastRuns returns each of the user's schedules' latest run, by schedule id.
 func (st *Store) LastRuns(ctx context.Context, userID string) (map[string]Run, error) {
 	rows, err := st.db.QueryContext(ctx, `

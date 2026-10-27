@@ -208,6 +208,10 @@ DELETE FROM schedule_queries WHERE user_id = ? AND schedule_id = ? AND query NOT
 // Memory is what a run gets to know about the schedule's earlier runs.
 type Memory struct {
 	LastRun *Run
+	// Since is when the last run that answered started, zero before any: a
+	// task naming no time span asks for what is new since then. A failed run
+	// reported nothing, so it never moves the window on.
+	Since   time.Time
 	Sources []Source
 	Queries []Query
 }
@@ -221,6 +225,9 @@ func (st *Store) LoadMemory(ctx context.Context, userID, scheduleID string) (Mem
 	}
 	if len(runs) > 0 {
 		m.LastRun = &runs[0]
+	}
+	if m.Since, err = st.lastAnsweredRunStart(ctx, userID, scheduleID); err != nil {
+		return Memory{}, err
 	}
 	if m.Sources, err = st.ListSources(ctx, userID, scheduleID); err != nil {
 		return Memory{}, err
@@ -274,8 +281,6 @@ func (m Memory) lastRunNote() string {
 	default:
 		note = fmt.Sprintf("Last run took %s of %s, %d rounds, %d new items.", took.Round(time.Second), RunTimeout, r.Rounds, r.NewCount)
 	}
-	// A task naming no time span asks for what is new since then.
-	note += " It started " + r.StartedAt.UTC().Format("2006-01-02 15:04") + " UTC."
 	if r.Status == StatusTokenLimit || r.Status == StatusTimeout || took >= RunTimeout*8/10 {
 		note += " Be targeted: start with the known sources and use few rounds."
 	}

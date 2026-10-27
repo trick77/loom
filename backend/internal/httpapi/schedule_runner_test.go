@@ -75,7 +75,7 @@ func lastRunThread(t *testing.T, f *scheduleFixture, sch schedule.Schedule) stri
 	return *runs[0].ThreadID
 }
 
-func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
+func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
 	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
@@ -180,6 +180,16 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	// The note is about the previous run, never the one in progress.
 	if !strings.Contains(last, "Last run took") || !strings.Contains(last, "1 new items") {
 		t.Fatalf("second run's prompt lacks the last-run note:\n%s", last)
+	}
+	// "Since the last run" has an anchor, in the schedule's own time.
+	first := client.Histories[0][0].Content
+	if !strings.Contains(first, "This is the schedule's first run.") {
+		t.Fatalf("first run's prompt lacks the first-run note:\n%s", first)
+	}
+	zurich, _ := time.LoadLocation("Europe/Zurich")
+	anchor := "The last run started " + runs[2].StartedAt.In(zurich).Format("2006-01-02 15:04 MST") + "."
+	if !strings.Contains(last, anchor) {
+		t.Fatalf("second run's prompt lacks %q:\n%s", anchor, last)
 	}
 
 	// News on an item reported before is news again: a launch slips, a

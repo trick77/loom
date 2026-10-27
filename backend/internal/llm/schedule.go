@@ -134,8 +134,8 @@ func (c *Client) ExtractFindings(ctx context.Context, task, answer string) ([]Fi
 }
 
 // parseFindings reads the extractor's reply; ok is false when it holds no
-// items object, or items of which none has a usable key: neither is an empty
-// list.
+// items object, or items of which none has a key or label: neither is an
+// empty list.
 func parseFindings(reply string) ([]Finding, bool) {
 	raw, found := llmwire.JSONObject(reply)
 	if !found {
@@ -158,6 +158,11 @@ func parseFindings(reply string) ([]Finding, bool) {
 		label := strings.Join(strings.Fields(item.Label), " ")
 		if len(key) > 80 {
 			key = strings.Trim(key[:80], "-")
+		}
+		// The key only keeps one answer from listing an item twice: an item
+		// without a usable one goes by its label.
+		if key == "" {
+			key = strings.ToLower(label)
 		}
 		if key == "" || seen[key] {
 			continue

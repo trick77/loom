@@ -328,6 +328,11 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		run.Tokens = int64(total.TotalTokens)
 		run.CostNanoUSD, _ = usageTotal.Cost()
 	}()
+	// The anchor reads in the schedule's own time, as the pages it checks do.
+	loc, err := schedule.LoadLocation(sch.Timezone)
+	if err != nil {
+		loc = time.UTC
+	}
 	var seen observations
 	turnRun := s.engine.Prepare(turn.RunConfig{
 		Stream:      discardEmitter{},
@@ -340,6 +345,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 			TokenBudget:  schedule.RunTokenBudget,
 			SoftDeadline: start.Add(s.scheduleSoftDeadline()),
 			Memory:       memory.Block(),
+			Since:        memory.Since.In(loc),
 			Observe:      seen.add,
 			Now:          s.clock,
 		},
