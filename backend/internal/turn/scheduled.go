@@ -161,7 +161,7 @@ func (t *Run) capScheduledOutput(output string) string {
 // The run sees every server's guidance and, when it writes the answer, the
 // user's standing instructions, both written for a live chat, so it says
 // which parts still apply.
-const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what is new in the time span the task names, or since the last run when it names none, naming each item with its source. When nothing is new, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
+const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what the task asks for within the time span it names or, when it names none, since the last run started, naming each item with its source. You never see earlier runs' answers, so never call an item new or new since the last run: give the date its source shows instead. When there is nothing to report, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
 
 // sinceNote is the run's anchor for "since the last run".
 func (s *ScheduledRun) sinceNote() string {

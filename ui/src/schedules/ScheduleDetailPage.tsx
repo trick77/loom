@@ -268,14 +268,9 @@ export function ScheduleDetailPage({
                       </td>
                       <td className="border-b border-[#2a2a28] px-2 py-2.5">
                         <span className="flex flex-wrap items-center gap-1.5">
-                          <StatusPill
-                            status={run.status}
-                            count={run.newCount}
-                          />
+                          <StatusPill status={run.status} />
                           <span className="text-[13px] text-[#908e85]">
-                            {run.newLabels.length > 0
-                              ? run.newLabels.join(", ")
-                              : run.error}
+                            {run.error}
                           </span>
                         </span>
                       </td>

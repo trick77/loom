@@ -218,9 +218,10 @@ func (o *observations) list() []schedule.ToolOutcome {
 
 // runSchedule carries out one run of a claimed schedule: its prompt as a
 // headless turn in a thread of its own, then the findings, the memory, the
-// run record and, when there is news, a notification. A timed run that surely
-// found nothing new leaves no thread: an answer saying so is not worth a
-// visit. A manual one keeps its thread: the user asked for the answer.
+// run record and, when it has something to report, a notification. A timed
+// run that surely had nothing to report leaves no thread: an answer saying so
+// is not worth a visit. A manual one keeps its thread: the user asked for the
+// answer.
 func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger runTrigger) {
 	detached := context.WithoutCancel(ctx)
 	start := s.clock()
@@ -242,7 +243,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	// replacing is the run's thread once it holds the prompt: however the run
 	// ends, it then replaces the earlier ones the user never took up, after the
 	// run is recorded. The old answer stays readable until then. Only a run
-	// whose extraction found nothing new (nothingNew) leaves the earlier ones
+	// whose extraction found nothing to report (nothingNew) leaves the earlier ones
 	// be; a timed one drops its own thread too.
 	var replacing string
 	var nothingNew bool
@@ -403,7 +404,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	run.MessageID = &assistant.ID
 	if result.Interrupted {
 		// A stalled answer is kept for the reader, but its cut-off list is no
-		// record of what is new: the next run reports the rest.
+		// record of what was found: the next run reports the rest.
 		run.Error = "the answer was cut off"
 		return
 	}
@@ -414,10 +415,6 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), findingsTimeout)
 	defer cancelExtract()
 	reported, extracted := s.recordFindings(extractCtx, user.ID, sch, result, seen.list())
-	run.NewCount = len(reported)
-	for _, f := range reported {
-		run.NewLabels = append(run.NewLabels, f.Label)
-	}
 	switch {
 	case result.LimitHit == turn.LimitTokens:
 		run.Status = schedule.StatusTokenLimit
@@ -425,7 +422,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		run.Status = schedule.StatusNew
 	default:
 		run.Status = schedule.StatusNothingNew
-		// A failed extraction cannot tell: the answer may hold news.
+		// A failed extraction cannot tell: the answer may hold a report.
 		nothingNew = extracted
 	}
 	if len(reported) == 0 {
@@ -436,15 +433,16 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		ScheduleID: &sch.ID,
 		ThreadID:   &thread.ID,
 		MessageID:  &assistant.ID,
-		Title:      fmt.Sprintf("%s: %d new", sch.Name, len(reported)),
-		Body:       strings.Join(run.NewLabels, " · "),
+		Title:      sch.Name,
+		Body:       schedule.Teaser(result.Content),
 	})
 }
 
-// recordFindings extracts the items the answer reported and teaches the
-// schedule's memory which sources and searches led to them. extracted is
-// false when the extraction failed: no item then does not mean nothing was
-// new.
+// recordFindings lists the items the answer reported: whether there are any
+// decides if the run notifies and keeps its thread, and their sources teach
+// the schedule's memory which pages and searches led to them. extracted is
+// false when the extraction failed: no item then does not mean there was
+// nothing to report.
 func (s *server) recordFindings(ctx context.Context, userID string, sch schedule.Schedule, result turn.LoopResult, seen []schedule.ToolOutcome) (found []schedule.Finding, extracted bool) {
 	items, err := s.scheduleLLM.ExtractFindings(ctx, sch.Prompt, result.Content)
 	if err != nil {

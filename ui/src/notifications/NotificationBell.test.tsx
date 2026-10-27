@@ -28,8 +28,8 @@ const run: api.AppNotification = {
   scheduleId: "s1",
   threadId: "th1",
   messageId: "m1",
-  title: "Cinema scout: 2 new",
-  body: "Dune: Part Three · Avengers: Doomsday",
+  title: "Cinema scout",
+  body: "Dune: Part Three opens 17 Dec at Arena, Avengers: Doomsday follows a week later.",
   createdAt: new Date().toISOString(),
   readAt: null,
 };

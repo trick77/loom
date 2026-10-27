@@ -84,7 +84,7 @@ func parseScheduleReply(reply string) (string, bool) {
 	return template, true
 }
 
-// Finding is one item a scheduled run's answer reported as new.
+// Finding is one item a scheduled run's answer reported.
 type Finding struct {
 	Key   string
 	Label string
@@ -94,21 +94,21 @@ type Finding struct {
 
 const findingsMaxCompletionTokens = 1200
 
-const findingsSystemPrompt = `You read the answer of a recurring research task and list the items it reports as NEW findings. Reply with ONLY a JSON object: {"items":[{"key":"...","label":"...","source":<n>}]}.
+const findingsSystemPrompt = `You read the answer of a recurring research task and list the items it reports. Reply with ONLY a JSON object: {"items":[{"key":"...","label":"...","source":<n>}]}.
 
-- An item is one distinct thing the answer presents as new: a film, a paper, a decision, a product, an event.
-- Leave out items the answer says are unchanged or not new.
+- An item is one distinct thing the answer reports for the task: a film, a paper, a decision, a product, an event, a date.
+- Leave out items the answer only mentions as unchanged, and anything it says it could not find.
 - key: a short lowercase ASCII slug naming the item, e.g. "dune-part-three" or "starship-flight-12-scrubbed".
 - label: the item's name as a reader would recognise it, at most 80 characters.
 - source: the bracketed source number the answer cites for the item, or 0.
-- When the answer reports nothing new, reply {"items":[]}.`
+- When the answer says there is nothing to report, reply {"items":[]}.`
 
 var slugInvalid = regexp.MustCompile(`[^a-z0-9]+`)
 
-// ExtractFindings lists the items a scheduled run's answer reports as new.
-// The task's own time span decides what is new, not earlier runs: an item
-// reported before may well have news again. An empty or unreadable reply
-// is an error, unlike an empty list, which says there is nothing new.
+// ExtractFindings lists the items a scheduled run's answer reports. The
+// run never sees earlier answers, so nothing here judges what is new. An
+// empty or unreadable reply is an error, unlike an empty list, which says
+// the answer had nothing to report.
 func (c *Client) ExtractFindings(ctx context.Context, task, answer string) ([]Finding, error) {
 	framed := fmt.Sprintf("Task:\n\"\"\"\n%s\n\"\"\"\n\nAnswer:\n\"\"\"\n%s\n\"\"\"\n\nJSON:",
 		strings.TrimSpace(task), strings.TrimSpace(answer))

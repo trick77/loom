@@ -79,14 +79,14 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
 	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
-	client := researchClient("New: Dune: Part Three [1].")
+	client := researchClient("Dune: Part Three opens 17 Dec [1].")
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
 
 	s.runSchedule(ctx, sch, timedRun)
 
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
-	if len(runs) != 1 || runs[0].Status != schedule.StatusNew || runs[0].NewCount != 1 || runs[0].MessageID == nil || runs[0].Rounds != 1 {
+	if len(runs) != 1 || runs[0].Status != schedule.StatusNew || runs[0].MessageID == nil || runs[0].Rounds != 1 {
 		t.Fatalf("first run = %+v", runs)
 	}
 	// Every MCP tool the user may use was offered, and no built-in: never the
@@ -108,12 +108,9 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 		t.Fatalf("thread = %+v", thread)
 	}
 	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
-	if len(notes) != 1 || notes[0].Title != "Cinema scout: 1 new" || notes[0].Body != "Dune: Part Three" || notes[0].MessageID == nil ||
+	if len(notes) != 1 || notes[0].Title != "Cinema scout" || notes[0].Body != "Dune: Part Three opens 17 Dec." || notes[0].MessageID == nil ||
 		notes[0].ThreadID == nil || *notes[0].ThreadID != firstThread {
 		t.Fatalf("notifications = %+v", notes)
-	}
-	if strings.Join(runs[0].NewLabels, ",") != "Dune: Part Three" {
-		t.Fatalf("run labels = %v", runs[0].NewLabels)
 	}
 	sources, _ := f.store.ListSources(ctx, testUser.ID, sch.ID)
 	if len(sources) != 1 || sources[0].URLKey != "arena.ch/programm" || sources[0].Finds != 1 || sources[0].Runs != 1 {
@@ -136,7 +133,7 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 	if len(runs) != 3 || runs[0].ThreadID != nil || runs[1].ThreadID != nil || runs[2].ThreadID == nil || *runs[2].ThreadID != firstThread {
 		t.Fatalf("runs = %+v, want only the first still linked to a thread", runs)
 	}
-	if runs[0].Status != schedule.StatusNothingNew || runs[0].NewCount != 0 || runs[1].Status != schedule.StatusNothingNew {
+	if runs[0].Status != schedule.StatusNothingNew || runs[1].Status != schedule.StatusNothingNew {
 		t.Fatalf("later runs = %+v", runs[:2])
 	}
 	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 1 {
@@ -178,7 +175,7 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 		}
 	}
 	// The note is about the previous run, never the one in progress.
-	if !strings.Contains(last, "Last run took") || !strings.Contains(last, "1 new items") {
+	if !strings.Contains(last, "Last run took") {
 		t.Fatalf("second run's prompt lacks the last-run note:\n%s", last)
 	}
 	// "Since the last run" has an anchor, in the schedule's own time.
@@ -195,13 +192,13 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 	// News on an item reported before is news again: a launch slips, a
 	// price drops twice.
 	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
-	client.Results = researchRound("Dune: Part Three moved to 18 Dec [1].")
+	client.Results, client.Plain = researchRound("Dune: Part Three moved to 18 Dec [1]."), "Dune: Part Three moved to 18 Dec [1]."
 	s.runSchedule(ctx, sch, timedRun)
 	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 1)
-	if runs[0].Status != schedule.StatusNew || strings.Join(runs[0].NewLabels, ",") != "Dune: Part Three" {
+	if runs[0].Status != schedule.StatusNew {
 		t.Fatalf("run with news on a reported item = %+v", runs[0])
 	}
-	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 2 || notes[0].Title != "Cinema scout: 1 new" {
+	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 2 || notes[0].Title != "Cinema scout" || notes[0].Body != "Dune: Part Three moved to 18 Dec." {
 		t.Fatalf("notifications = %+v, want the update announced", notes)
 	}
 }
@@ -403,9 +400,6 @@ func TestScheduledRunWithACutOffAnswerRecordsNoFindings(t *testing.T) {
 	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error != "the answer was cut off" || runs[0].MessageID == nil {
 		t.Fatalf("run = %+v", runs)
 	}
-	if len(runs[0].NewLabels) != 0 || runs[0].NewCount != 0 {
-		t.Fatalf("a cut-off answer recorded findings: %+v", runs[0])
-	}
 }
 
 func TestCloseInterruptedRunNotesADanglingPrompt(t *testing.T) {
@@ -460,7 +454,7 @@ func TestScheduledRunStopsAtTheTokenBudget(t *testing.T) {
 	sch := newRunnerSchedule(t, f)
 	s.runSchedule(ctx, sch, timedRun)
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
-	if len(runs) != 1 || runs[0].Status != schedule.StatusTokenLimit || runs[0].NewCount != 1 || runs[0].Tokens < schedule.RunTokenBudget {
+	if len(runs) != 1 || runs[0].Status != schedule.StatusTokenLimit || runs[0].Tokens < schedule.RunTokenBudget {
 		t.Fatalf("run = %+v", runs)
 	}
 	// The forced final answer offered no tools.

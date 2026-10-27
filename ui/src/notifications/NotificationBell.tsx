@@ -331,7 +331,6 @@ export function NotificationBell({
 }
 
 function NotificationText({ notification }: { notification: AppNotification }) {
-  const [name, ...rest] = notification.title.split(": ");
   return (
     <div className="flex gap-2.5">
       <div
@@ -345,14 +344,8 @@ function NotificationText({ notification }: { notification: AppNotification }) {
         />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="leading-[19px] text-[#ecece6]">
-          {rest.length > 0 ? (
-            <>
-              <b className="font-medium">{name}</b>: {rest.join(": ")}
-            </>
-          ) : (
-            notification.title
-          )}
+        <div className="font-medium leading-[19px] text-[#ecece6]">
+          {notification.title}
         </div>
         {notification.body !== "" && (
           <div className="mt-0.5 line-clamp-2 text-[13px] leading-[18px] text-[#a29f96]">

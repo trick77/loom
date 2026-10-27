@@ -106,7 +106,7 @@ func (t scheduleToolRunner) Run(ctx context.Context, user auth.User, args map[st
 	if err := t.s.runScheduleNow(ctx, sch); err != nil {
 		return scheduleToolError(err)
 	}
-	out := fmt.Sprintf("Started a run of %q. It runs in the background for up to %d minutes; its answer arrives in a new thread of its own, with a notification when it finds something new.",
+	out := fmt.Sprintf("Started a run of %q. It runs in the background for up to %d minutes; its answer arrives in a new thread of its own, with a notification when it has something to report.",
 		sch.Name, int(schedule.RunTimeout/time.Minute))
 	switch {
 	case !sch.Enabled && sch.DisabledReason == schedule.DisabledTimeout:

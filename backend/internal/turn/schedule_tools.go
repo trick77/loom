@@ -96,7 +96,7 @@ func scheduleTool(name, description string, properties map[string]any, required 
 }
 
 var scheduleCreateTool = scheduleTool(scheduleCreateToolName,
-	"Create a scheduled task: a prompt loom runs on its own, again and again, notifying the user only about what is new. "+
+	"Create a scheduled task: a prompt loom runs on its own, again and again, notifying the user when a run has something to report. Runs never see earlier answers: a prompt that should skip what was already reported names a time span (\"from the last 48 hours\"). "+
 		"Use it when the user asks for something recurring (\"every week look for …\", \"daily check …\", \"keep me posted on …\"). "+
 		"Each run starts without this conversation, so the prompt must stand alone: what to look for, the user's interests, places and limits. "+
 		scheduleRunIsShort+scheduleFirst+
@@ -130,7 +130,7 @@ var scheduleRunTool = scheduleTool(scheduleRunToolName,
 	"Start one of the user's scheduled tasks now, outside its time, when they ask to run or test it (\"run the cinema scout now\"). "+
 		"Pass the id from schedule_list. "+scheduleFirst+
 		"The run works in the background and answers in a new thread of its own, not in this chat; "+
-		"a timed run that finds nothing new leaves no thread, a run started here keeps its thread even then; "+
+		"a timed run with nothing to report leaves no thread, a run started here keeps its thread even then; "+
 		"tell the user that, and do not do the task yourself.",
 	map[string]any{
 		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},

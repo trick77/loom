@@ -24,8 +24,9 @@ func TestMigration0045_runsKeepTheirLabels(t *testing.T) {
 	      ('s','u','a','First','news','2026-10-20 09:00:00'),
 	      ('s','u','orphan','Orphan',NULL,'2026-10-19 09:00:00')`)
 
-	if err := migrate(db); err != nil {
-		t.Fatalf("apply remaining migrations: %v", err)
+	// 0046 drops the labels again: stop at 0045 to see its backfill.
+	if err := migrateFS(db, migrationsUpTo(t, "0045_schedule_run_labels.sql")); err != nil {
+		t.Fatalf("apply 0045: %v", err)
 	}
 
 	for run, want := range map[string]string{"news": `["First","Second"]`, "quiet": `[]`} {

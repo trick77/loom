@@ -74,8 +74,6 @@ const runs: api.ScheduleRun[] = [
     ...(makeSchedule().lastRun as api.ScheduleRun),
     id: "r2",
     status: "failed",
-    newCount: 0,
-    newLabels: [],
     error: "search provider unavailable",
     threadId: "th2",
     messageId: null,
@@ -84,8 +82,6 @@ const runs: api.ScheduleRun[] = [
     ...(makeSchedule().lastRun as api.ScheduleRun),
     id: "r3",
     status: "nothing_new",
-    newCount: 0,
-    newLabels: [],
     threadId: null,
   },
 ];
@@ -112,9 +108,9 @@ test("shows the schedule, its runs and its memory", async () => {
     await screen.findByRole("heading", { name: "Cinema scout" }),
   ).toBeInTheDocument();
   expect(screen.getByText("3 sources · 2 searches")).toBeInTheDocument();
-  expect(
-    screen.getByText("Dune: Part Three, Avengers: Doomsday"),
-  ).toBeInTheDocument();
+  // A run shows only its outcome: no count, no item names.
+  expect(screen.getByText("reported")).toBeInTheDocument();
+  expect(screen.queryByText(/Dune/)).not.toBeInTheDocument();
   expect(screen.getByText("search provider unavailable")).toBeInTheDocument();
   expect(screen.getAllByText("41k").length).toBe(3);
   expect(screen.getAllByText("1m 48s").length).toBeGreaterThan(0);

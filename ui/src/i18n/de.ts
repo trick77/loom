@@ -592,7 +592,7 @@ export const de = {
   schedules: {
     title: "Zeitpläne",
     subtitle:
-      "Prompts, die von selbst laufen. Du bekommst eine Benachrichtigung, wenn ein Lauf etwas Neues findet.",
+      "Prompts, die von selbst laufen. Du bekommst eine Benachrichtigung, wenn ein Lauf etwas zu melden hat.",
     newSchedule: "Neuer Zeitplan",
     tabAll: "Alle {{count}}",
     tabActive: "Aktiv {{count}}",
@@ -606,8 +606,8 @@ export const de = {
     disabledNote:
       "deaktiviert {{date}}: zwei Läufe nacheinander dauerten länger als {{minutes}} Minuten",
     status: {
-      new: "{{count}} neu",
-      nothing_new: "nichts Neues",
+      new: "gemeldet",
+      nothing_new: "nichts zu melden",
       token_limit: "Token-Limit erreicht",
       timeout: "Zeitlimit",
       disabled: "deaktiviert · Zeitlimit",
@@ -720,7 +720,7 @@ export const de = {
     unread: "Ungelesen {{count}}",
     empty: "Alles gelesen",
     emptyHint:
-      "Zeitpläne benachrichtigen dich hier, wenn sie etwas Neues finden.",
+      "Zeitpläne benachrichtigen dich hier, wenn ein Lauf etwas zu melden hat.",
     manage: "Zeitpläne verwalten",
     kept: "30 Tage aufbewahrt",
     open: "Öffnen",

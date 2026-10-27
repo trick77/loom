@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -209,7 +210,7 @@ DELETE FROM schedule_queries WHERE user_id = ? AND schedule_id = ? AND query NOT
 type Memory struct {
 	LastRun *Run
 	// Since is when the last run that answered started, zero before any: a
-	// task naming no time span asks for what is new since then. A failed run
+	// task naming no time span asks for what came up since then. A failed run
 	// reported nothing, so it never moves the window on.
 	Since   time.Time
 	Sources []Source
@@ -279,7 +280,7 @@ func (m Memory) lastRunNote() string {
 	case StatusFailed:
 		note = "Last run failed: " + oneLine(r.Error, 120) + "."
 	default:
-		note = fmt.Sprintf("Last run took %s of %s, %d rounds, %d new items.", took.Round(time.Second), RunTimeout, r.Rounds, r.NewCount)
+		note = fmt.Sprintf("Last run took %s of %s, %d rounds.", took.Round(time.Second), RunTimeout, r.Rounds)
 	}
 	if r.Status == StatusTokenLimit || r.Status == StatusTimeout || took >= RunTimeout*8/10 {
 		note += " Be targeted: start with the known sources and use few rounds."
@@ -305,4 +306,55 @@ func sourceNote(s Source) string {
 
 func oneLine(s string, n int) string {
 	return trimText(strings.Join(strings.Fields(s), " "), n)
+}
+
+// maxTeaserLength bounds a notification's glimpse of the answer.
+const maxTeaserLength = 160
+
+var (
+	teaserListMark = regexp.MustCompile(`^(?:[-*+>]\s+|\d+[.)]\s+)+`)
+	teaserLink     = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)
+	teaserCitation = regexp.MustCompile(`\s*\[\d+\]`)
+	teaserMarks    = strings.NewReplacer("**", "", "__", "", "`", "")
+)
+
+// Teaser is the first line of a run's answer that says something, as plain
+// text for the notification: headings, tables and lead-ins ending in a colon
+// are passed over, list marks, emphasis, links and citation numbers taken
+// off. An answer of headings only gives its first one. The thread holds the
+// rest.
+func Teaser(answer string) string {
+	heading := ""
+	for line := range strings.Lines(answer) {
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "", strings.HasPrefix(line, "|"), strings.HasSuffix(line, ":"):
+			continue
+		case strings.HasPrefix(line, "#"):
+			if heading == "" {
+				heading = plainTeaserLine(strings.TrimLeft(line, "# "))
+			}
+			continue
+		}
+		if t := plainTeaserLine(line); t != "" {
+			return t
+		}
+	}
+	return heading
+}
+
+func plainTeaserLine(line string) string {
+	line = teaserListMark.ReplaceAllString(line, "")
+	line = teaserLink.ReplaceAllString(line, "$1")
+	line = teaserCitation.ReplaceAllString(line, "")
+	line = strings.Join(strings.Fields(teaserMarks.Replace(line)), " ")
+	r := []rune(line)
+	if len(r) <= maxTeaserLength {
+		return line
+	}
+	cut := string(r[:maxTeaserLength])
+	if i := strings.LastIndex(cut, " "); i > len(cut)/2 {
+		cut = cut[:i]
+	}
+	return strings.TrimRight(cut, " ,;:.") + "…"
 }

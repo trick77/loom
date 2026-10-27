@@ -3,7 +3,6 @@ package schedule
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -97,14 +96,11 @@ type Run struct {
 	StartedAt   time.Time  `json:"startedAt"`
 	FinishedAt  *time.Time `json:"finishedAt"`
 	Status      string     `json:"status"`
-	NewCount    int        `json:"newCount"`
 	Rounds      int        `json:"rounds"`
 	Tokens      int64      `json:"tokens"`
 	CostNanoUSD int64      `json:"-"`
 	DurationMS  int64      `json:"durationMs"`
 	Error       string     `json:"error"`
-	// NewLabels are the items this run reported.
-	NewLabels []string `json:"newLabels"`
 }
 
 // Finding is one item a run reported.
@@ -439,31 +435,24 @@ SELECT EXISTS (SELECT 1 FROM schedule_runs WHERE user_id = ? AND thread_id = ? A
 
 // FinishRun writes a finished run's outcome.
 func (st *Store) FinishRun(ctx context.Context, userID string, r Run, at time.Time) error {
-	if r.NewLabels == nil {
-		r.NewLabels = []string{}
-	}
-	labels, err := json.Marshal(r.NewLabels)
-	if err != nil {
-		return fmt.Errorf("encode run labels: %w", err)
-	}
-	_, err = st.db.ExecContext(ctx, `
+	_, err := st.db.ExecContext(ctx, `
 UPDATE schedule_runs
-SET message_id = ?, finished_at = ?, status = ?, new_count = ?, labels = ?, rounds = ?, tokens = ?, cost_nano_usd = ?, duration_ms = ?, error = ?
+SET message_id = ?, finished_at = ?, status = ?, rounds = ?, tokens = ?, cost_nano_usd = ?, duration_ms = ?, error = ?
 WHERE user_id = ? AND id = ?`,
-		r.MessageID, ts(at), r.Status, r.NewCount, labels, r.Rounds, r.Tokens, r.CostNanoUSD, r.DurationMS, r.Error, userID, r.ID)
+		r.MessageID, ts(at), r.Status, r.Rounds, r.Tokens, r.CostNanoUSD, r.DurationMS, r.Error, userID, r.ID)
 	if err != nil {
 		return fmt.Errorf("finish run: %w", err)
 	}
 	return nil
 }
 
-const runColumns = "id, schedule_id, thread_id, message_id, started_at, finished_at, status, new_count, labels, rounds, tokens, cost_nano_usd, duration_ms, error"
+const runColumns = "id, schedule_id, thread_id, message_id, started_at, finished_at, status, rounds, tokens, cost_nano_usd, duration_ms, error"
 
 func scanRun(row rowScanner) (Run, error) {
 	var r Run
 	var threadID, messageID, finishedAt sql.NullString
-	var startedAt, labels string
-	if err := row.Scan(&r.ID, &r.ScheduleID, &threadID, &messageID, &startedAt, &finishedAt, &r.Status, &r.NewCount, &labels, &r.Rounds, &r.Tokens, &r.CostNanoUSD, &r.DurationMS, &r.Error); err != nil {
+	var startedAt string
+	if err := row.Scan(&r.ID, &r.ScheduleID, &threadID, &messageID, &startedAt, &finishedAt, &r.Status, &r.Rounds, &r.Tokens, &r.CostNanoUSD, &r.DurationMS, &r.Error); err != nil {
 		return Run{}, err
 	}
 	r.ThreadID, r.MessageID = nullString(threadID), nullString(messageID)
@@ -473,9 +462,6 @@ func scanRun(row rowScanner) (Run, error) {
 	}
 	if r.FinishedAt, err = parseNull(finishedAt); err != nil {
 		return Run{}, err
-	}
-	if err := json.Unmarshal([]byte(labels), &r.NewLabels); err != nil {
-		return Run{}, fmt.Errorf("decode run labels: %w", err)
 	}
 	return r, nil
 }
@@ -501,7 +487,7 @@ func (st *Store) ListRuns(ctx context.Context, userID, scheduleID string, limit 
 }
 
 // lastAnsweredRunStart is when the schedule's latest run that reported
-// (news, nothing new or as much as the token limit allowed) started; zero
+// (something, nothing or as much as the token limit allowed) started; zero
 // before any.
 func (st *Store) lastAnsweredRunStart(ctx context.Context, userID, scheduleID string) (time.Time, error) {
 	var started string
