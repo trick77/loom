@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { AppNotification, Project, Thread, User } from "../api";
+import type { Project, Thread, User } from "../api";
 import i18n from "../i18n";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { UserMenu } from "./UserMenu";
@@ -46,7 +46,6 @@ export const Sidebar = memo(function Sidebar({
   onProjects,
   onMemory,
   onSchedules,
-  onOpenNotification,
   onOpenSearch,
   onSelectThread,
   onDeleteThread,
@@ -90,7 +89,6 @@ export const Sidebar = memo(function Sidebar({
   onProjects(): void;
   onMemory(): void;
   onSchedules(): void;
-  onOpenNotification(notification: AppNotification): void;
   onOpenSearch(): void;
   onSelectThread(threadID: string): void;
   onDeleteThread(thread: Thread): void;
@@ -126,7 +124,6 @@ export const Sidebar = memo(function Sidebar({
             {!railCollapsed && (
               <NotificationBell
                 placement="header"
-                onOpen={onOpenNotification}
                 onManageSchedules={onSchedules}
               />
             )}
@@ -228,7 +225,6 @@ export const Sidebar = memo(function Sidebar({
             <div className="mt-2.5 flex h-[26px] items-center justify-center text-[#f0eee7]">
               <NotificationBell
                 placement="rail"
-                onOpen={onOpenNotification}
                 onManageSchedules={onSchedules}
               />
             </div>

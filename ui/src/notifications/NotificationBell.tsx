@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
@@ -15,6 +24,10 @@ import {
 import { AuthExpiredError } from "../api/http";
 import { Icon } from "../chat/Icon";
 import { useEscapeKey } from "../chat/useEscapeKey";
+import {
+  insideSelector,
+  useOutsidePointerDown,
+} from "../chat/useOutsidePointerDown";
 import { formatTimeAgo } from "../timeago";
 
 // POLL_MS is how often the unread count is read; it is read on focus too.
@@ -24,19 +37,27 @@ type Toast =
   | { kind: "one"; notification: AppNotification }
   | { kind: "many"; count: number };
 
-// NotificationBell is the sidebar's bell: a gold dot while anything is unread,
-// the inbox in a popover, and a toast when a poll finds something new while
-// the app is open. The toast stays until the user clicks it away.
-export function NotificationBell({
-  onOpen,
-  onManageSchedules,
-  placement,
-}: {
-  onOpen(notification: AppNotification): void;
-  onManageSchedules(): void;
-  placement: "header" | "rail";
-}) {
-  const { t } = useTranslation();
+type Placement = "header" | "rail";
+
+// The bell carries its placement in this attribute, so the toast can open the
+// inbox beside whichever bell is mounted.
+const BELL = "[data-notification-bell]";
+const PANEL = "[data-notification-panel]";
+const isInsideBell = insideSelector(`${BELL}, ${PANEL}`);
+
+// stillUnread is how much of a toast the fresh list still backs: its one item
+// while unread, a stacked count never past the unread count.
+function stillUnread(
+  toast: Toast,
+  list: AppNotification[] | null,
+  count: number,
+): number {
+  if (toast.kind === "many") return Math.min(toast.count, count);
+  const id = toast.notification.id;
+  return list?.some((n) => n.id === id && n.readAt === null) ? 1 : 0;
+}
+
+function useNotifications(onOpen: (notification: AppNotification) => void) {
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[] | null>(null);
@@ -45,8 +66,6 @@ export function NotificationBell({
   const [toast, setToast] = useState<Toast | null>(null);
   const [panelStyle, setPanelStyle] = useState({ top: 48, left: 16 });
   const known = useRef<number | null>(null);
-  const button = useRef<HTMLButtonElement>(null);
-  const panel = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -71,20 +90,36 @@ export function NotificationBell({
     const before = known.current;
     known.current = count;
     setUnread(count);
-    // News read elsewhere (its thread, another tab) takes the toast with it.
-    if (before !== null && count < before) setToast(null);
-    if (before !== null && count > before) {
-      // The sidebar picks up the new run threads and their dots.
-      announce(THREAD_NEWS_CHANGED);
-      const fresh = count - before;
-      const list = await load();
-      const newest = list?.find((n) => n.readAt === null);
-      setToast(
-        fresh > 1 || !newest
-          ? { kind: "many", count: fresh }
-          : { kind: "one", notification: newest },
-      );
+    if (before === null || count === before) return;
+    if (count === 0) {
+      setToast(null);
+      return;
     }
+    if (count < before) {
+      // News read elsewhere (its thread, another tab): the toast keeps only
+      // what is still unread.
+      const list = await load();
+      setToast((current) => {
+        if (current === null) return null;
+        const kept = stillUnread(current, list, count);
+        if (kept === 0) return null;
+        return current.kind === "one" ? current : { kind: "many", count: kept };
+      });
+      return;
+    }
+    // The sidebar picks up the new run threads and their dots.
+    announce(THREAD_NEWS_CHANGED);
+    const fresh = count - before;
+    const list = await load();
+    const newest = list?.find((n) => n.readAt === null);
+    // A toast still up counts the new news in rather than losing its own.
+    setToast((current) => {
+      const kept = current === null ? 0 : stillUnread(current, list, count);
+      const total = Math.min(kept + fresh, count);
+      return total > 1 || !newest
+        ? { kind: "many", count: total }
+        : { kind: "one", notification: newest };
+    });
   }, [load]);
 
   useEffect(() => {
@@ -101,57 +136,57 @@ export function NotificationBell({
     };
   }, [poll]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (panel.current?.contains(target) || button.current?.contains(target))
-        return;
+  const close = useCallback(() => setOpen(false), []);
+  const dismissToast = useCallback(() => setToast(null), []);
+  useOutsidePointerDown(open, isInsideBell, close);
+  useEscapeKey(close, { active: open });
+  useEscapeKey(dismissToast, { active: toast !== null && !open });
+
+  // toggle opens the inbox beside the bell it is given.
+  const toggle = useCallback(
+    (bell: Element | null) => {
+      if (!open) {
+        const rect = bell?.getBoundingClientRect();
+        const placement = bell?.getAttribute("data-notification-bell");
+        setPanelStyle(
+          rect === undefined
+            ? { top: 48, left: 16 }
+            : placement === "rail"
+              ? { top: Math.max(8, rect.top - 8), left: rect.right + 10 }
+              : { top: rect.bottom + 6, left: Math.max(8, rect.left - 12) },
+        );
+        void load();
+      }
+      setOpen(!open);
+    },
+    [open, load],
+  );
+
+  const openItem = useCallback(
+    (notification: AppNotification) => {
       setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
-  }, [open]);
-  useEscapeKey(() => setOpen(false), { active: open });
-  useEscapeKey(() => setToast(null), { active: toast !== null && !open });
+      setToast(null);
+      if (notification.readAt === null) {
+        setItems(
+          (current) =>
+            current?.map((n) =>
+              n.id === notification.id
+                ? { ...n, readAt: new Date().toISOString() }
+                : n,
+            ) ?? null,
+        );
+        setUnread((n) => Math.max(0, n - 1));
+        known.current = Math.max(0, (known.current ?? 1) - 1);
+        void markNotificationRead(notification.id)
+          .then(() => announce(THREAD_NEWS_CHANGED))
+          .catch(() => undefined);
+      }
+      onOpen(notification);
+    },
+    [onOpen],
+  );
 
-  const toggle = () => {
-    if (!open) {
-      const rect = button.current?.getBoundingClientRect();
-      setPanelStyle(
-        rect === undefined
-          ? { top: 48, left: 16 }
-          : placement === "header"
-            ? { top: rect.bottom + 6, left: Math.max(8, rect.left - 12) }
-            : { top: Math.max(8, rect.top - 8), left: rect.right + 10 },
-      );
-      void load();
-    }
-    setOpen(!open);
-  };
-
-  const openItem = (notification: AppNotification) => {
-    setOpen(false);
-    setToast(null);
-    if (notification.readAt === null) {
-      setItems(
-        (current) =>
-          current?.map((n) =>
-            n.id === notification.id
-              ? { ...n, readAt: new Date().toISOString() }
-              : n,
-          ) ?? null,
-      );
-      setUnread((n) => Math.max(0, n - 1));
-      known.current = Math.max(0, (known.current ?? 1) - 1);
-      void markNotificationRead(notification.id)
-        .then(() => announce(THREAD_NEWS_CHANGED))
-        .catch(() => undefined);
-    }
-    onOpen(notification);
-  };
-
-  const readAll = () => {
+  const readAll = useCallback(() => {
     setToast(null);
     setItems(
       (current) =>
@@ -165,38 +200,120 @@ export function NotificationBell({
     void markAllNotificationsRead()
       .then(() => announce(THREAD_NEWS_CHANGED))
       .catch(() => undefined);
-  };
+  }, []);
 
-  const shown = (items ?? []).filter((n) => !onlyUnread || n.readAt === null);
-  const unreadInList = (items ?? []).filter((n) => n.readAt === null).length;
+  return useMemo(
+    () => ({
+      unread,
+      open,
+      items,
+      loadError,
+      onlyUnread,
+      setOnlyUnread,
+      toast,
+      dismissToast,
+      panelStyle,
+      toggle,
+      close,
+      openItem,
+      readAll,
+    }),
+    [
+      unread,
+      open,
+      items,
+      loadError,
+      onlyUnread,
+      toast,
+      dismissToast,
+      panelStyle,
+      toggle,
+      close,
+      openItem,
+      readAll,
+    ],
+  );
+}
+
+type Notifications = ReturnType<typeof useNotifications>;
+
+const NotificationsContext = createContext<Notifications | null>(null);
+
+function useNotificationsContext(): Notifications {
+  const notifications = useContext(NotificationsContext);
+  if (notifications === null) {
+    throw new Error("NotificationBell needs a NotificationsProvider");
+  }
+  return notifications;
+}
+
+// NotificationsProvider holds the bell's state: the unread count, the inbox
+// and the toast a poll raises when it finds something new while the app is
+// open. It sits above the sidebar, so collapsing the rail, which swaps the
+// header bell for the rail bell, keeps a toast up (it stays until clicked
+// away), and a change here re-renders the bells and the toast, not the
+// sidebar's thread list.
+export function NotificationsProvider({
+  onOpen,
+  children,
+}: {
+  onOpen(notification: AppNotification): void;
+  children: ReactNode;
+}) {
+  const notifications = useNotifications(onOpen);
+  return (
+    <NotificationsContext.Provider value={notifications}>
+      {children}
+      <NotificationToast notifications={notifications} />
+    </NotificationsContext.Provider>
+  );
+}
+
+// NotificationBell is the sidebar's bell: a gold dot while anything is unread
+// and the inbox in a popover.
+export function NotificationBell({
+  placement,
+  onManageSchedules,
+}: {
+  placement: Placement;
+  onManageSchedules(): void;
+}) {
+  const { t } = useTranslation();
+  const n = useNotificationsContext();
+  const shown = (n.items ?? []).filter(
+    (item) => !n.onlyUnread || item.readAt === null,
+  );
+  const unreadInList = (n.items ?? []).filter(
+    (item) => item.readAt === null,
+  ).length;
 
   return (
     <>
       <button
-        ref={button}
+        data-notification-bell={placement}
         type="button"
         aria-label={t(
-          unread > 0 ? "notifications.bellUnread" : "notifications.bell",
+          n.unread > 0 ? "notifications.bellUnread" : "notifications.bell",
         )}
-        aria-expanded={open}
-        onClick={toggle}
-        className={`relative grid place-items-center rounded transition-colors hover:text-white ${open ? "text-white" : ""}`}
+        aria-expanded={n.open}
+        onClick={(event) => n.toggle(event.currentTarget)}
+        className={`relative grid place-items-center rounded transition-colors hover:text-white ${n.open ? "text-white" : ""}`}
       >
         <Icon name="bell" size={placement === "header" ? "18px" : "20px"} />
-        {unread > 0 && (
+        {n.unread > 0 && (
           <span
             data-testid="notification-dot"
             className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[#c9a25f] ring-2 ring-[#1b1b1a]"
           />
         )}
       </button>
-      {open &&
+      {n.open &&
         createPortal(
           <div
-            ref={panel}
+            data-notification-panel=""
             role="dialog"
             aria-label={t("notifications.title")}
-            style={panelStyle}
+            style={n.panelStyle}
             className="fixed z-50 w-[400px] max-w-[calc(100vw-16px)] overflow-hidden rounded-xl border border-[#454540] bg-[#363632] font-sans text-[14px] shadow-[0_24px_48px_rgba(0,0,0,0.5)]"
           >
             <div className="flex items-center justify-between px-3.5 pb-2 pt-3">
@@ -206,7 +323,7 @@ export function NotificationBell({
               <button
                 type="button"
                 disabled={unreadInList === 0}
-                onClick={readAll}
+                onClick={n.readAll}
                 className="text-[13px] text-[#bdbab1] hover:text-white disabled:opacity-40"
               >
                 {t("notifications.markAllRead")}
@@ -217,8 +334,8 @@ export function NotificationBell({
                 <button
                   key={String(unreadOnly)}
                   type="button"
-                  onClick={() => setOnlyUnread(unreadOnly)}
-                  className={`rounded-md px-2.5 py-0.5 text-[13px] ${onlyUnread === unreadOnly ? "bg-[#45453f] text-white" : "text-[#a8a59c] hover:text-white"}`}
+                  onClick={() => n.setOnlyUnread(unreadOnly)}
+                  className={`rounded-md px-2.5 py-0.5 text-[13px] ${n.onlyUnread === unreadOnly ? "bg-[#45453f] text-white" : "text-[#a8a59c] hover:text-white"}`}
                 >
                   {unreadOnly
                     ? t("notifications.unread", { count: unreadInList })
@@ -227,12 +344,12 @@ export function NotificationBell({
               ))}
             </div>
             <div className="max-h-[470px] overflow-y-auto p-1">
-              {loadError && (
+              {n.loadError && (
                 <div className="px-3 py-4 text-[13px] text-accent">
                   {t("notifications.loadFailed")}
                 </div>
               )}
-              {items !== null && shown.length === 0 && !loadError && (
+              {n.items !== null && shown.length === 0 && !n.loadError && (
                 <div className="px-5 pb-8 pt-7 text-center">
                   <Icon name="bell" size="30px" className="text-[#5f5d57]" />
                   <div className="mt-2.5 text-[#d8d5cc]">
@@ -243,11 +360,11 @@ export function NotificationBell({
                   </div>
                 </div>
               )}
-              {shown.map((n) => (
+              {shown.map((item) => (
                 <NotificationItem
-                  key={n.id}
-                  notification={n}
-                  onClick={() => openItem(n)}
+                  key={item.id}
+                  notification={item}
+                  onClick={() => n.openItem(item)}
                 />
               ))}
             </div>
@@ -256,7 +373,7 @@ export function NotificationBell({
                 type="button"
                 className="flex items-center gap-1.5 text-[#bdbab1] hover:text-white"
                 onClick={() => {
-                  setOpen(false);
+                  n.close();
                   onManageSchedules();
                 }}
               >
@@ -268,61 +385,73 @@ export function NotificationBell({
           </div>,
           document.body,
         )}
-      {toast !== null &&
-        createPortal(
-          <div
-            role="status"
-            className="fixed bottom-5 right-5 z-50 flex w-[360px] max-w-[calc(100vw-24px)] gap-3 rounded-xl border border-[#454540] bg-[#363632] px-3.5 py-3 font-sans text-[14px] shadow-[0_18px_40px_rgba(0,0,0,0.45)]"
-          >
-            {toast.kind === "one" ? (
-              <div className="min-w-0 flex-1">
-                <NotificationText notification={toast.notification} />
-                <div className="mt-2 flex gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg bg-white px-2.5 py-1 text-[13px] font-medium text-[#1d1d1b]"
-                    onClick={() => openItem(toast.notification)}
-                  >
-                    {t("notifications.open")}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-lg px-2.5 py-1 text-[13px] text-[#d5d2c9] hover:bg-[#4a4a46]"
-                    onClick={() => setToast(null)}
-                  >
-                    {t("notifications.dismiss")}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="text-[#ecece6]">
-                  {t("notifications.manyNew", { count: toast.count })}
-                </span>
-                <button
-                  type="button"
-                  className="rounded-lg bg-white px-2.5 py-1 text-[13px] font-medium text-[#1d1d1b]"
-                  onClick={() => {
-                    setToast(null);
-                    if (!open) toggle();
-                  }}
-                >
-                  {t("notifications.openInbox")}
-                </button>
-              </div>
-            )}
+    </>
+  );
+}
+
+// NotificationToast shows what a poll found. It stays until clicked away, so
+// on a narrow screen it sits at the top below the header bars, clear of the
+// composer and the navigation.
+function NotificationToast({
+  notifications: n,
+}: {
+  notifications: Notifications;
+}) {
+  const { t } = useTranslation();
+  const toast = n.toast;
+  if (toast === null) return null;
+  return createPortal(
+    <div
+      role="status"
+      className="fixed inset-x-3 top-12 z-50 flex gap-3 rounded-xl border border-[#454540] bg-[#363632] px-3.5 py-3 font-sans text-[14px] shadow-[0_18px_40px_rgba(0,0,0,0.45)] md:inset-x-auto md:bottom-5 md:right-5 md:top-auto md:w-[360px]"
+    >
+      {toast.kind === "one" ? (
+        <div className="min-w-0 flex-1">
+          <NotificationText notification={toast.notification} />
+          <div className="mt-2 flex gap-2">
             <button
               type="button"
-              aria-label={t("notifications.dismiss")}
-              className="self-start text-[#8f8b82] hover:text-white"
-              onClick={() => setToast(null)}
+              className="rounded-lg bg-white px-2.5 py-1 text-[13px] font-medium text-[#1d1d1b]"
+              onClick={() => n.openItem(toast.notification)}
             >
-              <Icon name="close" size="15px" />
+              {t("notifications.open")}
             </button>
-          </div>,
-          document.body,
-        )}
-    </>
+            <button
+              type="button"
+              className="rounded-lg px-2.5 py-1 text-[13px] text-[#d5d2c9] hover:bg-[#4a4a46]"
+              onClick={n.dismissToast}
+            >
+              {t("notifications.dismiss")}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+          <span className="text-[#ecece6]">
+            {t("notifications.manyNew", { count: toast.count })}
+          </span>
+          <button
+            type="button"
+            className="rounded-lg bg-white px-2.5 py-1 text-[13px] font-medium text-[#1d1d1b]"
+            onClick={() => {
+              n.dismissToast();
+              if (!n.open) n.toggle(document.querySelector(BELL));
+            }}
+          >
+            {t("notifications.openInbox")}
+          </button>
+        </div>
+      )}
+      <button
+        type="button"
+        aria-label={t("notifications.dismiss")}
+        className="self-start text-[#8f8b82] hover:text-white"
+        onClick={n.dismissToast}
+      >
+        <Icon name="close" size="15px" />
+      </button>
+    </div>,
+    document.body,
   );
 }
 
