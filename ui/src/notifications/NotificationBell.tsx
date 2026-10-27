@@ -71,6 +71,8 @@ export function NotificationBell({
     const before = known.current;
     known.current = count;
     setUnread(count);
+    // News read elsewhere (its thread, another tab) takes the toast with it.
+    if (before !== null && count < before) setToast(null);
     if (before !== null && count > before) {
       // The sidebar picks up the new run threads and their dots.
       announce(THREAD_NEWS_CHANGED);
@@ -111,6 +113,7 @@ export function NotificationBell({
     return () => document.removeEventListener("pointerdown", onPointer);
   }, [open]);
   useEscapeKey(() => setOpen(false), { active: open });
+  useEscapeKey(() => setToast(null), { active: toast !== null && !open });
 
   const toggle = () => {
     if (!open) {
@@ -149,6 +152,7 @@ export function NotificationBell({
   };
 
   const readAll = () => {
+    setToast(null);
     setItems(
       (current) =>
         current?.map((n) => ({

@@ -176,6 +176,53 @@ test("a toast stays up until it is dismissed", async () => {
   }
 });
 
+// showToast renders the bell and lets a focus poll find one new notification.
+async function showToast(...later: number[]) {
+  const counts = vi.mocked(api.unreadNotificationCount).mockResolvedValueOnce(0);
+  for (const n of [1, ...later]) counts.mockResolvedValueOnce(n);
+  render(
+    <NotificationBell
+      placement="header"
+      onOpen={vi.fn()}
+      onManageSchedules={vi.fn()}
+    />,
+  );
+  await waitFor(() =>
+    expect(api.unreadNotificationCount).toHaveBeenCalledTimes(1),
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  await screen.findByRole("status");
+}
+
+test("news read elsewhere takes the toast with it", async () => {
+  vi.mocked(api.unreadNotificationCount).mockReset();
+  await showToast(0);
+  await act(async () => {
+    window.dispatchEvent(new Event(api.NOTIFICATIONS_CHANGED));
+  });
+  await waitFor(() =>
+    expect(screen.queryByRole("status")).not.toBeInTheDocument(),
+  );
+});
+
+test("mark all read takes the toast with it", async () => {
+  vi.mocked(api.unreadNotificationCount).mockReset();
+  await showToast();
+  fireEvent.click(screen.getByRole("button", { name: /some unread/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Mark all read" }));
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+test("escape dismisses the toast", async () => {
+  vi.mocked(api.unreadNotificationCount).mockReset();
+  await showToast();
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
 test("a poll that finds something new shows a toast", async () => {
   vi.mocked(api.unreadNotificationCount)
     .mockResolvedValueOnce(0)
