@@ -250,10 +250,18 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 				s.persistRunNote(detached, sch.UserID, noteThread, "This scheduled run failed: internal error")
 			}
 		}
-		finish()
-		if nothingNew && s.dropEmptyRunThread(detached, sch.UserID, replacing) {
-			return
+		// Dropped while the run still counts as running, so a message the user
+		// sends meanwhile is refused (rejectWhileRunning), never deleted with it.
+		if nothingNew {
+			dropped, takenUp := s.dropEmptyRunThread(detached, sch.UserID, replacing)
+			if dropped {
+				run.MessageID = nil
+			}
+			if !takenUp {
+				replacing = ""
+			}
 		}
+		finish()
 		if replacing != "" {
 			s.replaceRunThreads(detached, sch.UserID, sch.ID, replacing)
 		}
@@ -481,22 +489,23 @@ func (s *server) disableAfterTimeout(ctx context.Context, user auth.User, sch sc
 }
 
 // dropEmptyRunThread deletes a nothing-new run's thread unless the user took
-// it up during the run, and reports whether it did. The earlier run threads
+// it up during the run (takenUp): only such a thread then replaces the earlier
+// ones like any run's. Otherwise, dropped or not, the earlier run threads
 // stay: the last news remains readable.
-func (s *server) dropEmptyRunThread(ctx context.Context, userID, threadID string) bool {
+func (s *server) dropEmptyRunThread(ctx context.Context, userID, threadID string) (dropped, takenUp bool) {
 	untouched, err := s.thread.IsUntouchedRunThread(ctx, userID, threadID)
 	if err != nil {
 		slog.Warn("check run thread failed", "thread_id", threadID, "err", err)
-		return false
+		return false, false
 	}
 	if !untouched {
-		return false
+		return false, true
 	}
 	if _, err := s.deleteThreadWithData(ctx, userID, threadID); err != nil {
 		slog.Warn("drop empty run thread failed", "thread_id", threadID, "err", err)
-		return false
+		return false, false
 	}
-	return true
+	return true, false
 }
 
 // replaceRunThreads deletes the schedule's run threads before keepThreadID

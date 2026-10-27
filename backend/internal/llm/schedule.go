@@ -110,7 +110,7 @@ var slugInvalid = regexp.MustCompile(`[^a-z0-9]+`)
 
 // ExtractFindings lists the items a scheduled run's answer reports as new,
 // reusing knownKeys for items reported before. An empty or unreadable reply
-// is an error, never "nothing new": a nothing-new run's thread is dropped.
+// is an error, unlike an empty list, which says there is nothing new.
 func (c *Client) ExtractFindings(ctx context.Context, task, answer string, knownKeys []string) ([]Finding, error) {
 	if len(knownKeys) > maxKnownKeys {
 		knownKeys = knownKeys[:maxKnownKeys]
@@ -143,7 +143,8 @@ func (c *Client) ExtractFindings(ctx context.Context, task, answer string, known
 }
 
 // parseFindings reads the extractor's reply; ok is false when it holds no
-// items object, which is not the same as an empty list.
+// items object, or items of which none has a usable key: neither is an empty
+// list.
 func parseFindings(reply string) ([]Finding, bool) {
 	raw, found := llmwire.JSONObject(reply)
 	if !found {
@@ -179,5 +180,5 @@ func parseFindings(reply string) ([]Finding, bool) {
 		seen[key] = true
 		out = append(out, Finding{Key: key, Label: label, Source: max(item.Source, 0)})
 	}
-	return out, true
+	return out, len(out) > 0 || len(*decoded.Items) == 0
 }

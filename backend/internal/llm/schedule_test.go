@@ -65,7 +65,7 @@ func TestParseFindingsBounds(t *testing.T) {
 	if !ok || len(items) != 1 || len(items[0].Key) != 80 || len([]rune(items[0].Label)) != 80 {
 		t.Fatalf("items = %+v (ok %v)", items, ok)
 	}
-	for _, bad := range []string{"nothing", `{"items":"x"}`} {
+	for _, bad := range []string{"nothing", `{"items":"x"}`, `{}`, `{"items":[{"key":"デューン","label":"Dune"},{"key":""}]}`} {
 		if items, ok := parseFindings(bad); ok || items != nil {
 			t.Fatalf("parseFindings(%q) = %+v, %v; want no items, not ok", bad, items, ok)
 		}

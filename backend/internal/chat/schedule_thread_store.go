@@ -40,13 +40,8 @@ func (s *Store) ReplaceableScheduleThreads(ctx context.Context, userID, schedule
 // IsUntouchedRunThread reports whether the user's thread is a run thread
 // they never took up.
 func (s *Store) IsUntouchedRunThread(ctx context.Context, userID, threadID string) (bool, error) {
-	var untouched bool
-	if err := s.db.QueryRowContext(ctx, `
-SELECT EXISTS (SELECT 1 FROM threads t WHERE `+untouchedRunThread+` AND t.user_id = ? AND t.id = ?)`,
-		userID, threadID).Scan(&untouched); err != nil {
-		return false, fmt.Errorf("check untouched run thread: %w", err)
-	}
-	return untouched, nil
+	refs, err := s.untouchedRunThreads(ctx, `t.user_id = ? AND t.id = ?`, userID, threadID)
+	return len(refs) > 0, err
 }
 
 // StaleScheduleThreads lists up to limit untouched run threads, across all

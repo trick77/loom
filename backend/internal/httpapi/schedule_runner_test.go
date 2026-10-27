@@ -778,7 +778,7 @@ func TestScheduledRunKeepsAThreadTheUserAskedIn(t *testing.T) {
 }
 
 // A nothing-new run's thread the user starred while the run went on is theirs:
-// it stays, and replaces the untouched one before it like any run's.
+// dropEmptyRunThread keeps it and reports it taken up, an untouched one goes.
 func TestNothingNewRunKeepsAThreadTheUserTookUp(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
@@ -794,11 +794,11 @@ func TestNothingNewRunKeepsAThreadTheUserTookUp(t *testing.T) {
 	if _, _, err := f.chat.SetThreadStarred(ctx, testUser.ID, starred.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if s.dropEmptyRunThread(ctx, testUser.ID, starred.ID) {
-		t.Fatal("dropped a run thread the user starred")
+	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, starred.ID); dropped || !takenUp {
+		t.Fatalf("starred run thread: dropped %v, taken up %v", dropped, takenUp)
 	}
-	if !s.dropEmptyRunThread(ctx, testUser.ID, first) {
-		t.Fatal("kept an untouched run thread")
+	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, first); !dropped || takenUp {
+		t.Fatalf("untouched run thread: dropped %v, taken up %v", dropped, takenUp)
 	}
 	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, starred.ID); !found {
 		t.Fatal("the starred run thread is gone")
@@ -930,8 +930,8 @@ func TestRunThreadCleanupSurvivesStoreFailures(t *testing.T) {
 	s := newServer(Deps{Thread: store})
 	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
 	s.pruneRunThreads(ctx, time.Now())
-	if s.dropEmptyRunThread(ctx, testUser.ID, "a") || len(store.DeletedThreads) != 0 {
-		t.Fatalf("deleted %v after the listing failed", store.DeletedThreads)
+	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, "a"); dropped || takenUp || len(store.DeletedThreads) != 0 {
+		t.Fatalf("deleted %v after the listing failed (taken up %v)", store.DeletedThreads, takenUp)
 	}
 
 	store.RunThreadsErr = nil
@@ -941,14 +941,17 @@ func TestRunThreadCleanupSurvivesStoreFailures(t *testing.T) {
 	if want := []string{"a", "b", "a", "b"}; !slices.Equal(store.DeletedThreads, want) {
 		t.Fatalf("deleted %v, want %v", store.DeletedThreads, want)
 	}
-	if s.dropEmptyRunThread(ctx, testUser.ID, "taken-up") || !s.dropEmptyRunThread(ctx, testUser.ID, "a") {
-		t.Fatal("dropEmptyRunThread went by something other than the thread being untouched")
+	if _, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, "taken-up"); !takenUp {
+		t.Fatal("a thread outside the untouched ones is not reported taken up")
+	}
+	if dropped, _ := s.dropEmptyRunThread(ctx, testUser.ID, "a"); !dropped {
+		t.Fatal("an untouched thread was not dropped")
 	}
 	store.DeleteThreadErr = errors.New("locked")
 	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
 	s.pruneRunThreads(ctx, time.Now())
-	if s.dropEmptyRunThread(ctx, testUser.ID, "a") || len(store.DeletedThreads) != 5 {
-		t.Fatalf("failed deletes recorded: %v", store.DeletedThreads)
+	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, "a"); dropped || takenUp || len(store.DeletedThreads) != 5 {
+		t.Fatalf("failed deletes recorded: %v (dropped %v, taken up %v)", store.DeletedThreads, dropped, takenUp)
 	}
 }
 
