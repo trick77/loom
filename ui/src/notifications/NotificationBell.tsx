@@ -19,8 +19,6 @@ import { formatTimeAgo } from "../timeago";
 
 // POLL_MS is how often the unread count is read; it is read on focus too.
 export const POLL_MS = 60_000;
-// TOAST_MS is how long a toast stays up.
-export const TOAST_MS = 8_000;
 
 type Toast =
   | { kind: "one"; notification: AppNotification }
@@ -28,7 +26,7 @@ type Toast =
 
 // NotificationBell is the sidebar's bell: a gold dot while anything is unread,
 // the inbox in a popover, and a toast when a poll finds something new while
-// the app is open.
+// the app is open. The toast stays until the user clicks it away.
 export function NotificationBell({
   onOpen,
   onManageSchedules,
@@ -73,6 +71,8 @@ export function NotificationBell({
     const before = known.current;
     known.current = count;
     setUnread(count);
+    // News read elsewhere (its thread, another tab) takes the toast with it.
+    if (before !== null && count < before) setToast(null);
     if (before !== null && count > before) {
       // The sidebar picks up the new run threads and their dots.
       announce(THREAD_NEWS_CHANGED);
@@ -102,12 +102,6 @@ export function NotificationBell({
   }, [poll]);
 
   useEffect(() => {
-    if (toast === null) return;
-    const handle = window.setTimeout(() => setToast(null), TOAST_MS);
-    return () => window.clearTimeout(handle);
-  }, [toast]);
-
-  useEffect(() => {
     if (!open) return;
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node;
@@ -119,6 +113,7 @@ export function NotificationBell({
     return () => document.removeEventListener("pointerdown", onPointer);
   }, [open]);
   useEscapeKey(() => setOpen(false), { active: open });
+  useEscapeKey(() => setToast(null), { active: toast !== null && !open });
 
   const toggle = () => {
     if (!open) {
@@ -157,6 +152,7 @@ export function NotificationBell({
   };
 
   const readAll = () => {
+    setToast(null);
     setItems(
       (current) =>
         current?.map((n) => ({
