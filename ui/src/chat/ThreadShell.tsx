@@ -1201,6 +1201,15 @@ export function ThreadShell({
               return;
             }
             userMessageConfirmed = true;
+            // A reply makes a run thread the user's: its schedule clock goes
+            // now, not when the thread event arrives after the answer.
+            setThreads((current) =>
+              current.map((item) =>
+                item.id === threadIDForRun && item.scheduleId
+                  ? { ...item, scheduleReplied: true }
+                  : item,
+              ),
+            );
             if (!isCurrentThread()) return;
             const confirmed =
               options.attachments.length > 0

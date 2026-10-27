@@ -64,6 +64,8 @@ export type Thread = {
   lastMessageAt?: string;
   /** The schedule whose run started this thread. */
   scheduleId?: string | null;
+  /** True once the user wrote in a run thread after the run's prompt. */
+  scheduleReplied?: boolean;
 };
 
 // ContentBlock is one ordered piece of an assistant message: a run of prose, a

@@ -66,7 +66,7 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	var scheduleID sql.NullString
 	var createdAt, updatedAt string
 	dest := []any{&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt,
-		&scheduleID}
+		&scheduleID, &thread.ScheduleReplied}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return Thread{}, err
@@ -100,8 +100,15 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 // threadColumns is the threads projection scanThreadRow reads; threadColumnsT
 // is the same for a query that aliases threads as t.
 const (
-	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, schedule_id"
-	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.schedule_id"
+	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, schedule_id, " + scheduleRepliedThreads
+	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.schedule_id, " + scheduleRepliedT
+)
+
+// scheduleRepliedThreads and scheduleRepliedT compute Thread.ScheduleReplied:
+// a run thread holding a user message besides the run's prompt.
+const (
+	scheduleRepliedThreads = "(schedule_id IS NOT NULL AND EXISTS (SELECT 1 FROM messages rm WHERE rm.user_id = threads.user_id AND rm.thread_id = threads.id AND rm.role = 'user' LIMIT 1 OFFSET 1))"
+	scheduleRepliedT       = "(t.schedule_id IS NOT NULL AND EXISTS (SELECT 1 FROM messages rm WHERE rm.user_id = t.user_id AND rm.thread_id = t.id AND rm.role = 'user' LIMIT 1 OFFSET 1))"
 )
 
 // messageColumns is the full messages projection scanMessage reads.

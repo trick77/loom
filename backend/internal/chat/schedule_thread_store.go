@@ -16,7 +16,7 @@ const untouchedRunThread = `t.schedule_id IS NOT NULL
   AND t.archived_at IS NULL
   AND t.project_id IS NULL
   AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = t.user_id AND n.thread_id = t.id AND n.read_at IS NULL)
-  AND (SELECT COUNT(*) FROM messages m WHERE m.thread_id = t.id AND m.role = 'user') <= 1
+  AND NOT ` + scheduleRepliedT + `
   AND NOT EXISTS (SELECT 1 FROM queued_messages q WHERE q.user_id = t.user_id AND q.thread_id = t.id)
   AND NOT EXISTS (SELECT 1 FROM shared_threads sh WHERE sh.user_id = t.user_id AND sh.thread_id = t.id AND sh.shared = 1)`
 

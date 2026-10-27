@@ -151,6 +151,9 @@ type Thread struct {
 	// ScheduleID is the schedule whose run started this thread; nil for every
 	// other thread, and once the schedule is gone.
 	ScheduleID *string `json:"scheduleId"`
+	// ScheduleReplied is true once the user wrote in a run thread after the
+	// run's prompt: the thread is theirs now and no later run replaces it.
+	ScheduleReplied bool `json:"scheduleReplied"`
 	// Shared is true when an active public share link exists for this thread
 	// (a shared_threads row with shared=1). Populated by ListThreads so chat
 	// lists can badge shared threads; left false on single-thread fetches,
