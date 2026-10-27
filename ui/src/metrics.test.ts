@@ -65,7 +65,7 @@ test("hasRenderableMetrics requires duration and any token usage", () => {
   ).toBe(false);
 });
 
-test("buildMetricsString omits the lead segment when the message stored no reasoning effort", () => {
+test("buildMetricsString formats cached, reasoning and context tokens after the duration", () => {
   const line = buildMetricsString(
     assistant({
       model: "some-model",
@@ -80,7 +80,7 @@ test("buildMetricsString omits the lead segment when the message stored no reaso
     undefined,
     WINDOW,
   );
-  // The model name is never shown; with no reasoningEffort the line starts at duration.
+  // The model name is never shown; the line starts at the duration.
   // The % comes from contextTokens (final call's model-reported total), NOT the
   // accumulated totalTokens (249000): 51000 / 1000000 = 5.1% -> "5 %"
   expect(line).toBe("5s  ·  ↑ 49 498 (38 208/c)  ·  ↓ 1 502 (205/r)  ·  5 %");
@@ -113,7 +113,7 @@ test("buildMetricsString ends with the thread's running cost, and omits it when 
   expect(unpriced).toBe("5s  ·  ↑ 1 000  ·  ↓ 200");
 });
 
-test("buildMetricsString leads with a stored reasoning effort, without the model or parentheses", () => {
+test("buildMetricsString never shows a stored reasoning effort or the model", () => {
   const line = buildMetricsString(
     assistant({
       model: "some-model",
@@ -128,7 +128,7 @@ test("buildMetricsString leads with a stored reasoning effort, without the model
     WINDOW,
   );
   // 104858 / 1000000 = 10.5% -> "10 %"
-  expect(line).toBe("high  ·  5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10 %");
+  expect(line).toBe("5s  ·  ↑ 100 000  ·  ↓ 4 858  ·  10 %");
 });
 
 test("humanizeCategory title-cases snake_case and upper-cases the URL acronym", () => {

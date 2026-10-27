@@ -105,6 +105,7 @@ export type Message = {
   costNanoUsd?: number;
   durationMs?: number;
   model?: string;
+  // reasoningEffort is the level the turn sent; served for the record, not shown.
   reasoningEffort?: string;
   // pastedTexts are large blocks the user pasted into the composer, collapsed into
   // "Pasted" chips. Their text is also folded into content (so the model sees it);

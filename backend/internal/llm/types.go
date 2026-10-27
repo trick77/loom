@@ -54,8 +54,8 @@ type StreamResult struct {
 	Duration         time.Duration
 	Model            string
 	// ReasoningEffort is the level this turn sent (see the reasoning note in
-	// client.go). Blank on messages persisted while loom sent none; the metrics
-	// pill omits the segment then.
+	// client.go), stored with the message for the record. Blank on messages
+	// persisted while loom sent none.
 	ReasoningEffort string
 	FinishReason    string
 	// CostNanoUSD is llmwire's list-rate figure for this call, in nano-USD,
