@@ -17,7 +17,8 @@ import (
 	"github.com/trick77/loom/internal/schedule"
 )
 
-// fakeScheduleLLM reads every interval as template and reports findings.
+// fakeScheduleLLM reads every interval as template and reports findings. Nil
+// findings is an extraction that could not tell, an empty list nothing new.
 type fakeScheduleLLM struct {
 	mu       sync.Mutex
 	template string
@@ -34,6 +35,9 @@ func (f *fakeScheduleLLM) ExtractFindings(_ context.Context, _, _ string, known 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.known = append(f.known, known)
+	if f.findings == nil {
+		return nil, errors.New("no findings scripted")
+	}
 	return f.findings, nil
 }
 

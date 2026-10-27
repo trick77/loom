@@ -209,7 +209,8 @@ func (o *observations) list() []schedule.ToolOutcome {
 
 // runSchedule carries out one run of a claimed schedule: its prompt as a
 // headless turn in a thread of its own, then the findings, the memory, the
-// run record and, when there is news, a notification.
+// run record and, when there is news, a notification. A run that surely found
+// nothing new leaves no thread: an answer saying so is not worth a visit.
 func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	detached := context.WithoutCancel(ctx)
 	start := s.clock()
@@ -230,8 +231,11 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	var noteThread string
 	// replacing is the run's thread once it holds the prompt: however the run
 	// ends, it then replaces the earlier ones the user never took up, after the
-	// run is recorded. The old answer stays readable until then.
+	// run is recorded. The old answer stays readable until then. Only a run
+	// whose extraction found nothing new (nothingNew) drops its own thread
+	// instead and leaves the earlier ones be.
 	var replacing string
+	var nothingNew bool
 	finish := func() {
 		run.DurationMS = s.clock().Sub(start).Milliseconds()
 		if err := s.schedules.FinishRun(detached, sch.UserID, run, s.clock()); err != nil {
@@ -244,6 +248,17 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 			run.Status, run.Error = schedule.StatusFailed, "internal error"
 			if noteThread != "" {
 				s.persistRunNote(detached, sch.UserID, noteThread, "This scheduled run failed: internal error")
+			}
+		}
+		// Dropped while the run still counts as running, so a message the user
+		// sends meanwhile is refused (rejectWhileRunning), never deleted with it.
+		if nothingNew {
+			dropped, takenUp := s.dropEmptyRunThread(detached, sch.UserID, replacing)
+			if dropped {
+				run.MessageID = nil
+			}
+			if !takenUp {
+				replacing = ""
 			}
 		}
 		finish()
@@ -379,7 +394,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	extractCtx, cancelExtract := context.WithTimeout(
 		llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), findingsTimeout)
 	defer cancelExtract()
-	fresh := s.recordFindings(extractCtx, user.ID, sch, runID, result, memory.Findings, seen.list())
+	fresh, extracted := s.recordFindings(extractCtx, user.ID, sch, runID, result, memory.Findings, seen.list())
 	run.NewCount = len(fresh)
 	switch {
 	case result.LimitHit == turn.LimitTokens:
@@ -388,6 +403,8 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 		run.Status = schedule.StatusNew
 	default:
 		run.Status = schedule.StatusNothingNew
+		// A failed extraction cannot tell: the answer may hold news.
+		nothingNew = extracted
 	}
 	if len(fresh) == 0 {
 		return
@@ -408,12 +425,15 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 
 // recordFindings extracts the items the answer reported, keeps the new ones
 // and teaches the schedule's memory which sources and searches led to them.
-func (s *server) recordFindings(ctx context.Context, userID string, sch schedule.Schedule, runID string, result turn.LoopResult, known []schedule.Finding, seen []schedule.ToolOutcome) []schedule.Finding {
+// extracted is false when the extraction or storing the findings failed: no
+// new item then does not mean nothing was new.
+func (s *server) recordFindings(ctx context.Context, userID string, sch schedule.Schedule, runID string, result turn.LoopResult, known []schedule.Finding, seen []schedule.ToolOutcome) (fresh []schedule.Finding, extracted bool) {
 	keys := make([]string, len(known))
 	for i, f := range known {
 		keys[i] = f.Key
 	}
 	items, err := s.scheduleLLM.ExtractFindings(ctx, sch.Prompt, result.Content, keys)
+	extracted = err == nil
 	if err != nil {
 		slog.Warn("extract findings failed", "schedule_id", sch.ID, "err", err)
 	}
@@ -423,15 +443,15 @@ func (s *server) recordFindings(ctx context.Context, userID string, sch schedule
 		found = append(found, schedule.Finding{Key: item.Key, Label: item.Label, SourceURL: urls[item.Source]})
 	}
 	now := s.clock()
-	fresh, err := s.schedules.AddFindings(context.WithoutCancel(ctx), userID, sch.ID, runID, found, now)
+	fresh, err = s.schedules.AddFindings(context.WithoutCancel(ctx), userID, sch.ID, runID, found, now)
 	if err != nil {
 		slog.Warn("store findings failed", "schedule_id", sch.ID, "err", err)
-		return nil
+		return nil, false
 	}
 	if err := s.schedules.RecordRun(context.WithoutCancel(ctx), userID, sch.ID, seen, fresh, now); err != nil {
 		slog.Warn("record schedule memory failed", "schedule_id", sch.ID, "err", err)
 	}
-	return fresh
+	return fresh, extracted
 }
 
 // previousRunTimedOut reports whether the run before runID also went past the
@@ -466,6 +486,26 @@ func (s *server) disableAfterTimeout(ctx context.Context, user auth.User, sch sc
 		Title:      sch.Name + " was disabled",
 		Body:       fmt.Sprintf("Two runs in a row took longer than %d minutes. Open the schedule to change it or enable it again.", minutes),
 	})
+}
+
+// dropEmptyRunThread deletes a nothing-new run's thread unless the user took
+// it up during the run (takenUp): only such a thread then replaces the earlier
+// ones like any run's. Otherwise, dropped or not, the earlier run threads
+// stay: the last news remains readable.
+func (s *server) dropEmptyRunThread(ctx context.Context, userID, threadID string) (dropped, takenUp bool) {
+	untouched, err := s.thread.IsUntouchedRunThread(ctx, userID, threadID)
+	if err != nil {
+		slog.Warn("check run thread failed", "thread_id", threadID, "err", err)
+		return false, false
+	}
+	if !untouched {
+		return false, true
+	}
+	if _, err := s.deleteThreadWithData(ctx, userID, threadID); err != nil {
+		slog.Warn("drop empty run thread failed", "thread_id", threadID, "err", err)
+		return false, false
+	}
+	return true, false
 }
 
 // replaceRunThreads deletes the schedule's run threads before keepThreadID

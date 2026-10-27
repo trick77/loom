@@ -121,23 +121,20 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 		t.Fatalf("sources = %+v", sources)
 	}
 
-	// The second run reports the same film: nothing new, no notification, in
-	// a fresh thread of its own. The first thread stays while its news is
-	// unread; once read, the third run replaces it.
+	// The second and third runs report the same film: nothing new, no
+	// notification and no thread left behind. The first thread stays, its
+	// news read or not: it is the latest there is.
 	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
 	s.runSchedule(ctx, sch)
 	last := client.Histories[len(client.Histories)-1][0].Content
-	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, firstThread); !found {
-		t.Fatal("a run replaced a thread whose news is unread")
-	}
 	if err := f.store.MarkRead(ctx, testUser.ID, notes[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	client.Results = researchRound("Still Dune: Part Three [1].")
 	s.runSchedule(ctx, sch)
 	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
-	if len(runs) != 3 || runs[2].ThreadID != nil || runs[1].ThreadID != nil {
-		t.Fatalf("runs = %+v, want only the latest still linked to a thread", runs)
+	if len(runs) != 3 || runs[0].ThreadID != nil || runs[1].ThreadID != nil || runs[2].ThreadID == nil || *runs[2].ThreadID != firstThread {
+		t.Fatalf("runs = %+v, want only the first still linked to a thread", runs)
 	}
 	if runs[0].Status != schedule.StatusNothingNew || runs[0].NewCount != 0 || runs[1].Status != schedule.StatusNothingNew {
 		t.Fatalf("later runs = %+v", runs[:2])
@@ -145,6 +142,15 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 1 {
 		t.Fatalf("a run without news notified: %+v", notes)
 	}
+	if threads, _ := f.chat.ListThreads(ctx, testUser.ID, chat.ListThreadsOptions{}); len(threads) != 1 || threads[0].ID != firstThread {
+		t.Fatalf("threads = %+v, want only the first run's", threads)
+	}
+
+	// An extraction that cannot tell keeps its run's thread, the answer may
+	// hold news, and replaces the first one as any run does.
+	f.sllm.findings = nil
+	client.Results = researchRound("Maybe something [1].")
+	s.runSchedule(ctx, sch)
 	lastThread := lastRunThread(t, f, sch)
 	if lastThread == firstThread {
 		t.Fatal("a later run wrote into the first run's thread")
@@ -155,8 +161,8 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, firstThread); found {
 		t.Fatal("a run kept the first run's thread after its news was read")
 	}
-	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); notes[0].ThreadID != nil {
-		t.Fatalf("the first run's notification still links its replaced thread: %+v", notes[0])
+	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 1 || notes[0].ThreadID != nil {
+		t.Fatalf("notifications = %+v, want the first one only, no longer linking its replaced thread", notes)
 	}
 	// The second run saw the schedule's memory, and the extractor the known key.
 	if !strings.Contains(last, "Already reported") || !strings.Contains(last, "Dune: Part Three") || !strings.Contains(last, "arena.ch/programm: 1 finds") {
@@ -771,6 +777,34 @@ func TestScheduledRunKeepsAThreadTheUserAskedIn(t *testing.T) {
 	}
 }
 
+// A nothing-new run's thread the user starred while the run went on is theirs:
+// dropEmptyRunThread keeps it and reports it taken up, an untouched one goes.
+func TestNothingNewRunKeepsAThreadTheUserTookUp(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch)
+	first := lastRunThread(t, f, sch)
+
+	starred, err := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Run", ScheduleID: &sch.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.chat.SetThreadStarred(ctx, testUser.ID, starred.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, starred.ID); dropped || !takenUp {
+		t.Fatalf("starred run thread: dropped %v, taken up %v", dropped, takenUp)
+	}
+	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, first); !dropped || takenUp {
+		t.Fatalf("untouched run thread: dropped %v, taken up %v", dropped, takenUp)
+	}
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, starred.ID); !found {
+		t.Fatal("the starred run thread is gone")
+	}
+}
+
 func TestFailedScheduledRunStillReplacesTheThreadBefore(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
@@ -896,8 +930,8 @@ func TestRunThreadCleanupSurvivesStoreFailures(t *testing.T) {
 	s := newServer(Deps{Thread: store})
 	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
 	s.pruneRunThreads(ctx, time.Now())
-	if len(store.DeletedThreads) != 0 {
-		t.Fatalf("deleted %v after the listing failed", store.DeletedThreads)
+	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, "a"); dropped || takenUp || len(store.DeletedThreads) != 0 {
+		t.Fatalf("deleted %v after the listing failed (taken up %v)", store.DeletedThreads, takenUp)
 	}
 
 	store.RunThreadsErr = nil
@@ -907,11 +941,17 @@ func TestRunThreadCleanupSurvivesStoreFailures(t *testing.T) {
 	if want := []string{"a", "b", "a", "b"}; !slices.Equal(store.DeletedThreads, want) {
 		t.Fatalf("deleted %v, want %v", store.DeletedThreads, want)
 	}
+	if _, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, "taken-up"); !takenUp {
+		t.Fatal("a thread outside the untouched ones is not reported taken up")
+	}
+	if dropped, _ := s.dropEmptyRunThread(ctx, testUser.ID, "a"); !dropped {
+		t.Fatal("an untouched thread was not dropped")
+	}
 	store.DeleteThreadErr = errors.New("locked")
 	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
 	s.pruneRunThreads(ctx, time.Now())
-	if len(store.DeletedThreads) != 4 {
-		t.Fatalf("failed deletes recorded: %v", store.DeletedThreads)
+	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, "a"); dropped || takenUp || len(store.DeletedThreads) != 5 {
+		t.Fatalf("failed deletes recorded: %v (dropped %v, taken up %v)", store.DeletedThreads, dropped, takenUp)
 	}
 }
 
