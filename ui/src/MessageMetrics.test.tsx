@@ -30,7 +30,7 @@ test("renders nothing without renderable metrics", () => {
   expect(container).toBeEmptyDOMElement();
 });
 
-test("renders the metrics line when data is present, leading with a stored reasoning effort", () => {
+test("renders the metrics line when data is present, without the reasoning effort", () => {
   render(
     <MessageMetrics
       message={assistant({
@@ -43,8 +43,8 @@ test("renders the metrics line when data is present, leading with a stored reaso
       })}
     />,
   );
-  // No leading time on the answer; the line leads with the reasoning-effort level (never the model name).
-  expect(screen.getByText(/^high · 5s · ↑/)).toBeInTheDocument();
+  // No leading time on the answer; the line starts at the duration (never the model name or effort).
+  expect(screen.getByText(/^5s · ↑/)).toBeInTheDocument();
 });
 
 test("shows the context % against the window /api/model reports", async () => {

@@ -171,7 +171,8 @@ function SidebarThreadItem({
             className={`flex items-center gap-1.5 whitespace-nowrap ${active ? "pr-7" : ""}`}
           >
             <span className={active ? "" : "truncate"}>{thread.title}</span>
-            {thread.scheduleId && (
+            {/* The clock marks a run thread the user has not replied in. */}
+            {thread.scheduleId && !thread.scheduleReplied && (
               <Icon
                 name="clock"
                 size="13px"
