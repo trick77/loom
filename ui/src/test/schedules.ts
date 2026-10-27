@@ -27,12 +27,10 @@ export function makeSchedule(overrides: Partial<Schedule> = {}): Schedule {
       startedAt: "2026-10-22T12:37:00Z",
       finishedAt: "2026-10-22T12:39:00Z",
       status: "new",
-      newCount: 2,
       rounds: 3,
       tokens: 41000,
       durationMs: 108000,
       error: "",
-      newLabels: ["Dune: Part Three", "Avengers: Doomsday"],
     },
     ...overrides,
   };

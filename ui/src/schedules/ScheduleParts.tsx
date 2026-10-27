@@ -50,10 +50,8 @@ const pillIcon: Partial<Record<string, IconName>> = {
 // more (paused, auto-disabled).
 export function StatusPill({
   status,
-  count = 0,
 }: {
   status: ScheduleRunStatus | "paused" | "disabled";
-  count?: number;
 }) {
   const { t } = useTranslation();
   const icon = pillIcon[status];
@@ -62,7 +60,7 @@ export function StatusPill({
       className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-px text-[12px] leading-[18px] ${pillTone[status] ?? pillTone.nothing_new}`}
     >
       {icon && <Icon name={icon} size="13px" />}
-      {t(`schedules.status.${status}`, { count })}
+      {t(`schedules.status.${status}`)}
     </span>
   );
 }
@@ -70,14 +68,11 @@ export function StatusPill({
 // scheduleStatus is what a schedule's pill shows.
 export function scheduleStatus(
   schedule: Schedule,
-): { status: ScheduleRunStatus | "paused" | "disabled"; count: number } | null {
-  if (schedule.disabledReason === "timeout")
-    return { status: "disabled", count: 0 };
-  if (!schedule.enabled) return { status: "paused", count: 0 };
-  if (schedule.running) return { status: "running", count: 0 };
-  const run = schedule.lastRun;
-  if (run === null) return null;
-  return { status: run.status, count: run.newCount };
+): ScheduleRunStatus | "paused" | "disabled" | null {
+  if (schedule.disabledReason === "timeout") return "disabled";
+  if (!schedule.enabled) return "paused";
+  if (schedule.running) return "running";
+  return schedule.lastRun?.status ?? null;
 }
 
 export function Toggle({

@@ -28,7 +28,7 @@ const run: api.AppNotification = {
   scheduleId: "s1",
   threadId: "th1",
   messageId: "m1",
-  title: "Cinema scout: 2 new",
+  title: "Cinema scout",
   body: "Dune: Part Three · Avengers: Doomsday",
   createdAt: new Date().toISOString(),
   readAt: null,

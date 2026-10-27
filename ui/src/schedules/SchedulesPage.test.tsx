@@ -51,7 +51,7 @@ test("lists schedules with their slot and last run", async () => {
   const p = props();
   render(<SchedulesPage {...p} />);
   expect(await screen.findByText("Cinema scout")).toBeInTheDocument();
-  expect(screen.getByText("2 new")).toBeInTheDocument();
+  expect(screen.getByText("reported")).toBeInTheDocument();
   expect(screen.getByText("disabled · timeout")).toBeInTheDocument();
   expect(screen.getByText("paused")).toBeInTheDocument();
   expect(
@@ -134,7 +134,7 @@ test("a running schedule's row refreshes until its run lands", async () => {
   render(<SchedulesPage {...props()} />);
   expect(await screen.findByText("running")).toBeInTheDocument();
   expect(
-    await screen.findByText("2 new", {}, { timeout: 8000 }),
+    await screen.findByText("reported", {}, { timeout: 8000 }),
   ).toBeInTheDocument();
 }, 10000);
 

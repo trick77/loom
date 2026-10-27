@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -260,7 +259,7 @@ func TestRunThreadLink(t *testing.T) {
 	}
 }
 
-func TestRunsAndLabels(t *testing.T) {
+func TestRuns(t *testing.T) {
 	ctx := context.Background()
 	st := schedule.NewStore(openDB(t))
 	now := time.Date(2026, 10, 22, 12, 37, 0, 0, time.UTC)
@@ -268,20 +267,18 @@ func TestRunsAndLabels(t *testing.T) {
 	first, _ := st.StartRun(ctx, "u1", sch.ID, now.AddDate(0, 0, -7))
 	_ = st.FinishRun(ctx, "u1", schedule.Run{ID: first, Status: schedule.StatusNothingNew}, now.AddDate(0, 0, -7))
 
-	// An item an earlier run reported is news again when the answer says so.
 	second, _ := st.StartRun(ctx, "u1", sch.ID, now)
-	_ = st.FinishRun(ctx, "u1", schedule.Run{ID: second, Status: schedule.StatusNew, NewCount: 2, NewLabels: []string{"Dune: Part Three", "Avengers: Doomsday"},
-		Tokens: 41000, Rounds: 4, DurationMS: 108000}, now)
+	_ = st.FinishRun(ctx, "u1", schedule.Run{ID: second, Status: schedule.StatusNew, Tokens: 41000, Rounds: 4, DurationMS: 108000}, now)
 
 	runs, err := st.ListRuns(ctx, "u1", sch.ID, 10)
 	if err != nil || len(runs) != 2 {
 		t.Fatalf("ListRuns = %+v, %v", runs, err)
 	}
-	if runs[0].ID != second || strings.Join(runs[0].NewLabels, ",") != "Dune: Part Three,Avengers: Doomsday" || runs[0].Tokens != 41000 {
+	if runs[0].ID != second || runs[0].Status != schedule.StatusNew || runs[0].Tokens != 41000 {
 		t.Fatalf("latest run = %+v", runs[0])
 	}
-	if runs[1].NewLabels == nil || len(runs[1].NewLabels) != 0 {
-		t.Fatalf("older run labels = %#v, want an empty list", runs[1].NewLabels)
+	if runs[1].Status != schedule.StatusNothingNew {
+		t.Fatalf("older run = %+v", runs[1])
 	}
 	last, err := st.LastRuns(ctx, "u1")
 	if err != nil || last[sch.ID].ID != second {

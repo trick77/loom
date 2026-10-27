@@ -382,12 +382,7 @@ export function SchedulesPage({
                     >
                       <div className="flex items-center gap-2 text-[15px] text-[#ecece6]">
                         <span className="truncate">{schedule.name}</span>
-                        {status !== null && (
-                          <StatusPill
-                            status={status.status}
-                            count={status.count}
-                          />
-                        )}
+                        {status !== null && <StatusPill status={status} />}
                       </div>
                       <div className="mt-0.5 truncate text-[13px] text-[#908e85]">
                         {schedule.prompt}

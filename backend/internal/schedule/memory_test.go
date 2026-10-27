@@ -160,7 +160,7 @@ func TestLastRunNote(t *testing.T) {
 		run  schedule.Run
 		want string
 	}{
-		{schedule.Run{Status: schedule.StatusNew, Rounds: 3, NewCount: 2, DurationMS: 60_000}, "took 1m0s of 5m0s, 3 rounds, 2 new items."},
+		{schedule.Run{Status: schedule.StatusNew, Rounds: 3, DurationMS: 60_000}, "took 1m0s of 5m0s, 3 rounds."},
 		{schedule.Run{Status: schedule.StatusNothingNew, DurationMS: 250_000}, "Be targeted"},
 		{schedule.Run{Status: schedule.StatusTimeout}, "past the time limit"},
 		{schedule.Run{Status: schedule.StatusFailed, Error: "search down"}, "failed: search down."},
@@ -174,6 +174,19 @@ func TestLastRunNote(t *testing.T) {
 	running := schedule.Run{Status: schedule.StatusRunning}
 	if block := (schedule.Memory{LastRun: &running}).Block(); strings.Contains(block, "Last run") {
 		t.Errorf("a running run got a note: %s", block)
+	}
+}
+
+func TestTeaser(t *testing.T) {
+	for in, want := range map[string]string{
+		"## Starship\n\nFlight 12 slipped to 15 Nov [1].": "Starship",
+		"\n\n- **Flight 12**  slipped [1].\n- more":       "Flight 12** slipped [1].",
+		"":                        "",
+		strings.Repeat("a ", 200): strings.TrimSpace(strings.Repeat("a ", 80)),
+	} {
+		if got := schedule.Teaser(in); got != want {
+			t.Errorf("Teaser(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

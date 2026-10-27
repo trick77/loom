@@ -414,10 +414,6 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), findingsTimeout)
 	defer cancelExtract()
 	reported, extracted := s.recordFindings(extractCtx, user.ID, sch, result, seen.list())
-	run.NewCount = len(reported)
-	for _, f := range reported {
-		run.NewLabels = append(run.NewLabels, f.Label)
-	}
 	switch {
 	case result.LimitHit == turn.LimitTokens:
 		run.Status = schedule.StatusTokenLimit
@@ -436,15 +432,16 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		ScheduleID: &sch.ID,
 		ThreadID:   &thread.ID,
 		MessageID:  &assistant.ID,
-		Title:      fmt.Sprintf("%s: %d new", sch.Name, len(reported)),
-		Body:       strings.Join(run.NewLabels, " · "),
+		Title:      sch.Name,
+		Body:       schedule.Teaser(result.Content),
 	})
 }
 
-// recordFindings extracts the items the answer reported and teaches the
-// schedule's memory which sources and searches led to them. extracted is
-// false when the extraction failed: no item then does not mean nothing was
-// new.
+// recordFindings lists the items the answer reported: whether there are any
+// decides if the run notifies and keeps its thread, and their sources teach
+// the schedule's memory which pages and searches led to them. extracted is
+// false when the extraction failed: no item then does not mean there was
+// nothing to report.
 func (s *server) recordFindings(ctx context.Context, userID string, sch schedule.Schedule, result turn.LoopResult, seen []schedule.ToolOutcome) (found []schedule.Finding, extracted bool) {
 	items, err := s.scheduleLLM.ExtractFindings(ctx, sch.Prompt, result.Content)
 	if err != nil {

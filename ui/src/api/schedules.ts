@@ -17,12 +17,10 @@ export type ScheduleRun = {
   startedAt: string;
   finishedAt: string | null;
   status: ScheduleRunStatus;
-  newCount: number;
   rounds: number;
   tokens: number;
   durationMs: number;
   error: string;
-  newLabels: string[];
 };
 
 export type Schedule = {

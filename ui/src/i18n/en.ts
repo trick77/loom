@@ -583,7 +583,7 @@ export const en = {
   schedules: {
     title: "Schedules",
     subtitle:
-      "Prompts that run on their own. You get a notification when a run finds something new.",
+      "Prompts that run on their own. You get a notification when a run has something to report.",
     newSchedule: "New schedule",
     tabAll: "All {{count}}",
     tabActive: "Active {{count}}",
@@ -597,8 +597,8 @@ export const en = {
     disabledNote:
       "disabled {{date}}: two runs in a row took longer than {{minutes}} minutes",
     status: {
-      new: "{{count}} new",
-      nothing_new: "nothing new",
+      new: "reported",
+      nothing_new: "nothing to report",
       token_limit: "token limit reached",
       timeout: "timeout",
       disabled: "disabled · timeout",
@@ -707,7 +707,7 @@ export const en = {
     all: "All",
     unread: "Unread {{count}}",
     empty: "You're all caught up",
-    emptyHint: "Schedules notify you here when they find something new.",
+    emptyHint: "Schedules notify you here when a run has something to report.",
     manage: "Manage schedules",
     kept: "Kept for 30 days",
     open: "Open",

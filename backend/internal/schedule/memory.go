@@ -279,7 +279,7 @@ func (m Memory) lastRunNote() string {
 	case StatusFailed:
 		note = "Last run failed: " + oneLine(r.Error, 120) + "."
 	default:
-		note = fmt.Sprintf("Last run took %s of %s, %d rounds, %d new items.", took.Round(time.Second), RunTimeout, r.Rounds, r.NewCount)
+		note = fmt.Sprintf("Last run took %s of %s, %d rounds.", took.Round(time.Second), RunTimeout, r.Rounds)
 	}
 	if r.Status == StatusTokenLimit || r.Status == StatusTimeout || took >= RunTimeout*8/10 {
 		note += " Be targeted: start with the known sources and use few rounds."
@@ -305,4 +305,18 @@ func sourceNote(s Source) string {
 
 func oneLine(s string, n int) string {
 	return trimText(strings.Join(strings.Fields(s), " "), n)
+}
+
+// maxTeaserLength bounds a notification's glimpse of the answer.
+const maxTeaserLength = 160
+
+// Teaser is the first line of a run's answer with its Markdown marks taken
+// off, for the notification: a glimpse, the thread holds the rest.
+func Teaser(answer string) string {
+	for line := range strings.Lines(answer) {
+		if t := oneLine(strings.TrimLeft(strings.TrimSpace(line), "#*->_ "), maxTeaserLength); t != "" {
+			return t
+		}
+	}
+	return ""
 }
