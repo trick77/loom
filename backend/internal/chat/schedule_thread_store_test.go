@@ -101,6 +101,21 @@ func TestReplaceableScheduleThreads(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("replaceable = %v, want only the untouched threads %v", got, want)
 	}
+
+	// IsUntouchedRunThread asks the same of one thread, the user's own only.
+	bobs := runThread(t, st, bob, "sb")
+	for _, tc := range []struct {
+		thread Thread
+		want   bool
+	}{
+		{untouched, true}, {current, true}, {asked, false}, {queued, false}, {starred, false},
+		{filed, false}, {shared, false}, {archived, false}, {unread, false}, {bobs, false},
+	} {
+		got, err := st.IsUntouchedRunThread(ctx, alice, tc.thread.ID)
+		if err != nil || got != tc.want {
+			t.Fatalf("IsUntouchedRunThread(%s) = %v, %v; want %v", tc.thread.ID, got, err, tc.want)
+		}
+	}
 }
 
 func TestStaleScheduleThreads(t *testing.T) {
@@ -160,6 +175,9 @@ func TestUntouchedRunThreadsReportsAStoreFailure(t *testing.T) {
 	_ = db.Close()
 	if _, err := st.ReplaceableScheduleThreads(context.Background(), "u", "s", "t"); err == nil {
 		t.Fatal("ReplaceableScheduleThreads on a closed database returned no error")
+	}
+	if _, err := st.IsUntouchedRunThread(context.Background(), "u", "t"); err == nil {
+		t.Fatal("IsUntouchedRunThread on a closed database returned no error")
 	}
 	if _, err := st.StaleScheduleThreads(context.Background(), time.Now(), 1); err == nil {
 		t.Fatal("StaleScheduleThreads on a closed database returned no error")

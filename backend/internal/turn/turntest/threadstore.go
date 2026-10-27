@@ -531,6 +531,17 @@ func (f *ThreadStore) ReplaceableScheduleThreads(context.Context, string, string
 	return ids, f.RunThreadsErr
 }
 
+// IsUntouchedRunThread reports whether threadID is in RunThreads, or fails
+// with RunThreadsErr.
+func (f *ThreadStore) IsUntouchedRunThread(_ context.Context, _, threadID string) (bool, error) {
+	for _, ref := range f.RunThreads {
+		if ref.ThreadID == threadID {
+			return true, f.RunThreadsErr
+		}
+	}
+	return false, f.RunThreadsErr
+}
+
 // StaleScheduleThreads returns RunThreads, or fails with RunThreadsErr.
 func (f *ThreadStore) StaleScheduleThreads(context.Context, time.Time, int) ([]chat.ThreadRef, error) {
 	return f.RunThreads, f.RunThreadsErr
