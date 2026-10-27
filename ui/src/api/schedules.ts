@@ -54,13 +54,6 @@ export type SchedulePreview = {
   nextRuns: string[];
 };
 
-export type ScheduleFinding = {
-  key: string;
-  label: string;
-  sourceUrl: string;
-  firstSeenAt: string;
-};
-
 export type ScheduleSource = {
   url: string;
   prefer: "fetch" | "browser";
@@ -80,12 +73,11 @@ export type ScheduleQuery = {
 };
 
 export type ScheduleMemory = {
-  findings: ScheduleFinding[];
   sources: ScheduleSource[];
   queries: ScheduleQuery[];
 };
 
-export type ScheduleMemoryKind = "findings" | "sources" | "queries";
+export type ScheduleMemoryKind = "sources" | "queries";
 
 export type AppNotification = {
   id: string;

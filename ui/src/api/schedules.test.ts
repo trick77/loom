@@ -114,8 +114,8 @@ test("reads and deletes", async () => {
     "/api/schedules/s1/memory/sources?key=a.ch%2Fx",
   );
   fetchMock = stubFetch(new Response(null, { status: 204 }));
-  await forgetScheduleMemory("s1", "findings");
-  expect(fetchMock.mock.calls[0][0]).toBe("/api/schedules/s1/memory/findings");
+  await forgetScheduleMemory("s1", "queries");
+  expect(fetchMock.mock.calls[0][0]).toBe("/api/schedules/s1/memory/queries");
   fetchMock = stubFetch(new Response(null, { status: 204 }));
   await deleteSchedule("s1");
   expect(fetchMock.mock.calls[0][1].method).toBe("DELETE");

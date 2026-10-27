@@ -314,9 +314,8 @@ func (s *server) handleListScheduleRuns(w http.ResponseWriter, r *http.Request) 
 }
 
 type scheduleMemoryResponse struct {
-	Findings []schedule.Finding `json:"findings"`
-	Sources  []schedule.Source  `json:"sources"`
-	Queries  []schedule.Query   `json:"queries"`
+	Sources []schedule.Source `json:"sources"`
+	Queries []schedule.Query  `json:"queries"`
 }
 
 func (s *server) handleGetScheduleMemory(w http.ResponseWriter, r *http.Request) {
@@ -334,11 +333,11 @@ func (s *server) handleGetScheduleMemory(w http.ResponseWriter, r *http.Request)
 		serverError(w, r, err, "load schedule memory failed")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, scheduleMemoryResponse{Findings: m.Findings, Sources: m.Sources, Queries: m.Queries})
+	httpx.WriteJSON(w, http.StatusOK, scheduleMemoryResponse{Sources: m.Sources, Queries: m.Queries})
 }
 
 // handleDeleteScheduleMemory forgets one memory item (?key=) or a whole kind:
-// findings, sources or queries.
+// sources or queries.
 func (s *server) handleDeleteScheduleMemory(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok || !s.schedulesOn(w) {
@@ -351,8 +350,6 @@ func (s *server) handleDeleteScheduleMemory(w http.ResponseWriter, r *http.Reque
 	}
 	key := r.URL.Query().Get("key")
 	switch r.PathValue("kind") {
-	case "findings":
-		err = s.schedules.DeleteFindings(r.Context(), user.ID, sch.ID, key)
 	case "sources":
 		err = s.schedules.DeleteSources(r.Context(), user.ID, sch.ID, key)
 	case "queries":

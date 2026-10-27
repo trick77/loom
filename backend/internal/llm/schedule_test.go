@@ -41,7 +41,7 @@ func TestExtractFindings(t *testing.T) {
 	srv := intentServer(t, `{"items":[{"key":"Dune: Part Three","label":"Dune:  Part Three","source":2},{"key":"dune-part-three","label":"dup"},{"key":"","label":"no key"},{"key":"avengers-doomsday","label":"","source":-1}]}`, &body)
 	defer srv.Close()
 	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
-	items, err := c.ExtractFindings(context.Background(), "find films", "Two new films [2]", []string{"supergirl"})
+	items, err := c.ExtractFindings(context.Background(), "find films", "Two new films [2]")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,8 +54,10 @@ func TestExtractFindings(t *testing.T) {
 	if items[1] != (Finding{Key: "avengers-doomsday", Label: "avengers-doomsday", Source: 0}) {
 		t.Fatalf("second = %+v", items[1])
 	}
-	if !strings.Contains(body, "Known keys: supergirl") || !strings.Contains(body, "Two new films [2]") {
-		t.Fatalf("request lacks the known keys or the answer: %s", body)
+	// Earlier runs never reach the extractor: an item reported before may
+	// have news again.
+	if strings.Contains(body, "Known keys") || !strings.Contains(body, "Two new films [2]") {
+		t.Fatalf("request names known keys or lacks the answer: %s", body)
 	}
 }
 
@@ -81,7 +83,7 @@ func TestExtractFindingsUnreadableReplyIsAnError(t *testing.T) {
 	for _, reply := range []string{"I found nothing new.", `{"items":"x"}`} {
 		srv := intentServer(t, reply, new(string))
 		c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
-		if items, err := c.ExtractFindings(context.Background(), "find films", "answer", nil); err == nil {
+		if items, err := c.ExtractFindings(context.Background(), "find films", "answer"); err == nil {
 			t.Fatalf("reply %q: items %+v, no error", reply, items)
 		}
 		srv.Close()
@@ -89,7 +91,7 @@ func TestExtractFindingsUnreadableReplyIsAnError(t *testing.T) {
 	srv := intentServer(t, `{"items":[]}`, new(string))
 	defer srv.Close()
 	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
-	if items, err := c.ExtractFindings(context.Background(), "find films", "nothing new", nil); err != nil || len(items) != 0 {
+	if items, err := c.ExtractFindings(context.Background(), "find films", "nothing new"); err != nil || len(items) != 0 {
 		t.Fatalf("an empty list = %+v, %v; want no items and no error", items, err)
 	}
 }

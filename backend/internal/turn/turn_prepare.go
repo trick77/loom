@@ -296,13 +296,12 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	}
 	scheduleBlock := ""
 	// A scheduled run reads untrusted pages with tools nobody watches, so the
-	// user memory and directives, and the items earlier answers written with
-	// them reported, stay out of every call that offers tools: only the
-	// tool-free call that writes the answer gets them (finalContext).
+	// user memory and directives stay out of every call that offers tools:
+	// only the tool-free call that writes the answer gets them (finalContext).
 	finalContext := ""
 	if scheduled {
 		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, scheduledResearchNote, t.scheduled.Memory)
-		finalContext, userContext = joinNonEmptyBlocks(t.scheduled.Reported, userContext), ""
+		finalContext, userContext = userContext, ""
 	}
 	history := buildLLMHistory(t.user, promptBlocks{
 		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate)),

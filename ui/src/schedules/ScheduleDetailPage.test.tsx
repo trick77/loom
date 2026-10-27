@@ -21,12 +21,6 @@ vi.mock("../api", async () => {
 });
 
 const memory: api.ScheduleMemory = {
-  findings: Array.from({ length: 6 }, (_, i) => ({
-    key: `k${i}`,
-    label: `Film ${i}`,
-    sourceUrl: "",
-    firstSeenAt: "2026-10-22T12:00:00Z",
-  })),
   sources: [
     {
       url: "arena.ch/programm",
@@ -117,9 +111,7 @@ test("shows the schedule, its runs and its memory", async () => {
   expect(
     await screen.findByRole("heading", { name: "Cinema scout" }),
   ).toBeInTheDocument();
-  expect(
-    screen.getByText("6 reported · 3 sources · 2 searches"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("3 sources · 2 searches")).toBeInTheDocument();
   expect(
     screen.getByText("Dune: Part Three, Avengers: Doomsday"),
   ).toBeInTheDocument();
@@ -134,11 +126,9 @@ test("shows the schedule, its runs and its memory", async () => {
   fireEvent.click(opens[1]);
   expect(p.onOpenThread).toHaveBeenCalledWith("th2");
 
-  fireEvent.click(screen.getByRole("tab", { name: "Memory 11" }));
-  expect(screen.getByText("Already reported")).toBeInTheDocument();
-  expect(screen.queryByText("Film 5")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Show all 6" }));
-  expect(screen.getByText("Film 5")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Memory 5" }));
+  // Nothing a run reported is remembered: an item may have news again.
+  expect(screen.queryByText("Already reported")).not.toBeInTheDocument();
   expect(screen.getByText("top source")).toBeInTheDocument();
   expect(screen.getByText("use browser")).toBeInTheDocument();
   expect(screen.getByText("no finds")).toBeInTheDocument();
@@ -148,15 +138,15 @@ test("shows the schedule, its runs and its memory", async () => {
   await waitFor(() =>
     expect(api.forgetScheduleMemory).toHaveBeenCalledWith(
       "s1",
-      "findings",
-      "k0",
+      "sources",
+      "arena.ch/programm",
     ),
   );
   fireEvent.click(screen.getAllByRole("button", { name: "Forget all" })[1]);
   await waitFor(() =>
     expect(api.forgetScheduleMemory).toHaveBeenCalledWith(
       "s1",
-      "sources",
+      "queries",
       undefined,
     ),
   );
@@ -209,7 +199,6 @@ test("a missing schedule says so", async () => {
 
 test("an empty memory says so", async () => {
   vi.mocked(api.getScheduleMemory).mockResolvedValue({
-    findings: [],
     sources: [],
     queries: [],
   });

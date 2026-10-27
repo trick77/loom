@@ -664,8 +664,7 @@ export const en = {
       when: "When",
       nextRun: "Next run",
       memory: "Memory",
-      memorySummary:
-        "{{findings}} reported · {{sources}} sources · {{queries}} searches",
+      memorySummary: "{{sources}} sources · {{queries}} searches",
       runsTab: "Runs {{count}}",
       memoryTab: "Memory {{count}}",
       notFound: "This schedule does not exist (any more).",
@@ -678,9 +677,6 @@ export const en = {
       none: "none",
     },
     memory: {
-      reported: "Already reported",
-      reportedHint:
-        "Never announced again. Forget one and it can be reported once more.",
       sources: "Learned sources",
       sourcesHint:
         "Recorded by loom from how the runs went, never written by the model. Ranked by finds; each run starts with the top ones.",
@@ -689,8 +685,6 @@ export const en = {
         "Best 5 kept. A search is dropped after 3 runs without a find.",
       forgetAll: "Forget all",
       forget: "Forget",
-      showAll: "Show all {{count}}",
-      reportedOn: "reported {{date}}",
       topSource: "top source",
       finds_one: "{{count}} find",
       finds_other: "{{count}} finds",

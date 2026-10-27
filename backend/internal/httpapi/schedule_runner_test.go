@@ -112,25 +112,25 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 		notes[0].ThreadID == nil || *notes[0].ThreadID != firstThread {
 		t.Fatalf("notifications = %+v", notes)
 	}
-	findings, _ := f.store.ListFindings(ctx, testUser.ID, sch.ID)
-	if len(findings) != 1 || findings[0].SourceURL != "https://www.arena.ch/programm" {
-		t.Fatalf("findings = %+v", findings)
+	if strings.Join(runs[0].NewLabels, ",") != "Dune: Part Three" {
+		t.Fatalf("run labels = %v", runs[0].NewLabels)
 	}
 	sources, _ := f.store.ListSources(ctx, testUser.ID, sch.ID)
 	if len(sources) != 1 || sources[0].URLKey != "arena.ch/programm" || sources[0].Finds != 1 || sources[0].Runs != 1 {
 		t.Fatalf("sources = %+v", sources)
 	}
 
-	// The second and third runs report the same film: nothing new, no
-	// notification and no thread left behind. The first thread stays, its
-	// news read or not: it is the latest there is.
-	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
+	// The second and third runs find nothing new: no notification and no
+	// thread left behind. The first thread stays, its news read or not: it
+	// is the latest there is.
+	f.sllm.findings = []llm.Finding{}
+	client.Results, client.Plain = researchRound("Nothing new since the last run [1]."), "Nothing new since the last run [1]."
 	s.runSchedule(ctx, sch, timedRun)
 	last := client.Histories[len(client.Histories)-1][0].Content
 	if err := f.store.MarkRead(ctx, testUser.ID, notes[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	client.Results = researchRound("Still Dune: Part Three [1].")
+	client.Results = researchRound("Nothing new since the last run [1].")
 	s.runSchedule(ctx, sch, timedRun)
 	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 3 || runs[0].ThreadID != nil || runs[1].ThreadID != nil || runs[2].ThreadID == nil || *runs[2].ThreadID != firstThread {
@@ -164,29 +164,35 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 1 || notes[0].ThreadID != nil {
 		t.Fatalf("notifications = %+v, want the first one only, no longer linking its replaced thread", notes)
 	}
-	// The second run saw the schedule's memory, and the extractor the known key.
-	if !strings.Contains(last, "Already reported") || !strings.Contains(last, "Dune: Part Three") || !strings.Contains(last, "arena.ch/programm: 1 finds") {
+	// The second run saw the schedule's memory: the learned sources reach
+	// every call, nothing a run reported reaches any.
+	if !strings.Contains(last, "arena.ch/programm: 1 finds") {
 		t.Fatalf("second run's prompt lacks the memory:\n%s", last)
 	}
-	// Reported items were named by answers that saw the user memory: they
-	// reach only the tool-free call, while the learned sources reach every one.
 	for i, history := range client.Histories {
-		if len(client.Tools[i]) == 0 {
-			continue
+		if strings.Contains(history[0].Content, "Dune") {
+			t.Fatalf("call %d names an item an earlier run reported:\n%s", i, history[0].Content)
 		}
-		if strings.Contains(history[0].Content, "Already reported") {
-			t.Fatalf("call %d offers tools and lists the reported items", i)
-		}
-		if i > 2 && !strings.Contains(history[0].Content, "arena.ch/programm: 1 finds") {
+		if i > 2 && len(client.Tools[i]) > 0 && !strings.Contains(history[0].Content, "arena.ch/programm: 1 finds") {
 			t.Fatalf("call %d of the second run lacks the learned sources", i)
 		}
-	}
-	if known := f.sllm.known[1]; len(known) != 1 || known[0] != "dune-part-three" {
-		t.Fatalf("known keys = %v", known)
 	}
 	// The note is about the previous run, never the one in progress.
 	if !strings.Contains(last, "Last run took") || !strings.Contains(last, "1 new items") {
 		t.Fatalf("second run's prompt lacks the last-run note:\n%s", last)
+	}
+
+	// News on an item reported before is news again: a launch slips, a
+	// price drops twice.
+	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
+	client.Results = researchRound("Dune: Part Three moved to 18 Dec [1].")
+	s.runSchedule(ctx, sch, timedRun)
+	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 1)
+	if runs[0].Status != schedule.StatusNew || strings.Join(runs[0].NewLabels, ",") != "Dune: Part Three" {
+		t.Fatalf("run with news on a reported item = %+v", runs[0])
+	}
+	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 2 || notes[0].Title != "Cinema scout: 1 new" {
+		t.Fatalf("notifications = %+v, want the update announced", notes)
 	}
 }
 
@@ -387,8 +393,8 @@ func TestScheduledRunWithACutOffAnswerRecordsNoFindings(t *testing.T) {
 	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error != "the answer was cut off" || runs[0].MessageID == nil {
 		t.Fatalf("run = %+v", runs)
 	}
-	if findings, _ := f.store.ListFindings(ctx, testUser.ID, sch.ID); len(findings) != 0 {
-		t.Fatalf("a cut-off answer recorded findings: %+v", findings)
+	if len(runs[0].NewLabels) != 0 || runs[0].NewCount != 0 {
+		t.Fatalf("a cut-off answer recorded findings: %+v", runs[0])
 	}
 }
 
@@ -824,7 +830,8 @@ func TestManualNothingNewRunKeepsBothThreads(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
+	f.sllm.findings = []llm.Finding{}
+	client.Results, client.Plain = researchRound("Nothing new [1]."), "Nothing new [1]."
 	s.runSchedule(ctx, sch, manualRun)
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 2 || runs[0].Status != schedule.StatusNothingNew || runs[0].ThreadID == nil || *runs[0].ThreadID == news {

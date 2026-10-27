@@ -90,7 +90,7 @@ type Deps struct {
 // *llm.Client is one.
 type ScheduleLLM interface {
 	ParseSchedule(ctx context.Context, text string) (string, bool, error)
-	ExtractFindings(ctx context.Context, task, answer string, knownKeys []string) ([]llm.Finding, error)
+	ExtractFindings(ctx context.Context, task, answer string) ([]llm.Finding, error)
 }
 
 type server struct {
