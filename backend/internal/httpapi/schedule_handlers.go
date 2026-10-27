@@ -291,7 +291,7 @@ func (s *server) runScheduleNow(ctx context.Context, sch schedule.Schedule) erro
 		}
 		return errScheduleRunning
 	}
-	s.startScheduleRun(ctx, sch, true)
+	s.startScheduleRun(ctx, sch, manualRun)
 	return nil
 }
 

