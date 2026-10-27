@@ -158,12 +158,13 @@ func (w *ScheduleWorker) startDue(ctx context.Context) {
 			}
 			continue
 		}
-		s.startScheduleRun(ctx, sch)
+		s.startScheduleRun(ctx, sch, false)
 	}
 }
 
-// startScheduleRun runs a claimed and admitted schedule in the background.
-func (s *server) startScheduleRun(ctx context.Context, sch schedule.Schedule) {
+// startScheduleRun runs a claimed and admitted schedule in the background;
+// manual is a run the user asked for (Run now, the schedule_run tool).
+func (s *server) startScheduleRun(ctx context.Context, sch schedule.Schedule, manual bool) {
 	release := func() {
 		detached := context.WithoutCancel(ctx)
 		current, err := s.schedules.GetSchedule(detached, sch.UserID, sch.ID)
@@ -178,7 +179,7 @@ func (s *server) startScheduleRun(ctx context.Context, sch schedule.Schedule) {
 	}
 	if !s.background.Spawn(s.lifetime, "schedule:"+sch.ID, func(groupCtx context.Context) {
 		defer release()
-		s.runSchedule(groupCtx, sch)
+		s.runSchedule(groupCtx, sch, manual)
 	}) {
 		release()
 	}
@@ -209,9 +210,10 @@ func (o *observations) list() []schedule.ToolOutcome {
 
 // runSchedule carries out one run of a claimed schedule: its prompt as a
 // headless turn in a thread of its own, then the findings, the memory, the
-// run record and, when there is news, a notification. A run that surely found
-// nothing new leaves no thread: an answer saying so is not worth a visit.
-func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
+// run record and, when there is news, a notification. A timed run that surely
+// found nothing new leaves no thread: an answer saying so is not worth a
+// visit. A manual run always does: the user asked and looks for the answer.
+func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, manual bool) {
 	detached := context.WithoutCancel(ctx)
 	start := s.clock()
 	// The memory is read before this run is recorded, so its last run is the
@@ -231,8 +233,8 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	var noteThread string
 	// replacing is the run's thread once it holds the prompt: however the run
 	// ends, it then replaces the earlier ones the user never took up, after the
-	// run is recorded. The old answer stays readable until then. Only a run
-	// whose extraction found nothing new (nothingNew) drops its own thread
+	// run is recorded. The old answer stays readable until then. Only a timed
+	// run whose extraction found nothing new (nothingNew) drops its own thread
 	// instead and leaves the earlier ones be.
 	var replacing string
 	var nothingNew bool
@@ -404,7 +406,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule) {
 	default:
 		run.Status = schedule.StatusNothingNew
 		// A failed extraction cannot tell: the answer may hold news.
-		nothingNew = extracted
+		nothingNew = extracted && !manual
 	}
 	if len(fresh) == 0 {
 		return
