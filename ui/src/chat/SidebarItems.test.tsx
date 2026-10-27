@@ -43,3 +43,29 @@ test("only a run thread without the user's reply carries the schedule clock", ()
   expect(clocks("replied run")).toHaveLength(0);
   expect(clocks("plain")).toHaveLength(0);
 });
+
+test("a thread with unread news shows the bell's dot before its clock", () => {
+  render(
+    <SidebarSection
+      title="Recent"
+      threads={[
+        thread("news run", { scheduleId: "s1", scheduleUnread: true }),
+        thread("read run", { scheduleId: "s1" }),
+      ]}
+      activeThreadID={null}
+      openThreadMenuID={null}
+      onSelect={vi.fn()}
+      onDelete={vi.fn()}
+      onRename={vi.fn()}
+      onStarChange={vi.fn()}
+      onToggleMenu={vi.fn()}
+      onCloseMenu={vi.fn()}
+    />,
+  );
+  const marks = (name: string) =>
+    within(screen.getByRole("button", { name: new RegExp(`^${name}`) }))
+      .queryAllByRole("img")
+      .map((mark) => mark.getAttribute("aria-label"));
+  expect(marks("news run")).toEqual(["Unread news", "Schedules"]);
+  expect(marks("read run")).toEqual(["Schedules"]);
+});

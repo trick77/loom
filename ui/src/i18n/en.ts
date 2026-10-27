@@ -721,6 +721,7 @@ export const en = {
     manyNew: "{{count}} new notifications",
     openInbox: "Open inbox",
     loadFailed: "Notifications failed to load.",
+    threadUnread: "Unread news",
   },
   misc: {
     shared: "Shared",

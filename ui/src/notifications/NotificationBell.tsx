@@ -5,7 +5,10 @@ import { useTranslation } from "react-i18next";
 import {
   listNotifications,
   markAllNotificationsRead,
+  announce,
   markNotificationRead,
+  NOTIFICATIONS_CHANGED,
+  THREAD_NEWS_CHANGED,
   unreadNotificationCount,
   type AppNotification,
 } from "../api";
@@ -71,6 +74,8 @@ export function NotificationBell({
     known.current = count;
     setUnread(count);
     if (before !== null && count > before) {
+      // The sidebar picks up the new run threads and their dots.
+      announce(THREAD_NEWS_CHANGED);
       const fresh = count - before;
       const list = await load();
       const newest = list?.find((n) => n.readAt === null);
@@ -87,10 +92,12 @@ export function NotificationBell({
     const handle = window.setInterval(() => void poll(), POLL_MS);
     const onFocus = () => void poll();
     window.addEventListener("focus", onFocus);
+    window.addEventListener(NOTIFICATIONS_CHANGED, onFocus);
     return () => {
       window.clearTimeout(first);
       window.clearInterval(handle);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener(NOTIFICATIONS_CHANGED, onFocus);
     };
   }, [poll]);
 
@@ -142,7 +149,9 @@ export function NotificationBell({
       );
       setUnread((n) => Math.max(0, n - 1));
       known.current = Math.max(0, (known.current ?? 1) - 1);
-      void markNotificationRead(notification.id).catch(() => undefined);
+      void markNotificationRead(notification.id)
+        .then(() => announce(THREAD_NEWS_CHANGED))
+        .catch(() => undefined);
     }
     onOpen(notification);
   };
@@ -157,7 +166,9 @@ export function NotificationBell({
     );
     setUnread(0);
     known.current = 0;
-    void markAllNotificationsRead().catch(() => undefined);
+    void markAllNotificationsRead()
+      .then(() => announce(THREAD_NEWS_CHANGED))
+      .catch(() => undefined);
   };
 
   const shown = (items ?? []).filter((n) => !onlyUnread || n.readAt === null);

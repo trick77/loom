@@ -171,6 +171,14 @@ function SidebarThreadItem({
             className={`flex items-center gap-1.5 whitespace-nowrap ${active ? "pr-7" : ""}`}
           >
             <span className={active ? "" : "truncate"}>{thread.title}</span>
+            {/* The bell's dot: news about this thread is unread. */}
+            {thread.scheduleUnread && (
+              <span
+                role="img"
+                aria-label={t("notifications.threadUnread")}
+                className="h-2 w-2 shrink-0 rounded-full bg-[#c9a25f]"
+              />
+            )}
             {/* The clock marks a run thread the user has not replied in. */}
             {thread.scheduleId && !thread.scheduleReplied && (
               <Icon

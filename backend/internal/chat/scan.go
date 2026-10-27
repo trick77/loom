@@ -66,7 +66,7 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	var scheduleID sql.NullString
 	var createdAt, updatedAt string
 	dest := []any{&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt,
-		&scheduleID, &thread.ScheduleReplied}
+		&scheduleID, &thread.ScheduleReplied, &thread.ScheduleUnread}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return Thread{}, err
@@ -100,8 +100,8 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 // threadColumns is the threads projection scanThreadRow reads; threadColumnsT
 // is the same for a query that aliases threads as t.
 var (
-	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, schedule_id, " + scheduleReplied("threads")
-	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.schedule_id, " + scheduleReplied("t")
+	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, schedule_id, " + scheduleReplied("threads") + ", " + scheduleUnread("threads")
+	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.schedule_id, " + scheduleReplied("t") + ", " + scheduleUnread("t")
 )
 
 // scheduleReplied computes Thread.ScheduleReplied for the threads row named
@@ -109,6 +109,13 @@ var (
 func scheduleReplied(table string) string {
 	return strings.NewReplacer("{t}", table).Replace(
 		"({t}.schedule_id IS NOT NULL AND EXISTS (SELECT 1 FROM messages rm WHERE rm.user_id = {t}.user_id AND rm.thread_id = {t}.id AND rm.role = 'user' LIMIT 1 OFFSET 1))")
+}
+
+// scheduleUnread computes Thread.ScheduleUnread for the threads row named
+// table: unread run news points at the thread.
+func scheduleUnread(table string) string {
+	return strings.NewReplacer("{t}", table).Replace(
+		"EXISTS (SELECT 1 FROM notifications un WHERE un.user_id = {t}.user_id AND un.thread_id = {t}.id AND un.kind = 'schedule_run' AND un.read_at IS NULL)")
 }
 
 // messageColumns is the full messages projection scanMessage reads.

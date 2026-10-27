@@ -719,13 +719,22 @@ func (st *Store) UnreadCount(ctx context.Context, userID string) (int, error) {
 
 // MarkRead marks one notification read, or all of the user's when id is "".
 func (st *Store) MarkRead(ctx context.Context, userID, id string) error {
-	query := `UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL`
-	args := []any{userID}
-	if id != "" {
-		query += ` AND id = ?`
-		args = append(args, id)
+	if id == "" {
+		return st.markRead(ctx, userID, "")
 	}
-	if _, err := st.db.ExecContext(ctx, query, args...); err != nil {
+	return st.markRead(ctx, userID, ` AND id = ?`, id)
+}
+
+// MarkThreadRead marks the run news pointing at a thread read; a notice that
+// the schedule was disabled stays for the bell.
+func (st *Store) MarkThreadRead(ctx context.Context, userID, threadID string) error {
+	return st.markRead(ctx, userID, ` AND thread_id = ? AND kind = ?`, threadID, KindScheduleRun)
+}
+
+// markRead marks the user's unread notifications matching the extra clause.
+func (st *Store) markRead(ctx context.Context, userID, clause string, args ...any) error {
+	if _, err := st.db.ExecContext(ctx, `UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL`+clause,
+		append([]any{userID}, args...)...); err != nil {
 		return fmt.Errorf("mark notifications read: %w", err)
 	}
 	return nil

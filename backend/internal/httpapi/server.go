@@ -442,6 +442,7 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("GET /api/notifications/unread", s.requireAuth(http.HandlerFunc(s.handleUnreadNotifications)))
 	mux.Handle("POST /api/notifications/read-all", s.requireAuth(http.HandlerFunc(s.handleReadAllNotifications)))
 	mux.Handle("POST /api/notifications/{notificationID}/read", s.requireAuth(http.HandlerFunc(s.handleReadNotification)))
+	mux.Handle("POST /api/threads/{threadID}/notifications/read", s.requireAuth(http.HandlerFunc(s.handleReadThreadNotifications)))
 	mux.Handle("GET /api/favicon", s.requireAuth(http.HandlerFunc(s.handleFavicon)))
 	mux.Handle("GET /api/source-image", s.requireAuth(http.HandlerFunc(s.handleSourceImage)))
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
