@@ -24,17 +24,15 @@ type fakeScheduleLLM struct {
 	template string
 	ok       bool
 	findings []llm.Finding
-	known    [][]string
 }
 
 func (f *fakeScheduleLLM) ParseSchedule(context.Context, string) (string, bool, error) {
 	return f.template, f.ok, nil
 }
 
-func (f *fakeScheduleLLM) ExtractFindings(_ context.Context, _, _ string, known []string) ([]llm.Finding, error) {
+func (f *fakeScheduleLLM) ExtractFindings(context.Context, string, string) ([]llm.Finding, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.known = append(f.known, known)
 	if f.findings == nil {
 		return nil, errors.New("no findings scripted")
 	}
@@ -135,15 +133,15 @@ func TestScheduleEndpoints(t *testing.T) {
 	if rec = f.do(t, http.MethodGet, "/api/schedules/"+created.ID+"/runs", ""); rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "[]" {
 		t.Fatalf("runs = %d %s", rec.Code, rec.Body)
 	}
-	if rec = f.do(t, http.MethodGet, "/api/schedules/"+created.ID+"/memory", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"findings":[]`) {
+	if rec = f.do(t, http.MethodGet, "/api/schedules/"+created.ID+"/memory", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"sources":[]`) {
 		t.Fatalf("memory = %d %s", rec.Code, rec.Body)
 	}
-	for _, kind := range []string{"findings", "sources", "queries"} {
+	for _, kind := range []string{"sources", "queries"} {
 		if rec = f.do(t, http.MethodDelete, "/api/schedules/"+created.ID+"/memory/"+kind+"?key=x", ""); rec.Code != http.StatusNoContent {
 			t.Fatalf("forget %s = %d", kind, rec.Code)
 		}
 	}
-	if rec = f.do(t, http.MethodDelete, "/api/schedules/"+created.ID+"/memory/other", ""); rec.Code != http.StatusNotFound {
+	if rec = f.do(t, http.MethodDelete, "/api/schedules/"+created.ID+"/memory/findings", ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("forget unknown kind = %d", rec.Code)
 	}
 	if rec = f.do(t, http.MethodDelete, "/api/schedules/"+created.ID, ""); rec.Code != http.StatusNoContent {
@@ -179,7 +177,7 @@ func TestScheduleEndpointErrors(t *testing.T) {
 		{http.MethodPost, "/api/schedules/" + other.ID + "/run"},
 		{http.MethodGet, "/api/schedules/" + other.ID + "/runs"},
 		{http.MethodGet, "/api/schedules/" + other.ID + "/memory"},
-		{http.MethodDelete, "/api/schedules/" + other.ID + "/memory/findings"},
+		{http.MethodDelete, "/api/schedules/" + other.ID + "/memory/sources"},
 	} {
 		if rec := f.do(t, req.method, req.path, `{"name":"y"}`); rec.Code != http.StatusNotFound {
 			t.Errorf("%s %s = %d, want 404", req.method, req.path, rec.Code)

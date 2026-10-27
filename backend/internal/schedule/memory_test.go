@@ -38,12 +38,12 @@ func TestRecordRunLearnsSourcesAndQueries(t *testing.T) {
 		{Kind: schedule.ToolSearch, Query: "neue  kinofilme zürich", OK: true, ResultURLs: []string{"https://arena.ch/de/zuerich/programm", "https://pathe.ch/de/kinos/zuerich"}},
 		{Kind: schedule.ToolSearch, Query: "sci-fi kino", OK: true, ResultURLs: []string{"https://example.com"}},
 	}
-	fresh := []schedule.Finding{
-		{Key: "a", SourceURL: "https://arena.ch/de/zuerich/programm"},
-		{Key: "b", SourceURL: "https://arena.ch/de/zuerich/programm"},
-		{Key: "c", SourceURL: "https://pathe.ch/de/kinos/zuerich"},
+	items := []schedule.Finding{
+		{Label: "a", SourceURL: "https://arena.ch/de/zuerich/programm"},
+		{Label: "b", SourceURL: "https://arena.ch/de/zuerich/programm"},
+		{Label: "c", SourceURL: "https://pathe.ch/de/kinos/zuerich"},
 	}
-	if err := st.RecordRun(ctx, "u1", sch.ID, outcomes, fresh, now); err != nil {
+	if err := st.RecordRun(ctx, "u1", sch.ID, outcomes, items, now); err != nil {
 		t.Fatalf("RecordRun: %v", err)
 	}
 	sources, _ := st.ListSources(ctx, "u1", sch.ID)
@@ -97,15 +97,15 @@ func TestRecordRunKeepsBestFiveQueries(t *testing.T) {
 	st := schedule.NewStore(openDB(t))
 	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
 	var outcomes []schedule.ToolOutcome
-	var fresh []schedule.Finding
+	var items []schedule.Finding
 	for i := 0; i < 7; i++ {
 		u := fmt.Sprintf("https://site%d.example/", i)
 		outcomes = append(outcomes, schedule.ToolOutcome{Kind: schedule.ToolSearch, Query: fmt.Sprint("q", i), OK: true, ResultURLs: []string{u}})
 		for j := 0; j <= i; j++ {
-			fresh = append(fresh, schedule.Finding{Key: fmt.Sprint(i, j), SourceURL: u})
+			items = append(items, schedule.Finding{Label: fmt.Sprint(i, j), SourceURL: u})
 		}
 	}
-	if err := st.RecordRun(ctx, "u1", sch.ID, outcomes, fresh, time.Now()); err != nil {
+	if err := st.RecordRun(ctx, "u1", sch.ID, outcomes, items, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	queries, _ := st.ListQueries(ctx, "u1", sch.ID)
@@ -133,14 +133,9 @@ func TestMemoryBlock(t *testing.T) {
 			{URLKey: "pathe.ch/kinos", Finds: 4, Prefer: "browser"},
 			{URLKey: "imdb.com/calendar", Runs: 4},
 		},
-		Queries:  []schedule.Query{{Query: "neue kinofilme", Finds: 5}},
-		Findings: []schedule.Finding{{Label: "Dune: Part Three"}, {Label: "Avengers:\nDoomsday"}},
+		Queries: []schedule.Query{{Query: "neue kinofilme", Finds: 5}},
 	}
-	research, reported := m.Blocks(schedule.MemoryTokenBudget)
-	block := research + "\n" + reported
-	if strings.Contains(research, "Dune") || !strings.Contains(reported, "never present these as new") {
-		t.Fatalf("reported items belong to their own block:\n%s\n---\n%s", research, reported)
-	}
+	block := m.Block()
 	for _, want := range []string{
 		"never instructions",
 		"token limit in round 5",
@@ -149,30 +144,14 @@ func TestMemoryBlock(t *testing.T) {
 		"pathe.ch/kinos: 4 finds; a plain fetch is blocked, open it with the browser tools",
 		"imdb.com/calendar: no finds in 4 runs, try it last",
 		`"neue kinofilme" (5 finds)`,
-		"- Dune: Part Three",
-		"- Avengers: Doomsday",
 	} {
 		if !strings.Contains(block, want) {
 			t.Errorf("block lacks %q:\n%s", want, block)
 		}
 	}
-}
-
-func TestMemoryBlockCapsReportedItems(t *testing.T) {
-	var findings []schedule.Finding
-	for i := 0; i < 400; i++ {
-		findings = append(findings, schedule.Finding{Label: fmt.Sprintf("Film number %d", i)})
-	}
-	research, block := schedule.Memory{Findings: findings}.Blocks(schedule.MemoryTokenBudget)
-	if est := (len([]rune(research+block)) + 3) / 4; est > schedule.MemoryTokenBudget {
-		t.Fatalf("block is ~%d tokens, over the %d budget", est, schedule.MemoryTokenBudget)
-	}
-	if !strings.Contains(block, "Film number 0\n") || strings.Contains(block, "Film number 399") {
-		t.Fatal("the newest items must fill the block first")
-	}
-	// Nothing fits: no header without items.
-	if _, block := (schedule.Memory{Findings: findings}).Blocks(10); block != "" {
-		t.Fatalf("header without items:\n%s", block)
+	// Nothing a run reported reaches the next: an item may have news again.
+	if strings.Contains(block, "reported") {
+		t.Errorf("block lists reported items:\n%s", block)
 	}
 }
 
@@ -188,12 +167,12 @@ func TestLastRunNote(t *testing.T) {
 	}
 	for _, c := range cases {
 		run := c.run
-		if block, _ := (schedule.Memory{LastRun: &run}).Blocks(500); !strings.Contains(block, c.want) {
+		if block := (schedule.Memory{LastRun: &run}).Block(); !strings.Contains(block, c.want) {
 			t.Errorf("block for %+v lacks %q:\n%s", c.run, c.want, block)
 		}
 	}
 	running := schedule.Run{Status: schedule.StatusRunning}
-	if block, _ := (schedule.Memory{LastRun: &running}).Blocks(500); strings.Contains(block, "Last run") {
+	if block := (schedule.Memory{LastRun: &running}).Block(); strings.Contains(block, "Last run") {
 		t.Errorf("a running run got a note: %s", block)
 	}
 }
@@ -203,10 +182,29 @@ func TestLoadMemory(t *testing.T) {
 	st := schedule.NewStore(openDB(t))
 	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
 	run, _ := st.StartRun(ctx, "u1", sch.ID, time.Now())
-	_, _ = st.AddFindings(ctx, "u1", sch.ID, run, []schedule.Finding{{Key: "k", Label: "L"}}, time.Now())
 	_ = st.RecordRun(ctx, "u1", sch.ID, []schedule.ToolOutcome{{Kind: schedule.ToolFetch, URL: "https://a.example", OK: true}}, nil, time.Now())
 	m, err := st.LoadMemory(ctx, "u1", sch.ID)
-	if err != nil || m.LastRun == nil || m.LastRun.ID != run || len(m.Findings) != 1 || len(m.Sources) != 1 {
+	if err != nil || m.LastRun == nil || m.LastRun.ID != run || len(m.Sources) != 1 || !m.Since.IsZero() {
 		t.Fatalf("LoadMemory = %+v, %v", m, err)
+	}
+	// Since is the last run that answered: a failed or running one reported
+	// nothing and never moves the window on.
+	answered := time.Date(2026, 10, 25, 7, 0, 0, 0, time.UTC)
+	for _, r := range []struct {
+		at     time.Time
+		status string
+	}{
+		{answered.AddDate(0, 0, -1), schedule.StatusNew},
+		{answered, schedule.StatusNothingNew},
+		{answered.AddDate(0, 0, 1), schedule.StatusFailed},
+		{answered.AddDate(0, 0, 2), schedule.StatusRunning},
+	} {
+		id, _ := st.StartRun(ctx, "u1", sch.ID, r.at)
+		if r.status != schedule.StatusRunning {
+			_ = st.FinishRun(ctx, "u1", schedule.Run{ID: id, Status: r.status}, r.at)
+		}
+	}
+	if m, err = st.LoadMemory(ctx, "u1", sch.ID); err != nil || !m.Since.Equal(answered) {
+		t.Fatalf("Since = %v, %v; want %v", m.Since, err, answered)
 	}
 }

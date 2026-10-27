@@ -38,8 +38,6 @@ import {
 const secondaryButton =
   "ui-control-text flex items-center gap-1.5 rounded-lg bg-[#3a3a37] px-3 py-1.5 text-[#d5d2c9] hover:bg-[#4a4a46] disabled:opacity-50";
 
-const REPORTED_PREVIEW = 4;
-
 export function ScheduleDetailPage({
   scheduleID,
   onOpenSidebar,
@@ -62,7 +60,6 @@ export function ScheduleDetailPage({
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
-  const [showAllReported, setShowAllReported] = useState(false);
   const [reload, setReload] = useState(0);
 
   const onChanged = useCallback(
@@ -128,13 +125,9 @@ export function ScheduleDetailPage({
     );
   }
 
-  const findings = memory?.findings ?? [];
   const sources = memory?.sources ?? [];
   const queries = memory?.queries ?? [];
-  const memoryCount = findings.length + sources.length + queries.length;
-  const reported = showAllReported
-    ? findings
-    : findings.slice(0, REPORTED_PREVIEW);
+  const memoryCount = sources.length + queries.length;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -214,7 +207,6 @@ export function ScheduleDetailPage({
           <dt className="text-[#8f8b82]">{t("schedules.detail.memory")}</dt>
           <dd className="text-[#d8d5cc]">
             {t("schedules.detail.memorySummary", {
-              findings: findings.length,
               sources: sources.length,
               queries: queries.length,
             })}
@@ -316,38 +308,6 @@ export function ScheduleDetailPage({
               <div className="py-8 text-center text-[14px] text-[#807d74]">
                 {t("schedules.memory.empty")}
               </div>
-            )}
-            {findings.length > 0 && (
-              <MemorySection
-                title={t("schedules.memory.reported")}
-                hint={t("schedules.memory.reportedHint")}
-                onForgetAll={() => forget("findings")}
-              >
-                {reported.map((f) => (
-                  <MemoryRow
-                    key={f.key}
-                    onForget={() => forget("findings", f.key)}
-                  >
-                    <span className="min-w-0 flex-1 truncate text-[#ecece6]">
-                      {f.label}
-                    </span>
-                    <span className="whitespace-nowrap text-[13px] text-[#8a887f]">
-                      {t("schedules.memory.reportedOn", {
-                        date: formatDay(f.firstSeenAt, i18n.language),
-                      })}
-                    </span>
-                  </MemoryRow>
-                ))}
-                {findings.length > REPORTED_PREVIEW && !showAllReported && (
-                  <button
-                    type="button"
-                    className="w-full border-t border-[#2a2a28] px-3.5 py-2.5 text-center text-[13px] text-[#a8a59c] hover:text-white"
-                    onClick={() => setShowAllReported(true)}
-                  >
-                    {t("schedules.memory.showAll", { count: findings.length })}
-                  </button>
-                )}
-              </MemorySection>
             )}
             {sources.length > 0 && (
               <MemorySection

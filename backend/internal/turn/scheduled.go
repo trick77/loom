@@ -26,9 +26,11 @@ type ScheduledRun struct {
 	// Memory is the schedule's research memory (sources, searches, last run)
 	// for every call's system prompt.
 	Memory string
-	// Reported is the items earlier runs reported, for the tool-free call
-	// that writes the answer only: earlier answers saw the user memory.
-	Reported string
+	// Since is when the last run that answered started, in the schedule's
+	// timezone; zero before any. It anchors "since the last run" for a task
+	// naming no time span, outside the memory: that block is facts, not
+	// instructions.
+	Since time.Time
 	// Observe receives each web tool call's outcome; nil drops them.
 	Observe func(ToolObservation)
 	// Now is the clock the deadline is read against; nil is time.Now.
@@ -159,7 +161,15 @@ func (t *Run) capScheduledOutput(output string) string {
 // The run sees every server's guidance and, when it writes the answer, the
 // user's standing instructions, both written for a live chat, so it says
 // which parts still apply.
-const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what is NEW since earlier runs, naming each new item with its source. When nothing is new, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
+const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what is new in the time span the task names, or since the last run when it names none, naming each item with its source. When nothing is new, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
+
+// sinceNote is the run's anchor for "since the last run".
+func (s *ScheduledRun) sinceNote() string {
+	if s.Since.IsZero() {
+		return "This is the schedule's first run."
+	}
+	return "The last run started " + s.Since.Format("2006-01-02 15:04 MST") + "."
+}
 
 // scheduledResearchNote tells the rounds that offer tools not to write the
 // answer: a scheduled run's answer always comes from the tool-free final
@@ -230,7 +240,7 @@ func (t *Run) observeToolCall(name string, arguments map[string]any, sources []m
 
 // withFinalContext is history for a scheduled run's call that offers no
 // tools and writes the answer: the research-only note taken out of the
-// system prompt, and the reported items, user memory and directives added.
+// system prompt, and the user memory and directives added.
 // Any other turn's history comes back as it is.
 func (t *Run) withFinalContext(history []llm.Message) []llm.Message {
 	if t.scheduled == nil {

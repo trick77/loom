@@ -260,28 +260,18 @@ func TestRunThreadLink(t *testing.T) {
 	}
 }
 
-func TestRunsFindingsAndLabels(t *testing.T) {
+func TestRunsAndLabels(t *testing.T) {
 	ctx := context.Background()
 	st := schedule.NewStore(openDB(t))
 	now := time.Date(2026, 10, 22, 12, 37, 0, 0, time.UTC)
 	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
 	first, _ := st.StartRun(ctx, "u1", sch.ID, now.AddDate(0, 0, -7))
-	fresh, err := st.AddFindings(ctx, "u1", sch.ID, first, []schedule.Finding{{Key: "supergirl", Label: "Supergirl"}}, now.AddDate(0, 0, -7))
-	if err != nil || len(fresh) != 1 {
-		t.Fatalf("AddFindings = %v, %v", fresh, err)
-	}
-	_ = st.FinishRun(ctx, "u1", schedule.Run{ID: first, Status: schedule.StatusNew, NewCount: 1}, now.AddDate(0, 0, -7))
+	_ = st.FinishRun(ctx, "u1", schedule.Run{ID: first, Status: schedule.StatusNothingNew}, now.AddDate(0, 0, -7))
 
+	// An item an earlier run reported is news again when the answer says so.
 	second, _ := st.StartRun(ctx, "u1", sch.ID, now)
-	fresh, err = st.AddFindings(ctx, "u1", sch.ID, second, []schedule.Finding{
-		{Key: "supergirl", Label: "Supergirl"},
-		{Key: "dune-3", Label: "Dune: Part Three", SourceURL: "https://arena.ch/x"},
-		{Key: "avengers", Label: "Avengers: Doomsday"},
-	}, now)
-	if err != nil || len(fresh) != 2 || fresh[0].Key != "dune-3" {
-		t.Fatalf("second AddFindings = %+v, %v (an item already reported must not be new)", fresh, err)
-	}
-	_ = st.FinishRun(ctx, "u1", schedule.Run{ID: second, Status: schedule.StatusNew, NewCount: 2, Tokens: 41000, Rounds: 4, DurationMS: 108000}, now)
+	_ = st.FinishRun(ctx, "u1", schedule.Run{ID: second, Status: schedule.StatusNew, NewCount: 2, NewLabels: []string{"Dune: Part Three", "Avengers: Doomsday"},
+		Tokens: 41000, Rounds: 4, DurationMS: 108000}, now)
 
 	runs, err := st.ListRuns(ctx, "u1", sch.ID, 10)
 	if err != nil || len(runs) != 2 {
@@ -290,8 +280,8 @@ func TestRunsFindingsAndLabels(t *testing.T) {
 	if runs[0].ID != second || strings.Join(runs[0].NewLabels, ",") != "Dune: Part Three,Avengers: Doomsday" || runs[0].Tokens != 41000 {
 		t.Fatalf("latest run = %+v", runs[0])
 	}
-	if strings.Join(runs[1].NewLabels, ",") != "Supergirl" {
-		t.Fatalf("older run labels = %v", runs[1].NewLabels)
+	if runs[1].NewLabels == nil || len(runs[1].NewLabels) != 0 {
+		t.Fatalf("older run labels = %#v, want an empty list", runs[1].NewLabels)
 	}
 	last, err := st.LastRuns(ctx, "u1")
 	if err != nil || last[sch.ID].ID != second {
@@ -299,22 +289,6 @@ func TestRunsFindingsAndLabels(t *testing.T) {
 	}
 	if other, _ := st.ListRuns(ctx, "u2", sch.ID, 10); len(other) != 0 {
 		t.Fatal("another user listed the runs")
-	}
-	findings, _ := st.ListFindings(ctx, "u1", sch.ID)
-	if len(findings) != 3 {
-		t.Fatalf("ListFindings = %+v", findings)
-	}
-	if err := st.DeleteFindings(ctx, "u1", sch.ID, "supergirl"); err != nil {
-		t.Fatal(err)
-	}
-	if findings, _ = st.ListFindings(ctx, "u1", sch.ID); len(findings) != 2 {
-		t.Fatalf("after forgetting one: %+v", findings)
-	}
-	if err := st.DeleteFindings(ctx, "u1", sch.ID, ""); err != nil {
-		t.Fatal(err)
-	}
-	if findings, _ = st.ListFindings(ctx, "u1", sch.ID); len(findings) != 0 {
-		t.Fatalf("after forgetting all: %+v", findings)
 	}
 }
 

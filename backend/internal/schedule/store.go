@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -102,16 +103,14 @@ type Run struct {
 	CostNanoUSD int64      `json:"-"`
 	DurationMS  int64      `json:"durationMs"`
 	Error       string     `json:"error"`
-	// NewLabels are the items this run reported first.
+	// NewLabels are the items this run reported.
 	NewLabels []string `json:"newLabels"`
 }
 
-// Finding is one item a schedule reported.
+// Finding is one item a run reported.
 type Finding struct {
-	Key         string    `json:"key"`
-	Label       string    `json:"label"`
-	SourceURL   string    `json:"sourceUrl"`
-	FirstSeenAt time.Time `json:"firstSeenAt"`
+	Label     string
+	SourceURL string
 }
 
 // Source is what the runs learned about one page.
@@ -440,24 +439,31 @@ SELECT EXISTS (SELECT 1 FROM schedule_runs WHERE user_id = ? AND thread_id = ? A
 
 // FinishRun writes a finished run's outcome.
 func (st *Store) FinishRun(ctx context.Context, userID string, r Run, at time.Time) error {
-	_, err := st.db.ExecContext(ctx, `
+	if r.NewLabels == nil {
+		r.NewLabels = []string{}
+	}
+	labels, err := json.Marshal(r.NewLabels)
+	if err != nil {
+		return fmt.Errorf("encode run labels: %w", err)
+	}
+	_, err = st.db.ExecContext(ctx, `
 UPDATE schedule_runs
-SET message_id = ?, finished_at = ?, status = ?, new_count = ?, rounds = ?, tokens = ?, cost_nano_usd = ?, duration_ms = ?, error = ?
+SET message_id = ?, finished_at = ?, status = ?, new_count = ?, labels = ?, rounds = ?, tokens = ?, cost_nano_usd = ?, duration_ms = ?, error = ?
 WHERE user_id = ? AND id = ?`,
-		r.MessageID, ts(at), r.Status, r.NewCount, r.Rounds, r.Tokens, r.CostNanoUSD, r.DurationMS, r.Error, userID, r.ID)
+		r.MessageID, ts(at), r.Status, r.NewCount, labels, r.Rounds, r.Tokens, r.CostNanoUSD, r.DurationMS, r.Error, userID, r.ID)
 	if err != nil {
 		return fmt.Errorf("finish run: %w", err)
 	}
 	return nil
 }
 
-const runColumns = "id, schedule_id, thread_id, message_id, started_at, finished_at, status, new_count, rounds, tokens, cost_nano_usd, duration_ms, error"
+const runColumns = "id, schedule_id, thread_id, message_id, started_at, finished_at, status, new_count, labels, rounds, tokens, cost_nano_usd, duration_ms, error"
 
 func scanRun(row rowScanner) (Run, error) {
 	var r Run
 	var threadID, messageID, finishedAt sql.NullString
-	var startedAt string
-	if err := row.Scan(&r.ID, &r.ScheduleID, &threadID, &messageID, &startedAt, &finishedAt, &r.Status, &r.NewCount, &r.Rounds, &r.Tokens, &r.CostNanoUSD, &r.DurationMS, &r.Error); err != nil {
+	var startedAt, labels string
+	if err := row.Scan(&r.ID, &r.ScheduleID, &threadID, &messageID, &startedAt, &finishedAt, &r.Status, &r.NewCount, &labels, &r.Rounds, &r.Tokens, &r.CostNanoUSD, &r.DurationMS, &r.Error); err != nil {
 		return Run{}, err
 	}
 	r.ThreadID, r.MessageID = nullString(threadID), nullString(messageID)
@@ -468,12 +474,13 @@ func scanRun(row rowScanner) (Run, error) {
 	if r.FinishedAt, err = parseNull(finishedAt); err != nil {
 		return Run{}, err
 	}
-	r.NewLabels = []string{}
+	if err := json.Unmarshal([]byte(labels), &r.NewLabels); err != nil {
+		return Run{}, fmt.Errorf("decode run labels: %w", err)
+	}
 	return r, nil
 }
 
-// ListRuns returns the schedule's latest runs, newest first, each with the
-// labels it reported first.
+// ListRuns returns the schedule's latest runs, newest first.
 func (st *Store) ListRuns(ctx context.Context, userID, scheduleID string, limit int) ([]Run, error) {
 	rows, err := st.db.QueryContext(ctx, `SELECT `+runColumns+` FROM schedule_runs WHERE user_id = ? AND schedule_id = ? ORDER BY started_at DESC, rowid DESC LIMIT ?`,
 		userID, scheduleID, limit)
@@ -490,33 +497,25 @@ func (st *Store) ListRuns(ctx context.Context, userID, scheduleID string, limit 
 		runs = append(runs, r)
 	}
 	_ = rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
+	return runs, rows.Err()
+}
+
+// lastAnsweredRunStart is when the schedule's latest run that reported
+// (news, nothing new or as much as the token limit allowed) started; zero
+// before any.
+func (st *Store) lastAnsweredRunStart(ctx context.Context, userID, scheduleID string) (time.Time, error) {
+	var started string
+	err := st.db.QueryRowContext(ctx, `
+SELECT started_at FROM schedule_runs
+WHERE user_id = ? AND schedule_id = ? AND status IN (?, ?, ?)
+ORDER BY started_at DESC, rowid DESC LIMIT 1`, userID, scheduleID, StatusNew, StatusNothingNew, StatusTokenLimit).Scan(&started)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
 	}
-	if len(runs) == 0 {
-		return runs, nil
-	}
-	byID := make(map[string]*Run, len(runs))
-	args := []any{userID, scheduleID}
-	for i := range runs {
-		byID[runs[i].ID] = &runs[i]
-		args = append(args, runs[i].ID)
-	}
-	labels, err := st.db.QueryContext(ctx, `SELECT run_id, label FROM schedule_findings WHERE user_id = ? AND schedule_id = ? AND run_id IN (`+sqlutil.Placeholders(len(runs))+`) ORDER BY first_seen_at, rowid`, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list run labels: %w", err)
+		return time.Time{}, fmt.Errorf("last answered run: %w", err)
 	}
-	defer func() { _ = labels.Close() }()
-	for labels.Next() {
-		var runID, label string
-		if err := labels.Scan(&runID, &label); err != nil {
-			return nil, fmt.Errorf("scan run label: %w", err)
-		}
-		if r := byID[runID]; r != nil {
-			r.NewLabels = append(r.NewLabels, label)
-		}
-	}
-	return runs, labels.Err()
+	return sqlutil.ParseTime(started)
 }
 
 // LastRuns returns each of the user's schedules' latest run, by schedule id.
@@ -540,54 +539,6 @@ WHERE r.user_id = ? AND r.rowid = (
 		out[r.ScheduleID] = r
 	}
 	return out, rows.Err()
-}
-
-// ListFindings returns everything the schedule reported, newest first.
-func (st *Store) ListFindings(ctx context.Context, userID, scheduleID string) ([]Finding, error) {
-	rows, err := st.db.QueryContext(ctx, `
-SELECT item_key, label, source_url, first_seen_at FROM schedule_findings
-WHERE user_id = ? AND schedule_id = ? ORDER BY first_seen_at DESC, rowid DESC`, userID, scheduleID)
-	if err != nil {
-		return nil, fmt.Errorf("list findings: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	out := []Finding{}
-	for rows.Next() {
-		var f Finding
-		var seen string
-		if err := rows.Scan(&f.Key, &f.Label, &f.SourceURL, &seen); err != nil {
-			return nil, fmt.Errorf("scan finding: %w", err)
-		}
-		if f.FirstSeenAt, err = sqlutil.ParseTime(seen); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
-	}
-	return out, rows.Err()
-}
-
-// AddFindings stores the items a run reported and returns those that were
-// new: an item already reported is never stored or announced again.
-func (st *Store) AddFindings(ctx context.Context, userID, scheduleID, runID string, items []Finding, at time.Time) ([]Finding, error) {
-	var fresh []Finding
-	for _, f := range items {
-		res, err := st.db.ExecContext(ctx, `
-INSERT OR IGNORE INTO schedule_findings (schedule_id, user_id, item_key, label, source_url, run_id, first_seen_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)`, scheduleID, userID, f.Key, f.Label, f.SourceURL, runID, ts(at))
-		if err != nil {
-			return nil, fmt.Errorf("add finding: %w", err)
-		}
-		if n, _ := res.RowsAffected(); n == 1 {
-			f.FirstSeenAt = at.UTC().Truncate(time.Second)
-			fresh = append(fresh, f)
-		}
-	}
-	return fresh, nil
-}
-
-// DeleteFindings forgets one reported item, or all of them when key is "".
-func (st *Store) DeleteFindings(ctx context.Context, userID, scheduleID, key string) error {
-	return st.deleteMemory(ctx, "schedule_findings", "item_key", userID, scheduleID, key)
 }
 
 // DeleteSources forgets one learned source, or all of them when urlKey is "".
@@ -762,7 +713,7 @@ func (st *Store) Prune(ctx context.Context, now time.Time) error {
 const (
 	notificationRetention = 30 * 24 * time.Hour
 	memoryRetention       = 30 * 24 * time.Hour
-	// runRetention keeps half a year of run history; the findings outlive it.
+	// runRetention keeps half a year of run history.
 	runRetention = 180 * 24 * time.Hour
 )
 

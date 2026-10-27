@@ -94,33 +94,24 @@ type Finding struct {
 
 const findingsMaxCompletionTokens = 1200
 
-// maxKnownKeys bounds the already-reported keys shown to the extractor.
-const maxKnownKeys = 200
-
 const findingsSystemPrompt = `You read the answer of a recurring research task and list the items it reports as NEW findings. Reply with ONLY a JSON object: {"items":[{"key":"...","label":"...","source":<n>}]}.
 
 - An item is one distinct thing the answer presents as new: a film, a paper, a decision, a product, an event.
-- Leave out items the answer says were already known, reported earlier or are still the same.
-- key: a short lowercase ASCII slug naming the item itself, the same in every language and on every run, e.g. "dune-part-three" or "avengers-doomsday". When an item matches one of the known keys, reuse that key exactly.
+- Leave out items the answer says are unchanged or not new.
+- key: a short lowercase ASCII slug naming the item, e.g. "dune-part-three" or "starship-flight-12-scrubbed".
 - label: the item's name as a reader would recognise it, at most 80 characters.
 - source: the bracketed source number the answer cites for the item, or 0.
 - When the answer reports nothing new, reply {"items":[]}.`
 
 var slugInvalid = regexp.MustCompile(`[^a-z0-9]+`)
 
-// ExtractFindings lists the items a scheduled run's answer reports as new,
-// reusing knownKeys for items reported before. An empty or unreadable reply
+// ExtractFindings lists the items a scheduled run's answer reports as new.
+// The task's own time span decides what is new, not earlier runs: an item
+// reported before may well have news again. An empty or unreadable reply
 // is an error, unlike an empty list, which says there is nothing new.
-func (c *Client) ExtractFindings(ctx context.Context, task, answer string, knownKeys []string) ([]Finding, error) {
-	if len(knownKeys) > maxKnownKeys {
-		knownKeys = knownKeys[:maxKnownKeys]
-	}
-	known := "(none)"
-	if len(knownKeys) > 0 {
-		known = strings.Join(knownKeys, ", ")
-	}
-	framed := fmt.Sprintf("Task:\n\"\"\"\n%s\n\"\"\"\n\nKnown keys: %s\n\nAnswer:\n\"\"\"\n%s\n\"\"\"\n\nJSON:",
-		strings.TrimSpace(task), known, strings.TrimSpace(answer))
+func (c *Client) ExtractFindings(ctx context.Context, task, answer string) ([]Finding, error) {
+	framed := fmt.Sprintf("Task:\n\"\"\"\n%s\n\"\"\"\n\nAnswer:\n\"\"\"\n%s\n\"\"\"\n\nJSON:",
+		strings.TrimSpace(task), strings.TrimSpace(answer))
 	messages := []Message{
 		{Role: "system", Content: findingsSystemPrompt},
 		{Role: "user", Content: framed},
@@ -143,8 +134,8 @@ func (c *Client) ExtractFindings(ctx context.Context, task, answer string, known
 }
 
 // parseFindings reads the extractor's reply; ok is false when it holds no
-// items object, or items of which none has a usable key: neither is an empty
-// list.
+// items object, or items of which none has a key or label: neither is an
+// empty list.
 func parseFindings(reply string) ([]Finding, bool) {
 	raw, found := llmwire.JSONObject(reply)
 	if !found {
@@ -167,6 +158,11 @@ func parseFindings(reply string) ([]Finding, bool) {
 		label := strings.Join(strings.Fields(item.Label), " ")
 		if len(key) > 80 {
 			key = strings.Trim(key[:80], "-")
+		}
+		// The key only keeps one answer from listing an item twice: an item
+		// without a usable one goes by its label.
+		if key == "" {
+			key = strings.ToLower(label)
 		}
 		if key == "" || seen[key] {
 			continue

@@ -328,8 +328,12 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		run.Tokens = int64(total.TotalTokens)
 		run.CostNanoUSD, _ = usageTotal.Cost()
 	}()
+	// The anchor reads in the schedule's own time, as the pages it checks do.
+	loc, err := schedule.LoadLocation(sch.Timezone)
+	if err != nil {
+		loc = time.UTC
+	}
 	var seen observations
-	research, reported := memory.Blocks(schedule.MemoryTokenBudget)
 	turnRun := s.engine.Prepare(turn.RunConfig{
 		Stream:      discardEmitter{},
 		User:        user,
@@ -340,8 +344,8 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		Scheduled: &turn.ScheduledRun{
 			TokenBudget:  schedule.RunTokenBudget,
 			SoftDeadline: start.Add(s.scheduleSoftDeadline()),
-			Memory:       research,
-			Reported:     reported,
+			Memory:       memory.Block(),
+			Since:        memory.Since.In(loc),
 			Observe:      seen.add,
 			Now:          s.clock,
 		},
@@ -409,64 +413,52 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	extractCtx, cancelExtract := context.WithTimeout(
 		llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), findingsTimeout)
 	defer cancelExtract()
-	fresh, extracted := s.recordFindings(extractCtx, user.ID, sch, runID, result, memory.Findings, seen.list())
-	run.NewCount = len(fresh)
+	reported, extracted := s.recordFindings(extractCtx, user.ID, sch, result, seen.list())
+	run.NewCount = len(reported)
+	for _, f := range reported {
+		run.NewLabels = append(run.NewLabels, f.Label)
+	}
 	switch {
 	case result.LimitHit == turn.LimitTokens:
 		run.Status = schedule.StatusTokenLimit
-	case len(fresh) > 0:
+	case len(reported) > 0:
 		run.Status = schedule.StatusNew
 	default:
 		run.Status = schedule.StatusNothingNew
 		// A failed extraction cannot tell: the answer may hold news.
 		nothingNew = extracted
 	}
-	if len(fresh) == 0 {
+	if len(reported) == 0 {
 		return
-	}
-	labels := make([]string, len(fresh))
-	for i, f := range fresh {
-		labels[i] = f.Label
 	}
 	s.notify(detached, user.ID, schedule.Notification{
 		Kind:       schedule.KindScheduleRun,
 		ScheduleID: &sch.ID,
 		ThreadID:   &thread.ID,
 		MessageID:  &assistant.ID,
-		Title:      fmt.Sprintf("%s: %d new", sch.Name, len(fresh)),
-		Body:       strings.Join(labels, " · "),
+		Title:      fmt.Sprintf("%s: %d new", sch.Name, len(reported)),
+		Body:       strings.Join(run.NewLabels, " · "),
 	})
 }
 
-// recordFindings extracts the items the answer reported, keeps the new ones
-// and teaches the schedule's memory which sources and searches led to them.
-// extracted is false when the extraction or storing the findings failed: no
-// new item then does not mean nothing was new.
-func (s *server) recordFindings(ctx context.Context, userID string, sch schedule.Schedule, runID string, result turn.LoopResult, known []schedule.Finding, seen []schedule.ToolOutcome) (fresh []schedule.Finding, extracted bool) {
-	keys := make([]string, len(known))
-	for i, f := range known {
-		keys[i] = f.Key
-	}
-	items, err := s.scheduleLLM.ExtractFindings(ctx, sch.Prompt, result.Content, keys)
-	extracted = err == nil
+// recordFindings extracts the items the answer reported and teaches the
+// schedule's memory which sources and searches led to them. extracted is
+// false when the extraction failed: no item then does not mean nothing was
+// new.
+func (s *server) recordFindings(ctx context.Context, userID string, sch schedule.Schedule, result turn.LoopResult, seen []schedule.ToolOutcome) (found []schedule.Finding, extracted bool) {
+	items, err := s.scheduleLLM.ExtractFindings(ctx, sch.Prompt, result.Content)
 	if err != nil {
 		slog.Warn("extract findings failed", "schedule_id", sch.ID, "err", err)
 	}
 	urls := result.SourceURLs()
-	found := make([]schedule.Finding, 0, len(items))
+	found = make([]schedule.Finding, 0, len(items))
 	for _, item := range items {
-		found = append(found, schedule.Finding{Key: item.Key, Label: item.Label, SourceURL: urls[item.Source]})
+		found = append(found, schedule.Finding{Label: item.Label, SourceURL: urls[item.Source]})
 	}
-	now := s.clock()
-	fresh, err = s.schedules.AddFindings(context.WithoutCancel(ctx), userID, sch.ID, runID, found, now)
-	if err != nil {
-		slog.Warn("store findings failed", "schedule_id", sch.ID, "err", err)
-		return nil, false
-	}
-	if err := s.schedules.RecordRun(context.WithoutCancel(ctx), userID, sch.ID, seen, fresh, now); err != nil {
+	if err := s.schedules.RecordRun(context.WithoutCancel(ctx), userID, sch.ID, seen, found, s.clock()); err != nil {
 		slog.Warn("record schedule memory failed", "schedule_id", sch.ID, "err", err)
 	}
-	return fresh, extracted
+	return found, err == nil
 }
 
 // previousRunTimedOut reports whether the run before runID also went past the

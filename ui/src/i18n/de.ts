@@ -676,8 +676,7 @@ export const de = {
       when: "Wann",
       nextRun: "Nächster Lauf",
       memory: "Gedächtnis",
-      memorySummary:
-        "{{findings}} gemeldet · {{sources}} Quellen · {{queries}} Suchen",
+      memorySummary: "{{sources}} Quellen · {{queries}} Suchen",
       runsTab: "Läufe {{count}}",
       memoryTab: "Gedächtnis {{count}}",
       notFound: "Diesen Zeitplan gibt es nicht (mehr).",
@@ -690,9 +689,6 @@ export const de = {
       none: "keiner",
     },
     memory: {
-      reported: "Bereits gemeldet",
-      reportedHint:
-        "Wird nie wieder gemeldet. Vergisst du einen Eintrag, kann er noch einmal gemeldet werden.",
       sources: "Gelernte Quellen",
       sourcesHint:
         "Von Loom aus den Läufen aufgezeichnet, nie vom Modell geschrieben. Nach Funden sortiert; jeder Lauf beginnt mit den besten.",
@@ -701,8 +697,6 @@ export const de = {
         "Die besten 5 bleiben. Eine Suche fällt nach 3 Läufen ohne Fund weg.",
       forgetAll: "Alle vergessen",
       forget: "Vergessen",
-      showAll: "Alle {{count}} zeigen",
-      reportedOn: "gemeldet {{date}}",
       topSource: "beste Quelle",
       finds_one: "{{count}} Fund",
       finds_other: "{{count}} Funde",

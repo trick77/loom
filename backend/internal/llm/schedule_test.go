@@ -41,21 +41,27 @@ func TestExtractFindings(t *testing.T) {
 	srv := intentServer(t, `{"items":[{"key":"Dune: Part Three","label":"Dune:  Part Three","source":2},{"key":"dune-part-three","label":"dup"},{"key":"","label":"no key"},{"key":"avengers-doomsday","label":"","source":-1}]}`, &body)
 	defer srv.Close()
 	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
-	items, err := c.ExtractFindings(context.Background(), "find films", "Two new films [2]", []string{"supergirl"})
+	items, err := c.ExtractFindings(context.Background(), "find films", "Two new films [2]")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 2 {
+	if len(items) != 3 {
 		t.Fatalf("items = %+v", items)
 	}
 	if items[0] != (Finding{Key: "dune-part-three", Label: "Dune: Part Three", Source: 2}) {
 		t.Fatalf("first = %+v", items[0])
 	}
-	if items[1] != (Finding{Key: "avengers-doomsday", Label: "avengers-doomsday", Source: 0}) {
+	// An item without a key goes by its label.
+	if items[1] != (Finding{Key: "no key", Label: "no key", Source: 0}) {
 		t.Fatalf("second = %+v", items[1])
 	}
-	if !strings.Contains(body, "Known keys: supergirl") || !strings.Contains(body, "Two new films [2]") {
-		t.Fatalf("request lacks the known keys or the answer: %s", body)
+	if items[2] != (Finding{Key: "avengers-doomsday", Label: "avengers-doomsday", Source: 0}) {
+		t.Fatalf("third = %+v", items[2])
+	}
+	// Earlier runs never reach the extractor: an item reported before may
+	// have news again.
+	if strings.Contains(body, "Known keys") || !strings.Contains(body, "Two new films [2]") {
+		t.Fatalf("request names known keys or lacks the answer: %s", body)
 	}
 }
 
@@ -65,10 +71,13 @@ func TestParseFindingsBounds(t *testing.T) {
 	if !ok || len(items) != 1 || len(items[0].Key) != 80 || len([]rune(items[0].Label)) != 80 {
 		t.Fatalf("items = %+v (ok %v)", items, ok)
 	}
-	for _, bad := range []string{"nothing", `{"items":"x"}`, `{}`, `{"items":[{"key":"デューン","label":"Dune"},{"key":""}]}`} {
+	for _, bad := range []string{"nothing", `{"items":"x"}`, `{}`, `{"items":[{"key":"","label":""}]}`} {
 		if items, ok := parseFindings(bad); ok || items != nil {
 			t.Fatalf("parseFindings(%q) = %+v, %v; want no items, not ok", bad, items, ok)
 		}
+	}
+	if items, ok := parseFindings(`{"items":[{"key":"デューン","label":"Dune"},{"key":""}]}`); !ok || len(items) != 1 || items[0].Label != "Dune" {
+		t.Fatalf("an item without a usable key = %+v, %v; want it kept by its label", items, ok)
 	}
 	if items, ok := parseFindings(`{"items":[]}`); !ok || len(items) != 0 {
 		t.Fatalf("an empty list = %+v, %v; want ok with no items", items, ok)
@@ -81,7 +90,7 @@ func TestExtractFindingsUnreadableReplyIsAnError(t *testing.T) {
 	for _, reply := range []string{"I found nothing new.", `{"items":"x"}`} {
 		srv := intentServer(t, reply, new(string))
 		c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
-		if items, err := c.ExtractFindings(context.Background(), "find films", "answer", nil); err == nil {
+		if items, err := c.ExtractFindings(context.Background(), "find films", "answer"); err == nil {
 			t.Fatalf("reply %q: items %+v, no error", reply, items)
 		}
 		srv.Close()
@@ -89,7 +98,7 @@ func TestExtractFindingsUnreadableReplyIsAnError(t *testing.T) {
 	srv := intentServer(t, `{"items":[]}`, new(string))
 	defer srv.Close()
 	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
-	if items, err := c.ExtractFindings(context.Background(), "find films", "nothing new", nil); err != nil || len(items) != 0 {
+	if items, err := c.ExtractFindings(context.Background(), "find films", "nothing new"); err != nil || len(items) != 0 {
 		t.Fatalf("an empty list = %+v, %v; want no items and no error", items, err)
 	}
 }
