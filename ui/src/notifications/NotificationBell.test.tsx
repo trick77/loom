@@ -9,7 +9,39 @@ import {
 import { beforeEach, expect, test, vi } from "vitest";
 
 import * as api from "../api";
-import { NotificationBell } from "./NotificationBell";
+import {
+  NotificationBell,
+  NotificationToast,
+  useNotifications,
+  type Placement,
+} from "./NotificationBell";
+
+// Bell mounts the bell where the sidebar would: header and rail are different
+// parents, so a placement switch remounts the bell but not the toast.
+function Bell({
+  placement,
+  onOpen,
+  onManageSchedules,
+}: {
+  placement: Placement;
+  onOpen(notification: api.AppNotification): void;
+  onManageSchedules(): void;
+}) {
+  const notifications = useNotifications({ onOpen, placement });
+  const bell = (
+    <NotificationBell
+      notifications={notifications}
+      placement={placement}
+      onManageSchedules={onManageSchedules}
+    />
+  );
+  return (
+    <>
+      <NotificationToast notifications={notifications} />
+      {placement === "header" ? <header>{bell}</header> : <nav>{bell}</nav>}
+    </>
+  );
+}
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
@@ -53,11 +85,7 @@ test("shows a dot while anything is unread, the inbox on click", async () => {
   const onOpen = vi.fn();
   const onManage = vi.fn();
   render(
-    <NotificationBell
-      placement="header"
-      onOpen={onOpen}
-      onManageSchedules={onManage}
-    />,
+    <Bell placement="header" onOpen={onOpen} onManageSchedules={onManage} />,
   );
   expect(await screen.findByTestId("notification-dot")).toBeInTheDocument();
 
@@ -95,11 +123,7 @@ test("shows a dot while anything is unread, the inbox on click", async () => {
 test("mark all read clears the dot", async () => {
   vi.mocked(api.unreadNotificationCount).mockResolvedValue(1);
   render(
-    <NotificationBell
-      placement="rail"
-      onOpen={vi.fn()}
-      onManageSchedules={vi.fn()}
-    />,
+    <Bell placement="rail" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
   );
   await screen.findByTestId("notification-dot");
   fireEvent.click(screen.getByRole("button", { name: /some unread/ }));
@@ -116,11 +140,7 @@ test("an empty inbox says so", async () => {
   vi.mocked(api.unreadNotificationCount).mockResolvedValue(0);
   vi.mocked(api.listNotifications).mockResolvedValue([]);
   render(
-    <NotificationBell
-      placement="header"
-      onOpen={vi.fn()}
-      onManageSchedules={vi.fn()}
-    />,
+    <Bell placement="header" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
   expect(await screen.findByText("You're all caught up")).toBeInTheDocument();
@@ -130,11 +150,7 @@ test("a failed inbox load says so", async () => {
   vi.mocked(api.unreadNotificationCount).mockRejectedValue(new Error("down"));
   vi.mocked(api.listNotifications).mockRejectedValue(new Error("down"));
   render(
-    <NotificationBell
-      placement="header"
-      onOpen={vi.fn()}
-      onManageSchedules={vi.fn()}
-    />,
+    <Bell placement="header" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
   expect(
@@ -149,11 +165,7 @@ test("a toast stays up until it is dismissed", async () => {
       .mockResolvedValueOnce(0)
       .mockResolvedValue(1);
     render(
-      <NotificationBell
-        placement="header"
-        onOpen={vi.fn()}
-        onManageSchedules={vi.fn()}
-      />,
+      <Bell placement="header" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
     );
     await waitFor(() =>
       expect(api.unreadNotificationCount).toHaveBeenCalledTimes(1),
@@ -182,12 +194,8 @@ async function showToast(...later: number[]) {
     .mocked(api.unreadNotificationCount)
     .mockResolvedValueOnce(0);
   for (const n of [1, ...later]) counts.mockResolvedValueOnce(n);
-  render(
-    <NotificationBell
-      placement="header"
-      onOpen={vi.fn()}
-      onManageSchedules={vi.fn()}
-    />,
+  const view = render(
+    <Bell placement="header" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
   );
   await waitFor(() =>
     expect(api.unreadNotificationCount).toHaveBeenCalledTimes(1),
@@ -197,7 +205,26 @@ async function showToast(...later: number[]) {
     window.dispatchEvent(new Event("focus"));
   });
   await screen.findByRole("status");
+  return view;
 }
+
+test("a toast survives the rail collapsing", async () => {
+  vi.mocked(api.unreadNotificationCount).mockReset();
+  const view = await showToast();
+  view.rerender(
+    <Bell placement="rail" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent("Cinema scout");
+});
+
+test("news while a toast is up counts into it", async () => {
+  vi.mocked(api.unreadNotificationCount).mockReset();
+  await showToast(2);
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(await screen.findByText("2 new notifications")).toBeInTheDocument();
+});
 
 test("news read elsewhere takes the toast with it", async () => {
   vi.mocked(api.unreadNotificationCount).mockReset();
@@ -232,11 +259,7 @@ test("a poll that finds something new shows a toast", async () => {
     .mockResolvedValueOnce(3);
   const onOpen = vi.fn();
   render(
-    <NotificationBell
-      placement="header"
-      onOpen={onOpen}
-      onManageSchedules={vi.fn()}
-    />,
+    <Bell placement="header" onOpen={onOpen} onManageSchedules={vi.fn()} />,
   );
   await waitFor(() =>
     expect(api.unreadNotificationCount).toHaveBeenCalledTimes(1),
@@ -265,11 +288,7 @@ test("a poll that finds something new shows a toast", async () => {
 test("focus polls again", async () => {
   vi.mocked(api.unreadNotificationCount).mockResolvedValue(0);
   render(
-    <NotificationBell
-      placement="header"
-      onOpen={vi.fn()}
-      onManageSchedules={vi.fn()}
-    />,
+    <Bell placement="header" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
   );
   await waitFor(() => expect(api.unreadNotificationCount).toHaveBeenCalled());
   const calls = vi.mocked(api.unreadNotificationCount).mock.calls.length;

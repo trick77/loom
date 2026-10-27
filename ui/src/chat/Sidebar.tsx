@@ -3,7 +3,11 @@ import { useTranslation } from "react-i18next";
 
 import type { AppNotification, Project, Thread, User } from "../api";
 import i18n from "../i18n";
-import { NotificationBell } from "../notifications/NotificationBell";
+import {
+  NotificationBell,
+  NotificationToast,
+  useNotifications,
+} from "../notifications/NotificationBell";
 import { UserMenu } from "./UserMenu";
 import { Icon } from "./Icon";
 import type { RouteState } from "./routing";
@@ -107,8 +111,13 @@ export const Sidebar = memo(function Sidebar({
 }) {
   const { t } = useTranslation();
   const addToProject = projectsAvailable ? onAddThreadToProject : undefined;
+  const notifications = useNotifications({
+    onOpen: onOpenNotification,
+    placement: railCollapsed ? "rail" : "header",
+  });
   return (
     <>
+      <NotificationToast notifications={notifications} />
       <aside
         className={`ui-sidebar-text fixed inset-y-0 left-0 z-50 flex w-[300px] max-w-[85vw] min-h-0 flex-col overflow-hidden border-r border-[#343432] bg-panel pl-0.5 text-[#c7c5bd] transition-transform duration-200 ease-out md:static md:z-auto md:w-auto md:max-w-none md:translate-x-0 ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -125,8 +134,8 @@ export const Sidebar = memo(function Sidebar({
           <div className="flex items-center gap-3 text-[#aaa79e]">
             {!railCollapsed && (
               <NotificationBell
+                notifications={notifications}
                 placement="header"
-                onOpen={onOpenNotification}
                 onManageSchedules={onSchedules}
               />
             )}
@@ -227,8 +236,8 @@ export const Sidebar = memo(function Sidebar({
           {railCollapsed && (
             <div className="mt-2.5 flex h-[26px] items-center justify-center text-[#f0eee7]">
               <NotificationBell
+                notifications={notifications}
                 placement="rail"
-                onOpen={onOpenNotification}
                 onManageSchedules={onSchedules}
               />
             </div>
