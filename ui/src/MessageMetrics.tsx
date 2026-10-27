@@ -4,7 +4,7 @@ import { useContextWindow } from "./useContextWindow";
 
 /**
  * Renders the metrics line for an assistant message, right-aligned via `ml-auto`
- * within the actions row. The assistant answer shows metrics only ("high · 5s · …"),
+ * within the actions row. The assistant answer shows metrics only ("5s · ↑ … · ↓ …"),
  * with no leading time — the message time is surfaced on the user's own prompt
  * instead (see the alignRight branch in MessageActions). When the thread has a
  * prompt-classifier category, a pill with the humanized label sits to the left of
