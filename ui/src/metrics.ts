@@ -148,7 +148,7 @@ export function hasRenderableMetrics(message: Message): boolean {
 /**
  * Build the metrics line (duration · ↑in (cached/c) · ↓out (reasoning/r) · context% ·
  * Σ $thread), or null when there is nothing renderable. The stored reasoning effort is
- * left out: every turn sends the same level, so it tells the reader nothing. The
+ * left out: nearly every answer carries the same level, so it was noise on the line. The
  * context % needs `contextWindowTokens` (from /api/model) and is omitted
  * until it is known. The cost segment is the thread's running total
  * (`threadCostNanoUsd`, from threadCostThrough), never the turn's own figure: what the

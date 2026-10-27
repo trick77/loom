@@ -65,7 +65,7 @@ test("hasRenderableMetrics requires duration and any token usage", () => {
   ).toBe(false);
 });
 
-test("buildMetricsString starts at the duration", () => {
+test("buildMetricsString formats cached, reasoning and context tokens after the duration", () => {
   const line = buildMetricsString(
     assistant({
       model: "some-model",
