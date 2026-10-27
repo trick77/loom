@@ -487,7 +487,7 @@ func (st *Store) ListRuns(ctx context.Context, userID, scheduleID string, limit 
 }
 
 // lastAnsweredRunStart is when the schedule's latest run that reported
-// (news, nothing new or as much as the token limit allowed) started; zero
+// (something, nothing or as much as the token limit allowed) started; zero
 // before any.
 func (st *Store) lastAnsweredRunStart(ctx context.Context, userID, scheduleID string) (time.Time, error) {
 	var started string

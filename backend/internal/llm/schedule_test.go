@@ -63,6 +63,11 @@ func TestExtractFindings(t *testing.T) {
 	if strings.Contains(body, "Known keys") || !strings.Contains(body, "Two new films [2]") {
 		t.Fatalf("request names known keys or lacks the answer: %s", body)
 	}
+	// The run is told never to call an item new, so the extractor lists what
+	// the answer reports, never only what it presents as new.
+	if strings.Contains(strings.ToLower(findingsSystemPrompt), "new") {
+		t.Fatalf("the extractor still filters by newness:\n%s", findingsSystemPrompt)
+	}
 }
 
 func TestParseFindingsBounds(t *testing.T) {

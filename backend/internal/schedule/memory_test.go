@@ -179,14 +179,21 @@ func TestLastRunNote(t *testing.T) {
 
 func TestTeaser(t *testing.T) {
 	for in, want := range map[string]string{
-		"## Starship\n\nFlight 12 slipped to 15 Nov [1].": "Starship",
-		"\n\n- **Flight 12**  slipped [1].\n- more":       "Flight 12** slipped [1].",
-		"":                        "",
-		strings.Repeat("a ", 200): strings.TrimSpace(strings.Repeat("a ", 80)),
+		"## Starship\n\nFlight 12 slipped to 15 Nov [1].":                     "Flight 12 slipped to 15 Nov.",
+		"Here is what I found this week:\n\n- **Flight 12**  slipped [1][2].": "Flight 12 slipped.",
+		"1. [Dune](https://arena.ch/dune) opens 17 Dec [3]":                   "Dune opens 17 Dec",
+		"| Film | Date |\n|---|---|\n\n-5% on the RTX 5090 [1]":               "-5% on the RTX 5090",
+		"## Nothing to report": "Nothing to report",
+		"":                     "",
 	} {
 		if got := schedule.Teaser(in); got != want {
 			t.Errorf("Teaser(%q) = %q, want %q", in, got, want)
 		}
+	}
+	// A long line ends at a word, marked as cut.
+	long := schedule.Teaser(strings.Repeat("launch ", 40))
+	if !strings.HasSuffix(long, "launch…") || len([]rune(long)) > 161 {
+		t.Errorf("long teaser = %q", long)
 	}
 }
 

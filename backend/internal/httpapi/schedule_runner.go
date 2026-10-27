@@ -218,9 +218,10 @@ func (o *observations) list() []schedule.ToolOutcome {
 
 // runSchedule carries out one run of a claimed schedule: its prompt as a
 // headless turn in a thread of its own, then the findings, the memory, the
-// run record and, when there is news, a notification. A timed run that surely
-// found nothing new leaves no thread: an answer saying so is not worth a
-// visit. A manual one keeps its thread: the user asked for the answer.
+// run record and, when it has something to report, a notification. A timed
+// run that surely had nothing to report leaves no thread: an answer saying so
+// is not worth a visit. A manual one keeps its thread: the user asked for the
+// answer.
 func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger runTrigger) {
 	detached := context.WithoutCancel(ctx)
 	start := s.clock()
@@ -242,7 +243,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	// replacing is the run's thread once it holds the prompt: however the run
 	// ends, it then replaces the earlier ones the user never took up, after the
 	// run is recorded. The old answer stays readable until then. Only a run
-	// whose extraction found nothing new (nothingNew) leaves the earlier ones
+	// whose extraction found nothing to report (nothingNew) leaves the earlier ones
 	// be; a timed one drops its own thread too.
 	var replacing string
 	var nothingNew bool
@@ -403,7 +404,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	run.MessageID = &assistant.ID
 	if result.Interrupted {
 		// A stalled answer is kept for the reader, but its cut-off list is no
-		// record of what is new: the next run reports the rest.
+		// record of what was found: the next run reports the rest.
 		run.Error = "the answer was cut off"
 		return
 	}
@@ -421,7 +422,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		run.Status = schedule.StatusNew
 	default:
 		run.Status = schedule.StatusNothingNew
-		// A failed extraction cannot tell: the answer may hold news.
+		// A failed extraction cannot tell: the answer may hold a report.
 		nothingNew = extracted
 	}
 	if len(reported) == 0 {

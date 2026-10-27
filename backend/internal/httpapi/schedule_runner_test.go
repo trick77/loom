@@ -108,7 +108,7 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 		t.Fatalf("thread = %+v", thread)
 	}
 	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
-	if len(notes) != 1 || notes[0].Title != "Cinema scout" || notes[0].Body != "Dune: Part Three opens 17 Dec [1]." || notes[0].MessageID == nil ||
+	if len(notes) != 1 || notes[0].Title != "Cinema scout" || notes[0].Body != "Dune: Part Three opens 17 Dec." || notes[0].MessageID == nil ||
 		notes[0].ThreadID == nil || *notes[0].ThreadID != firstThread {
 		t.Fatalf("notifications = %+v", notes)
 	}
@@ -198,7 +198,7 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 	if runs[0].Status != schedule.StatusNew {
 		t.Fatalf("run with news on a reported item = %+v", runs[0])
 	}
-	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 2 || notes[0].Title != "Cinema scout" || notes[0].Body != "Dune: Part Three moved to 18 Dec [1]." {
+	if notes, _ = f.store.ListNotifications(ctx, testUser.ID, 10); len(notes) != 2 || notes[0].Title != "Cinema scout" || notes[0].Body != "Dune: Part Three moved to 18 Dec." {
 		t.Fatalf("notifications = %+v, want the update announced", notes)
 	}
 }
