@@ -66,6 +66,8 @@ export type Thread = {
   scheduleId?: string | null;
   /** True once the user wrote in a run thread after the run's prompt. */
   scheduleReplied?: boolean;
+  /** True while a notification about the thread is unread. */
+  scheduleUnread?: boolean;
 };
 
 // ContentBlock is one ordered piece of an assistant message: a run of prose, a

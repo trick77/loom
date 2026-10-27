@@ -17,6 +17,8 @@ import {
   type AppNotification,
   deleteQueuedMessage,
   getThread,
+  markThreadNotificationsRead,
+  NOTIFICATIONS_CHANGED,
   queueMessage,
   setProjectStarred,
   setThreadStarred,
@@ -395,6 +397,36 @@ export function ThreadShell({
     ),
     onQueuedMessages: replaceQueued,
   });
+
+  // Opening a thread reads the schedule news about it: its sidebar dot and the
+  // bell's count go. The sidebar copy counts too, since a bell click reads the
+  // news before the thread loads.
+  const openedThreadID = activeThread?.id ?? null;
+  const openedThreadUnread =
+    openedThreadID !== null &&
+    (activeThread?.scheduleUnread === true ||
+      [...recentThreads, ...starredThreads].some(
+        (item) => item.id === openedThreadID && item.scheduleUnread,
+      ));
+  useEffect(() => {
+    if (openedThreadID === null || !openedThreadUnread) return;
+    const read = (item: Thread) =>
+      item.id === openedThreadID && item.scheduleUnread
+        ? { ...item, scheduleUnread: false }
+        : item;
+    setThreads((current) => current.map(read));
+    setProjectThreads((current) => current.map(read));
+    setActiveThread((current) => (current === null ? current : read(current)));
+    void markThreadNotificationsRead(openedThreadID)
+      .then(() => window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED)))
+      .catch(() => undefined);
+  }, [
+    openedThreadID,
+    openedThreadUnread,
+    setActiveThread,
+    setProjectThreads,
+    setThreads,
+  ]);
 
   // The composer surface currently on screen, and the draft that belongs to it.
   // Keyed off `activeThread`, not `route`: the route flips the instant a thread is

@@ -265,6 +265,22 @@ export async function markNotificationRead(id: string): Promise<void> {
   );
 }
 
+// markThreadNotificationsRead reads the notifications about a thread the user
+// opened.
+export async function markThreadNotificationsRead(
+  threadID: string,
+): Promise<void> {
+  await request(
+    `/api/threads/${encodeURIComponent(threadID)}/notifications/read`,
+    "failed to mark read",
+    { method: "POST" },
+  );
+}
+
+// NOTIFICATIONS_CHANGED is the window event that has the bell recount after
+// notifications were read outside it.
+export const NOTIFICATIONS_CHANGED = "loom:notifications-changed";
+
 export async function markAllNotificationsRead(): Promise<void> {
   await request(`/api/notifications/read-all`, "failed to mark read", {
     method: "POST",

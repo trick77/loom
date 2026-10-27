@@ -731,6 +731,15 @@ func (st *Store) MarkRead(ctx context.Context, userID, id string) error {
 	return nil
 }
 
+// MarkThreadRead marks the user's notifications pointing at a thread read.
+func (st *Store) MarkThreadRead(ctx context.Context, userID, threadID string) error {
+	if _, err := st.db.ExecContext(ctx, `UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND thread_id = ? AND read_at IS NULL`,
+		userID, threadID); err != nil {
+		return fmt.Errorf("mark thread notifications read: %w", err)
+	}
+	return nil
+}
+
 // Prune drops notifications older than notificationRetention and learned
 // sources and searches unused for memoryRetention, across all users.
 func (st *Store) Prune(ctx context.Context, now time.Time) error {

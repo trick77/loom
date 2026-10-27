@@ -410,6 +410,20 @@ func (s *server) handleReadAllNotifications(w http.ResponseWriter, r *http.Reque
 	s.markNotificationsRead(w, r, "")
 }
 
+// handleReadThreadNotifications reads the notifications pointing at a thread
+// the user opened.
+func (s *server) handleReadThreadNotifications(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !s.schedulesOn(w) {
+		return
+	}
+	if err := s.schedules.MarkThreadRead(r.Context(), user.ID, r.PathValue("threadID")); err != nil {
+		serverError(w, r, err, "mark thread notifications read failed")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *server) markNotificationsRead(w http.ResponseWriter, r *http.Request, id string) {
 	user, ok := currentUser(w, r)
 	if !ok || !s.schedulesOn(w) {

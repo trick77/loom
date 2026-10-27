@@ -6,6 +6,7 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  NOTIFICATIONS_CHANGED,
   unreadNotificationCount,
   type AppNotification,
 } from "../api";
@@ -87,10 +88,12 @@ export function NotificationBell({
     const handle = window.setInterval(() => void poll(), POLL_MS);
     const onFocus = () => void poll();
     window.addEventListener("focus", onFocus);
+    window.addEventListener(NOTIFICATIONS_CHANGED, onFocus);
     return () => {
       window.clearTimeout(first);
       window.clearInterval(handle);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener(NOTIFICATIONS_CHANGED, onFocus);
     };
   }, [poll]);
 

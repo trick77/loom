@@ -734,6 +734,7 @@ export const de = {
     manyNew: "{{count}} neue Benachrichtigungen",
     openInbox: "Posteingang öffnen",
     loadFailed: "Benachrichtigungen konnten nicht geladen werden.",
+    threadUnread: "Ungelesene Neuigkeiten",
   },
   misc: {
     shared: "Geteilt",

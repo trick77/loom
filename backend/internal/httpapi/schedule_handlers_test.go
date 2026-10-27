@@ -234,6 +234,28 @@ func TestNotificationEndpoints(t *testing.T) {
 	if rec = f.do(t, http.MethodGet, "/api/notifications/unread", ""); !strings.Contains(rec.Body.String(), `"count":0`) {
 		t.Fatalf("unread after read all = %s", rec.Body)
 	}
+
+	// Opening a thread reads the news that points at it, and only that.
+	news, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "News"})
+	other, _ := f.chat.CreateThread(ctx, testUser.ID, chat.CreateThreadInput{Title: "Other"})
+	for _, id := range []string{news.ID, news.ID, other.ID} {
+		_ = f.store.CreateNotification(ctx, testUser.ID, schedule.Notification{Kind: schedule.KindScheduleRun, ThreadID: &id, Title: "n"})
+	}
+	if got, _, _ := f.chat.GetThread(ctx, testUser.ID, news.ID); !got.ScheduleUnread {
+		t.Fatal("a thread with unread news is not marked unread")
+	}
+	if rec = f.do(t, http.MethodPost, "/api/threads/"+news.ID+"/notifications/read", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("read thread = %d", rec.Code)
+	}
+	if rec = f.do(t, http.MethodGet, "/api/notifications/unread", ""); !strings.Contains(rec.Body.String(), `"count":1`) {
+		t.Fatalf("unread after reading one thread = %s", rec.Body)
+	}
+	if got, _, _ := f.chat.GetThread(ctx, testUser.ID, news.ID); got.ScheduleUnread {
+		t.Fatal("a read thread is still marked unread")
+	}
+	if got, _, _ := f.chat.GetThread(ctx, testUser.ID, other.ID); !got.ScheduleUnread {
+		t.Fatal("reading one thread read another's news")
+	}
 }
 
 func TestRunThreadTakesAFollowUp(t *testing.T) {
