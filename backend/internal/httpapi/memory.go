@@ -18,7 +18,7 @@ import (
 const (
 	// memoryRebuildLimit caps how many recent messages a refresh reads, so it never
 	// loads the entire history. It also caps the incremental fold window.
-	memoryRebuildLimit = 200
+	memoryRebuildLimit = chat.MemoryRebuildLimit
 	// memoryBackgroundTimeout bounds a background refresh's LLM call.
 	memoryBackgroundTimeout = 2 * time.Minute
 	// memoryBatchInterval is how often the background MemoryWorker sweeps for scopes
@@ -39,12 +39,12 @@ const (
 	memoryProjectDebounce = 15 * time.Minute
 )
 
-// memoryScope describes one memory's storage and generation so the project and
-// user memories share a single refresh/generate mechanism. Each scope closes
-// over its user (and, for projects, its project), supplying scope-specific
-// storage access, the generation header, and the system prompt.
+// memoryScope describes one text-blob memory's storage and generation (project
+// memory; user memory is facts, see user_memory.go). A scope closes over its
+// user and project, supplying storage access, the generation header, and the
+// system prompt.
 type memoryScope struct {
-	name         string // for logs, e.g. "project" / "user"
+	name         string // for logs, e.g. "project"
 	key          string // single-flight key, unique per stored memory, e.g. "project:<id>"
 	purpose      string // inference metadata purpose
 	header       string // generation header block (e.g. project name/description)
@@ -54,10 +54,6 @@ type memoryScope struct {
 	upsert func(ctx context.Context, content string, sourceCount int) error
 	count  func(ctx context.Context) (int, error)
 	list   func(ctx context.Context, limit int) ([]chat.Message, error)
-	// exclusions optionally returns content the generator must NOT duplicate into
-	// the memory (the user's explicit standing instructions, for the user scope).
-	// nil — or a "" result — means no exclusions (e.g. project memory).
-	exclusions func(ctx context.Context) (string, error)
 }
 
 // refreshMemoryIfDue runs an incremental refresh when the gate is met. It is the
@@ -119,34 +115,43 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	if err != nil {
 		return err
 	}
-	return s.refreshMemory(ctx, user, scope, prior, messages, count)
+	return s.refreshMemory(ctx, user, scope, prior, messages, count, count < sourceCount)
 }
+
+// memoryCollapseBase caps the prior the collapse guard halves: the size the
+// project memory prompt asks for ("well under 2000 characters").
+const memoryCollapseBase = 2000
+
+// errMemoryCollapsed refuses a refresh whose result is under half the prior.
+var errMemoryCollapsed = errors.New("memory refresh collapsed the prior")
 
 // refreshMemory generates and stores an updated memory. When prior is non-empty
 // it folds the given transcript into it (incremental); the caller passes the
-// recent (bounded) messages for that.
-func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memoryScope, prior string, transcriptMessages []chat.Message, sourceCount int) error {
+// recent (bounded) messages for that. mayShrink is set for a deletion rebuild,
+// the one case where a much shorter memory is legitimate; otherwise a result
+// under half the prior is refused (errMemoryCollapsed) and the prior kept.
+func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memoryScope, prior string, transcriptMessages []chat.Message, sourceCount int, mayShrink bool) error {
 	transcript := transcriptFromMessages(transcriptMessages)
 	if strings.TrimSpace(transcript) == "" {
 		return nil
 	}
-	var excluded string
-	if scope.exclusions != nil {
-		// Best-effort: dedup against the user's standing instructions, but never
-		// fail the refresh just because the exclusion list couldn't be loaded.
-		if ex, err := scope.exclusions(ctx); err != nil {
-			slog.Warn("load memory exclusions failed", "scope", scope.name, "err", err)
-		} else {
-			excluded = ex
-		}
-	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
-	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt, user.ResponseLanguageName())
+	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, scope.systemPrompt, user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(content) == "" {
 		return nil
+	}
+	// Half of the prior, but measured against at most the size the prompt asks
+	// for: a prior above it (an old or edited memory) may legitimately be
+	// condensed to target size, and refusing that would stall the memory and
+	// repeat the call every refresh.
+	if priorLen := len([]rune(strings.TrimSpace(prior))); !mayShrink && priorLen > 0 &&
+		2*len([]rune(content)) < min(priorLen, memoryCollapseBase) {
+		slog.Warn("memory refresh refused: result under half the prior",
+			"scope", scope.name, "prior_chars", priorLen, "result_chars", len([]rune(content)))
+		return errMemoryCollapsed
 	}
 	return scope.upsert(ctx, content, sourceCount)
 }

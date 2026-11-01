@@ -107,6 +107,29 @@ var coreTools = []toolSpec{
 			return capToolOutput(t.e.replaceUserDirectiveDigest(ctx, t.user.ID, args))
 		}),
 	},
+	// The fact tools change the user's memory on an explicit request. They are
+	// whole-account, so every thread gets them.
+	{
+		name:   addUserFactToolName,
+		schema: addUserFactTool,
+		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
+			return capToolOutput(t.e.addUserFactDigest(ctx, t.user.ID, t.thread.ID, args))
+		}),
+	},
+	{
+		name:   updateUserFactToolName,
+		schema: updateUserFactTool,
+		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
+			return capToolOutput(t.e.updateUserFactDigest(ctx, t.user.ID, t.thread.ID, args))
+		}),
+	},
+	{
+		name:   forgetUserFactToolName,
+		schema: forgetUserFactTool,
+		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
+			return capToolOutput(t.e.forgetUserFactDigest(ctx, t.user.ID, args))
+		}),
+	},
 }
 
 // sandboxToolSpec is run_python: one small schema with its own guidance

@@ -12,8 +12,8 @@ import (
 // The directive tools let the model manage the user's "other instructions" — the
 // explicit, user-steered standing instructions shown to it every turn under
 // "Standing instructions the user has explicitly asked you to follow". They are
-// the ONLY way that layer is mutated (the UI is read-only); derived memory is
-// never touched by a tool.
+// the ONLY way that layer is mutated (the UI is read-only). Facts about the
+// user are a separate layer with their own tools (user_facts_tool.go).
 const (
 	addUserDirectiveToolName     = "remember_user_directive"
 	removeUserDirectiveToolName  = "forget_user_directive"
@@ -27,7 +27,7 @@ func addUserDirectiveTool() llm.Tool {
 			Name: addUserDirectiveToolName,
 			Description: "Save a NEW standing instruction the user has explicitly asked you to follow in every future conversation — a durable preference, rule, or way they want you to behave or be addressed. " +
 				"Call this ONLY on an explicit request like \"always …\", \"from now on …\", \"remember to …\", \"never …\", \"call me …\". " +
-				"Do NOT use it for passing facts about the user, one-off task details, or things they merely mention — only deliberate, lasting instructions. " +
+				"Do NOT use it for facts about the user (where they live, their job, what they like): use " + addUserFactToolName + " for those. Not for one-off task details or things they merely mention — only deliberate, lasting instructions about how you respond. " +
 				"The current standing instructions (with their ids) are listed in your context; do not add one that duplicates an existing instruction. " +
 				"Returns the updated list of standing instructions with their ids.",
 			Parameters: map[string]any{

@@ -22,6 +22,7 @@ type (
 	fakeThreadStore     = turntest.ThreadStore
 	fakeChatClient      = turntest.ChatClient
 	fakeToolChatClient  = turntest.ToolChatClient
+	fakeFactRequest     = turntest.FactRequest
 	fakeMCPService      = turntest.ToolService
 	fakeDocumentService = turntest.DocumentService
 	stubUsageStore      = turntest.UsageStore
@@ -123,12 +124,24 @@ func (f *blockingChatClient) GenerateWorkingTitle(context.Context, string, strin
 	return "", nil
 }
 
-func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string, string, string) (string, error) {
+func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string, string) (string, error) {
 	return "", nil
 }
 
 func (f *blockingChatClient) ApplyMemoryEdit(context.Context, string, string, string, string, string) (string, error) {
 	return "", nil
+}
+
+func (f *blockingChatClient) ExtractUserFacts(context.Context, []llm.FactInput, string, string, []string, string) ([]llm.FactOp, error) {
+	return nil, nil
+}
+
+func (f *blockingChatClient) ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error) {
+	return nil, nil
+}
+
+func (f *blockingChatClient) ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error) {
+	return nil, nil
 }
 
 func (f *blockingChatClient) GenerateProjectDescription(context.Context, string, []string, string) (string, error) {

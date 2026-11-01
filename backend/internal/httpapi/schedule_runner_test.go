@@ -253,7 +253,7 @@ func TestScheduledRunRefusesToolsOutsideItsSet(t *testing.T) {
 func TestScheduledRunGetsTheUsersMCPServersAndMemory(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
-	if _, err := f.chat.UpsertUserMemory(ctx, testUser.ID, "Works as a platform engineer at a bank.", 1); err != nil {
+	if _, err := f.chat.AddUserFact(ctx, testUser.ID, "", chat.FactCategoryWork, "Works as a platform engineer at a bank.", true); err != nil {
 		t.Fatal(err)
 	}
 	client := &fakeToolChatClient{Results: []llm.StreamResult{

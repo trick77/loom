@@ -32,9 +32,26 @@ export type ProjectMemory = {
   updatedAt: string | null;
 };
 
-export type UserMemory = {
+/**
+ * UserFactBucket is a fact's time bucket, computed server-side from when it
+ * last came up: long-term facts first, then the last 30 days, the last half
+ * year, and older.
+ */
+export type UserFactBucket = "long_term" | "top_of_mind" | "recent" | "earlier";
+
+/**
+ * UserFact is one fact Loom keeps about the user. Read-only in the UI: facts
+ * change only through chat (remember / update / forget) and the background
+ * refresh.
+ */
+export type UserFact = {
+  id: string;
+  category: "work" | "personal" | "interest";
   content: string;
-  updatedAt: string | null;
+  durable: boolean;
+  firstSeen: string;
+  lastSeen: string;
+  bucket: UserFactBucket;
 };
 
 /**
@@ -370,11 +387,9 @@ export type Usage = {
   codeRuns: number;
   threadsCreated: number;
   projectsCreated: number;
-  userMemoryLength: number;
-  userMemoryMax: number;
+  userFactsCount: number;
+  userFactsLongTerm: number;
   userMemoryUpdatedAt: string | null;
-  userMemorySourceMessages: number;
-  userMemoryTotalMessages: number;
   userMemoryRefreshWindowHours: number;
   userDirectivesCount: number;
   userDirectivesLength: number;

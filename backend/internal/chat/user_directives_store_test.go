@@ -74,10 +74,7 @@ func TestStore_AddUserDirectiveEnforcesTotalBudget(t *testing.T) {
 	store := NewStore(db)
 
 	// Fill most of the budget.
-	big := strings.Repeat("x", MaxUserDirectivesTotalLength-10)
-	if _, err := store.AddUserDirective(ctx, userID, big); err != nil {
-		t.Fatalf("AddUserDirective(big) error: %v", err)
-	}
+	filled := fillDirectives(t, store, userID, MaxUserDirectivesTotalLength-10)
 
 	// The next one pushes past the total budget and must be refused with the
 	// sentinel — and must NOT be written.
@@ -85,9 +82,25 @@ func TestStore_AddUserDirectiveEnforcesTotalBudget(t *testing.T) {
 	if !errors.Is(err, ErrDirectivesBudgetExceeded) {
 		t.Fatalf("AddUserDirective(over budget) err = %v; want ErrDirectivesBudgetExceeded", err)
 	}
-	if directives, _ := store.ListUserDirectives(ctx, userID); len(directives) != 1 {
-		t.Fatalf("over-budget add was written: %d directives", len(directives))
+	if directives, _ := store.ListUserDirectives(ctx, userID); len(directives) != filled {
+		t.Fatalf("over-budget add was written: %d directives, want %d", len(directives), filled)
 	}
+}
+
+// fillDirectives adds directives (each within MaxUserDirectiveLength) totalling
+// runes and returns how many it added.
+func fillDirectives(t *testing.T, store *Store, userID string, runes int) int {
+	t.Helper()
+	n := 0
+	for runes > 0 {
+		size := min(runes, MaxUserDirectiveLength)
+		if _, err := store.AddUserDirective(context.Background(), userID, strings.Repeat("x", size)); err != nil {
+			t.Fatalf("AddUserDirective(%d runes) error: %v", size, err)
+		}
+		runes -= size
+		n++
+	}
+	return n
 }
 
 func TestStore_ReplaceUserDirectiveEnforcesBudgetExcludingSelf(t *testing.T) {
@@ -96,14 +109,16 @@ func TestStore_ReplaceUserDirectiveEnforcesBudgetExcludingSelf(t *testing.T) {
 	userID := insertTestUser(t, db, "alice")
 	store := NewStore(db)
 
-	// A single directive occupying most of the budget can be replaced by another
-	// of similar size: the old content must not be double-counted.
-	original := strings.Repeat("x", MaxUserDirectivesTotalLength-5)
+	// With the budget nearly full, a directive can be replaced by a slightly
+	// larger one that lands exactly on the budget: the old content must not be
+	// double-counted.
+	fillDirectives(t, store, userID, MaxUserDirectivesTotalLength-MaxUserDirectiveLength)
+	original := strings.Repeat("x", MaxUserDirectiveLength-5)
 	added, err := store.AddUserDirective(ctx, userID, original)
 	if err != nil {
 		t.Fatalf("AddUserDirective() error: %v", err)
 	}
-	replacement := strings.Repeat("y", MaxUserDirectivesTotalLength)
+	replacement := strings.Repeat("y", MaxUserDirectiveLength)
 	if _, found, err := store.ReplaceUserDirective(ctx, userID, added.ID, replacement); err != nil || !found {
 		t.Fatalf("ReplaceUserDirective(within budget) found %v, err %v", found, err)
 	}
@@ -122,9 +137,7 @@ func TestStore_ReplaceUserDirectiveMissingIDBeatsBudget(t *testing.T) {
 	store := NewStore(db)
 
 	// Fill the budget so a budget check would trip if reached.
-	if _, err := store.AddUserDirective(ctx, userID, strings.Repeat("x", MaxUserDirectivesTotalLength-5)); err != nil {
-		t.Fatalf("AddUserDirective() error: %v", err)
-	}
+	fillDirectives(t, store, userID, MaxUserDirectivesTotalLength-5)
 
 	// Replacing a non-existent id must report not-found (false, nil), NOT a budget
 	// error — even though the would-be new content overshoots the budget.

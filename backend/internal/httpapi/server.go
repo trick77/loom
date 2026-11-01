@@ -195,11 +195,19 @@ type ThreadStore interface {
 	CountProjectMessages(context.Context, string, string) (int, error)
 	ListProjectMessages(context.Context, string, string, int) ([]chat.Message, error)
 
-	// User memory.
+	// User memory: facts, their refresh cursor, and the old memory text the
+	// one-time conversion reads.
 	GetUserMemory(context.Context, string) (chat.UserMemory, bool, error)
-	UpsertUserMemory(context.Context, string, string, int) (chat.UserMemory, error)
-	CountUserMessages(context.Context, string) (int, error)
-	ListUserMessages(context.Context, string, int) ([]chat.Message, error)
+	ListActiveUserFacts(context.Context, string) ([]chat.UserFact, error)
+	ListForgottenUserFacts(context.Context, string) ([]string, error)
+	ApplyUserFactBatch(context.Context, string, chat.UserFactBatch) (chat.UserFactApplyResult, error)
+	MergeUserFacts(context.Context, string, []string, string) (bool, error)
+	GetUserFactCursor(context.Context, string) (chat.UserFactCursor, bool, error)
+	MarkUserFactsConsolidated(context.Context, string) error
+	ListUserMessagesAfter(context.Context, string, string, string, time.Time, int) ([]chat.Message, error)
+	AddUserFact(context.Context, string, string, string, string, bool) (chat.UserFact, error)
+	UpdateUserFact(context.Context, string, string, string, string) (chat.UserFact, bool, error)
+	ForgetUserFacts(context.Context, string, []string) ([]chat.UserFact, error)
 
 	// User directives.
 	ListUserDirectives(context.Context, string) ([]chat.UserDirective, error)
@@ -253,7 +261,10 @@ type ChatClient interface {
 	ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error)
 	GenerateReasoningTitle(context.Context, string, string) (string, error)
 	GenerateWorkingTitle(context.Context, string, string) (string, error)
-	GenerateMemory(context.Context, string, string, string, string, string, string) (string, error)
+	GenerateMemory(context.Context, string, string, string, string, string) (string, error)
+	ExtractUserFacts(context.Context, []llm.FactInput, string, string, []string, string) ([]llm.FactOp, error)
+	ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error)
+	ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error)
 	ApplyMemoryEdit(context.Context, string, string, string, string, string) (string, error)
 	GenerateProjectDescription(context.Context, string, []string, string) (string, error)
 }
@@ -384,7 +395,7 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("GET /api/me", s.requireAuth(http.HandlerFunc(s.handleMe)))
 	mux.Handle("PATCH /api/me", s.requireAuth(http.HandlerFunc(s.handleUpdateMe)))
 	mux.Handle("GET /api/me/usage", s.requireAuth(http.HandlerFunc(s.handleGetUsage)))
-	mux.Handle("GET /api/me/memory", s.requireAuth(http.HandlerFunc(s.handleGetUserMemory)))
+	mux.Handle("GET /api/me/facts", s.requireAuth(http.HandlerFunc(s.handleGetUserFacts)))
 	mux.Handle("GET /api/me/directives", s.requireAuth(http.HandlerFunc(s.handleGetUserDirectives)))
 	mux.Handle("GET /api/mcp/servers", s.requireAuth(http.HandlerFunc(s.handleMCPServers)))
 	mux.Handle("GET /api/mcp/tools", s.requireAuth(http.HandlerFunc(s.handleMCPTools)))

@@ -6,7 +6,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/asg017/sqlite-vec-go-bindings v0.1.7-alpha.2
 	github.com/ncruces/go-sqlite3 v0.23.3
-	github.com/trick77/llmwire v0.1.8
+	github.com/trick77/llmwire v0.2.2
 	github.com/trick77/ship/kit v0.18.0
 	github.com/trick77/ship/kit/auth v0.3.2
 	github.com/trick77/webfetch v0.4.10
@@ -28,7 +28,7 @@ require (
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 )

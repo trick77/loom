@@ -88,13 +88,17 @@ func (w *MemoryWorker) safely(label string, fn func()) {
 	fn()
 }
 
-// refreshUserMemory refreshes one user's personal memory if it is due and stale
-// (>= memoryUserRefreshAge since its last refresh).
+// refreshUserMemory folds one user's new messages into their facts if due
+// (>= memoryUserRefreshAge since the last refresh, or a full batch waiting).
+// Each model call carries its own timeout, so a long backlog is not cut short.
 func (w *MemoryWorker) refreshUserMemory(ctx context.Context, user auth.User) {
-	rctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
-	defer cancel()
-	if err := w.s.refreshMemoryIfDue(rctx, user, w.s.userMemoryScope(user), memoryUserRefreshAge); err != nil {
-		slog.Warn("memory sweep: user memory refresh failed", "user_id", user.ID, "err", err)
+	err := w.s.refreshUserFactsIfDue(ctx, user, memoryUserRefreshAge)
+	switch {
+	case err == nil:
+	case isFactRefreshSkippable(err):
+		slog.Info("memory sweep: user facts refresh deferred to the next sweep", "user_id", user.ID, "err", err)
+	default:
+		slog.Warn("memory sweep: user facts refresh failed", "user_id", user.ID, "err", err)
 	}
 }
 

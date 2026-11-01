@@ -61,6 +61,14 @@ type ChatClient struct {
 	AfterStream        func()
 	ProjectMemory      string
 	EditedMemory       string
+	// FactOps, ConvertedOps and FactMerges are the user fact replies; FactErr
+	// fails ExtractUserFacts and ConvertUserMemory; FactRequests, when set,
+	// receives each ExtractUserFacts request (buffer it).
+	FactOps            []llm.FactOp
+	ConvertedOps       []llm.FactOp
+	FactMerges         []llm.FactMerge
+	FactErr            error
+	FactRequests       chan FactRequest
 	ProjectDescription string
 	// ProjectDescriptionCalls, when set, counts GenerateProjectDescription
 	// invocations so a test can assert the in-memory guard short-circuited before
@@ -184,7 +192,7 @@ func (f ChatClient) GenerateReasoningTitle(ctx context.Context, reasoning, _ str
 }
 
 // GenerateMemory fakes the memory refresh, which runs outside a turn.
-func (f ChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _, _ string) (string, error) {
+func (f ChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _ string) (string, error) {
 	if f.MemoryPriors != nil {
 		f.MemoryPriors <- prior
 	}
@@ -203,6 +211,33 @@ func (f ChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _, _ strin
 // ApplyMemoryEdit fakes a user's memory edit, which runs outside a turn.
 func (f ChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return f.EditedMemory, nil
+}
+
+// ExtractUserFacts fakes the user fact refresh: it reports what it was sent on
+// FactRequests and returns FactOps or FactErr.
+func (f ChatClient) ExtractUserFacts(_ context.Context, facts []llm.FactInput, transcript, excluded string, forgotten []string, _ string) ([]llm.FactOp, error) {
+	if f.FactRequests != nil {
+		f.FactRequests <- FactRequest{Facts: facts, Transcript: transcript, Excluded: excluded, Forgotten: forgotten}
+	}
+	return f.FactOps, f.FactErr
+}
+
+// ConvertUserMemory fakes the one-time conversion with ConvertedOps.
+func (f ChatClient) ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error) {
+	return f.ConvertedOps, f.FactErr
+}
+
+// ConsolidateUserFacts fakes the merge pass with FactMerges.
+func (f ChatClient) ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error) {
+	return f.FactMerges, nil
+}
+
+// FactRequest is what one ExtractUserFacts call was sent.
+type FactRequest struct {
+	Facts      []llm.FactInput
+	Transcript string
+	Excluded   string
+	Forgotten  []string
 }
 
 // GenerateProjectDescription fakes the project description refresh, which runs
@@ -389,13 +424,28 @@ func (f *ToolChatClient) GenerateWorkingTitle(context.Context, string, string) (
 }
 
 // GenerateMemory fakes the memory refresh, which runs outside a turn.
-func (f *ToolChatClient) GenerateMemory(_ context.Context, _, _, _, _, _, _ string) (string, error) {
+func (f *ToolChatClient) GenerateMemory(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 
 // ApplyMemoryEdit fakes a user's memory edit, which runs outside a turn.
 func (f *ToolChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return "", nil
+}
+
+// ExtractUserFacts is a no-op: the user fact refresh runs outside a turn.
+func (f *ToolChatClient) ExtractUserFacts(context.Context, []llm.FactInput, string, string, []string, string) ([]llm.FactOp, error) {
+	return nil, nil
+}
+
+// ConvertUserMemory is a no-op: the conversion runs outside a turn.
+func (f *ToolChatClient) ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error) {
+	return nil, nil
+}
+
+// ConsolidateUserFacts is a no-op: the merge pass runs outside a turn.
+func (f *ToolChatClient) ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error) {
+	return nil, nil
 }
 
 // GenerateProjectDescription fakes the project description refresh, which runs

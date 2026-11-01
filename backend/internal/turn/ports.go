@@ -46,6 +46,11 @@ type ThreadStore interface {
 	AddUserDirective(context.Context, string, string) (chat.UserDirective, error)
 	RemoveUserDirective(context.Context, string, string) (bool, error)
 	ReplaceUserDirective(context.Context, string, string, string) (chat.UserDirective, bool, error)
+	// The user fact methods back the fact tools.
+	ListActiveUserFacts(context.Context, string) ([]chat.UserFact, error)
+	AddUserFact(context.Context, string, string, string, string, bool) (chat.UserFact, error)
+	UpdateUserFact(context.Context, string, string, string, string) (chat.UserFact, bool, error)
+	ForgetUserFacts(context.Context, string, []string) ([]chat.UserFact, error)
 }
 
 // Inbox hands a running turn the messages the user queued on its thread while
