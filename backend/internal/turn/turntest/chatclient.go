@@ -61,11 +61,10 @@ type ChatClient struct {
 	AfterStream        func()
 	ProjectMemory      string
 	EditedMemory       string
-	// FactOps, ConvertedOps and FactMerges are the user fact replies; FactErr
-	// fails ExtractUserFacts and ConvertUserMemory; FactRequests, when set,
+	// FactOps and FactMerges are the user fact replies; FactErr
+	// fails ExtractUserFacts; FactRequests, when set,
 	// receives each ExtractUserFacts request (buffer it).
 	FactOps            []llm.FactOp
-	ConvertedOps       []llm.FactOp
 	FactMerges         []llm.FactMerge
 	FactErr            error
 	FactRequests       chan FactRequest
@@ -220,11 +219,6 @@ func (f ChatClient) ExtractUserFacts(_ context.Context, facts []llm.FactInput, t
 		f.FactRequests <- FactRequest{Facts: facts, Transcript: transcript, Excluded: excluded, Forgotten: forgotten}
 	}
 	return f.FactOps, f.FactErr
-}
-
-// ConvertUserMemory fakes the one-time conversion with ConvertedOps.
-func (f ChatClient) ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error) {
-	return f.ConvertedOps, f.FactErr
 }
 
 // ConsolidateUserFacts fakes the merge pass with FactMerges.
@@ -435,11 +429,6 @@ func (f *ToolChatClient) ApplyMemoryEdit(_ context.Context, _, _, _, _, _ string
 
 // ExtractUserFacts is a no-op: the user fact refresh runs outside a turn.
 func (f *ToolChatClient) ExtractUserFacts(context.Context, []llm.FactInput, string, string, []string, string) ([]llm.FactOp, error) {
-	return nil, nil
-}
-
-// ConvertUserMemory is a no-op: the conversion runs outside a turn.
-func (f *ToolChatClient) ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error) {
 	return nil, nil
 }
 

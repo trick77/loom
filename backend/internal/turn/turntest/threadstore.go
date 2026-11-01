@@ -42,7 +42,6 @@ type ThreadStore struct {
 	// ProjectThreadTitles is returned by ListProjectThreadTitles; it is the source
 	// the auto-description summarizes and the count the refresh gate compares against.
 	ProjectThreadTitles []string
-	UserMemory          chat.UserMemory
 	// Facts, ForgottenFacts and FactCursor back the user fact stubs;
 	// FactBatches and Merges record what a refresh applied.
 	Facts          []chat.UserFact
@@ -396,14 +395,6 @@ func (f *ThreadStore) ListProjectMessages(_ context.Context, _ string, _ string,
 	return append([]chat.Message(nil), f.Messages...), nil
 }
 
-// GetUserMemory returns UserMemory, if set.
-func (f *ThreadStore) GetUserMemory(context.Context, string) (chat.UserMemory, bool, error) {
-	if f.UserMemory.Content == "" {
-		return chat.UserMemory{}, false, nil
-	}
-	return f.UserMemory, true, nil
-}
-
 // ListActiveUserFacts returns Facts.
 func (f *ThreadStore) ListActiveUserFacts(context.Context, string) ([]chat.UserFact, error) {
 	return append([]chat.UserFact(nil), f.Facts...), nil
@@ -429,7 +420,7 @@ func (f *ThreadStore) ApplyUserFactBatch(_ context.Context, userID string, batch
 			continue
 		}
 		f.Facts = append(f.Facts, chat.UserFact{ID: "fact_" + strconv.Itoa(len(f.Facts)), UserID: userID, Category: op.Category,
-			Content: op.Content, Durable: op.Durable, Origin: batch.Origin, FirstSeen: batch.SeenAt, LastSeen: batch.SeenAt})
+			Content: op.Content, Durable: op.Durable, Origin: chat.FactOriginExtracted, FirstSeen: batch.SeenAt, LastSeen: batch.SeenAt})
 		res.Added++
 	}
 	if batch.PurgeForgottenBefore != nil {

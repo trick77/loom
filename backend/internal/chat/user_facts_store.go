@@ -82,9 +82,6 @@ ORDER BY retired_at, id`,
 // fact, or an add in the same batch). Adds run first so retires can name them.
 func (s *Store) ApplyUserFactBatch(ctx context.Context, userID string, batch UserFactBatch) (UserFactApplyResult, error) {
 	var res UserFactApplyResult
-	if batch.Origin != FactOriginExtracted && batch.Origin != FactOriginConverted {
-		return res, fmt.Errorf("apply user facts: origin %q", batch.Origin)
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return res, fmt.Errorf("apply user facts: begin: %w", err)
@@ -112,15 +109,11 @@ func (s *Store) ApplyUserFactBatch(ctx context.Context, userID string, batch Use
 			continue
 		}
 		id := sqlutil.NewID()
-		last := opSeen(op, seen)
-		first := last
-		if batch.Origin == FactOriginConverted {
-			first = seen
-		}
+		at := opSeen(op, seen)
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO user_facts (id, user_id, category, content, durable, origin, first_seen, last_seen)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, userID, op.Category, content, op.Durable, batch.Origin, first, last,
+VALUES (?, ?, ?, ?, ?, 'extracted', ?, ?)`,
+			id, userID, op.Category, content, op.Durable, at, at,
 		); err != nil {
 			return res, fmt.Errorf("apply user facts: add: %w", err)
 		}
@@ -414,7 +407,7 @@ WHERE user_id = ? AND id = ?`,
 }
 
 // GetUserFactCursor returns the user's refresh cursor; false when no refresh
-// or conversion ran yet.
+// ran yet (the first refresh stores one, see startUserFacts in httpapi).
 func (s *Store) GetUserFactCursor(ctx context.Context, userID string) (UserFactCursor, bool, error) {
 	var c UserFactCursor
 	var refreshed, consolidated sql.NullString

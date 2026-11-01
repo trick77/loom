@@ -326,7 +326,7 @@ func forgetOneFact(ctx context.Context, t *testing.T, db *sql.DB, st *chat.Store
 // replayBlob runs the old design: one blob rewritten per day, with today's
 // guards (a truncated reply or a result under half the prior is refused).
 func replayBlob(ctx context.Context, t *testing.T, client *llm.Client, days []evalDay, r *evalReport) string {
-	prompt := legacyUserMemoryPrompt(chat.MaxUserMemoryLength)
+	prompt := legacyUserMemoryPrompt(legacyMemoryBudget)
 	blob := ""
 	for i, d := range days {
 		msgs := d.messages
@@ -348,8 +348,8 @@ func replayBlob(ctx context.Context, t *testing.T, client *llm.Client, days []ev
 			r.BlobRefusals++
 			r.mu.Unlock()
 		case strings.TrimSpace(next) != "":
-			if runes := []rune(next); len(runes) > chat.MaxUserMemoryLength {
-				next = string(runes[:chat.MaxUserMemoryLength])
+			if runes := []rune(next); len(runes) > legacyMemoryBudget {
+				next = string(runes[:legacyMemoryBudget])
 			}
 			blob = next
 		}
@@ -473,6 +473,9 @@ func envOr(key, def string) string {
 	}
 	return def
 }
+
+// legacyMemoryBudget is the old blob's character cap, for the eval's baseline.
+const legacyMemoryBudget = 10000
 
 // legacyUserMemoryPrompt is the old blob prompt, kept here only as the eval's
 // baseline.
