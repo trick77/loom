@@ -273,62 +273,7 @@ func TestRefreshUserFacts_ForgottenSentOnceThenPurged(t *testing.T) {
 	}
 }
 
-func TestRefreshUserFacts_ConvertsOldMemoryFirst(t *testing.T) {
-	blobAt := time.Date(2026, 10, 30, 22, 43, 0, 0, time.UTC)
-	store := &fakeThreadStore{
-		UserMemory: chat.UserMemory{Content: "## Work context\n- Backend dev at Acme", UpdatedAt: &blobAt},
-		Messages: []chat.Message{
-			msg("old", "thr_a", "already in the memory text", blobAt.Add(-time.Hour)),
-			msg("new", "thr_a", "I moved to Bern", blobAt.Add(time.Hour)),
-		},
-	}
-	requests := make(chan fakeFactRequest, 1)
-	s := &server{thread: store, llm: fakeChatClient{
-		ConvertedOps: []llm.FactOp{{Op: "add", Category: "work", Content: "Backend dev at Acme", Durable: true}, {Op: "retire", ID: "x"}},
-		FactRequests: requests,
-	}}
-	if err := s.refreshUserFactsIfDue(context.Background(), testUser, memoryUserRefreshAge); err != nil {
-		t.Fatalf("refresh: %v", err)
-	}
-	conv := store.FactBatches[0]
-	if conv.Origin != chat.FactOriginConverted || len(conv.Ops) != 1 || conv.Ops[0].Kind != chat.FactOpAdd {
-		t.Fatalf("conversion batch = %+v, want converted adds only", conv)
-	}
-	if req := <-requests; strings.Contains(req.Transcript, "already in the memory text") || !strings.Contains(req.Transcript, "moved to Bern") {
-		t.Fatalf("after conversion the refresh must read only messages newer than the memory text:\n%s", req.Transcript)
-	}
-}
-
-// The old memory's time layers survive conversion: each section is converted
-// on its own and dated into its bucket, identity sections become long-term.
-func TestConvertUserMemory_KeepsSectionAges(t *testing.T) {
-	blobAt := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
-	store := &fakeThreadStore{UserMemory: chat.UserMemory{UpdatedAt: &blobAt, Content: "## Work context\n- Backend dev\n\n## Top of mind\n- Shipping v2\n\n## Brief history\n### Recent months\n- Started climbing\n\n### Earlier context\n- Old project"}}
-	s := &server{thread: store, llm: fakeChatClient{ConvertedOps: []llm.FactOp{{Op: "add", Category: "work", Content: "x"}}}}
-
-	if _, err := s.convertUserMemory(context.Background(), testUser); err != nil {
-		t.Fatalf("convert: %v", err)
-	}
-	ops := store.FactBatches[0].Ops
-	if len(ops) != 4 {
-		t.Fatalf("ops = %d, want one per non-empty section (the Brief history umbrella has none)", len(ops))
-	}
-	day := 24 * time.Hour
-	want := []struct {
-		seen    time.Time
-		durable bool
-	}{{blobAt, true}, {blobAt, false}, {blobAt.Add(-60 * day), false}, {blobAt.Add(-200 * day), false}}
-	for i, w := range want {
-		if !ops[i].SeenAt.Equal(w.seen) || ops[i].Durable != w.durable {
-			t.Fatalf("op %d = seen %v durable %v, want %v %v", i, ops[i].SeenAt, ops[i].Durable, w.seen, w.durable)
-		}
-	}
-	if (chat.UserFact{LastSeen: ops[3].SeenAt}).Bucket(blobAt) != chat.BucketEarlier {
-		t.Fatalf("Earlier context did not land in the Earlier bucket")
-	}
-}
-
-// Without old memory text the first refresh reads only the recent past, not
+// A new user's first refresh reads only the recent past, not
 // the whole history.
 func TestRefreshUserFacts_NewUserBackfillsRecentOnly(t *testing.T) {
 	store := &fakeThreadStore{Messages: []chat.Message{
@@ -512,27 +457,6 @@ func TestRefreshUserFacts_BackfillCursorIsStored(t *testing.T) {
 	}
 	if store.FactCursor == nil || store.FactCursor.LastCreatedAt == "" {
 		t.Fatalf("cursor = %+v, want the backfill start stored", store.FactCursor)
-	}
-}
-
-func TestSectionAge_GermanHeadingsAndUnknown(t *testing.T) {
-	updated := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
-	for _, tc := range []struct {
-		heading        string
-		durable, known bool
-		back           time.Duration
-	}{
-		{"arbeitskontext", true, true, 0},
-		{"persönlicher kontext", true, true, 0},
-		{"langfristiger hintergrund", true, true, 0},
-		{"letzte monate", false, true, 60 * 24 * time.Hour},
-		{"früherer kontext", false, true, 200 * 24 * time.Hour},
-		{"something else", false, false, 0},
-	} {
-		seen, durable, known := sectionAge(tc.heading, updated)
-		if durable != tc.durable || known != tc.known || !seen.Equal(updated.Add(-tc.back)) {
-			t.Fatalf("%q = %v %v %v, want %v %v -%v", tc.heading, seen, durable, known, tc.durable, tc.known, tc.back)
-		}
 	}
 }
 

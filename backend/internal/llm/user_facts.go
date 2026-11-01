@@ -65,13 +65,6 @@ const UserFactsSystemPrompt = "You maintain a durable list of facts about the us
 	factRules + " " +
 	"If nothing about the user changed, output {\"ops\": []}."
 
-// UserFactsConvertSystemPrompt turns the old sectioned memory text into facts.
-const UserFactsConvertSystemPrompt = "You convert a user's memory, written as markdown sections, into a list of separate facts. " +
-	"Output ONLY a JSON object {\"ops\": [{\"op\":\"add\",\"category\":\"work\",\"content\":\"...\",\"long_term\":true}, ...]}. " +
-	"Keep every piece of information; split a line that holds several facts. " +
-	"Set long_term true for items under Work context, Personal context and Long-term background, false for the rest. " +
-	factRules
-
 // UserFactsConsolidateSystemPrompt merges near-duplicate facts.
 const UserFactsConsolidateSystemPrompt = "You tidy a list of facts about a user. Find facts that state the same thing or overlap so much they should be one. " +
 	"Output ONLY a JSON object {\"merges\": [{\"ids\":[\"id1\",\"id2\"],\"content\":\"...\"}]}, the merged content keeping every detail of the merged facts. " +
@@ -104,17 +97,6 @@ func (c *Client) ExtractUserFacts(ctx context.Context, facts []FactInput, transc
 		Ops []FactOp `json:"ops"`
 	}
 	if err := c.factCompletion(ctx, UserFactsSystemPrompt, b.String(), responseLanguage, &reply); err != nil {
-		return nil, err
-	}
-	return reply.Ops, nil
-}
-
-// ConvertUserMemory turns the old memory text into add ops.
-func (c *Client) ConvertUserMemory(ctx context.Context, memory, responseLanguage string) ([]FactOp, error) {
-	var reply struct {
-		Ops []FactOp `json:"ops"`
-	}
-	if err := c.factCompletion(ctx, UserFactsConvertSystemPrompt, "Memory:\n\"\"\"\n"+strings.TrimSpace(memory)+"\n\"\"\"", responseLanguage, &reply); err != nil {
 		return nil, err
 	}
 	return reply.Ops, nil

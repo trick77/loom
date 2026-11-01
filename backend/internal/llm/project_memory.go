@@ -10,10 +10,8 @@ import (
 
 // memoryMaxCompletionTokens is the answer budget for the memory helpers
 // (llmwire adds the model's reasoning allowance on top): project memory, its
-// edits, and the user-fact op lists, conversion and merges. The largest output
-// is converting a full old user memory (up to MaxUserMemoryLength, ~10000
-// chars ≈ 2500-3300 tokens, German at the high end) into facts; a truncated
-// reply is refused, never stored.
+// edits, and the user-fact op lists and merges. A truncated reply is refused,
+// never stored; a fact batch whose ops do not fit is halved and retried.
 const memoryMaxCompletionTokens = 4000
 
 // ProjectMemorySystemPrompt drives project-memory generation: a sectioned

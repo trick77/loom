@@ -56,7 +56,7 @@ func TestFactCompletion_TruncatedAndMalformedApplyNothing(t *testing.T) {
 		t.Fatalf("truncated err = %v, want ErrMemoryTruncated", err)
 	}
 	c = factServer(t, "Sure! Here are the facts.", "stop", nil)
-	if _, err := c.ConvertUserMemory(context.Background(), "## Work context\n- x", ""); !errors.Is(err, ErrFactReplyMalformed) {
+	if _, err := c.ConsolidateUserFacts(context.Background(), nil, ""); !errors.Is(err, ErrFactReplyMalformed) {
 		t.Fatalf("prose reply err = %v, want ErrFactReplyMalformed", err)
 	}
 }
@@ -74,9 +74,6 @@ func TestUserFactsPrompts_GuardLongTermAndDirectives(t *testing.T) {
 		if !strings.Contains(UserFactsSystemPrompt, want) {
 			t.Errorf("refresh prompt missing %q", want)
 		}
-	}
-	if !strings.Contains(UserFactsConvertSystemPrompt, "Long-term background") {
-		t.Errorf("convert prompt must map the old sections to long-term")
 	}
 	if !strings.Contains(UserFactsConsolidateSystemPrompt, "never drop information") {
 		t.Errorf("consolidate prompt must forbid dropping information")

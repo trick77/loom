@@ -21,7 +21,7 @@ func TestMigration0042_usersResponseLanguageDefaultsToUnset(t *testing.T) {
 	exec(`INSERT INTO users (id, oidc_subject, username, email, role, response_language, last_seen_at)
 	      VALUES ('u','s','u','u@example.com','admin','de','2026-01-01 00:00:00')`)
 	exec(`INSERT INTO user_usage_totals (user_id, total_tokens) VALUES ('u', 7)`)
-	exec(`INSERT INTO user_memory (user_id, content) VALUES ('u', 'likes tea')`)
+	exec(`INSERT INTO user_directives (id, user_id, content) VALUES ('d', 'u', 'likes tea')`)
 
 	if err := migrate(db); err != nil {
 		t.Fatalf("apply remaining migrations: %v", err)
@@ -40,8 +40,8 @@ func TestMigration0042_usersResponseLanguageDefaultsToUnset(t *testing.T) {
 		t.Fatalf("usage after rebuild = %d (err %v), want 7: the rebuild cascaded", tokens, err)
 	}
 	var memory string
-	if err := db.QueryRow(`SELECT content FROM user_memory WHERE user_id = 'u'`).Scan(&memory); err != nil || memory != "likes tea" {
-		t.Fatalf("memory after rebuild = %q (err %v), want kept", memory, err)
+	if err := db.QueryRow(`SELECT content FROM user_directives WHERE user_id = 'u'`).Scan(&memory); err != nil || memory != "likes tea" {
+		t.Fatalf("directive after rebuild = %q (err %v), want kept", memory, err)
 	}
 
 	exec(`INSERT INTO users (id, oidc_subject, username, role) VALUES ('v','s2','v','user')`)
@@ -56,7 +56,7 @@ func TestMigration0042_usersResponseLanguageDefaultsToUnset(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO users (id, oidc_subject, username, role) VALUES ('w','s3','w','root')`); err == nil {
 		t.Fatal("role 'root' accepted: the CHECK was lost")
 	}
-	if _, err := db.Exec(`INSERT INTO user_memory (user_id) VALUES ('missing')`); err == nil {
-		t.Fatal("memory for a missing user inserted: foreign keys were left off")
+	if _, err := db.Exec(`INSERT INTO user_directives (id, user_id, content) VALUES ('x', 'missing', 'x')`); err == nil {
+		t.Fatal("directive for a missing user inserted: foreign keys were left off")
 	}
 }

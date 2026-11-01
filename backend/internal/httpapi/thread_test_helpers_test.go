@@ -136,10 +136,6 @@ func (f *blockingChatClient) ExtractUserFacts(context.Context, []llm.FactInput, 
 	return nil, nil
 }
 
-func (f *blockingChatClient) ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error) {
-	return nil, nil
-}
-
 func (f *blockingChatClient) ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error) {
 	return nil, nil
 }

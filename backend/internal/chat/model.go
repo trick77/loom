@@ -85,20 +85,6 @@ type ProjectMemory struct {
 // never blow up the prompt; generation is asked to stay well under this.
 const MaxProjectMemoryLength = 3000
 
-// UserMemory is the old user memory: one sectioned text blob, rewritten on every
-// refresh. User memory is now one row per fact (UserFact); the blob is only
-// read once, by the conversion into facts, and no longer written by loom.
-type UserMemory struct {
-	Content string `json:"content"`
-	// SourceMessageCount is the user's message count at the blob's last refresh.
-	SourceMessageCount int        `json:"-"`
-	UpdatedAt          *time.Time `json:"updatedAt"`
-}
-
-// MaxUserMemoryLength is the largest old memory blob the conversion reads, and
-// the budget of the old design's prompt in the replay eval's baseline.
-const MaxUserMemoryLength = 10000
-
 // MemoryRebuildLimit caps how many recent messages a project memory refresh
 // reads, so it never loads the entire history. It is also the fallback limit
 // of ListProjectMessages.
@@ -115,7 +101,7 @@ const MaxUserDirectivesTotalLength = 3000
 const MaxUserDirectiveLength = 1000
 
 // UserDirective is one explicit, user-steered standing instruction ("always
-// answer in metric units", "call me Jan"). Unlike UserMemory (auto-derived
+// answer in metric units", "call me Jan"). Unlike UserFact (auto-derived
 // observations) directives are authoritative commands the user dictates in chat,
 // managed by the assistant via tools, stored row-per-entry, and shown read-only
 // in the UI.

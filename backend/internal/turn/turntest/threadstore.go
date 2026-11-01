@@ -42,7 +42,6 @@ type ThreadStore struct {
 	// ProjectThreadTitles is returned by ListProjectThreadTitles; it is the source
 	// the auto-description summarizes and the count the refresh gate compares against.
 	ProjectThreadTitles []string
-	UserMemory          chat.UserMemory
 	// Facts, ForgottenFacts and FactCursor back the user fact stubs;
 	// FactBatches and Merges record what a refresh applied.
 	Facts          []chat.UserFact
@@ -394,14 +393,6 @@ func (f *ThreadStore) CountProjectMessages(context.Context, string, string) (int
 func (f *ThreadStore) ListProjectMessages(_ context.Context, _ string, _ string, limit int) ([]chat.Message, error) {
 	f.ListLimit = limit
 	return append([]chat.Message(nil), f.Messages...), nil
-}
-
-// GetUserMemory returns UserMemory, if set.
-func (f *ThreadStore) GetUserMemory(context.Context, string) (chat.UserMemory, bool, error) {
-	if f.UserMemory.Content == "" {
-		return chat.UserMemory{}, false, nil
-	}
-	return f.UserMemory, true, nil
 }
 
 // ListActiveUserFacts returns Facts.

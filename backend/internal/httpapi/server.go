@@ -195,9 +195,7 @@ type ThreadStore interface {
 	CountProjectMessages(context.Context, string, string) (int, error)
 	ListProjectMessages(context.Context, string, string, int) ([]chat.Message, error)
 
-	// User memory: facts, their refresh cursor, and the old memory text the
-	// one-time conversion reads.
-	GetUserMemory(context.Context, string) (chat.UserMemory, bool, error)
+	// User memory: facts and their refresh cursor.
 	ListActiveUserFacts(context.Context, string) ([]chat.UserFact, error)
 	ListForgottenUserFacts(context.Context, string) ([]string, error)
 	ApplyUserFactBatch(context.Context, string, chat.UserFactBatch) (chat.UserFactApplyResult, error)
@@ -263,7 +261,6 @@ type ChatClient interface {
 	GenerateWorkingTitle(context.Context, string, string) (string, error)
 	GenerateMemory(context.Context, string, string, string, string, string) (string, error)
 	ExtractUserFacts(context.Context, []llm.FactInput, string, string, []string, string) ([]llm.FactOp, error)
-	ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error)
 	ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error)
 	ApplyMemoryEdit(context.Context, string, string, string, string, string) (string, error)
 	GenerateProjectDescription(context.Context, string, []string, string) (string, error)
