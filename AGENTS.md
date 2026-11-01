@@ -6,6 +6,7 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 - Docs, specs, code comments English only (maintainer talks German). TDD. YAML is `.yaml`.
 - One branch per change, never commit to `master`.
 - Commit subjects + PR titles: Go style `area: what` (`httpapi: …`, `chat: …`, `rag: …`, `store: …`, `sandbox: …`, `turn: …`, `ui: …`), gated by ship; release notes list them by area.
+- Fresh clone: `ship hooks` before the first push (check, conform and init install it too); without the pre-push hook a push skips the gate.
 - Gate: `make check` (`ship check`): conform, lint, tests, floors 75 (Go, UI), patch 75, `ship.yaml` steps.
   `make hooks` once per clone runs it on every push. Raise tests, never a floor. Sandbox escape test is CI
   only (`sandbox-escape.yaml`, docker); isolation change → `make sandbox-escape-test` locally.
