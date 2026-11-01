@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/mcpserver"
@@ -18,9 +19,30 @@ const (
 	addedAlongside = 10
 	// maxRecItems is how many entries of one recommendation new_music shows.
 	maxRecItems = 8
-	// mixName finds the owner's New Music Mix among Apple's picks.
-	mixName = "new music"
+	// personalMixPrefix starts the id of a playlist Apple makes for one user
+	// (New Music Mix, Chill Mix, …); editorial playlists ("New Music Daily")
+	// have plain pl.… ids.
+	personalMixPrefix = "pl.pm-"
 )
+
+// newMusicNames finds the New Music Mix among the personal mixes by its name,
+// which follows the account's language.
+var newMusicNames = []string{"new music", "neuheiten", "neue musik", "nouveautés", "novità", "novedades", "nieuwe muziek"}
+
+// isNewMusicMix reports whether it is the user's New Music Mix: a personal
+// mix (by id) named like one.
+func isNewMusicMix(it applemusic.Item) bool {
+	if it.Kind != "playlist" || !strings.HasPrefix(it.ID, personalMixPrefix) {
+		return false
+	}
+	name := strings.ToLower(it.Name)
+	for _, n := range newMusicNames {
+		if strings.Contains(name, n) {
+			return true
+		}
+	}
+	return false
+}
 
 // fatal reports an error that ends a tool whatever else worked: no token, a
 // refused token, a refused developer token. Every other call would fail the
@@ -38,11 +60,26 @@ type listing struct {
 	b       strings.Builder
 	sources []mcpserver.Source
 	cut     int
+	// noted is how much of cut a section note already reported.
+	noted int
 }
 
 func (l *listing) line(format string, args ...any) {
 	fmt.Fprintf(&l.b, format, args...)
 	l.b.WriteByte('\n')
+}
+
+// full reports whether the text budget is spent.
+func (l *listing) full() bool { return l.b.Len() >= trackTextBudget }
+
+// endSection notes how many of the section's items did not fit, so the
+// model knows which section lost them. The note is short; the budget keeps
+// room for it below mcpserver's cap.
+func (l *listing) endSection() {
+	if n := l.cut - l.noted; n > 0 {
+		l.line("(%d more in this section not shown: the answer is full)", n)
+		l.noted = l.cut
+	}
 }
 
 // add writes it as one line; tail goes after its details.
@@ -72,8 +109,8 @@ func (l *listing) add(it applemusic.Item, withKind bool, tail string) {
 }
 
 func (l *listing) result() mcpserver.Result {
-	if l.cut > 0 {
-		l.line("… and %d more not shown.", l.cut)
+	if n := l.cut - l.noted; n > 0 {
+		l.line("… and %d more not shown.", n)
 	}
 	sources := l.sources
 	if sources == nil {
@@ -139,6 +176,27 @@ func runNewMusic(ctx context.Context, svc *service, args json.RawMessage) mcpser
 	default:
 		return mcpserver.ErrorResult("section must be both, recently_added or for_you")
 	}
+	// Both lists at once: one after the other they can outlast the tool's
+	// deadline on a slow Apple.
+	var (
+		wg      sync.WaitGroup
+		items   []applemusic.Item
+		recs    []applemusic.Recommendation
+		addErr  error
+		recsErr error
+	)
+	if added {
+		wg.Go(func() { items, addErr = svc.RecentlyAdded(ctx) })
+	}
+	if forYou {
+		wg.Go(func() { recs, recsErr = svc.Recommendations(ctx) })
+	}
+	wg.Wait()
+	for _, err := range []error{addErr, recsErr} {
+		if fatal(err) {
+			return failure(err)
+		}
+	}
 	var l listing
 	l.line("New on Apple Music for the user (%s storefront).", svc.ownerStorefront())
 	var failed []error
@@ -147,16 +205,12 @@ func runNewMusic(ctx context.Context, svc *service, args json.RawMessage) mcpser
 		if forYou {
 			limit = addedAlongside
 		}
-		res, err := writeRecentlyAdded(ctx, svc, &l, limit)
-		if res != nil {
-			return *res
-		}
-		if err != nil {
+		if err := writeRecentlyAdded(ctx, &l, items, addErr, limit); err != nil {
 			failed = append(failed, err)
 		}
 	}
 	if forYou {
-		res, err := writeForYou(ctx, svc, &l)
+		res, err := writeForYou(ctx, svc, &l, recs, recsErr)
 		if res != nil {
 			return *res
 		}
@@ -178,21 +232,17 @@ func btoi(b bool) int {
 	return 0
 }
 
-// writeRecentlyAdded writes the recently added section. A fatal error comes
-// back as the result to return; any other is noted in the text and returned.
-// limit 0 writes every entry.
-func writeRecentlyAdded(ctx context.Context, svc *service, l *listing, limit int) (*mcpserver.Result, error) {
-	items, err := svc.RecentlyAdded(ctx)
-	if fatal(err) {
-		res := failure(err)
-		return &res, nil
-	}
+// writeRecentlyAdded writes the recently added section from what was read;
+// an error (never a fatal one here) is noted in the text and returned. limit
+// 0 writes every entry.
+func writeRecentlyAdded(ctx context.Context, l *listing, items []applemusic.Item, err error, limit int) error {
 	l.line("\nRecently added to the user's library, newest first:")
+	defer l.endSection()
 	switch {
 	case err != nil:
 		slog.WarnContext(ctx, "tunewire: recently added failed", "err", err)
 		l.line("(could not be read right now: %v)", err)
-		return nil, err
+		return err
 	case len(items) == 0:
 		l.line("(nothing added lately)")
 	}
@@ -207,17 +257,13 @@ func writeRecentlyAdded(ctx context.Context, svc *service, l *listing, limit int
 		}
 		l.add(it, true, tail)
 	}
-	return nil, nil
+	return nil
 }
 
-// writeForYou writes Apple's picks and, when they hold the owner's New Music
-// Mix, its tracks. Errors as writeRecentlyAdded.
-func writeForYou(ctx context.Context, svc *service, l *listing) (*mcpserver.Result, error) {
-	recs, err := svc.Recommendations(ctx)
-	if fatal(err) {
-		res := failure(err)
-		return &res, nil
-	}
+// writeForYou writes Apple's picks (read already) and, when they hold the
+// owner's New Music Mix, its tracks. A fatal error reading the mix comes back
+// as the result to return; any other is noted in the text and returned.
+func writeForYou(ctx context.Context, svc *service, l *listing, recs []applemusic.Recommendation, err error) (*mcpserver.Result, error) {
 	l.line("\nApple's personal picks for the user (For You):")
 	switch {
 	case err != nil:
@@ -229,23 +275,30 @@ func writeForYou(ctx context.Context, svc *service, l *listing) (*mcpserver.Resu
 	}
 	var mix *applemusic.Item
 	for _, r := range recs {
+		for i := range r.Items {
+			if mix == nil && isNewMusicMix(r.Items[i]) {
+				mix = &r.Items[i]
+			}
+		}
+		shown := min(len(r.Items), maxRecItems)
+		if l.full() {
+			// No header claiming entries the answer has no room for.
+			l.cut += shown
+			continue
+		}
 		head := r.Title
 		if r.Reason != "" {
 			head += " — " + r.Reason
 		}
-		if len(r.Items) > maxRecItems {
-			head += fmt.Sprintf(" (%d of %d shown)", maxRecItems, len(r.Items))
+		if len(r.Items) > shown {
+			head += fmt.Sprintf(" (%d of %d listed)", shown, len(r.Items))
 		}
 		l.line("%s:", head)
-		for i, it := range r.Items {
-			if mix == nil && it.Kind == "playlist" && it.ID != "" && strings.Contains(strings.ToLower(it.Name), mixName) {
-				mix = &r.Items[i]
-			}
-			if i < maxRecItems {
-				l.add(it, true, "")
-			}
+		for _, it := range r.Items[:shown] {
+			l.add(it, true, "")
 		}
 	}
+	l.endSection()
 	if mix == nil {
 		return nil, nil
 	}
@@ -255,7 +308,10 @@ func writeForYou(ctx context.Context, svc *service, l *listing) (*mcpserver.Resu
 		return &res, nil
 	}
 	l.line("\nTracks in the user's %s:", mix.Name)
+	defer l.endSection()
 	switch {
+	case errors.Is(err, applemusic.ErrNotFound):
+		l.line("(Apple does not know this mix in the %s storefront right now)", svc.ownerStorefront())
 	case err != nil:
 		// The picks are there; only the mix's tracks are missing.
 		slog.WarnContext(ctx, "tunewire: mix tracks failed", "err", err)

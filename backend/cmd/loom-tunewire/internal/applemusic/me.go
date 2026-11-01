@@ -86,7 +86,13 @@ func (r resource) item() (Item, bool) {
 	}
 	it := Item{ID: r.ID, Kind: kind, Name: a.Name, Artist: a.ArtistName, Album: a.AlbumName, Released: a.ReleaseDate,
 		Added: a.DateAdded, Duration: time.Duration(a.DurationInMillis) * time.Millisecond,
-		Artwork: a.Artwork.at(artworkSize), ArtistID: r.Relationships.Artists.first()}
+		Artwork: a.Artwork.at(artworkSize)}
+	// Only a catalog resource's artists are catalog artists: a library
+	// resource's relationship holds library ids (r.…), which the catalog does
+	// not know. Catalog artist ids are numeric.
+	if id := r.Relationships.Artists.first(); !strings.HasPrefix(r.Type, "library-") && isCatalogID(id) {
+		it.ArtistID = id
+	}
 	if it.Artist == "" {
 		it.Artist = a.CuratorName
 	}
@@ -97,6 +103,19 @@ func (r resource) item() (Item, bool) {
 		it.URL = Playlist{ID: r.ID}.URL()
 	}
 	return it, true
+}
+
+// isCatalogID reports whether id looks like a catalog id: digits only.
+func isCatalogID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, r := range id {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // items reads a paged list of resources, at most max, skipping nameless
@@ -134,7 +153,14 @@ func (c *Client) RecentlyAdded(ctx context.Context, userToken string) ([]Item, e
 // user's own.
 func (c *Client) CatalogPlaylistTracks(ctx context.Context, userToken, storefront, playlistID string) ([]Item, error) {
 	path := "/v1/catalog/" + url.PathEscape(storefront) + "/playlists/" + url.PathEscape(playlistID) + "/tracks"
-	return c.items(ctx, userToken, path, pageSize, MaxMixTracks)
+	// A 404 here is a mix Apple does not know (ErrNotFound), not an empty one.
+	var out []Item
+	_, err := pagesOf(ctx, c, userToken, path, pageSize, MaxMixTracks, false, func(r resource) {
+		if it, ok := r.item(); ok {
+			out = append(out, it)
+		}
+	})
+	return out, err
 }
 
 // Recommendation is one of Apple's personal picks ("Made for You", "New

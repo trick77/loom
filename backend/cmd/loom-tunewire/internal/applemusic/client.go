@@ -283,6 +283,13 @@ func (a artwork) at(size int) string {
 // past the cap is a 400. A 404 on the first page is an empty list (Apple's
 // answer for an empty library).
 func pages[D any](ctx context.Context, c *Client, userToken, path string, size, max int, add func(D)) (truncated bool, err error) {
+	return pagesOf(ctx, c, userToken, path, size, max, true, add)
+}
+
+// pagesOf is pages; emptyOn404 false makes a 404 on the first page
+// ErrNotFound instead of an empty list (a catalog resource that is not there,
+// not an empty library).
+func pagesOf[D any](ctx context.Context, c *Client, userToken, path string, size, max int, emptyOn404 bool, add func(D)) (truncated bool, err error) {
 	path += sep(path) + "limit=" + strconv.Itoa(size)
 	_, query, _ := strings.Cut(path, "?")
 	want, _ := url.ParseQuery(query)
@@ -292,7 +299,7 @@ func pages[D any](ctx context.Context, c *Client, userToken, path string, size, 
 			Next string `json:"next"`
 		}
 		if err := c.get(ctx, userToken, path, &page); err != nil {
-			if first && errors.Is(err, ErrNotFound) {
+			if first && emptyOn404 && errors.Is(err, ErrNotFound) {
 				return false, nil
 			}
 			return false, err

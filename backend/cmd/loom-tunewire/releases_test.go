@@ -293,3 +293,44 @@ func TestNewReleases_partialWhenTimeRunsOut(t *testing.T) {
 		t.Errorf("second call: %s (%d new lookups)", text, api.called("latest")-before)
 	}
 }
+
+// The main artist is credited by its catalog id: "X feat. A" credits X even
+// when only A is in the library, and "X" and "X & B" are one candidate.
+func TestRankArtists_mainArtistByCatalogID(t *testing.T) {
+	lib := []applemusic.Artist{{ID: "r.1", Name: "A", CatalogID: "1"}}
+	played := []applemusic.Item{
+		{Kind: "song", Name: "s1", Artist: "X feat. A", ArtistID: "7"},
+		{Kind: "song", Name: "s2", Artist: "X & B", ArtistID: "7"},
+		{Kind: "song", Name: "s3", Artist: "X", ArtistID: "7"},
+	}
+	top, fromListening := rankArtists(lib, signal{played, weightPlayed})
+	if len(top) != 2 || top[0].catalogID != "7" || top[0].score != 3 || top[1].name != "A" || top[1].score != 1 || fromListening != 2 {
+		t.Errorf("top = %+v, fromListening %d", top, fromListening)
+	}
+}
+
+// Cached answers are used even when the budget is gone before any lookup.
+func TestLookupReleases_cachedAnswersSurviveASpentBudget(t *testing.T) {
+	svc, _, _ := connected(t)
+	svc.now = func() time.Time { return now }
+	cands := []candidate{{name: "A", catalogID: "1"}, {name: "B", catalogID: "2"}}
+	svc.releases.put("ch|1", cachedRelease{release: applemusic.Item{Name: "Cached"}, found: true, at: now})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	outs := svc.lookupReleases(ctx, "ch", cands)
+	if !outs[0].done || outs[0].release.Name != "Cached" || outs[1].done {
+		t.Errorf("outs = %+v", outs)
+	}
+}
+
+// A source that could not be read is named in the answer.
+func TestNewReleases_saysWhichSourceIsMissing(t *testing.T) {
+	svc, api, h := connected(t)
+	svc.now = func() time.Time { return now }
+	releasesFixture(api)
+	api.listenErr = map[string]error{"artists": errors.New("apple returned 500")}
+	text, _ := callTool(t, h, "/mcp/library", "new_releases", `{}`)
+	if !strings.Contains(text, "Incomplete: Apple could not give the user's library artists right now") {
+		t.Errorf("text: %s", text)
+	}
+}

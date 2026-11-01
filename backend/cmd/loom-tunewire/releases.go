@@ -172,11 +172,15 @@ func norm(name string) string { return strings.ToLower(strings.TrimSpace(name)) 
 // listening ranked.
 func rankArtists(lib []applemusic.Artist, signals ...signal) (top []candidate, fromListening int) {
 	byName := map[string]*candidate{}
+	byCatalog := map[string]*candidate{}
 	var all []*candidate
 	add := func(c *candidate) {
 		c.order = len(all)
 		all = append(all, c)
 		byName[norm(c.name)] = c
+		if c.catalogID != "" {
+			byCatalog[c.catalogID] = c
+		}
 	}
 	for _, a := range lib {
 		if byName[norm(a.Name)] == nil {
@@ -189,21 +193,43 @@ func rankArtists(lib []applemusic.Artist, signals ...signal) (top []candidate, f
 			if strings.TrimSpace(it.Artist) == "" || it.Kind == "playlist" || it.Kind == "station" {
 				continue
 			}
-			if c := byName[norm(it.Artist)]; c != nil {
-				c.score += s.weight
-				// The track names the catalog artist: no lookup needed later.
-				c.catalogID = cmp.Or(c.catalogID, it.ArtistID)
-				continue
-			}
-			matched := false
-			for _, part := range artistNames(it.Artist) {
-				if c := byName[norm(part)]; c != nil {
+			names := artistNames(it.Artist)
+			credited := map[*candidate]bool{}
+			credit := func(c *candidate) {
+				if c != nil && !credited[c] {
+					credited[c] = true
 					c.score += s.weight
-					matched = true
 				}
 			}
-			if !matched && it.ArtistID != "" {
-				add(&candidate{name: it.Artist, catalogID: it.ArtistID, score: s.weight})
+			// The catalog artist the entry names is its main artist: credit it
+			// by id, so "A" and "A & B" are one artist, and add it when the
+			// library does not hold it.
+			if it.ArtistID != "" {
+				c := byCatalog[it.ArtistID]
+				if c == nil {
+					if c = byName[norm(it.Artist)]; c == nil && len(names) > 0 {
+						c = byName[norm(names[0])]
+					}
+					if c != nil && c.catalogID == "" {
+						c.catalogID = it.ArtistID
+						byCatalog[it.ArtistID] = c
+					}
+				}
+				if c == nil {
+					name := it.Artist
+					if len(names) > 0 {
+						name = names[0]
+					}
+					c = &candidate{name: name, catalogID: it.ArtistID}
+					add(c)
+				}
+				credit(c)
+			} else {
+				credit(byName[norm(it.Artist)])
+			}
+			// Featured artists the library holds count too.
+			for _, part := range names {
+				credit(byName[norm(part)])
 			}
 		}
 	}
@@ -245,9 +271,19 @@ func (s *service) lookupReleases(ctx context.Context, sf string, cands []candida
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	out := make([]outcome, len(cands))
+	// Cached answers first: they cost nothing, so a spent budget must not
+	// leave them out.
+	var todo []int
+	for i, c := range cands {
+		if hit, ok := s.releases.get(sf+"|"+c.key(), s.now()); ok {
+			out[i] = outcome{done: true, release: hit.release, found: hit.found}
+			continue
+		}
+		todo = append(todo, i)
+	}
 	jobs := make(chan int)
 	var wg sync.WaitGroup
-	for range min(releaseWorkers, len(cands)) {
+	for range min(releaseWorkers, len(todo)) {
 		wg.Go(func() {
 			for i := range jobs {
 				out[i] = s.lookupRelease(ctx, sf, cands[i])
@@ -255,7 +291,7 @@ func (s *service) lookupReleases(ctx context.Context, sf string, cands []candida
 		})
 	}
 feed:
-	for i := range cands {
+	for _, i := range todo {
 		select {
 		case jobs <- i:
 		case <-ctx.Done():
@@ -344,15 +380,21 @@ func runNewReleases(ctx context.Context, svc *service, args json.RawMessage) mcp
 	wg.Go(func() { added, errs[2] = svc.RecentlyAdded(ctx) })
 	wg.Go(func() { lib, libTruncated, errs[3] = svc.LibraryArtists(ctx) })
 	wg.Wait()
-	var soft error
-	for _, err := range errs {
+	var (
+		soft    error
+		missing []string
+	)
+	inputs := [4]string{"recently played", "heavy rotation", "recently added", "library artists"}
+	for i, err := range errs {
 		if fatal(err) {
 			return failure(err)
 		}
 		if err != nil {
-			// One list missing narrows the artists; the rest still count.
-			slog.WarnContext(ctx, "tunewire: new_releases input failed", "err", err)
+			// One list missing narrows the artists; the rest still count, and
+			// the answer says which one is missing.
+			slog.WarnContext(ctx, "tunewire: new_releases input failed", "input", inputs[i], "err", err)
 			soft = cmp.Or(soft, err)
+			missing = append(missing, inputs[i])
 		}
 	}
 	cands, fromListening := rankArtists(lib,
@@ -401,6 +443,9 @@ func runNewReleases(ctx context.Context, svc *service, args json.RawMessage) mcp
 		}
 	}
 	l.line("Artists checked: %s, %d picked by recent listening%s.", plural(len(cands), "artist"), fromListening, from)
+	if len(missing) > 0 {
+		l.line("Incomplete: Apple could not give the user's %s right now, so artists from there may be missing.", strings.Join(missing, ", "))
+	}
 	if len(releases) == 0 {
 		l.line("None of them released anything in the last %d days.", days)
 	}

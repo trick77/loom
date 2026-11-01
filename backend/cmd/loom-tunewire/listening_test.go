@@ -122,7 +122,7 @@ func TestNewMusicTool(t *testing.T) {
 		"[10] album: Added 9 — Band",
 		"… and 2 more; ask for section recently_added to see them.",
 		"Made for You — Updated Fridays:\n[11] playlist: New Music Mix — Apple Music\n",
-		"New Releases (8 of 9 shown):\n- album: Release 0 — Someone\n",
+		"New Releases (8 of 9 listed):\n- album: Release 0 — Someone\n",
 		"Tracks in the user's New Music Mix:\n[12] Brand New — Band\n",
 	} {
 		if !strings.Contains(text, want) {
@@ -150,6 +150,36 @@ func TestNewMusicTool(t *testing.T) {
 	text, _ = callTool(t, h, "/mcp/library", "new_music", `{"section":"for_you"}`)
 	if strings.Contains(text, "Recently added") || !strings.Contains(text, "New Music Mix") || api.called("added") != before {
 		t.Errorf("for_you: %s", text)
+	}
+}
+
+// The New Music Mix is a personal mix (pl.pm-…), in the account's language;
+// an editorial playlist with "new music" in its name is not it.
+func TestIsNewMusicMix(t *testing.T) {
+	for _, tc := range []struct {
+		it   applemusic.Item
+		want bool
+	}{
+		{applemusic.Item{Kind: "playlist", ID: "pl.pm-1", Name: "New Music Mix"}, true},
+		{applemusic.Item{Kind: "playlist", ID: "pl.pm-2", Name: "Neuheiten-Mix"}, true},
+		{applemusic.Item{Kind: "playlist", ID: "pl.123", Name: "New Music Daily"}, false},
+		{applemusic.Item{Kind: "playlist", ID: "pl.pm-3", Name: "Chill Mix"}, false},
+		{applemusic.Item{Kind: "album", ID: "pl.pm-4", Name: "New Music Mix"}, false},
+	} {
+		if got := isNewMusicMix(tc.it); got != tc.want {
+			t.Errorf("%+v: %v", tc.it, got)
+		}
+	}
+}
+
+// A mix Apple does not know is said so, not reported empty.
+func TestNewMusicTool_unknownMix(t *testing.T) {
+	_, api, h := connected(t)
+	newMusicFixture(api)
+	api.listenErr = map[string]error{"mix": applemusic.ErrNotFound}
+	text, _ := callTool(t, h, "/mcp/library", "new_music", `{"section":"for_you"}`)
+	if !strings.Contains(text, "Apple does not know this mix") || strings.Contains(text, "the mix is empty") {
+		t.Errorf("text: %s", text)
 	}
 }
 
@@ -222,5 +252,34 @@ func TestListing_budget(t *testing.T) {
 	res := l.result()
 	if len(res.Text) > trackTextBudget+100 || !strings.Contains(res.Text, "more not shown.") || res.Sources == nil {
 		t.Errorf("len %d, tail %q", len(res.Text), res.Text[len(res.Text)-40:])
+	}
+}
+
+// A full answer says per section what it lost, and writes no pick headers
+// claiming entries it has no room for.
+func TestNewMusicTool_fullAnswerNotesPerSection(t *testing.T) {
+	_, api, h := connected(t)
+	newMusicFixture(api)
+	// Ten of these (shown next to the picks) already pass the budget.
+	long := strings.Repeat("x", 2500)
+	api.added = nil
+	for i := range 25 {
+		api.added = append(api.added, applemusic.Item{Kind: "album", Name: fmt.Sprintf("%s %d", long, i), Artist: "Band"})
+	}
+	text, _ := callTool(t, h, "/mcp/library", "new_music", `{"section":"both"}`)
+	// The long section says what it lost; short picks still fit and are
+	// listed, so their header stays true.
+	if !strings.Contains(text, "(2 more in this section not shown: the answer is full)") ||
+		!strings.Contains(text, "(8 of 9 listed)") || !strings.Contains(text, "Release 7") {
+		t.Errorf("text tail: %s", text[len(text)-600:])
+	}
+
+	// Once the text is full, a pick gets no header and its entries count
+	// as cut.
+	var l listing
+	l.b.WriteString(strings.Repeat("x", trackTextBudget))
+	res, err := writeForYou(context.Background(), nil, &l, []applemusic.Recommendation{{Title: "Picks", Items: []applemusic.Item{{Kind: "album", Name: "A"}}}}, nil)
+	if res != nil || err != nil || strings.Contains(l.b.String(), "Picks:") || !strings.Contains(l.b.String(), "1 more in this section not shown") {
+		t.Errorf("full listing: %q", l.b.String()[trackTextBudget:])
 	}
 }

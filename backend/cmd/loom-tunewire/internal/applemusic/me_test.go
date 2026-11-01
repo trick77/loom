@@ -15,8 +15,9 @@ func TestRecentlyPlayed_pagesAtThirtyAndSkipsNamelessItems(t *testing.T) {
 		if r.URL.Query().Get("offset") == "" {
 			_, _ = fmt.Fprint(w, `{"next":"/v1/me/recent/played/tracks?offset=30","data":[
 				{"id":"1","type":"songs","attributes":{"name":"Song","artistName":"Band","albumName":"LP","releaseDate":"2026-10-01","durationInMillis":225000,"url":"https://music.apple.com/ch/song/1","artwork":{"url":"https://img/{w}x{h}.jpg"}},
-					"relationships":{"artists":{"data":[{"id":"a.9","type":"artists"}]}}},
-				{"id":"i.2","type":"library-songs","attributes":{"name":"Own Rip","artistName":"Me"}},
+					"relationships":{"artists":{"data":[{"id":"909","type":"artists"}]}}},
+				{"id":"i.2","type":"library-songs","attributes":{"name":"Own Rip","artistName":"Me"},
+					"relationships":{"artists":{"data":[{"id":"r.1","type":"library-artists"}]}}},
 				{"id":"3","type":"songs","attributes":{}},
 				{"id":"4","type":"songs"}]}`)
 			return
@@ -31,9 +32,13 @@ func TestRecentlyPlayed_pagesAtThirtyAndSkipsNamelessItems(t *testing.T) {
 		t.Fatalf("items = %+v", got)
 	}
 	want := Item{ID: "1", Kind: "song", Name: "Song", Artist: "Band", Album: "LP", Released: "2026-10-01", Duration: 225 * time.Second,
-		URL: "https://music.apple.com/ch/song/1", Artwork: "https://img/300x300.jpg", ArtistID: "a.9"}
+		URL: "https://music.apple.com/ch/song/1", Artwork: "https://img/300x300.jpg", ArtistID: "909"}
 	if got[0] != want {
 		t.Errorf("song = %+v", got[0])
+	}
+	// A library resource's artist id is a library id: not a catalog artist.
+	if got[1].ArtistID != "" {
+		t.Errorf("library song kept artist id %q", got[1].ArtistID)
 	}
 	if got[1].Kind != "song" || got[1].URL != "" || got[2].Kind != "music video" || got[2].URL != "" {
 		t.Errorf("library song / video = %+v %+v", got[1], got[2])
@@ -108,11 +113,14 @@ func TestListening_404IsEmptyAndAuthErrorsPass(t *testing.T) {
 		"recent": func() ([]Item, error) { return c.RecentlyPlayed(context.Background(), "u") },
 		"heavy":  func() ([]Item, error) { return c.HeavyRotation(context.Background(), "u") },
 		"added":  func() ([]Item, error) { return c.RecentlyAdded(context.Background(), "u") },
-		"mix":    func() ([]Item, error) { return c.CatalogPlaylistTracks(context.Background(), "u", "ch", "pl.pm-1") },
 	} {
 		if got, err := call(); err != nil || len(got) != 0 {
 			t.Errorf("%s: %v %v", name, got, err)
 		}
+	}
+	// A mix Apple does not know is not an empty mix.
+	if _, err := c.CatalogPlaylistTracks(context.Background(), "u", "ch", "pl.pm-1"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("mix 404: %v, want ErrNotFound", err)
 	}
 	recs, err := c.Recommendations(context.Background(), "u")
 	if err != nil || len(recs) != 0 {
