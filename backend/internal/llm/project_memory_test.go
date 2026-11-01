@@ -37,7 +37,7 @@ func TestUserMemorySystemPromptIsStructured(t *testing.T) {
 		"## Brief history",
 		"### Recent months",
 		"CHURNS",
-		"6000 characters",
+		"10000 characters",
 	} {
 		if !strings.Contains(UserMemorySystemPrompt, want) {
 			t.Fatalf("user memory prompt missing structural marker %q:\n%s", want, UserMemorySystemPrompt)

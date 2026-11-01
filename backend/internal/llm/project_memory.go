@@ -20,7 +20,7 @@ const memoryMaxCompletionTokens = 4000
 // prompt divides across its sections. It is kept in lockstep with
 // chat.MaxUserMemoryLength (asserted in a test) — llm deliberately does not import
 // chat, so the value is mirrored here rather than referenced.
-const userMemoryBudgetChars = 6000
+const userMemoryBudgetChars = 10000
 
 // ProjectMemorySystemPrompt drives project-memory generation: a sectioned
 // profile shared across the project's chats, with five fixed markdown headings

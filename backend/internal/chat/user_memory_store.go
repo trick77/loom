@@ -74,7 +74,7 @@ WHERE user_id = ?`,
 // Only the transcript fields are loaded (see transcriptColumns).
 func (s *Store) ListUserMessages(ctx context.Context, userID string, limit int) ([]Message, error) {
 	if limit <= 0 {
-		limit = 200
+		limit = MemoryRebuildLimit
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT `+transcriptColumnsM+`

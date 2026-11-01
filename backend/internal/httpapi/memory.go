@@ -18,7 +18,7 @@ import (
 const (
 	// memoryRebuildLimit caps how many recent messages a refresh reads, so it never
 	// loads the entire history. It also caps the incremental fold window.
-	memoryRebuildLimit = 200
+	memoryRebuildLimit = chat.MemoryRebuildLimit
 	// memoryBackgroundTimeout bounds a background refresh's LLM call.
 	memoryBackgroundTimeout = 2 * time.Minute
 	// memoryBatchInterval is how often the background MemoryWorker sweeps for scopes

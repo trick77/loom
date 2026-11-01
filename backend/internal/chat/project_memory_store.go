@@ -82,7 +82,7 @@ WHERE m.user_id = ? AND t.project_id = ?`,
 // Only the transcript fields are loaded (see transcriptColumns).
 func (s *Store) ListProjectMessages(ctx context.Context, userID, projectID string, limit int) ([]Message, error) {
 	if limit <= 0 {
-		limit = 200
+		limit = MemoryRebuildLimit
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT `+transcriptColumnsM+`

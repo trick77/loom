@@ -34,7 +34,7 @@ func TestUserMemorySystemPromptIncludesNewHeadings(t *testing.T) {
 	}
 	// The computed per-section char target for Recent months (the largest, 36%)
 	// must appear, proving the budget is divided in code rather than hardcoded.
-	if !strings.Contains(UserMemorySystemPrompt, "2160 characters") {
-		t.Errorf("prompt missing computed Recent months target (2160 = 6000*36/100)")
+	if !strings.Contains(UserMemorySystemPrompt, "3600 characters") {
+		t.Errorf("prompt missing computed Recent months target (3600 = 10000*36/100)")
 	}
 }

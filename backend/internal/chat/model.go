@@ -102,13 +102,18 @@ type UserMemory struct {
 
 // MaxUserMemoryLength hard-caps the stored user memory. It is also the budget the
 // generation prompt divides across the memory's sections (see UserMemorySystemPrompt).
-const MaxUserMemoryLength = 6000
+const MaxUserMemoryLength = 10000
+
+// MemoryRebuildLimit caps how many recent messages a blob-memory refresh reads,
+// so it never loads the entire history. It is also the fallback limit of the
+// transcript list queries.
+const MemoryRebuildLimit = 400
 
 // MaxUserDirectivesTotalLength caps the combined length (in runes) of all of a
 // user's directives. Unlike derived memory this is enforced as a hard reject in
 // the store (not silent truncation) so the editing tool can tell the model the
 // add/replace was refused.
-const MaxUserDirectivesTotalLength = 1000
+const MaxUserDirectivesTotalLength = 3000
 
 // MaxUserDirectiveLength bounds a single directive so one entry can't consume the
 // whole budget.
