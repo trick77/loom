@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -146,6 +147,25 @@ func TestApplyMemoryEdit_appliesInstructionInPlace(t *testing.T) {
 		if !strings.Contains(gotBody, want) {
 			t.Errorf("request body missing %q:\n%s", want, gotBody)
 		}
+	}
+}
+
+// A memory reply cut off by the token cap must never be stored: the tail of a
+// sectioned memory is its oldest context, and a truncated rewrite silently
+// replaced a whole user memory with a 90-token fragment in prod.
+func TestMemoryCompletion_TruncatedReplyIsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"## Work context\n- Backend dev at"},"finish_reason":"length"}]}`))
+	}))
+	defer srv.Close()
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+
+	if out, err := c.GenerateMemory(context.Background(), "", "- prior", "User: hi", "", ProjectMemorySystemPrompt, ""); !errors.Is(err, ErrMemoryTruncated) {
+		t.Fatalf("GenerateMemory = %q, %v; want ErrMemoryTruncated", out, err)
+	}
+	if out, err := c.ApplyMemoryEdit(context.Background(), "", "- prior", "forget X", ProjectMemorySystemPrompt, ""); !errors.Is(err, ErrMemoryTruncated) {
+		t.Fatalf("ApplyMemoryEdit = %q, %v; want ErrMemoryTruncated", out, err)
 	}
 }
 

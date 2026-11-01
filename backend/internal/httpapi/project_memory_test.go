@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -103,6 +104,7 @@ func TestRefreshMemory_ProjectScopeGeneratesAndStores(t *testing.T) {
 		"",
 		[]chat.Message{{Role: chat.RoleUser, Content: "When should we go?"}},
 		7,
+		false,
 	)
 	if err != nil {
 		t.Fatalf("refreshMemory() error: %v", err)
@@ -112,6 +114,47 @@ func TestRefreshMemory_ProjectScopeGeneratesAndStores(t *testing.T) {
 	}
 	if store.ProjectMemory.SourceMessageCount != 7 {
 		t.Fatalf("stored source count = %d, want 7", store.ProjectMemory.SourceMessageCount)
+	}
+}
+
+// A refresh whose result is under half the prior is a broken generation, not a
+// prune: it is refused, the prior stays, and the source count is not advanced
+// so the next sweep retries.
+func TestRefreshMemory_CollapsedResultIsRefused(t *testing.T) {
+	projectID := "proj_1"
+	prior := strings.Repeat("- durable fact\n", 20)
+	store := &fakeThreadStore{
+		Project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		ProjectMemory: chat.ProjectMemory{ProjectID: projectID, Content: prior, SourceMessageCount: 3},
+	}
+	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- fragment"}}
+
+	err := s.refreshMemory(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project),
+		prior, []chat.Message{{Role: chat.RoleUser, Content: "hi"}}, 7, false)
+	if !errors.Is(err, errMemoryCollapsed) {
+		t.Fatalf("refreshMemory() error = %v, want errMemoryCollapsed", err)
+	}
+	if store.ProjectMemory.Content != prior || store.ProjectMemory.SourceMessageCount != 3 {
+		t.Fatalf("stored = %+v, want prior and source count untouched", store.ProjectMemory)
+	}
+}
+
+// After deletions the memory may legitimately shrink, so the guard is off.
+func TestRefreshMemory_DeletionRebuildMayShrink(t *testing.T) {
+	projectID := "proj_1"
+	prior := strings.Repeat("- fact about a deleted chat\n", 20)
+	store := &fakeThreadStore{
+		Project:       chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
+		ProjectMemory: chat.ProjectMemory{ProjectID: projectID, Content: prior, SourceMessageCount: 30},
+	}
+	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- what is left"}}
+
+	if err := s.refreshMemory(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project),
+		prior, []chat.Message{{Role: chat.RoleUser, Content: "hi"}}, 2, true); err != nil {
+		t.Fatalf("refreshMemory() error: %v", err)
+	}
+	if store.ProjectMemory.Content != "- what is left" {
+		t.Fatalf("stored = %q, want the shrunk rebuild", store.ProjectMemory.Content)
 	}
 }
 

@@ -2,17 +2,19 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 )
 
-// memoryMaxCompletionTokens caps memory generation. A full user memory runs up to
-// userMemoryBudgetChars (~6000 chars ≈ ~1500 tokens), so this is sized above that
-// to never clip the output mid-section. It is a ceiling shared with project memory
-// (bounded separately by its own prompt + MaxProjectMemoryLength), so the larger
-// value does not enlarge project memory.
-const memoryMaxCompletionTokens = 1900
+// memoryMaxCompletionTokens is the answer budget for memory generation (llmwire
+// adds the model's reasoning allowance on top). A full user memory runs up to
+// userMemoryBudgetChars (~10000 chars ≈ 2500-3300 tokens, German at the high
+// end), so this leaves headroom to never clip the output mid-section. Shared
+// with project memory (bounded separately by its own prompt +
+// MaxProjectMemoryLength) and the user-fact op list.
+const memoryMaxCompletionTokens = 4000
 
 // userMemoryBudgetChars is the total character budget the user-memory generation
 // prompt divides across its sections. It is kept in lockstep with
@@ -169,8 +171,14 @@ func (c *Client) ApplyMemoryEdit(ctx context.Context, header, currentMemory, ins
 	return c.runMemoryCompletion(ctx, start, messages)
 }
 
-// runMemoryCompletion executes a bounded, non-thinking chat completion for the
-// memory helpers and returns the trimmed assistant content.
+// ErrMemoryTruncated reports a memory reply cut off by the token cap. Callers
+// must keep the prior memory: a memory's tail is its oldest context, and a
+// truncated rewrite stored as-is silently erased it.
+var ErrMemoryTruncated = errors.New("memory completion truncated")
+
+// runMemoryCompletion executes a bounded chat completion for the memory helpers
+// and returns the trimmed assistant content. A truncated reply is an error,
+// never salvaged: a partial memory is worse than the old one.
 func (c *Client) runMemoryCompletion(ctx context.Context, _ time.Time, messages []Message) (string, error) {
 	reply, err := c.prose(ctx, messages, memoryMaxCompletionTokens)
 	if err != nil {
@@ -178,6 +186,10 @@ func (c *Client) runMemoryCompletion(ctx context.Context, _ time.Time, messages 
 	}
 	if reply.Empty {
 		return "", fmt.Errorf("memory completion returned no choices")
+	}
+	if reply.FinishReason == "length" {
+		return "", fmt.Errorf("%w: completion_tokens=%d reasoning_tokens=%d answer_cap=%d",
+			ErrMemoryTruncated, reply.Usage.CompletionTokens, reply.Usage.CompletionTokenDetails.ReasoningTokens, memoryMaxCompletionTokens)
 	}
 	return strings.TrimSpace(reply.Content), nil
 }

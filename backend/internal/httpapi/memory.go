@@ -119,13 +119,18 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	if err != nil {
 		return err
 	}
-	return s.refreshMemory(ctx, user, scope, prior, messages, count)
+	return s.refreshMemory(ctx, user, scope, prior, messages, count, count < sourceCount)
 }
+
+// errMemoryCollapsed refuses a refresh whose result is under half the prior.
+var errMemoryCollapsed = errors.New("memory refresh collapsed the prior")
 
 // refreshMemory generates and stores an updated memory. When prior is non-empty
 // it folds the given transcript into it (incremental); the caller passes the
-// recent (bounded) messages for that.
-func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memoryScope, prior string, transcriptMessages []chat.Message, sourceCount int) error {
+// recent (bounded) messages for that. mayShrink is set for a deletion rebuild,
+// the one case where a much shorter memory is legitimate; otherwise a result
+// under half the prior is refused (errMemoryCollapsed) and the prior kept.
+func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memoryScope, prior string, transcriptMessages []chat.Message, sourceCount int, mayShrink bool) error {
 	transcript := transcriptFromMessages(transcriptMessages)
 	if strings.TrimSpace(transcript) == "" {
 		return nil
@@ -147,6 +152,11 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 	}
 	if strings.TrimSpace(content) == "" {
 		return nil
+	}
+	if priorLen := len([]rune(strings.TrimSpace(prior))); !mayShrink && priorLen > 0 && 2*len([]rune(content)) < priorLen {
+		slog.Warn("memory refresh refused: result under half the prior",
+			"scope", scope.name, "prior_chars", priorLen, "result_chars", len([]rune(content)))
+		return errMemoryCollapsed
 	}
 	return scope.upsert(ctx, content, sourceCount)
 }
