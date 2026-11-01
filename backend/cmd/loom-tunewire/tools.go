@@ -33,8 +33,10 @@ func libraryServer(svc *service, version string) mcpserver.Server {
 	return mcpserver.Server{
 		Name:    "tunewire",
 		Version: version,
-		Instructions: "The user's own Apple Music library. list_playlists lists their playlists; get_playlist reads " +
-			"one playlist's tracks by id or name.",
+		Instructions: "The user's own Apple Music library and listening. list_playlists lists their playlists; " +
+			"get_playlist reads one playlist's tracks by id or name; recently_played answers \"what have I been " +
+			"listening to\"; new_music answers \"what's new for me\" (recently added, Apple's picks, New Music Mix); " +
+			"new_releases answers \"anything new from my bands\". Cite the Apple Music links they return.",
 		Tools: []mcpserver.Tool{
 			{
 				Name:        "list_playlists",
@@ -54,6 +56,47 @@ func libraryServer(svc *service, version string) mcpserver.Server {
 				}, "playlist"),
 				Run: func(ctx context.Context, args json.RawMessage) mcpserver.Result {
 					return runGetPlaylist(ctx, svc, args)
+				},
+			},
+			{
+				Name:  "recently_played",
+				Title: "What I played lately on Apple Music",
+				Description: "The user's recently played Apple Music tracks, newest first (title, artist, album), or " +
+					"with kind heavy_rotation the albums and playlists they played most lately. Use it for \"what have " +
+					"I been listening to\".",
+				Schema: mcpserver.ObjectSchema(map[string]any{
+					"kind": map[string]any{"type": "string", "enum": []string{"recent", "heavy_rotation"}, "default": "recent",
+						"description": "recent: the last tracks played. heavy_rotation: what was played most lately."},
+				}),
+				Run: func(ctx context.Context, args json.RawMessage) mcpserver.Result {
+					return runRecentlyPlayed(ctx, svc, args)
+				},
+			},
+			{
+				Name:  "new_music",
+				Title: "What's new for me on Apple Music",
+				Description: "What is new for the user on Apple Music: what they added to their library lately, and " +
+					"Apple's personal picks for them with the tracks of their New Music Mix. Use it for \"anything new " +
+					"for me\" or \"what should I listen to\".",
+				Schema: mcpserver.ObjectSchema(map[string]any{
+					"section": map[string]any{"type": "string", "enum": []string{"both", "recently_added", "for_you"}, "default": "both",
+						"description": "recently_added: the library's latest additions. for_you: Apple's picks and the New Music Mix. Default both."},
+				}),
+				Run: func(ctx context.Context, args json.RawMessage) mcpserver.Result {
+					return runNewMusic(ctx, svc, args)
+				},
+			},
+			{
+				Name:  "new_releases",
+				Title: "New releases from my artists",
+				Description: "New albums and singles from the user's favourite artists: the artists they listen to " +
+					"most and their library's artists, newest first. Use it for \"anything new from my bands\".",
+				Schema: mcpserver.ObjectSchema(map[string]any{
+					"days": map[string]any{"type": "integer", "minimum": 1, "maximum": maxReleaseDays, "default": defaultReleaseDays,
+						"description": "How far back a release may be, in days."},
+				}),
+				Run: func(ctx context.Context, args json.RawMessage) mcpserver.Result {
+					return runNewReleases(ctx, svc, args)
 				},
 			},
 		},
