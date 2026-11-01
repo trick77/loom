@@ -36,7 +36,7 @@ const (
 	// userFactsConsolidateMin is the fact count below which merging is skipped.
 	userFactsConsolidateMin = 10
 	// userFactsBackfill is how far back the first refresh reads for a user with
-	// no old memory text, instead of replaying the whole history.
+	// no fact cursor yet, instead of replaying the whole history.
 	userFactsBackfill = 90 * 24 * time.Hour
 	// userFactsRenderCeiling caps the facts block in the system prompt (runes),
 	// only against runaway duplicate growth: past it the least recently seen
@@ -275,7 +275,6 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 	}
 	res, err := s.thread.ApplyUserFactBatch(ctx, user.ID, chat.UserFactBatch{
 		Ops:                  ops,
-		Origin:               chat.FactOriginExtracted,
 		SeenAt:               last.CreatedAt,
 		Threads:              threads,
 		Cursor:               &cursor,
@@ -295,9 +294,10 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 // otherwise start from the very first message.
 func (s *server) startUserFacts(ctx context.Context, user auth.User) (chat.UserFactCursor, error) {
 	cursor := chat.UserFactCursor{LastCreatedAt: time.Now().Add(-userFactsBackfill).UTC().Format(time.DateTime)}
-	if _, err := s.thread.ApplyUserFactBatch(ctx, user.ID, chat.UserFactBatch{Origin: chat.FactOriginExtracted, SeenAt: time.Now(), Cursor: &cursor}); err != nil {
+	if _, err := s.thread.ApplyUserFactBatch(ctx, user.ID, chat.UserFactBatch{Cursor: &cursor}); err != nil {
 		return chat.UserFactCursor{}, err
 	}
+	slog.Info("user facts started", "user_id", user.ID, "backfill_from", cursor.LastCreatedAt)
 	return cursor, nil
 }
 

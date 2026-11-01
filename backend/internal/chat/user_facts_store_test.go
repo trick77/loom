@@ -26,9 +26,6 @@ func newThread(t *testing.T, store *Store, userID string) string {
 
 func applyBatch(t *testing.T, store *Store, userID string, batch UserFactBatch) UserFactApplyResult {
 	t.Helper()
-	if batch.Origin == "" {
-		batch.Origin = FactOriginExtracted
-	}
 	if batch.SeenAt.IsZero() {
 		batch.SeenAt = time.Now()
 	}
@@ -177,9 +174,12 @@ func TestUserFacts_ThreadDeleteRetiresOnlyOrphanedExtractedFacts(t *testing.T) {
 		{Kind: FactOpAdd, Category: FactCategoryWork, Content: "durable in gone", Durable: true},
 		{Kind: FactOpAdd, Category: FactCategoryWork, Content: "in both", Threads: []string{gone, kept}},
 	}})
-	applyBatch(t, store, userID, UserFactBatch{Origin: FactOriginConverted, Ops: []UserFactOp{
-		{Kind: FactOpAdd, Category: FactCategoryPersonal, Content: "converted"},
-	}})
+	// Converted facts (from the old memory blob) still exist in databases that
+	// ran 0.2.14; none are made now, so seed one directly.
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO user_facts (id, user_id, category, content, origin, first_seen, last_seen)
+VALUES ('conv', ?, 'personal', 'converted', 'converted', datetime('now'), datetime('now'))`, userID); err != nil {
+		t.Fatalf("seed converted fact: %v", err)
+	}
 	if _, err := store.AddUserFact(ctx, userID, gone, FactCategoryPersonal, "said remember in gone", false); err != nil {
 		t.Fatalf("AddUserFact: %v", err)
 	}
@@ -397,25 +397,5 @@ func TestSortUserFactsAndBuckets(t *testing.T) {
 	want := "long,top-work-new,top-work-old,top-personal,recent-work,earlier"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("order = %s, want %s", strings.Join(got, ","), want)
-	}
-}
-
-// A converted add backdates last_seen into its bucket but keeps first_seen at
-// the conversion, so one later mention cannot fake months of reinforcement.
-func TestApplyUserFactBatch_ConvertedKeepsFirstSeenAtConversion(t *testing.T) {
-	store, _, userID := newFactStore(t)
-	conversion := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
-	back := conversion.Add(-200 * 24 * time.Hour)
-	applyBatch(t, store, userID, UserFactBatch{Origin: FactOriginConverted, SeenAt: conversion, Ops: []UserFactOp{
-		{Kind: FactOpAdd, Category: FactCategoryWork, Content: "Old project", SeenAt: back},
-	}})
-	f := activeFacts(t, store, userID)[0]
-	if !f.FirstSeen.Equal(conversion) || !f.LastSeen.Equal(back) {
-		t.Fatalf("first/last = %v / %v, want %v / %v", f.FirstSeen, f.LastSeen, conversion, back)
-	}
-	thread := newThread(t, store, userID)
-	applyBatch(t, store, userID, UserFactBatch{SeenAt: conversion.Add(7 * 24 * time.Hour), Threads: []string{thread}, Ops: []UserFactOp{{Kind: FactOpReinforce, ID: f.ID}}})
-	if activeFacts(t, store, userID)[0].Durable {
-		t.Fatalf("one mention a week after conversion promoted a faded fact to long-term")
 	}
 }

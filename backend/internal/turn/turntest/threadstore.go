@@ -420,7 +420,7 @@ func (f *ThreadStore) ApplyUserFactBatch(_ context.Context, userID string, batch
 			continue
 		}
 		f.Facts = append(f.Facts, chat.UserFact{ID: "fact_" + strconv.Itoa(len(f.Facts)), UserID: userID, Category: op.Category,
-			Content: op.Content, Durable: op.Durable, Origin: batch.Origin, FirstSeen: batch.SeenAt, LastSeen: batch.SeenAt})
+			Content: op.Content, Durable: op.Durable, Origin: chat.FactOriginExtracted, FirstSeen: batch.SeenAt, LastSeen: batch.SeenAt})
 		res.Added++
 	}
 	if batch.PurgeForgottenBefore != nil {

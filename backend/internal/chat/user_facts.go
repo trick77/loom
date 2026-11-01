@@ -26,6 +26,7 @@ var FactCategories = []string{FactCategoryWork, FactCategoryPersonal, FactCatego
 
 // Fact origins. Only extracted facts depend on their source threads: deleting
 // the last of them retires the fact. Tool-written and converted facts never do.
+// Converted facts came from the old memory blob (0.2.14); none are made now.
 const (
 	FactOriginExtracted = "extracted"
 	FactOriginTool      = "tool"
@@ -88,19 +89,16 @@ type UserFactOp struct {
 	SupersededBy string
 	Threads      []string
 	// SeenAt, when set, is the op's own message date in place of the batch's:
-	// the new last_seen of an add, update or reinforce, and the first_seen of
-	// an extracted add. A converted add keeps first_seen at the batch's
-	// SeenAt (the conversion), so backdating an old section moves it into
-	// its bucket without faking months of reinforcement.
+	// the first_seen and last_seen of an add, the new last_seen of an update
+	// or reinforce.
 	SeenAt time.Time
 }
 
 // UserFactBatch is one refresh's ops plus the cursor it advances to. The ops,
 // the long-term promotion, the orphan retire, the purge of forgotten facts and
-// the cursor move commit together.
+// the cursor move commit together. Added facts are extracted facts.
 type UserFactBatch struct {
-	Ops    []UserFactOp
-	Origin string
+	Ops []UserFactOp
 	// SeenAt is the message date the batch stands for: first_seen of an add,
 	// the new last_seen of an update or reinforce.
 	SeenAt time.Time
