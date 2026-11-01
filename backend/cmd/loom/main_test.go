@@ -155,7 +155,7 @@ func TestToolConfigForConfigAddsFirstClassMCPTools(t *testing.T) {
 
 func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 	const token = "tunewire-token-0123456789abcdef0123"
-	got, err := toolConfigForConfig(config.Config{TunewireURL: "http://tunewire:8060/", TunewireToken: token, TunewireUser: "usr_1"}, nil)
+	got, err := toolConfigForConfig(config.Config{TunewireURL: "http://tunewire:8060/", TunewireToken: token, TunewireUsers: []string{"usr_1"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 		if err := os.WriteFile(path, []byte(`{"mcpServers": {"tunewire": `+entry+`}}`), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		over, err := toolConfigForConfig(config.Config{TunewireURL: "http://tunewire:8060", TunewireToken: token, TunewireUser: "usr_1", MCPServersFile: path}, nil)
+		over, err := toolConfigForConfig(config.Config{TunewireURL: "http://tunewire:8060", TunewireToken: token, TunewireUsers: []string{"usr_1"}, MCPServersFile: path}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

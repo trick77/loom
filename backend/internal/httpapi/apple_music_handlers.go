@@ -28,7 +28,7 @@ type AppleMusicService interface {
 // Music connection: the one user the library tools are restricted to. An
 // unset owner matches nobody.
 func (s *server) appleMusicAllowed(user auth.User) bool {
-	return s.appleMusic != nil && mcp.UsersAllow([]string{s.appleMusicOwner}, turn.MCPPrincipal(user))
+	return s.appleMusic != nil && mcp.UsersAllow(s.appleMusicUsers, turn.MCPPrincipal(user))
 }
 
 // appleMusicUser returns the signed-in owner. Anyone else gets 404: the

@@ -262,7 +262,7 @@ func runServer() error {
 		ImageTools:                 imageTools,
 		Sandbox:                    sandboxRunner,
 		AppleMusic:                 appleMusicService(cfg),
-		AppleMusicOwner:            cfg.TunewireUser,
+		AppleMusicUsers:            cfg.TunewireUsers,
 		ImageDefaultModel:          cfg.ImageGenModel,
 		ImageGenTypographyModel:    cfg.ImageGenTypographyModel,
 		UsersDir:                   cfg.UsersDir,
@@ -454,8 +454,7 @@ func appleMusicService(cfg config.Config) httpapi.AppleMusicService {
 }
 
 // The loom-tunewire sidecar's two MCP servers: the user's Apple Music library
-// (restricted to its owner, BACKEND_TUNEWIRE_USER) and catalog search (every
-// user).
+// (restricted to BACKEND_TUNEWIRE_USERS) and catalog search (every user).
 const (
 	tunewireLibraryServer = "tunewire"
 	tunewireCatalogServer = "applemusic"
@@ -507,7 +506,7 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// loom-tunewire is best-effort, like the sandbox: a dead Apple Music
 	// sidecar costs its tools, never boot. Entries in the file still win.
 	if strings.TrimSpace(cfg.TunewireURL) != "" {
-		out.FileServers.Servers[tunewireLibraryServer] = mcp.TunewireLibraryServerConfig(cfg.TunewireURL, cfg.TunewireToken, []string{cfg.TunewireUser})
+		out.FileServers.Servers[tunewireLibraryServer] = mcp.TunewireLibraryServerConfig(cfg.TunewireURL, cfg.TunewireToken, cfg.TunewireUsers)
 		out.FileServers.Servers[tunewireCatalogServer] = mcp.TunewireCatalogServerConfig(cfg.TunewireURL, cfg.TunewireToken)
 	}
 	for name, server := range fileServers {

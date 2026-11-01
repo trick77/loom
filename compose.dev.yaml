@@ -49,11 +49,11 @@ services:
       # Python sandbox (run_python), published on a localhost port.
       BACKEND_SANDBOX_URL: "http://localhost:8070"
       # Apple Music sidecar, opt-in: COMPOSE_PROFILES=tunewire,
-      # BACKEND_TUNEWIRE_URL=http://localhost:8060 and BACKEND_TUNEWIRE_USER
+      # BACKEND_TUNEWIRE_URL=http://localhost:8060 and BACKEND_TUNEWIRE_USERS
       # (the dev user's loom id) in .env.
       BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"
       BACKEND_TUNEWIRE_TOKEN: dev-tunewire-token-please-change-0123456789
-      BACKEND_TUNEWIRE_USER: "${BACKEND_TUNEWIRE_USER:-}"
+      BACKEND_TUNEWIRE_USERS: "${BACKEND_TUNEWIRE_USERS:-}"
       # Extra MCP servers from ./conf/mcp.json (standard mcpServers format; merged on top of built-ins).
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"
       IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"

@@ -50,9 +50,9 @@ type Deps struct {
 	// Sandbox runs run_python; nil keeps the tool off.
 	Sandbox SandboxRunner
 	// AppleMusic is the loom-tunewire sidecar's token routes; nil hides the
-	// settings section. AppleMusicOwner is the one loom user id it serves.
+	// settings section. AppleMusicUsers are the loom user ids it serves.
 	AppleMusic      AppleMusicService
-	AppleMusicOwner string
+	AppleMusicUsers []string
 	// ImageDefaultModel is the configured baseline image model (e.g.
 	// "flux-2-klein-4b"); ImageGenTypographyModel (e.g. "flux-2-flex") is used instead
 	// for the first image of a thread when it reads as typography/logo/text work.
@@ -112,7 +112,7 @@ type server struct {
 	llm                   ChatClient
 	mcp                   ToolService
 	appleMusic            AppleMusicService
-	appleMusicOwner       string
+	appleMusicUsers       []string
 	usersDir              string
 	faviconCacheDir       string
 	faviconClient         *http.Client             // nil → faviconDefaultClient (overridden in tests)
@@ -331,7 +331,7 @@ func newServer(d Deps) *server {
 		llm:                   d.LLM,
 		mcp:                   d.MCP,
 		appleMusic:            d.AppleMusic,
-		appleMusicOwner:       d.AppleMusicOwner,
+		appleMusicUsers:       d.AppleMusicUsers,
 		usersDir:              d.UsersDir,
 		faviconCacheDir:       faviconCacheDirFor(d.UsersDir),
 		oidcAdminGroup:        d.OIDCAdminGroup,
