@@ -550,33 +550,38 @@ export const ProseMarkdown = memo(function ProseMarkdown({
 });
 
 // A link label that is itself a URL.
-const SHOWN_URL = /^(?:https?:\/\/|www\.)\S+$/i;
+// labelIsHref reports whether a link's label is its own target, as GFM writes
+// an autolink: "https://…" as is, "www.…" with "http://" in front. A label
+// naming another URL than the target is never compacted: the shortened text
+// would read as the target and hide where the link goes.
+function labelIsHref(label: unknown, href: unknown): label is string {
+  return (
+    typeof label === "string" &&
+    typeof href === "string" &&
+    (label === href || `http://${label}` === href)
+  );
+}
 
 // markdownComponents maps markdown elements to the app's renderers. Nothing in
 // it depends on the message, so it is built once.
 const markdownComponents = {
-  a({ children, ...props }) {
+  a({ children, node: _node, ...props }) {
     // A link labelled with its own long URL (a bare or autolinked URL) shows it
     // compacted; the full URL stays the target and the tooltip. This also covers
     // a "[label](https://…" still streaming: until ")" arrives, GFM autolinks the
     // URL, which used to wrap over lines and then collapse into the label.
-    if (typeof children === "string" && SHOWN_URL.test(children)) {
-      const compact = compactURL(children);
-      if (compact !== children)
-        return (
-          <a
-            {...props}
-            title={props.title ?? children}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {compact}
-          </a>
-        );
-    }
+    const compact = labelIsHref(children, props.href)
+      ? compactURL(children)
+      : undefined;
+    const shortened = compact !== undefined && compact !== children;
     return (
-      <a {...props} target="_blank" rel="noreferrer">
-        {children}
+      <a
+        {...props}
+        title={shortened ? (props.title ?? props.href) : props.title}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {shortened ? compact : children}
       </a>
     );
   },

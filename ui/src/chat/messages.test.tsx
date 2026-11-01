@@ -549,6 +549,17 @@ test("a link labelled with its own long URL shows it compacted", () => {
   expect(link).toHaveAttribute("title", LONG_URL);
 });
 
+test("a URL label pointing elsewhere is never compacted", () => {
+  render(
+    <ProseMarkdown>{`[https://mybank.example.com/account/login/security/verify](https://evil.example)`}</ProseMarkdown>,
+  );
+  const link = screen.getByRole("link", {
+    name: "https://mybank.example.com/account/login/security/verify",
+  });
+  expect(link).toHaveAttribute("href", "https://evil.example");
+  expect(link).not.toHaveAttribute("title");
+});
+
 test("a named link and a short URL link keep their text", () => {
   render(
     <ProseMarkdown>{`[link](${LONG_URL}) and https://ex.com/a`}</ProseMarkdown>,
