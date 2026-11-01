@@ -9,6 +9,8 @@ export type User = {
   displayName?: string;
   role: Role;
   responseLanguage?: string;
+  // True only for users the server allows the Apple Music settings section.
+  appleMusic?: boolean;
 };
 
 export type Project = {

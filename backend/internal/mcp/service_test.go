@@ -399,6 +399,28 @@ func TestNewServiceFromConfigsDropsFailedBestEffortServer(t *testing.T) {
 	}
 }
 
+// A best-effort built-in (a sidecar loom boots without) is labelled built-in,
+// not file-defined.
+func TestNewServiceFromConfigsLabelsBestEffortBuiltIns(t *testing.T) {
+	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	deadURL := dead.URL
+	dead.Close()
+	best := Config{Servers: map[string]ServerConfig{
+		"tunewire": {Transport: TransportStreamableHTTP, URL: deadURL, BuiltIn: true},
+		"ipverse":  {Transport: TransportStreamableHTTP, URL: deadURL},
+	}}
+	service, err := NewServiceFromConfigs(context.Background(), Config{}, best, http.DefaultClient, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range service.ServerStatus(context.Background()) {
+		want := map[string]string{"tunewire": OriginBuiltIn, "ipverse": OriginFile}[st.Name]
+		if st.Origin != want {
+			t.Errorf("%s origin = %q, want %q", st.Name, st.Origin, want)
+		}
+	}
+}
+
 func TestNewServiceFromConfigsRequiredFailureIsFatal(t *testing.T) {
 	dead := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	deadURL := dead.URL

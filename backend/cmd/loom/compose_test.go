@@ -364,6 +364,65 @@ func TestProductionComposeIsolatesTheSandbox(t *testing.T) {
 	}
 }
 
+// tunewire holds one person's Apple Music token: it is opt-in, reachable from
+// loom only (no Traefik, no ports), runs locked down as 65532, and loom boots
+// without it.
+func TestProductionComposeTunewire(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	compose := string(data)
+	service := composeService(t, compose, "tunewire")
+	for _, want := range []string{
+		"image: ghcr.io/trick77/loom-tunewire:latest",
+		`profiles: ["tunewire"]`,
+		`user: "65532:65532"`,
+		"read_only: true",
+		"cap_drop: [ALL]",
+		"- no-new-privileges:true",
+		`TUNEWIRE_TOKEN: "${BACKEND_TUNEWIRE_TOKEN:-}"`,
+		"- tunewire-data:/data",
+		`test: ["CMD", "/loom-tunewire", "healthcheck"]`,
+		"\n      interval: 60s",
+		`traefik.enable: "false"`,
+	} {
+		if !strings.Contains(service, want) {
+			t.Fatalf("tunewire service missing %q", want)
+		}
+	}
+	networks := service[strings.Index(service, "\n    networks:"):]
+	networks = networks[:strings.Index(networks, "\n    labels:")]
+	if strings.TrimSpace(networks) != "networks:\n      - loom" {
+		t.Fatalf("tunewire must join only the loom network, got:\n%s", networks)
+	}
+	for _, unwanted := range []string{"ports:", "privileged", "cap_add", "traefik.http"} {
+		if strings.Contains(service, unwanted) {
+			t.Fatalf("tunewire service must not contain %q", unwanted)
+		}
+	}
+	loom := composeService(t, compose, "loom")
+	for _, want := range []string{`BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"`, `BACKEND_TUNEWIRE_USERS: "${BACKEND_TUNEWIRE_USERS:-}"`} {
+		if !strings.Contains(loom, want) {
+			t.Fatalf("loom service missing %q", want)
+		}
+	}
+	if strings.Contains(loom, "      tunewire:\n        condition") {
+		t.Fatal("loom must not depend on the tunewire service")
+	}
+
+	dev, err := os.ReadFile("../../../compose.dev.yaml")
+	if err != nil {
+		t.Fatalf("read compose.dev.yaml: %v", err)
+	}
+	devService := composeService(t, string(dev), "tunewire")
+	for _, want := range []string{"dockerfile: tunewire/Containerfile", `profiles: ["tunewire"]`, `- "127.0.0.1:8060:8060"`} {
+		if !strings.Contains(devService, want) {
+			t.Fatalf("dev tunewire service missing %q", want)
+		}
+	}
+}
+
 func TestBackendContainerfileBuildsAndEmbedsUI(t *testing.T) {
 	// The single production image builds the Vite bundle in a node stage and copies
 	// it into backend/web/dist so //go:embed all:dist bakes the real UI into the Go

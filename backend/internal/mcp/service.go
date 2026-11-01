@@ -332,6 +332,9 @@ func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, htt
 	for name, sc := range bestEffort.Servers {
 		merged.Servers[name] = sc
 		origins[name] = OriginFile
+		if sc.BuiltIn {
+			origins[name] = OriginBuiltIn
+		}
 	}
 	service.cfg = merged
 	service.origins = origins

@@ -49,6 +49,10 @@ type Deps struct {
 	ImageTools []imagegen.Tool
 	// Sandbox runs run_python; nil keeps the tool off.
 	Sandbox SandboxRunner
+	// AppleMusic is the loom-tunewire sidecar's token routes; nil hides the
+	// settings section. AppleMusicUsers are the loom user ids it serves.
+	AppleMusic      AppleMusicService
+	AppleMusicUsers []string
 	// ImageDefaultModel is the configured baseline image model (e.g.
 	// "flux-2-klein-4b"); ImageGenTypographyModel (e.g. "flux-2-flex") is used instead
 	// for the first image of a thread when it reads as typography/logo/text work.
@@ -107,6 +111,8 @@ type server struct {
 	documents             DocumentService
 	llm                   ChatClient
 	mcp                   ToolService
+	appleMusic            AppleMusicService
+	appleMusicUsers       []string
 	usersDir              string
 	faviconCacheDir       string
 	faviconClient         *http.Client             // nil → faviconDefaultClient (overridden in tests)
@@ -324,6 +330,8 @@ func newServer(d Deps) *server {
 		documents:             d.Documents,
 		llm:                   d.LLM,
 		mcp:                   d.MCP,
+		appleMusic:            d.AppleMusic,
+		appleMusicUsers:       d.AppleMusicUsers,
 		usersDir:              d.UsersDir,
 		faviconCacheDir:       faviconCacheDirFor(d.UsersDir),
 		oidcAdminGroup:        d.OIDCAdminGroup,
@@ -394,6 +402,10 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("GET /api/me/usage", s.requireAuth(http.HandlerFunc(s.handleGetUsage)))
 	mux.Handle("GET /api/me/facts", s.requireAuth(http.HandlerFunc(s.handleGetUserFacts)))
 	mux.Handle("GET /api/me/directives", s.requireAuth(http.HandlerFunc(s.handleGetUserDirectives)))
+	mux.Handle("GET /api/me/apple-music", s.requireAuth(http.HandlerFunc(s.handleAppleMusicStatus)))
+	mux.Handle("POST /api/me/apple-music/check", s.requireAuth(http.HandlerFunc(s.handleAppleMusicCheck)))
+	mux.Handle("PUT /api/me/apple-music", s.requireAuth(http.HandlerFunc(s.handleAppleMusicSetToken)))
+	mux.Handle("DELETE /api/me/apple-music", s.requireAuth(http.HandlerFunc(s.handleAppleMusicClearToken)))
 	mux.Handle("GET /api/mcp/servers", s.requireAuth(http.HandlerFunc(s.handleMCPServers)))
 	mux.Handle("GET /api/mcp/tools", s.requireAuth(http.HandlerFunc(s.handleMCPTools)))
 	mux.Handle("GET /api/admin/users", s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdminUsers))))

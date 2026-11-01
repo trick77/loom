@@ -477,6 +477,48 @@ export const en = {
     codeRuns: "Python runs",
     threadsCreated: "Threads created",
     projectsCreated: "Projects created",
+    appleMusic: {
+      title: "Apple Music",
+      description:
+        "Connect your Apple Music account so loom can read your playlists.",
+      connected: "Connected",
+      playlists_one: "{{count}} playlist",
+      playlists_other: "{{count}} playlists",
+      lastChecked: "last checked {{when}}",
+      expired: "Your token has expired. Paste a new one below to reconnect.",
+      never: "Not connected yet.",
+      errorUpstream:
+        "The last check failed: Apple Music answered with an error or couldn’t be reached. Try Check now later.",
+      errorBridge:
+        "Apple changed something loom’s Apple Music bridge relies on, so it needs an update. Your token is fine.",
+      tokenLabel: "media-user-token",
+      tokenPlaceholder: "Paste your token",
+      save: "Save",
+      saving: "Saving…",
+      checkNow: "Check now",
+      checking: "Checking…",
+      disconnect: "Disconnect",
+      disconnecting: "Disconnecting…",
+      rejected:
+        "Apple rejected this token. Your previous token is still in use.",
+      rejectedFirst:
+        "Apple rejected this token. Copy a fresh one and try again.",
+      malformed:
+        "That doesn’t look like a media-user-token. Paste only the cookie’s value.",
+      unavailable: "Apple Music can’t be reached right now. Try again later.",
+      loadFailed: "Failed to load the Apple Music status.",
+      saveFailed: "Couldn’t save the token. Try again.",
+      checkFailed: "Couldn’t check the token. Try again.",
+      disconnectFailed: "Couldn’t disconnect. Try again.",
+      helpTitle: "How to find your token",
+      step1: "Open music.apple.com and sign in.",
+      step2: "Open your browser’s developer tools.",
+      step3:
+        "Go to Application (Safari: Storage) → Cookies → https://music.apple.com.",
+      step4: "Copy the value of media-user-token and paste it below.",
+      privacy:
+        "The token stays on the server, is only used to read your playlists and is never shown again.",
+    },
   },
   chats: {
     title: "Threads",

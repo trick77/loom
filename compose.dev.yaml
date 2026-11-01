@@ -48,6 +48,12 @@ services:
       BACKEND_GOTENBERG_URL: "http://localhost:3000"
       # Python sandbox (run_python), published on a localhost port.
       BACKEND_SANDBOX_URL: "http://localhost:8070"
+      # Apple Music sidecar, opt-in: COMPOSE_PROFILES=tunewire,
+      # BACKEND_TUNEWIRE_URL=http://localhost:8060 and BACKEND_TUNEWIRE_USERS
+      # (the dev user's loom id) in .env.
+      BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"
+      BACKEND_TUNEWIRE_TOKEN: dev-tunewire-token-please-change-0123456789
+      BACKEND_TUNEWIRE_USERS: "${BACKEND_TUNEWIRE_USERS:-}"
       # Extra MCP servers from ./conf/mcp.json (standard mcpServers format; merged on top of built-ins).
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"
       IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"
@@ -147,5 +153,33 @@ services:
       start_interval: 5s
       retries: 3
 
+  tunewire:
+    # Apple Music sidecar, built from source, published on a localhost port.
+    build:
+      context: .
+      dockerfile: tunewire/Containerfile
+    profiles: ["tunewire"]
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Same value as loom's BACKEND_TUNEWIRE_TOKEN above.
+      TUNEWIRE_TOKEN: dev-tunewire-token-please-change-0123456789
+      TUNEWIRE_STOREFRONT: "${TUNEWIRE_STOREFRONT:-ch}"
+    volumes:
+      - tunewire-dev-data:/data
+    ports:
+      - "127.0.0.1:8060:8060"
+    healthcheck:
+      test: ["CMD", "/loom-tunewire", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+
 volumes:
   loom-dev-data:
+  tunewire-dev-data:

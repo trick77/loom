@@ -153,6 +153,47 @@ func TestToolConfigForConfigAddsFirstClassMCPTools(t *testing.T) {
 	}
 }
 
+func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
+	const token = "tunewire-token-0123456789abcdef0123"
+	got, err := toolConfigForConfig(config.Config{TunewireURL: "http://tunewire:8060/", TunewireToken: token, TunewireUsers: []string{"usr_1"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{tunewireLibraryServer, tunewireCatalogServer} {
+		if _, ok := got.Required.Servers[name]; ok {
+			t.Errorf("%s is required: a dead sidecar would fail boot", name)
+		}
+		if got.FileServers.Servers[name].Headers["Authorization"] != "Bearer "+token {
+			t.Errorf("%s auth = %q", name, got.FileServers.Servers[name].Headers["Authorization"])
+		}
+	}
+	lib, cat := got.FileServers.Servers[tunewireLibraryServer], got.FileServers.Servers[tunewireCatalogServer]
+	if lib.URL != "http://tunewire:8060/mcp/library" || !lib.RestrictUsers || !reflect.DeepEqual(lib.Users, []string{"usr_1"}) {
+		t.Errorf("library = %+v", lib)
+	}
+	if cat.URL != "http://tunewire:8060/mcp/catalog" || cat.RestrictUsers {
+		t.Errorf("catalog = %+v", cat)
+	}
+	// loom's own sidecar: labelled built-in, and its instructions (when to
+	// search the catalog) reach the prompt.
+	for _, sc := range []mcp.ServerConfig{lib, cat} {
+		if !sc.BuiltIn || !sc.TrustInstructions {
+			t.Errorf("%s: BuiltIn %v TrustInstructions %v", sc.URL, sc.BuiltIn, sc.TrustInstructions)
+		}
+	}
+
+	off := mustToolConfig(t, config.Config{})
+	if _, ok := off.Servers[tunewireLibraryServer]; ok {
+		t.Error("tunewire registered without a URL")
+	}
+	if appleMusicService(config.Config{}) != nil {
+		t.Error("settings service set without a URL")
+	}
+	if appleMusicService(config.Config{TunewireURL: "http://tunewire:8060", TunewireToken: token}) == nil {
+		t.Error("settings service missing with a URL")
+	}
+}
+
 func TestToolConfigForConfigMergesFileServers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mcp.json")
 	if err := os.WriteFile(path, []byte(`{
