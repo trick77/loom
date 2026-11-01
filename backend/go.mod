@@ -9,11 +9,11 @@ require (
 	github.com/trick77/llmwire v0.1.8
 	github.com/trick77/ship/kit v0.17.5
 	github.com/trick77/ship/kit/auth v0.3.1
-	github.com/trick77/webfetch v0.4.7
+	github.com/trick77/webfetch v0.4.10
 	github.com/yuin/goldmark v1.8.6
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	golang.org/x/image v0.47.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 )
