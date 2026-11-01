@@ -11,14 +11,22 @@ import (
 	"github.com/trick77/loom/internal/chat"
 )
 
+// projectStore is a fake holding one project with the given memory and count.
+func projectStore(memory chat.ProjectMemory, count int, messages ...chat.Message) *fakeThreadStore {
+	memory.ProjectID = "proj_1"
+	return &fakeThreadStore{
+		Project:             chat.Project{ID: "proj_1", UserID: testUser.ID, Name: "Amsterdam Trip"},
+		ProjectMemory:       memory,
+		ProjectMessageCount: count,
+		Messages:            messages,
+	}
+}
+
 // An edit while a refresh of the same memory is in flight is refused: the
 // refresh read the memory before the edit and would write that stale prior
 // back over it, silently undoing what the user asked to forget.
 func TestEditMemory_RefusedWhileARefreshRuns(t *testing.T) {
-	store := &fakeThreadStore{
-		Project:       chat.Project{ID: "proj_1", UserID: testUser.ID},
-		ProjectMemory: chat.ProjectMemory{ProjectID: "proj_1", Content: "- X"},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "- X"}, 0)
 	s := &server{thread: store, llm: fakeChatClient{EditedMemory: "- (X forgotten)"}}
 	scope := s.projectMemoryScope(testUser, store.Project)
 	release, _ := s.inflight.tryAcquire("memory:" + scope.key)
@@ -41,45 +49,6 @@ func TestEditMemory_RefusedWhileARefreshRuns(t *testing.T) {
 	}
 }
 
-// TestRefreshMemoryIfDue_DebounceSkipsFreshMemory proves the staleness gate: a
-// memory refreshed within minAge is left alone even when enough new messages have
-// accumulated (the 24h user debounce / 1h project debounce).
-func TestRefreshMemoryIfDue_DebounceSkipsFreshMemory(t *testing.T) {
-	fresh := time.Now().Add(-30 * time.Minute)
-	store := &fakeThreadStore{
-		UserMessageCount: 50, // far above the threshold
-		UserMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 0, UpdatedAt: &fresh},
-		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
-	}
-	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- REGENERATED"}}
-
-	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), memoryUserRefreshAge); err != nil {
-		t.Fatalf("refreshMemoryIfDue() error: %v", err)
-	}
-	if store.UserMemory.Content != "- prior" {
-		t.Fatalf("memory = %q, want unchanged (refreshed too recently to be due)", store.UserMemory.Content)
-	}
-}
-
-// TestRefreshMemoryIfDue_DebounceRefreshesStaleMemory proves the complement: once
-// the memory is older than minAge, an eligible scope regenerates.
-func TestRefreshMemoryIfDue_DebounceRefreshesStaleMemory(t *testing.T) {
-	stale := time.Now().Add(-25 * time.Hour)
-	store := &fakeThreadStore{
-		UserMessageCount: 50,
-		UserMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 0, UpdatedAt: &stale},
-		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "I moved to Zurich"}},
-	}
-	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- REGENERATED"}}
-
-	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), memoryUserRefreshAge); err != nil {
-		t.Fatalf("refreshMemoryIfDue() error: %v", err)
-	}
-	if store.UserMemory.Content != "- REGENERATED" {
-		t.Fatalf("memory = %q, want regenerated (older than the debounce window)", store.UserMemory.Content)
-	}
-}
-
 // TestRefreshMemoryIfDue_AdaptiveWindowSizesToBacklog proves the fold window
 // tracks the backlog (count - sourceCount) so messages are not skipped when
 // refreshes are spaced out, capped at memoryRebuildLimit.
@@ -91,20 +60,17 @@ func TestRefreshMemoryIfDue_AdaptiveWindowSizesToBacklog(t *testing.T) {
 		wantLimit   int
 	}{
 		{name: "backlog under cap", count: 100, sourceCount: 0, wantLimit: 100},
-		{name: "backlog over cap is capped", count: 500, sourceCount: 0, wantLimit: memoryRebuildLimit},
+		{name: "backlog over cap is capped", count: memoryRebuildLimit + 100, sourceCount: 0, wantLimit: memoryRebuildLimit},
 		{name: "small backlog", count: 2, sourceCount: 0, wantLimit: 2},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &fakeThreadStore{
-				UserMessageCount: tc.count,
-				UserMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: tc.sourceCount},
-				Messages:         []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
-			}
+			store := projectStore(chat.ProjectMemory{Content: "- prior", SourceMessageCount: tc.sourceCount}, tc.count,
+				chat.Message{Role: chat.RoleUser, Content: "hi"})
 			s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- ok"}}
 
 			// minAge 0 disables the debounce so the window logic is exercised directly.
-			if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+			if err := s.refreshMemoryIfDue(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project), 0); err != nil {
 				t.Fatalf("refreshMemoryIfDue() error: %v", err)
 			}
 			if store.ListLimit != tc.wantLimit {
@@ -118,17 +84,12 @@ func TestRefreshMemoryIfDue_AdaptiveWindowSizesToBacklog(t *testing.T) {
 // honors the debounce: a project memory refreshed within the window is not
 // regenerated even though the per-turn trigger fires every turn.
 func TestRefreshProjectMemoryIfDue_DebounceSkipsFreshMemory(t *testing.T) {
-	projectID := "proj_1"
 	fresh := time.Now().Add(-5 * time.Minute) // < memoryProjectDebounce (15m)
-	store := &fakeThreadStore{
-		Project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		ProjectMessageCount: 50,
-		ProjectMemory:       chat.ProjectMemory{ProjectID: projectID, Content: "Travel month: May", UpdatedAt: &fresh},
-		Messages:            []chat.Message{{Role: chat.RoleUser, Content: "Traveling soon"}},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "Travel month: May", UpdatedAt: &fresh}, 50,
+		chat.Message{Role: chat.RoleUser, Content: "Traveling soon"})
 	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "Travel month: June"}}
 
-	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
+	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, "proj_1"); err != nil {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
 	}
 	if store.ProjectMemory.Content != "Travel month: May" {
@@ -139,17 +100,12 @@ func TestRefreshProjectMemoryIfDue_DebounceSkipsFreshMemory(t *testing.T) {
 // TestRefreshProjectMemoryIfDue_DebounceRefreshesStaleMemory proves a project
 // memory older than the debounce regenerates.
 func TestRefreshProjectMemoryIfDue_DebounceRefreshesStaleMemory(t *testing.T) {
-	projectID := "proj_1"
 	stale := time.Now().Add(-2 * time.Hour) // > memoryProjectDebounce (15m)
-	store := &fakeThreadStore{
-		Project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		ProjectMessageCount: 50,
-		ProjectMemory:       chat.ProjectMemory{ProjectID: projectID, Content: "Travel month: May", UpdatedAt: &stale},
-		Messages:            []chat.Message{{Role: chat.RoleUser, Content: "Moved the trip to June"}},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "Travel month: May", UpdatedAt: &stale}, 50,
+		chat.Message{Role: chat.RoleUser, Content: "Moved the trip to June"})
 	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "Travel month: June"}}
 
-	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, projectID); err != nil {
+	if err := s.refreshProjectMemoryIfDue(context.Background(), testUser, "proj_1"); err != nil {
 		t.Fatalf("refreshProjectMemoryIfDue() error: %v", err)
 	}
 	if store.ProjectMemory.Content != "Travel month: June" {
@@ -158,30 +114,22 @@ func TestRefreshProjectMemoryIfDue_DebounceRefreshesStaleMemory(t *testing.T) {
 }
 
 // TestMemoryWorker_runOnce_RefreshesDueStaleScopes proves the batch backstop
-// sweeps users and their projects, regenerating both the user memory (24h gate)
-// and the project memory (1h gate) when each is due and stale.
+// sweeps users and their projects: the user's new messages become facts and
+// the stale project memory regenerates.
 func TestMemoryWorker_runOnce_RefreshesDueStaleScopes(t *testing.T) {
-	projectID := "proj_1"
-	staleUser := time.Now().Add(-25 * time.Hour)
 	staleProject := time.Now().Add(-2 * time.Hour)
-	store := &fakeThreadStore{
-		Project:             chat.Project{ID: projectID, UserID: testUser.ID, Name: "Amsterdam Trip"},
-		UserMessageCount:    50,
-		ProjectMessageCount: 50,
-		UserMemory:          chat.UserMemory{Content: "- old user", SourceMessageCount: 0, UpdatedAt: &staleUser},
-		ProjectMemory:       chat.ProjectMemory{ProjectID: projectID, Content: "old project", UpdatedAt: &staleProject},
-		Messages:            []chat.Message{{Role: chat.RoleUser, Content: "fresh activity"}},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "old project", UpdatedAt: &staleProject}, 50,
+		chat.Message{ID: "m1", ThreadID: "thr_1", Role: chat.RoleUser, Content: "I moved to Zurich", CreatedAt: time.Now().Add(-time.Hour)})
 	w := &MemoryWorker{s: &server{
 		thread: store,
 		users:  fakeUserStore{user: testUser, ok: true},
-		llm:    fakeChatClient{ProjectMemory: "REGENERATED"},
+		llm:    fakeChatClient{ProjectMemory: "REGENERATED", FactOps: addOp("personal", "Lives Zurich")},
 	}}
 
 	w.runOnce(context.Background())
 
-	if store.UserMemory.Content != "REGENERATED" {
-		t.Fatalf("user memory = %q, want regenerated by the sweep", store.UserMemory.Content)
+	if len(store.Facts) != 1 || store.Facts[0].Content != "Lives Zurich" {
+		t.Fatalf("facts = %+v, want the new message folded in by the sweep", store.Facts)
 	}
 	if store.ProjectMemory.Content != "REGENERATED" {
 		t.Fatalf("project memory = %q, want regenerated by the sweep", store.ProjectMemory.Content)
@@ -209,17 +157,14 @@ func TestMemoryWorker_safely_RecoversPanic(t *testing.T) {
 // return at once and the next due check picks up the fresh counters.
 func TestRefreshMemoryIfDue_SingleFlightPerScope(t *testing.T) {
 	stale := time.Now().Add(-25 * time.Hour)
-	store := &fakeThreadStore{
-		UserMessageCount: 50,
-		UserMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 0, UpdatedAt: &stale},
-		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "I moved to Zurich"}},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "- prior", UpdatedAt: &stale}, 50,
+		chat.Message{Role: chat.RoleUser, Content: "Moved the trip to June"})
 	entered := make(chan struct{}, 8)
 	gate := make(chan struct{})
 	var calls atomic.Int32
 	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- REGENERATED", MemoryEntered: entered, MemoryGate: gate, MemoryCalls: &calls}}
 	refresh := func() error {
-		return s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), memoryUserRefreshAge)
+		return s.refreshMemoryIfDue(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project), memoryProjectDebounce)
 	}
 
 	first := make(chan error, 1)
@@ -250,8 +195,8 @@ func TestRefreshMemoryIfDue_SingleFlightPerScope(t *testing.T) {
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("GenerateMemory calls = %d, want 1", got)
 	}
-	if store.UserMemory.Content != "- REGENERATED" {
-		t.Fatalf("memory = %q, want regenerated once", store.UserMemory.Content)
+	if store.ProjectMemory.Content != "- REGENERATED" {
+		t.Fatalf("memory = %q, want regenerated once", store.ProjectMemory.Content)
 	}
 }
 
@@ -260,21 +205,18 @@ func TestRefreshMemoryIfDue_SingleFlightPerScope(t *testing.T) {
 // refresh ran until the old number was exceeded again.
 func TestRefreshMemoryIfDue_RefreshesWhenCountDropped(t *testing.T) {
 	stale := time.Now().Add(-25 * time.Hour)
-	store := &fakeThreadStore{
-		UserMessageCount: 6,
-		UserMemory:       chat.UserMemory{Content: "- prior", SourceMessageCount: 10, UpdatedAt: &stale},
-		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "still here"}},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "- prior", SourceMessageCount: 10, UpdatedAt: &stale}, 6,
+		chat.Message{Role: chat.RoleUser, Content: "still here"})
 	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- REGENERATED"}}
 
-	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), memoryUserRefreshAge); err != nil {
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project), memoryProjectDebounce); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
-	if store.UserMemory.Content != "- REGENERATED" {
-		t.Fatalf("memory = %q, want regenerated after the count dropped", store.UserMemory.Content)
+	if store.ProjectMemory.Content != "- REGENERATED" {
+		t.Fatalf("memory = %q, want regenerated after the count dropped", store.ProjectMemory.Content)
 	}
-	if store.UserMemory.SourceMessageCount != 6 {
-		t.Fatalf("SourceMessageCount = %d, want the current count 6", store.UserMemory.SourceMessageCount)
+	if store.ProjectMemory.SourceMessageCount != 6 {
+		t.Fatalf("SourceMessageCount = %d, want the current count 6", store.ProjectMemory.SourceMessageCount)
 	}
 }
 
@@ -282,15 +224,12 @@ func TestRefreshMemoryIfDue_RefreshesWhenCountDropped(t *testing.T) {
 // the stale prior that may describe the deleted conversations; with nothing
 // left it is cleared.
 func TestRefreshMemoryIfDue_DeletionsRebuildWithoutThePrior(t *testing.T) {
-	store := &fakeThreadStore{
-		UserMessageCount: 2,
-		UserMemory:       chat.UserMemory{Content: "- stale", SourceMessageCount: 60},
-		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "- stale", SourceMessageCount: 60}, 2,
+		chat.Message{Role: chat.RoleUser, Content: "hi"})
 	priors := make(chan string, 1)
 	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- fresh", MemoryPriors: priors}}
 
-	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
 	if got := <-priors; got != "" {
@@ -299,24 +238,21 @@ func TestRefreshMemoryIfDue_DeletionsRebuildWithoutThePrior(t *testing.T) {
 	if store.ListLimit != 2 {
 		t.Fatalf("list limit = %d, want the whole remaining transcript (2)", store.ListLimit)
 	}
-	if store.UserMemory.Content != "- fresh" || store.UserMemory.SourceMessageCount != 2 {
-		t.Fatalf("stored memory = %+v, want the rebuilt one over 2 messages", store.UserMemory)
+	if store.ProjectMemory.Content != "- fresh" || store.ProjectMemory.SourceMessageCount != 2 {
+		t.Fatalf("stored memory = %+v, want the rebuilt one over 2 messages", store.ProjectMemory)
 	}
 }
 
 func TestRefreshMemoryIfDue_EverythingDeletedClearsTheMemory(t *testing.T) {
 	var calls atomic.Int32
-	store := &fakeThreadStore{
-		UserMessageCount: 0,
-		UserMemory:       chat.UserMemory{Content: "- stale", SourceMessageCount: 60},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "- stale", SourceMessageCount: 60}, 0)
 	s := &server{thread: store, llm: fakeChatClient{MemoryCalls: &calls}}
 
-	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
-	if store.UserMemory.Content != "" || store.UserMemory.SourceMessageCount != 0 {
-		t.Fatalf("stored memory = %+v, want cleared", store.UserMemory)
+	if store.ProjectMemory.Content != "" || store.ProjectMemory.SourceMessageCount != 0 {
+		t.Fatalf("stored memory = %+v, want cleared", store.ProjectMemory)
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("GenerateMemory calls = %d, want 0 (nothing to summarise)", calls.Load())
@@ -327,15 +263,12 @@ func TestRefreshMemoryIfDue_EverythingDeletedClearsTheMemory(t *testing.T) {
 // a deletion: rebuilding from the newest messages alone would lose everything
 // older than the window.
 func TestRefreshMemoryIfDue_DeletionInLongHistoryKeepsThePrior(t *testing.T) {
-	store := &fakeThreadStore{
-		UserMessageCount: memoryRebuildLimit + 50,
-		UserMemory:       chat.UserMemory{Content: "- long-term", SourceMessageCount: memoryRebuildLimit + 60},
-		Messages:         []chat.Message{{Role: chat.RoleUser, Content: "hi"}},
-	}
+	store := projectStore(chat.ProjectMemory{Content: "- long-term", SourceMessageCount: memoryRebuildLimit + 60}, memoryRebuildLimit+50,
+		chat.Message{Role: chat.RoleUser, Content: "hi"})
 	priors := make(chan string, 1)
 	s := &server{thread: store, llm: fakeChatClient{ProjectMemory: "- folded", MemoryPriors: priors}}
 
-	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.userMemoryScope(testUser), 0); err != nil {
+	if err := s.refreshMemoryIfDue(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project), 0); err != nil {
 		t.Fatalf("refreshMemoryIfDue() error: %v", err)
 	}
 	if got := <-priors; got != "- long-term" {

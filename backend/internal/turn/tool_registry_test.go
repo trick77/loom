@@ -48,7 +48,7 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 		{Type: "function", Function: llm.ToolFunction{Name: "create_text_file"}},
 	}
 	mcpNames := []string{"fetch__fetch", tavilySearchExposedName, "obscura__browser_navigate"}
-	core := []string{"conversation_search", "read_thread", "remember_user_directive", "forget_user_directive", "update_user_directive"}
+	core := []string{"conversation_search", "read_thread", "remember_user_directive", "forget_user_directive", "update_user_directive", "remember_user_fact", "update_user_fact", "forget_user_fact"}
 	docs := []string{"create_text_file", "create_pdf_file", "create_xlsx_file", "create_docx_file", "create_pptx_presentation"}
 	project := "p1"
 	docgenOn := newToolGate(string(classifier.Coding), "", "")

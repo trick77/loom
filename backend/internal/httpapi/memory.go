@@ -39,12 +39,12 @@ const (
 	memoryProjectDebounce = 15 * time.Minute
 )
 
-// memoryScope describes one memory's storage and generation so the project and
-// user memories share a single refresh/generate mechanism. Each scope closes
-// over its user (and, for projects, its project), supplying scope-specific
-// storage access, the generation header, and the system prompt.
+// memoryScope describes one text-blob memory's storage and generation (project
+// memory; user memory is facts, see user_memory.go). A scope closes over its
+// user and project, supplying storage access, the generation header, and the
+// system prompt.
 type memoryScope struct {
-	name         string // for logs, e.g. "project" / "user"
+	name         string // for logs, e.g. "project"
 	key          string // single-flight key, unique per stored memory, e.g. "project:<id>"
 	purpose      string // inference metadata purpose
 	header       string // generation header block (e.g. project name/description)
@@ -54,10 +54,6 @@ type memoryScope struct {
 	upsert func(ctx context.Context, content string, sourceCount int) error
 	count  func(ctx context.Context) (int, error)
 	list   func(ctx context.Context, limit int) ([]chat.Message, error)
-	// exclusions optionally returns content the generator must NOT duplicate into
-	// the memory (the user's explicit standing instructions, for the user scope).
-	// nil — or a "" result — means no exclusions (e.g. project memory).
-	exclusions func(ctx context.Context) (string, error)
 }
 
 // refreshMemoryIfDue runs an incremental refresh when the gate is met. It is the
@@ -135,18 +131,8 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 	if strings.TrimSpace(transcript) == "" {
 		return nil
 	}
-	var excluded string
-	if scope.exclusions != nil {
-		// Best-effort: dedup against the user's standing instructions, but never
-		// fail the refresh just because the exclusion list couldn't be loaded.
-		if ex, err := scope.exclusions(ctx); err != nil {
-			slog.Warn("load memory exclusions failed", "scope", scope.name, "err", err)
-		} else {
-			excluded = ex
-		}
-	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
-	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, excluded, scope.systemPrompt, user.ResponseLanguageName())
+	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, "", scope.systemPrompt, user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}

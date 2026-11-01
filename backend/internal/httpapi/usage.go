@@ -10,16 +10,14 @@ import (
 )
 
 // usageResponse is the GET /api/me/usage payload: the user's lifetime counters
-// plus live (non-counter) user-memory facts — current length, when it was last
-// refreshed, how much of the message history it has folded in, and the rolling
-// refresh window so the UI can show a refresh ETA without hardcoding it.
+// plus live (non-counter) user-memory values — how many facts it holds (and
+// how many are long-term), when it was last refreshed, and the rolling refresh
+// window so the UI can show a refresh ETA without hardcoding it.
 type usageResponse struct {
 	usage.Totals
-	UserMemoryLength             int     `json:"userMemoryLength"`
-	UserMemoryMax                int     `json:"userMemoryMax"`
+	UserFactsCount               int     `json:"userFactsCount"`
+	UserFactsLongTerm            int     `json:"userFactsLongTerm"`
 	UserMemoryUpdatedAt          *string `json:"userMemoryUpdatedAt"`
-	UserMemorySourceMessages     int     `json:"userMemorySourceMessages"`
-	UserMemoryTotalMessages      int     `json:"userMemoryTotalMessages"`
 	UserMemoryRefreshWindowHours int     `json:"userMemoryRefreshWindowHours"`
 	// Other instructions (user-steered directives) budget usage.
 	UserDirectivesCount  int `json:"userDirectivesCount"`
@@ -43,24 +41,23 @@ func (s *server) handleGetUsage(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := usageResponse{
 		Totals:                       totals,
-		UserMemoryMax:                chat.MaxUserMemoryLength,
 		UserMemoryRefreshWindowHours: int(memoryUserRefreshAge.Hours()),
 		UserDirectivesMax:            chat.MaxUserDirectivesTotalLength,
 	}
-	// Live values, not counters: the current memory's length (runes), how many
-	// messages it was last folded from, when it was last refreshed, and the user's
-	// current total message count (so the UI can show coverage + a refresh ETA).
+	// Live values, not counters: the fact counts and when the last refresh ran
+	// (so the UI can show a refresh ETA).
 	if s.thread != nil {
-		if mem, ok, err := s.thread.GetUserMemory(r.Context(), user.ID); err == nil && ok {
-			resp.UserMemoryLength = len([]rune(mem.Content))
-			resp.UserMemorySourceMessages = mem.SourceMessageCount
-			if mem.UpdatedAt != nil {
-				updated := mem.UpdatedAt.UTC().Format(time.RFC3339)
-				resp.UserMemoryUpdatedAt = &updated
+		if facts, err := s.thread.ListActiveUserFacts(r.Context(), user.ID); err == nil {
+			resp.UserFactsCount = len(facts)
+			for _, f := range facts {
+				if f.Durable {
+					resp.UserFactsLongTerm++
+				}
 			}
 		}
-		if total, err := s.thread.CountUserMessages(r.Context(), user.ID); err == nil {
-			resp.UserMemoryTotalMessages = total
+		if cursor, ok, err := s.thread.GetUserFactCursor(r.Context(), user.ID); err == nil && ok && cursor.LastRefreshAt != nil {
+			updated := cursor.LastRefreshAt.UTC().Format(time.RFC3339)
+			resp.UserMemoryUpdatedAt = &updated
 		}
 		if directives, err := s.thread.ListUserDirectives(r.Context(), user.ID); err == nil {
 			resp.UserDirectivesCount = len(directives)

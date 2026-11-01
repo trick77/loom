@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/trick77/loom/internal/sqlutil"
 )
@@ -50,60 +49,6 @@ ON CONFLICT(user_id) DO UPDATE SET
 	}
 	memory, _, err := s.GetUserMemory(ctx, userID)
 	return memory, err
-}
-
-// CountUserMessages returns the total number of messages across every thread the
-// user owns (project-bound or not). It gates the background memory refresh.
-func (s *Store) CountUserMessages(ctx context.Context, userID string) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-SELECT COUNT(*)
-FROM messages
-WHERE user_id = ?`,
-		userID,
-	).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("count user messages: %w", err)
-	}
-	return count, nil
-}
-
-// ListUserMessages returns the user's most recent messages across all threads
-// (chronological order), capped at limit. Used for the full memory rebuild; the
-// cap keeps the rebuild bounded so it never loads the entire history.
-// Only the transcript fields are loaded (see transcriptColumns).
-func (s *Store) ListUserMessages(ctx context.Context, userID string, limit int) ([]Message, error) {
-	if limit <= 0 {
-		limit = MemoryRebuildLimit
-	}
-	rows, err := s.db.QueryContext(ctx, `
-SELECT `+transcriptColumnsM+`
-FROM messages m
-WHERE m.user_id = ?
-ORDER BY m.created_at DESC, m.rowid DESC
-LIMIT ?`,
-		userID, limit,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("list user messages: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	messages := make([]Message, 0)
-	for rows.Next() {
-		message, err := scanTranscriptMessage(rows)
-		if err != nil {
-			return nil, fmt.Errorf("scan user message: %w", err)
-		}
-		messages = append(messages, message)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate user messages: %w", err)
-	}
-	// Fetched newest-first to apply the cap; reverse to chronological so the
-	// summary reads the conversation in order.
-	slices.Reverse(messages)
-	return messages, nil
 }
 
 func scanUserMemory(row rowScanner) (UserMemory, error) {

@@ -85,28 +85,22 @@ type ProjectMemory struct {
 // never blow up the prompt; generation is asked to stay well under this.
 const MaxProjectMemoryLength = 3000
 
-// UserMemory is a compact, auto-generated digest about the user that is injected
-// into every chat the user has — project-bound or not — so the assistant stays
-// personalized. It is organized into work/personal context, what's top of mind,
-// and a time-layered brief history (recent months, earlier context, long-term
-// background). Like ProjectMemory it is re-summarized (not appended) so it stays
-// small and bounded, and it is read-only: the user steers behavior through the
-// separate UserDirective layer, not by editing this blob.
+// UserMemory is the old user memory: one sectioned text blob, rewritten on every
+// refresh. User memory is now one row per fact (UserFact); the blob is only
+// read once, by the conversion into facts, and no longer written by loom.
 type UserMemory struct {
 	Content string `json:"content"`
-	// SourceMessageCount records the total user message count at the last
-	// refresh; it gates the background auto-refresh (see CountUserMessages).
+	// SourceMessageCount is the user's message count at the blob's last refresh.
 	SourceMessageCount int        `json:"-"`
 	UpdatedAt          *time.Time `json:"updatedAt"`
 }
 
-// MaxUserMemoryLength hard-caps the stored user memory. It is also the budget the
-// generation prompt divides across the memory's sections (see UserMemorySystemPrompt).
+// MaxUserMemoryLength hard-caps a stored user memory blob.
 const MaxUserMemoryLength = 10000
 
-// MemoryRebuildLimit caps how many recent messages a blob-memory refresh reads,
-// so it never loads the entire history. It is also the fallback limit of the
-// transcript list queries.
+// MemoryRebuildLimit caps how many recent messages a project memory refresh
+// reads, so it never loads the entire history. It is also the fallback limit
+// of ListProjectMessages.
 const MemoryRebuildLimit = 400
 
 // MaxUserDirectivesTotalLength caps the combined length (in runes) of all of a

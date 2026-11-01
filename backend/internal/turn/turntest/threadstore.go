@@ -3,6 +3,7 @@ package turntest
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strconv"
 	"time"
 
@@ -42,7 +43,15 @@ type ThreadStore struct {
 	// the auto-description summarizes and the count the refresh gate compares against.
 	ProjectThreadTitles []string
 	UserMemory          chat.UserMemory
-	UserMessageCount    int
+	// Facts, ForgottenFacts and FactCursor back the user fact stubs;
+	// FactBatches and Merges record what a refresh applied.
+	Facts          []chat.UserFact
+	ForgottenFacts []string
+	FactCursor     *chat.UserFactCursor
+	FactBatches    []chat.UserFactBatch
+	Merges         []chat.UserFactOp
+	ApplyFactsErr  error
+	FactWriteErr   error
 	// UserDirectives backs the directive store stubs; ordered as inserted.
 	UserDirectives []chat.UserDirective
 	// DirectiveWriteErr, when set, is returned by AddUserDirective /
@@ -395,21 +404,131 @@ func (f *ThreadStore) GetUserMemory(context.Context, string) (chat.UserMemory, b
 	return f.UserMemory, true, nil
 }
 
-// UpsertUserMemory replaces UserMemory.
-func (f *ThreadStore) UpsertUserMemory(_ context.Context, _ string, content string, sourceMessageCount int) (chat.UserMemory, error) {
-	f.UserMemory = chat.UserMemory{Content: content, SourceMessageCount: sourceMessageCount}
-	return f.UserMemory, nil
+// ListActiveUserFacts returns Facts.
+func (f *ThreadStore) ListActiveUserFacts(context.Context, string) ([]chat.UserFact, error) {
+	return append([]chat.UserFact(nil), f.Facts...), nil
 }
 
-// CountUserMessages returns UserMessageCount.
-func (f *ThreadStore) CountUserMessages(context.Context, string) (int, error) {
-	return f.UserMessageCount, nil
+// ListForgottenUserFacts returns ForgottenFacts.
+func (f *ThreadStore) ListForgottenUserFacts(context.Context, string) ([]string, error) {
+	return append([]string(nil), f.ForgottenFacts...), nil
 }
 
-// ListUserMessages records limit in ListLimit and returns Messages.
-func (f *ThreadStore) ListUserMessages(_ context.Context, _ string, limit int) ([]chat.Message, error) {
+// ApplyUserFactBatch records the batch, appends its valid adds to Facts, drops
+// ForgottenFacts on PurgeForgotten, and stores the cursor. Op semantics are the
+// real store's job (chat tests); this fake only lets httpapi tests see what a
+// refresh sent.
+func (f *ThreadStore) ApplyUserFactBatch(_ context.Context, userID string, batch chat.UserFactBatch) (chat.UserFactApplyResult, error) {
+	if f.ApplyFactsErr != nil {
+		return chat.UserFactApplyResult{}, f.ApplyFactsErr
+	}
+	f.FactBatches = append(f.FactBatches, batch)
+	var res chat.UserFactApplyResult
+	for _, op := range batch.Ops {
+		if op.Kind != chat.FactOpAdd {
+			continue
+		}
+		f.Facts = append(f.Facts, chat.UserFact{ID: "fact_" + strconv.Itoa(len(f.Facts)), UserID: userID, Category: op.Category,
+			Content: op.Content, Durable: op.Durable, Origin: batch.Origin, FirstSeen: batch.SeenAt, LastSeen: batch.SeenAt})
+		res.Added++
+	}
+	if batch.PurgeForgotten {
+		f.ForgottenFacts = nil
+	}
+	if batch.Cursor != nil {
+		c := *batch.Cursor
+		now := time.Now()
+		c.LastRefreshAt = &now
+		if f.FactCursor != nil {
+			c.LastConsolidatedAt = f.FactCursor.LastConsolidatedAt
+		}
+		f.FactCursor = &c
+	}
+	return res, nil
+}
+
+// MergeUserFacts records the merge in Merges.
+func (f *ThreadStore) MergeUserFacts(_ context.Context, _ string, ids []string, content string) (bool, error) {
+	f.Merges = append(f.Merges, chat.UserFactOp{Kind: "merge", Content: content, Threads: ids})
+	return true, nil
+}
+
+// GetUserFactCursor returns FactCursor, if set.
+func (f *ThreadStore) GetUserFactCursor(context.Context, string) (chat.UserFactCursor, bool, error) {
+	if f.FactCursor == nil {
+		return chat.UserFactCursor{}, false, nil
+	}
+	return *f.FactCursor, true, nil
+}
+
+// MarkUserFactsConsolidated stamps FactCursor.
+func (f *ThreadStore) MarkUserFactsConsolidated(context.Context, string) error {
+	now := time.Now()
+	if f.FactCursor == nil {
+		f.FactCursor = &chat.UserFactCursor{}
+	}
+	f.FactCursor.LastConsolidatedAt = &now
+	return nil
+}
+
+// ListUserMessagesAfter returns the Messages after the cursor by (created_at,
+// id) and settled by settledBefore, oldest first, up to limit.
+func (f *ThreadStore) ListUserMessagesAfter(_ context.Context, _, afterCreatedAt, afterID string, settledBefore time.Time, limit int) ([]chat.Message, error) {
 	f.ListLimit = limit
-	return append([]chat.Message(nil), f.Messages...), nil
+	var out []chat.Message
+	for _, m := range f.Messages {
+		at := m.CreatedAt.UTC().Format(time.DateTime)
+		if at < afterCreatedAt || (at == afterCreatedAt && m.ID <= afterID) || m.CreatedAt.After(settledBefore) {
+			continue
+		}
+		out = append(out, m)
+		if len(out) == limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+// AddUserFact appends a tool-written fact to Facts.
+func (f *ThreadStore) AddUserFact(_ context.Context, userID, _, category, content string, durable bool) (chat.UserFact, error) {
+	if f.FactWriteErr != nil {
+		return chat.UserFact{}, f.FactWriteErr
+	}
+	now := time.Now()
+	fact := chat.UserFact{ID: "fact_" + strconv.Itoa(len(f.Facts)), UserID: userID, Category: category, Content: content,
+		Durable: durable, Origin: chat.FactOriginTool, FirstSeen: now, LastSeen: now}
+	f.Facts = append(f.Facts, fact)
+	return fact, nil
+}
+
+// UpdateUserFact rewrites a fact in Facts.
+func (f *ThreadStore) UpdateUserFact(_ context.Context, _, _, id, content string) (chat.UserFact, bool, error) {
+	if f.FactWriteErr != nil {
+		return chat.UserFact{}, false, f.FactWriteErr
+	}
+	for i, fact := range f.Facts {
+		if fact.ID == id {
+			f.Facts[i].Content = content
+			return f.Facts[i], true, nil
+		}
+	}
+	return chat.UserFact{}, false, nil
+}
+
+// ForgetUserFacts moves matching facts from Facts to ForgottenFacts.
+func (f *ThreadStore) ForgetUserFacts(_ context.Context, _ string, ids []string) ([]chat.UserFact, error) {
+	var forgotten []chat.UserFact
+	kept := f.Facts[:0]
+	for _, fact := range f.Facts {
+		if slices.Contains(ids, fact.ID) {
+			forgotten = append(forgotten, fact)
+			f.ForgottenFacts = append(f.ForgottenFacts, fact.Content)
+			continue
+		}
+		kept = append(kept, fact)
+	}
+	f.Facts = kept
+	return forgotten, nil
 }
 
 // ListUserDirectives implements turn.ThreadStore.
