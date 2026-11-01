@@ -486,6 +486,59 @@ export const de = {
     codeRuns: "Python-Ausführungen",
     threadsCreated: "Erstellte Threads",
     projectsCreated: "Erstellte Projekte",
+    appleMusic: {
+      title: "Apple Music",
+      description:
+        "Verbinde dein Apple-Music-Konto, damit loom deine Playlists lesen kann.",
+      connected: "Verbunden",
+      playlists_one: "{{count}} Playlist",
+      playlists_other: "{{count}} Playlists",
+      lastChecked: "zuletzt geprüft {{when}}",
+      expired:
+        "Dein Token ist abgelaufen. Füge unten einen neuen ein, um dich wieder zu verbinden.",
+      never: "Noch nicht verbunden.",
+      errorUpstream:
+        "Die letzte Prüfung ist fehlgeschlagen: Apple Music hat mit einem Fehler geantwortet oder war nicht erreichbar. Versuche es später mit «Jetzt prüfen».",
+      errorBridge:
+        "Apple hat etwas geändert, auf das loom für Apple Music angewiesen ist. Die Anbindung braucht ein Update. Dein Token ist in Ordnung.",
+      tokenLabel: "media-user-token",
+      tokenPlaceholder: "Token hier einfügen",
+      save: "Speichern",
+      saving: "Wird gespeichert…",
+      checkNow: "Jetzt prüfen",
+      checking: "Wird geprüft…",
+      disconnect: "Trennen",
+      disconnecting: "Wird getrennt…",
+      rejected:
+        "Apple hat diesen Token abgelehnt. Dein bisheriger Token bleibt aktiv.",
+      rejectedFirst:
+        "Apple hat diesen Token abgelehnt. Kopiere einen frischen und versuche es erneut.",
+      rejectedStale:
+        "Apple hat diesen Token abgelehnt. Der gespeicherte bleibt, funktioniert aber auch nicht: Kopiere einen frischen und versuche es erneut.",
+      malformed:
+        "Das sieht nicht nach einem media-user-token aus. Füge nur den Wert des Cookies ein.",
+      unavailable:
+        "Apple Music ist gerade nicht erreichbar. Versuche es später erneut.",
+      sidecarDown:
+        "Der Apple-Music-Dienst von loom läuft gerade nicht. Versuche es später erneut.",
+      storage:
+        "Der Server konnte den Token nicht speichern. Es wurde nichts geändert; bitte den Admin, den Speicher des Dienstes zu prüfen.",
+      config:
+        "Der Apple-Music-Dienst von loom ist falsch konfiguriert. Bitte den Admin, die Token-Einstellung zu prüfen.",
+      loadFailed: "Apple-Music-Status konnte nicht geladen werden.",
+      saveFailed: "Token konnte nicht gespeichert werden. Versuche es erneut.",
+      checkFailed: "Token konnte nicht geprüft werden. Versuche es erneut.",
+      disconnectFailed:
+        "Verbindung konnte nicht getrennt werden. Versuche es erneut.",
+      helpTitle: "So findest du deinen Token",
+      step1: "Öffne music.apple.com und melde dich an.",
+      step2: "Öffne die Entwicklerwerkzeuge deines Browsers.",
+      step3:
+        "Gehe zu Application (Safari: Speicher) → Cookies → https://music.apple.com.",
+      step4: "Kopiere den Wert von media-user-token und füge ihn unten ein.",
+      privacy:
+        "Der Token bleibt auf dem Server, wird nur zum Lesen deiner Playlists verwendet und nie wieder angezeigt.",
+    },
   },
   chats: {
     title: "Threads",

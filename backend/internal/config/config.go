@@ -129,6 +129,14 @@ type Config struct {
 	// ObscuraMCPToken is the sidecar's OBSCURA_MCP_TOKEN, sent as a bearer
 	// token; required with ObscuraMCPURL (minObscuraMCPToken).
 	ObscuraMCPToken string
+	// TunewireURL is the loom-tunewire sidecar (Apple Music); empty keeps it
+	// off. TunewireToken is its TUNEWIRE_TOKEN (minTunewireToken), required
+	// with the URL. TunewireUser is the one loom user id that owns it: the
+	// sidecar holds ONE person's Apple Music token, which only its owner may
+	// read, replace or disconnect. Catalog search is open to every user.
+	TunewireURL   string
+	TunewireToken string
+	TunewireUser  string
 	// SandboxURL is the loom-sandbox sidecar that runs run_python; empty keeps
 	// the tool off. SandboxToken authenticates loom to it, SandboxTimeout caps
 	// one job.
@@ -277,6 +285,9 @@ func Load() (Config, error) {
 		TavilyAPIKey:            r.String("BACKEND_TAVILY_API_KEY", ""),
 		ObscuraMCPURL:           r.String("BACKEND_OBSCURA_MCP_URL", ""),
 		ObscuraMCPToken:         r.String("BACKEND_OBSCURA_MCP_TOKEN", ""),
+		TunewireURL:             r.String("BACKEND_TUNEWIRE_URL", ""),
+		TunewireToken:           r.String("BACKEND_TUNEWIRE_TOKEN", ""),
+		TunewireUser:            r.String("BACKEND_TUNEWIRE_USER", ""),
 		SandboxURL:              r.String("BACKEND_SANDBOX_URL", ""),
 		SandboxToken:            r.String("BACKEND_SANDBOX_TOKEN", ""),
 		MCPServersFile:          r.String("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
@@ -343,6 +354,9 @@ func Load() (Config, error) {
 	// does not even start, so say which setting is missing before boot waits on it.
 	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" && len(cfg.ObscuraMCPToken) < minObscuraMCPToken {
 		r.Fail("BACKEND_OBSCURA_MCP_TOKEN must be at least %d characters when BACKEND_OBSCURA_MCP_URL is set: obscura refuses MCP without it (openssl rand -hex 32)", minObscuraMCPToken)
+	}
+	if msg := tunewireProblem(cfg); msg != "" {
+		r.Fail("%s", msg)
 	}
 	cfg.SessionTTL = r.Duration("BACKEND_SESSION_TTL", defaultSessionTTL)
 	if cfg.SessionTTL <= 0 {
@@ -478,6 +492,29 @@ func loadSandbox(cfg *Config) {
 		cfg.SandboxTimeout = maxSandboxTimeout
 		cfg.SandboxProblem = problem
 	}
+}
+
+// minTunewireToken is the sidecar's own floor for TUNEWIRE_TOKEN.
+const minTunewireToken = 32
+
+// tunewireProblem says what is wrong with a configured tunewire sidecar. It
+// fails boot: a half-set sidecar would hold a personal Apple Music token with
+// no clear owner.
+func tunewireProblem(cfg Config) string {
+	if strings.TrimSpace(cfg.TunewireURL) == "" {
+		return ""
+	}
+	switch {
+	case !isAbsoluteHTTPURL(cfg.TunewireURL):
+		return "BACKEND_TUNEWIRE_URL must be an absolute http(s) URL"
+	case len(cfg.TunewireToken) < minTunewireToken:
+		return fmt.Sprintf("BACKEND_TUNEWIRE_TOKEN must be at least %d characters when BACKEND_TUNEWIRE_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minTunewireToken)
+	case cfg.TunewireUser == "":
+		return "BACKEND_TUNEWIRE_USER must name the loom user id whose Apple Music token the sidecar holds when BACKEND_TUNEWIRE_URL is set"
+	case strings.ContainsAny(cfg.TunewireUser, ", \t"):
+		return "BACKEND_TUNEWIRE_USER takes exactly one loom user id: the sidecar holds one person's Apple Music token, never a shared one"
+	}
+	return ""
 }
 
 func sandboxProblem(cfg *Config) string {

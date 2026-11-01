@@ -1971,7 +1971,10 @@ export function ThreadShell({
       )}
       {settingsOpen && (
         <Suspense fallback={null}>
-          <SettingsModal onClose={closeSettings} />
+          <SettingsModal
+            onClose={closeSettings}
+            appleMusic={user.appleMusic === true}
+          />
         </Suspense>
       )}
       {slashCommand !== null && (

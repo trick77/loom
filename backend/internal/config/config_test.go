@@ -186,6 +186,38 @@ func TestLoad_obscuraURLNeedsToken(t *testing.T) {
 	}
 }
 
+func TestLoad_tunewire(t *testing.T) {
+	const token = "tunewire-token-0123456789abcdef0123"
+	requiredEnv(t)
+	t.Setenv("BACKEND_TUNEWIRE_URL", "http://tunewire:8060")
+	t.Setenv("BACKEND_TUNEWIRE_TOKEN", token)
+	t.Setenv("BACKEND_TUNEWIRE_USER", " usr_1 ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.TunewireURL != "http://tunewire:8060" || cfg.TunewireToken != token || cfg.TunewireUser != "usr_1" {
+		t.Fatalf("tunewire config = %q %q %q", cfg.TunewireURL, cfg.TunewireToken, cfg.TunewireUser)
+	}
+
+	for name, tc := range map[string]struct{ url, token, user, want string }{
+		"bad url":     {"tunewire:8060", token, "usr_1", "BACKEND_TUNEWIRE_URL must be an absolute http(s) URL"},
+		"short token": {"http://tunewire:8060", "short", "usr_1", "BACKEND_TUNEWIRE_TOKEN must be at least 32 characters"},
+		"no owner":    {"http://tunewire:8060", token, " ", "BACKEND_TUNEWIRE_USER must name"},
+		"two owners":  {"http://tunewire:8060", token, "usr_1,usr_2", "BACKEND_TUNEWIRE_USER takes exactly one"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			requiredEnv(t)
+			t.Setenv("BACKEND_TUNEWIRE_URL", tc.url)
+			t.Setenv("BACKEND_TUNEWIRE_TOKEN", tc.token)
+			t.Setenv("BACKEND_TUNEWIRE_USER", tc.user)
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Load() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoad_obscuraTokenNotNeededWithoutURL(t *testing.T) {
 	requiredEnv(t)
 	if _, err := Load(); err != nil {
@@ -571,6 +603,9 @@ func requiredEnv(t *testing.T) {
 	// Cleared: a shell that sourced .env.example sets the URL without a token.
 	t.Setenv("BACKEND_OBSCURA_MCP_URL", "")
 	t.Setenv("BACKEND_OBSCURA_MCP_TOKEN", "")
+	t.Setenv("BACKEND_TUNEWIRE_URL", "")
+	t.Setenv("BACKEND_TUNEWIRE_TOKEN", "")
+	t.Setenv("BACKEND_TUNEWIRE_USER", "")
 	model, _ := anyChatModel(t)
 	t.Setenv("BACKEND_CHAT_MODEL", model)
 }

@@ -30,6 +30,11 @@ services:
       # optional (set the same BACKEND_SANDBOX_TOKEN for both services).
       BACKEND_SANDBOX_URL: "http://sandbox:8070"
       BACKEND_SANDBOX_TOKEN: "${BACKEND_SANDBOX_TOKEN:-}"
+      # Apple Music sidecar (docs/tunewire.md), opt-in: COMPOSE_PROFILES=tunewire
+      # plus BACKEND_TUNEWIRE_URL=http://tunewire:8060 and _USER (the one owner)
+      # in .env. BACKEND_TUNEWIRE_TOKEN comes in through env_file.
+      BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"
+      BACKEND_TUNEWIRE_USER: "${BACKEND_TUNEWIRE_USER:-}"
       BACKEND_OIDC_ISSUER: "${BACKEND_OIDC_ISSUER}"
       BACKEND_OIDC_CLIENT_ID: "${BACKEND_OIDC_CLIENT_ID}"
       BACKEND_OIDC_CLIENT_SECRET: "${BACKEND_OIDC_CLIENT_SECRET}"
@@ -199,6 +204,41 @@ services:
       - sandbox
     labels:
       traefik.enable: "false"
+
+  tunewire:
+    # Apple Music for loom (docs/tunewire.md): the user's playlists and catalog
+    # search over MCP. Holds one person's media-user-token in its volume, so
+    # every route needs TUNEWIRE_TOKEN. Opt-in via the profile; loom does not
+    # depend on it: a dead sidecar only costs its tools.
+    image: ghcr.io/trick77/loom-tunewire:latest
+    profiles: ["tunewire"]
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TUNEWIRE_TOKEN: "${BACKEND_TUNEWIRE_TOKEN:-}"
+      TUNEWIRE_STOREFRONT: "${TUNEWIRE_STOREFRONT:-ch}"
+    volumes:
+      - tunewire-data:/data
+    healthcheck:
+      test: ["CMD", "/loom-tunewire", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+    # The loom network: reachable from loom only, with egress to Apple.
+    networks:
+      - loom
+    labels:
+      traefik.enable: "false"
+
+volumes:
+  # The image's /data belongs to 65532, so a fresh volume does too.
+  tunewire-data:
 
 networks:
   loom:

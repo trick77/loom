@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+# Apple Music sidecar for loom (docs/tunewire.md). Build from the repository root:
+#   docker build -f tunewire/Containerfile -t loom-tunewire .
+
+FROM golang:1.27-alpine AS build
+WORKDIR /app/backend
+COPY backend/go.mod backend/go.sum ./
+COPY backend/cmd/loom-tunewire/ ./cmd/loom-tunewire/
+# ship release passes the release version. go build fetches only the modules
+# this binary imports (kit), not all of loom's.
+ARG VERSION=dev
+RUN --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=${VERSION}" -o /out/loom-tunewire ./cmd/loom-tunewire \
+    && mkdir -p /out/data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/loom-tunewire /loom-tunewire
+# /data holds the token file. Owned by the nonroot uid 65532 here, so a fresh
+# named volume mounted on it starts with that owner too.
+COPY --from=build --chown=65532:65532 /out/data /data
+USER 65532:65532
+EXPOSE 8060
+ENTRYPOINT ["/loom-tunewire"]
+CMD ["serve"]

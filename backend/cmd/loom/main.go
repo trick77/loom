@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,7 @@ import (
 	"github.com/trick77/loom/internal/sandbox"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/store"
+	"github.com/trick77/loom/internal/tunewire"
 	"github.com/trick77/loom/internal/usage"
 	"github.com/trick77/loom/web"
 )
@@ -259,6 +261,8 @@ func runServer() error {
 		DocTools:                   docTools,
 		ImageTools:                 imageTools,
 		Sandbox:                    sandboxRunner,
+		AppleMusic:                 appleMusicService(cfg),
+		AppleMusicOwner:            cfg.TunewireUser,
 		ImageDefaultModel:          cfg.ImageGenModel,
 		ImageGenTypographyModel:    cfg.ImageGenTypographyModel,
 		UsersDir:                   cfg.UsersDir,
@@ -439,9 +443,28 @@ func chatClientConfigFromConfig(cfg config.Config) llm.Config {
 	}
 }
 
+// appleMusicService is the tunewire sidecar's token routes for the settings
+// page; nil (section hidden) when the sidecar is off. A nil *tunewire.Client
+// must not reach the interface, or the nil check in httpapi would pass.
+func appleMusicService(cfg config.Config) httpapi.AppleMusicService {
+	if strings.TrimSpace(cfg.TunewireURL) == "" {
+		return nil
+	}
+	return tunewire.New(cfg.TunewireURL, cfg.TunewireToken)
+}
+
+// The loom-tunewire sidecar's two MCP servers: the user's Apple Music library
+// (restricted to its owner, BACKEND_TUNEWIRE_USER) and catalog search (every
+// user).
+const (
+	tunewireLibraryServer = "tunewire"
+	tunewireCatalogServer = "applemusic"
+)
+
 // toolServerConfig splits MCP servers by discovery policy: Required servers are
 // the curated built-ins loom's boot depends on (discovery failure is fatal);
-// FileServers come from the optional JSON file and are discovered best-effort.
+// FileServers are discovered best-effort: the optional JSON file's, plus the
+// built-ins loom boots without (ServerConfig.BuiltIn, e.g. loom-tunewire).
 type toolServerConfig struct {
 	Required    mcp.Config
 	FileServers mcp.Config
@@ -481,10 +504,29 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 		return toolServerConfig{}, err
 	}
 	out := toolServerConfig{Required: required, FileServers: mcp.Config{Servers: map[string]mcp.ServerConfig{}}}
+	// loom-tunewire is best-effort, like the sandbox: a dead Apple Music
+	// sidecar costs its tools, never boot. Entries in the file still win.
+	if strings.TrimSpace(cfg.TunewireURL) != "" {
+		out.FileServers.Servers[tunewireLibraryServer] = mcp.TunewireLibraryServerConfig(cfg.TunewireURL, cfg.TunewireToken, []string{cfg.TunewireUser})
+		out.FileServers.Servers[tunewireCatalogServer] = mcp.TunewireCatalogServerConfig(cfg.TunewireURL, cfg.TunewireToken)
+	}
 	for name, server := range fileServers {
 		if _, exists := required.Servers[name]; exists {
 			slog.Warn("MCP servers file overrides built-in server", "server", name)
 			delete(required.Servers, name)
+		}
+		if existing, ok := out.FileServers.Servers[name]; ok && existing.BuiltIn {
+			slog.Warn("MCP servers file overrides built-in server", "server", name)
+			// The override replaces the endpoint, never the owner: a built-in
+			// that reads one person's data keeps its users, whatever the file
+			// says, so the tools and the settings page (which owns the token)
+			// always agree on who that is.
+			if existing.RestrictUsers {
+				if server.RestrictUsers && !slices.Equal(server.Users, existing.Users) {
+					slog.Warn("MCP servers file sets users for a personal built-in; its owner stays", "server", name)
+				}
+				server.RestrictUsers, server.Users = true, existing.Users
+			}
 		}
 		out.FileServers.Servers[name] = server
 	}

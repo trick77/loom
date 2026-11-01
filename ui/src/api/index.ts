@@ -15,3 +15,4 @@ export * from "./stream";
 export * from "./user";
 export * from "./mcp";
 export * from "./schedules";
+export * from "./appleMusic";

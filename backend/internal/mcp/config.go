@@ -65,6 +65,10 @@ type ServerConfig struct {
 	// prompt while its tools are offered. Off by default: a third-party server
 	// could change them at any refresh.
 	TrustInstructions bool `json:"trustInstructions"`
+	// BuiltIn marks one of loom's own servers that is discovered best-effort
+	// (a sidecar loom must boot without): status labels it built-in, not
+	// file-defined.
+	BuiltIn bool `json:"-"`
 	// PDFExtractor, for the in-process fetch server only, turns a fetched PDF
 	// into text outside the backend process. Nil leaves PDFs unextracted.
 	PDFExtractor PDFExtractor `json:"-"`
@@ -148,6 +152,35 @@ func FetchServerConfig(pdf PDFExtractor) ServerConfig {
 		Transport:    TransportInProcess,
 		Tools:        []string{"fetch"},
 		PDFExtractor: pdf,
+	}
+}
+
+// TunewireLibraryServerConfig is the loom-tunewire sidecar's library endpoint:
+// one person's Apple Music playlists behind the token the sidecar holds, so
+// only users may call it (an empty list serves nobody). Loom's own sidecar:
+// its instructions are trusted.
+func TunewireLibraryServerConfig(baseURL, token string, users []string) ServerConfig {
+	return ServerConfig{
+		Transport:         TransportStreamableHTTP,
+		URL:               strings.TrimRight(baseURL, "/") + "/mcp/library",
+		Headers:           map[string]string{"Authorization": "Bearer " + token},
+		RestrictUsers:     true,
+		Users:             users,
+		TrustInstructions: true,
+		BuiltIn:           true,
+	}
+}
+
+// TunewireCatalogServerConfig is the sidecar's catalog search: Apple Music
+// links for songs, albums and artists. It reads no personal data, so every
+// user gets it.
+func TunewireCatalogServerConfig(baseURL, token string) ServerConfig {
+	return ServerConfig{
+		Transport:         TransportStreamableHTTP,
+		URL:               strings.TrimRight(baseURL, "/") + "/mcp/catalog",
+		Headers:           map[string]string{"Authorization": "Bearer " + token},
+		TrustInstructions: true,
+		BuiltIn:           true,
 	}
 }
 

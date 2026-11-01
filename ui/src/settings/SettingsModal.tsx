@@ -2,24 +2,46 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Icon, type IconName } from "../chat/Icon";
+import { AppleMusicPanel } from "./AppleMusicPanel";
 import { SharedChatsPanel } from "./SharedChatsPanel";
 import { UsagePanel } from "./UsagePanel";
 import { useEscapeKey } from "../chat/useEscapeKey";
 
-type SettingsSection = "usage" | "shares";
+type SettingsSection = "usage" | "shares" | "appleMusic";
 
-const SECTIONS: { id: SettingsSection; labelKey: string; icon: IconName }[] = [
+const SECTIONS: {
+  id: SettingsSection;
+  labelKey: string;
+  icon: IconName;
+  // Shown only to users the server allows the feature (`/api/me` appleMusic).
+  appleMusicOnly?: boolean;
+}[] = [
   { id: "usage", labelKey: "settings.usage", icon: "sliders" },
   { id: "shares", labelKey: "settings.sharedChats", icon: "upload" },
+  {
+    id: "appleMusic",
+    labelKey: "settings.appleMusic.title",
+    icon: "volume",
+    appleMusicOnly: true,
+  },
 ];
 
 /**
- * SettingsModal — centered overlay modal with a left nav (Usage, Shared chats).
- * There is deliberately no search box (per design).
+ * SettingsModal — centered overlay modal with a left nav (Usage, Shared chats,
+ * Apple Music when allowed). There is deliberately no search box (per design).
  */
-export function SettingsModal({ onClose }: { onClose(): void }) {
+export function SettingsModal({
+  onClose,
+  appleMusic = false,
+}: {
+  onClose(): void;
+  appleMusic?: boolean;
+}) {
   const { t } = useTranslation();
   const [section, setSection] = useState<SettingsSection>("usage");
+  const sections = SECTIONS.filter(
+    (entry) => appleMusic || !entry.appleMusicOnly,
+  );
 
   useEscapeKey(onClose);
 
@@ -39,7 +61,7 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
           <div className="px-2 pb-2 pt-1 text-xs font-medium uppercase tracking-wide text-[#807d74]">
             {t("settings.title")}
           </div>
-          {SECTIONS.map((entry) => (
+          {sections.map((entry) => (
             <button
               key={entry.id}
               className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors ${
@@ -65,7 +87,9 @@ export function SettingsModal({ onClose }: { onClose(): void }) {
           >
             <Icon name="close" size="18px" />
           </button>
-          {section === "usage" ? <UsagePanel /> : <SharedChatsPanel />}
+          {section === "usage" && <UsagePanel />}
+          {section === "shares" && <SharedChatsPanel />}
+          {section === "appleMusic" && <AppleMusicPanel />}
         </div>
       </div>
     </div>
