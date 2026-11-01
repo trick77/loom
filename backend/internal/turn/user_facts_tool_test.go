@@ -32,7 +32,7 @@ func TestUserFactTools_RememberUpdateForget(t *testing.T) {
 	}
 
 	s.addUserFactDigest(ctx, "alice", "thr_1", map[string]any{"category": "work", "content": "Works at Acme"})
-	out = s.forgetUserFactDigest(ctx, "alice", map[string]any{"ids": []any{id, fake.Facts[1].ID, "ghost"}})
+	out = s.forgetUserFactDigest(ctx, "alice", map[string]any{"ids": []any{id, fake.Facts[1].ID, "ghost", id}})
 	if !strings.Contains(out, "Forgot 2 fact(s)") || !strings.Contains(out, "Lives Zurich") || !strings.Contains(out, "Works at Acme") || !strings.Contains(out, "1 id(s) matched no saved fact") {
 		t.Fatalf("forget output must list exactly what went:\n%s", out)
 	}

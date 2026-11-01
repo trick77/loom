@@ -399,3 +399,23 @@ func TestSortUserFactsAndBuckets(t *testing.T) {
 		t.Fatalf("order = %s, want %s", strings.Join(got, ","), want)
 	}
 }
+
+// A converted add backdates last_seen into its bucket but keeps first_seen at
+// the conversion, so one later mention cannot fake months of reinforcement.
+func TestApplyUserFactBatch_ConvertedKeepsFirstSeenAtConversion(t *testing.T) {
+	store, _, userID := newFactStore(t)
+	conversion := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	back := conversion.Add(-200 * 24 * time.Hour)
+	applyBatch(t, store, userID, UserFactBatch{Origin: FactOriginConverted, SeenAt: conversion, Ops: []UserFactOp{
+		{Kind: FactOpAdd, Category: FactCategoryWork, Content: "Old project", SeenAt: back},
+	}})
+	f := activeFacts(t, store, userID)[0]
+	if !f.FirstSeen.Equal(conversion) || !f.LastSeen.Equal(back) {
+		t.Fatalf("first/last = %v / %v, want %v / %v", f.FirstSeen, f.LastSeen, conversion, back)
+	}
+	thread := newThread(t, store, userID)
+	applyBatch(t, store, userID, UserFactBatch{SeenAt: conversion.Add(7 * 24 * time.Hour), Threads: []string{thread}, Ops: []UserFactOp{{Kind: FactOpReinforce, ID: f.ID}}})
+	if activeFacts(t, store, userID)[0].Durable {
+		t.Fatalf("one mention a week after conversion promoted a faded fact to long-term")
+	}
+}

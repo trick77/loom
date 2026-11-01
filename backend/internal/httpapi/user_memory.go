@@ -133,7 +133,7 @@ func fitRenderCeiling(sorted []chat.UserFact) []chat.UserFact {
 		total -= factLineRunes(f)
 	}
 	kept := slices.DeleteFunc(slices.Clone(sorted), func(f chat.UserFact) bool { return drop[f.ID] })
-	slog.Warn("user facts over the render ceiling; least recently seen left out of the prompt",
+	slog.Debug("user facts over the render ceiling; least recently seen left out of the prompt",
 		"facts", len(sorted), "dropped", len(drop), "ceiling", userFactsRenderCeiling)
 	return kept
 }
@@ -208,29 +208,31 @@ func (s *server) refreshUserFactsIfDue(ctx context.Context, user auth.User, minA
 }
 
 // applyUserFactsShrinking applies a batch, halving it while the model's reply
-// is cut off by the token cap, so a dense backlog still makes progress instead
-// of retrying the same oversized batch every sweep. It returns the advanced
-// cursor and how many of messages were folded in.
+// is cut off or malformed, so a dense backlog still makes progress instead of
+// retrying the same batch every sweep. A single message that still fails is
+// skipped (logged), so one message can never freeze the user's memory. It
+// returns the advanced cursor and how many of messages were folded in.
 func (s *server) applyUserFactsShrinking(ctx context.Context, user auth.User, messages []chat.Message) (chat.UserFactCursor, int, error) {
 	n := len(messages)
 	for {
-		// Only a batch that reaches the newest message may purge forgotten
-		// facts: an older backlog batch must keep them as "do not re-add".
-		drains := n == len(messages) && len(messages) < chat.UserFactBatchLimit
-		cursor, used, err := s.applyUserFactsBatch(ctx, user, messages[:n], drains)
-		if errors.Is(err, llm.ErrMemoryTruncated) && n > 1 {
+		cursor, used, err := s.applyUserFactsBatch(ctx, user, messages[:n], false)
+		if !isFactRefreshSkippable(err) {
+			return cursor, used, err
+		}
+		if n > 1 {
 			n /= 2
 			continue
 		}
-		return cursor, used, err
+		slog.Warn("user facts: skipping a message the model cannot fold in", "user_id", user.ID, "message_id", messages[0].ID, "err", err)
+		return s.applyUserFactsBatch(ctx, user, messages[:1], true)
 	}
 }
 
 // applyUserFactsBatch folds one batch of messages in and returns the advanced
-// cursor and how many messages it used. drains says the batch ends at the
-// newest message; only then are forgotten facts purged.
-func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messages []chat.Message, drains bool) (chat.UserFactCursor, int, error) {
-	transcript, labels, used := factsTranscript(messages)
+// cursor and how many messages it used. skip advances the cursor past the
+// messages without asking the model.
+func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messages []chat.Message, skip bool) (chat.UserFactCursor, int, error) {
+	transcript, labels, dates, used := factsTranscript(messages)
 	last := messages[used-1]
 	cursor := chat.UserFactCursor{LastCreatedAt: last.CreatedAt.UTC().Format(time.DateTime), LastMessageID: last.ID}
 
@@ -238,17 +240,21 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 	if err != nil {
 		return cursor, 0, err
 	}
-	forgottenAt := time.Now()
 	forgotten, err := s.thread.ListForgottenUserFacts(ctx, user.ID)
 	if err != nil {
 		return cursor, 0, err
 	}
-	var purgeBefore *time.Time
-	if len(forgotten) > 0 && drains && used == len(messages) {
-		purgeBefore = &forgottenAt
-	}
 	var ops []chat.UserFactOp
-	if strings.TrimSpace(transcript) != "" {
+	var purgeBefore *time.Time
+	if !skip && strings.TrimSpace(transcript) != "" {
+		// The model sees the forgotten list with these messages, so facts
+		// forgotten before the last of them may go: the forget request (and
+		// the turn around it) is in this or an earlier batch. A fact forgotten
+		// later, in messages not read yet, stays on the list.
+		if len(forgotten) > 0 {
+			cutoff := last.CreatedAt
+			purgeBefore = &cutoff
+		}
 		var excluded string
 		if directives, err := s.thread.ListUserDirectives(ctx, user.ID); err != nil {
 			slog.Warn("load directives for user facts failed", "err", err)
@@ -262,7 +268,7 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 		if err != nil {
 			return cursor, 0, err
 		}
-		ops = toFactOps(replyOps, labels)
+		ops = toFactOps(replyOps, labels, dates)
 	}
 	threads := make([]string, 0, len(labels))
 	for _, id := range labels {
@@ -301,7 +307,13 @@ func (s *server) convertUserMemory(ctx context.Context, user auth.User) (chat.Us
 		return chat.UserFactCursor{}, err
 	}
 	if !ok || strings.TrimSpace(memory.Content) == "" || memory.UpdatedAt == nil {
-		return chat.UserFactCursor{LastCreatedAt: time.Now().Add(-userFactsBackfill).UTC().Format(time.DateTime)}, nil
+		// Store the backfill start right away: a cursor written later (by the
+		// merge pass, say) would otherwise start from the very first message.
+		cursor := chat.UserFactCursor{LastCreatedAt: time.Now().Add(-userFactsBackfill).UTC().Format(time.DateTime)}
+		if _, err := s.thread.ApplyUserFactBatch(ctx, user.ID, chat.UserFactBatch{Origin: chat.FactOriginExtracted, SeenAt: time.Now(), Cursor: &cursor}); err != nil {
+			return chat.UserFactCursor{}, err
+		}
+		return cursor, nil
 	}
 	var ops []chat.UserFactOp
 	for _, section := range memorySections(memory.Content) {
@@ -309,15 +321,23 @@ func (s *server) convertUserMemory(ctx context.Context, user auth.User) (chat.Us
 		inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_memory_convert", Round: 1}
 		replyOps, err := s.llm.ConvertUserMemory(llm.WithInferenceMetadata(lctx, inference), section.text, user.ResponseLanguageName())
 		cancel()
+		if isFactRefreshSkippable(err) {
+			// One section the model cannot convert must not block the rest
+			// forever; its facts are lost, the others convert.
+			slog.Warn("user memory conversion: skipping a section", "user_id", user.ID, "section", section.heading, "err", err)
+			continue
+		}
 		if err != nil {
 			return chat.UserFactCursor{}, fmt.Errorf("convert user memory: %w", err)
 		}
-		seen, durable := sectionAge(section.heading, *memory.UpdatedAt)
-		for _, op := range toFactOps(replyOps, nil) {
+		seen, durable, known := sectionAge(section.heading, *memory.UpdatedAt)
+		for _, op := range toFactOps(replyOps, nil, nil) {
 			if op.Kind != chat.FactOpAdd {
 				continue // conversion only adds
 			}
-			op.Durable = durable
+			if known {
+				op.Durable = durable
+			}
 			op.SeenAt = seen
 			ops = append(ops, op)
 		}
@@ -371,16 +391,25 @@ func memorySections(content string) []memorySection {
 // sectionAge maps an old memory section to the age its facts start with:
 // identity sections are long-term, the time layers are dated back into their
 // bucket (Recent months under 180 days, Earlier context past it).
-func sectionAge(heading string, updated time.Time) (time.Time, bool) {
+//
+// The old memory was written in the user's language, so German headings are
+// recognised too. known is false for a heading neither matches: the model's
+// own long_term choice then stands.
+func sectionAge(heading string, updated time.Time) (seen time.Time, durable, known bool) {
+	has := func(words ...string) bool {
+		return slices.ContainsFunc(words, func(w string) bool { return strings.Contains(heading, w) })
+	}
 	switch {
-	case strings.Contains(heading, "long-term"), strings.Contains(heading, "work context"), strings.Contains(heading, "personal context"):
-		return updated, true
-	case strings.Contains(heading, "recent months"):
-		return updated.Add(-60 * 24 * time.Hour), false
-	case strings.Contains(heading, "earlier context"):
-		return updated.Add(-200 * 24 * time.Hour), false
+	case has("long-term", "work context", "personal context", "langfrist", "arbeit", "beruf", "persönlich"):
+		return updated, true, true
+	case has("recent months", "monate"):
+		return updated.Add(-60 * 24 * time.Hour), false, true
+	case has("earlier context", "früher"):
+		return updated.Add(-200 * 24 * time.Hour), false, true
+	case has("top of mind", "fokus", "aktuell"):
+		return updated, false, true
 	default:
-		return updated, false
+		return updated, false, false
 	}
 }
 
@@ -399,6 +428,12 @@ func (s *server) consolidateUserFactsIfDue(ctx context.Context, user auth.User, 
 		defer cancel()
 		inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_memory_consolidate", Round: 1}
 		merges, err := s.llm.ConsolidateUserFacts(llm.WithInferenceMetadata(lctx, inference), factInputs(facts), user.ResponseLanguageName())
+		if isFactRefreshSkippable(err) {
+			// A merge reply that does not fit or parse would fail the same way
+			// every sweep: skip this week's pass instead of retrying hourly.
+			slog.Warn("user facts: merge pass skipped until next week", "user_id", user.ID, "facts", len(facts), "err", err)
+			return s.thread.MarkUserFactsConsolidated(ctx, user.ID)
+		}
 		if err != nil {
 			return fmt.Errorf("consolidate user facts: %w", err)
 		}
@@ -423,7 +458,7 @@ func (s *server) consolidateUserFactsIfDue(ctx context.Context, user auth.User, 
 // one) and returns the label -> thread id map and how many messages it used.
 // Tool messages are skipped but still count as used, so the cursor moves past
 // them.
-func factsTranscript(messages []chat.Message) (string, map[string]string, int) {
+func factsTranscript(messages []chat.Message) (string, map[string]string, map[string]time.Time, int) {
 	type group struct {
 		label string
 		lines []string
@@ -432,6 +467,7 @@ func factsTranscript(messages []chat.Message) (string, map[string]string, int) {
 	var order []*group
 	byThread := map[string]*group{}
 	labels := map[string]string{}
+	dates := map[string]time.Time{} // label -> its newest message in the batch
 	size, used := 0, 0
 	for _, m := range messages {
 		content := strings.TrimSpace(m.Content)
@@ -454,6 +490,7 @@ func factsTranscript(messages []chat.Message) (string, map[string]string, int) {
 			labels[g.label] = m.ThreadID
 		}
 		g.lines = append(g.lines, line)
+		dates[g.label] = m.CreatedAt
 		size += len([]rune(line))
 		used++
 	}
@@ -461,7 +498,7 @@ func factsTranscript(messages []chat.Message) (string, map[string]string, int) {
 	for _, g := range order {
 		fmt.Fprintf(&b, "### %s (%s)\n%s\n\n", g.label, g.date.UTC().Format(time.DateOnly), strings.Join(g.lines, "\n\n"))
 	}
-	return strings.TrimSpace(b.String()), labels, max(used, 1)
+	return strings.TrimSpace(b.String()), labels, dates, max(used, 1)
 }
 
 func factInputs(facts []chat.UserFact) []llm.FactInput {
@@ -475,7 +512,9 @@ func factInputs(facts []chat.UserFact) []llm.FactInput {
 // toFactOps maps the model's ops onto store ops, turning thread labels into
 // thread ids. Unknown labels are ignored; an op left with none falls back to
 // every thread of the batch.
-func toFactOps(replyOps []llm.FactOp, labels map[string]string) []chat.UserFactOp {
+// The op is dated by the newest message of its threads in the batch, so a fact
+// stated weeks before the batch's last message is not dated as yesterday.
+func toFactOps(replyOps []llm.FactOp, labels map[string]string, dates map[string]time.Time) []chat.UserFactOp {
 	ops := make([]chat.UserFactOp, 0, len(replyOps))
 	for _, o := range replyOps {
 		op := chat.UserFactOp{
@@ -485,6 +524,9 @@ func toFactOps(replyOps []llm.FactOp, labels map[string]string) []chat.UserFactO
 		for _, label := range o.Threads {
 			if id, ok := labels[label]; ok {
 				op.Threads = append(op.Threads, id)
+				if d := dates[label]; d.After(op.SeenAt) {
+					op.SeenAt = d
+				}
 			}
 		}
 		ops = append(ops, op)

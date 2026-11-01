@@ -95,7 +95,8 @@ type UserMemory struct {
 	UpdatedAt          *time.Time `json:"updatedAt"`
 }
 
-// MaxUserMemoryLength hard-caps a stored user memory blob.
+// MaxUserMemoryLength is the largest old memory blob the conversion reads, and
+// the budget of the old design's prompt in the replay eval's baseline.
 const MaxUserMemoryLength = 10000
 
 // MemoryRebuildLimit caps how many recent messages a project memory refresh

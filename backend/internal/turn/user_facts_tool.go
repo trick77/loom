@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/trick77/loom/internal/chat"
@@ -144,6 +145,9 @@ func (s *Engine) forgetUserFactDigest(ctx context.Context, userID string, args m
 			ids = append(ids, strings.TrimSpace(id))
 		}
 	}
+	// A repeated id is one fact, not one forgotten and one missing.
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
 	if len(ids) == 0 {
 		return "tool failed: ids is required."
 	}

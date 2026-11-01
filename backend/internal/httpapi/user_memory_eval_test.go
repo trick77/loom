@@ -202,7 +202,7 @@ func (r *evalReport) addRecall(ctx context.Context, t *testing.T, judge *llmwire
 	}
 	missed := 0
 	if len(untouched) > 0 {
-		transcript, _, _ := factsTranscript(d.messages)
+		transcript, _, _, _ := factsTranscript(d.messages)
 		ids, err := judgeIDs(ctx, judge, model,
 			"Which of these facts about the user do the messages below mention, rely on, or confirm again (even in passing)? Output ONLY {\"ids\":[...]}.",
 			factList(untouched)+"\nMessages:\n"+transcript)

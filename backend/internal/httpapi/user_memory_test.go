@@ -216,18 +216,41 @@ func TestRefreshUserFacts_DebouncedUnlessAFullBatchWaits(t *testing.T) {
 	}
 }
 
-func TestRefreshUserFacts_FailedExtractionKeepsCursor(t *testing.T) {
+// A transient failure keeps the cursor: the next sweep retries the batch.
+func TestRefreshUserFacts_TransientFailureKeepsCursor(t *testing.T) {
 	store := &fakeThreadStore{
 		FactCursor: &chat.UserFactCursor{LastMessageID: "m0"},
 		Messages:   []chat.Message{msg("m1", "thr_a", "hi", time.Now().Add(-time.Hour))},
 	}
-	s := &server{thread: store, llm: fakeChatClient{FactErr: llm.ErrMemoryTruncated}}
-	err := s.refreshUserFactsIfDue(context.Background(), testUser, 0)
-	if !errors.Is(err, llm.ErrMemoryTruncated) || !isFactRefreshSkippable(err) {
-		t.Fatalf("err = %v, want the truncation surfaced as skippable", err)
+	transient := errors.New("connection reset")
+	s := &server{thread: store, llm: fakeChatClient{FactErr: transient}}
+	if err := s.refreshUserFactsIfDue(context.Background(), testUser, 0); !errors.Is(err, transient) || isFactRefreshSkippable(err) {
+		t.Fatalf("err = %v, want the transient error, not skippable", err)
 	}
 	if len(store.FactBatches) != 0 || store.FactCursor.LastMessageID != "m0" {
 		t.Fatalf("a failed extraction applied or moved the cursor")
+	}
+}
+
+// A single message the model can never fold in (cut off or malformed every
+// time) is skipped, so it cannot freeze the user's memory for good.
+func TestRefreshUserFacts_UnfoldableMessageIsSkipped(t *testing.T) {
+	for _, failure := range []error{llm.ErrMemoryTruncated, llm.ErrFactReplyMalformed} {
+		store := &fakeThreadStore{
+			FactCursor:     &chat.UserFactCursor{LastMessageID: "m0"},
+			ForgottenFacts: []string{"Works at Acme"},
+			Messages:       []chat.Message{msg("m1", "thr_a", "hi", time.Now().Add(-time.Hour))},
+		}
+		s := &server{thread: store, llm: fakeChatClient{FactErr: failure}}
+		if err := s.refreshUserFactsIfDue(context.Background(), testUser, 0); err != nil {
+			t.Fatalf("%v: err = %v, want the message skipped", failure, err)
+		}
+		if store.FactCursor.LastMessageID != "m1" || len(store.FactBatches[0].Ops) != 0 {
+			t.Fatalf("%v: cursor %q, ops %d; want past the message with nothing applied", failure, store.FactCursor.LastMessageID, len(store.FactBatches[0].Ops))
+		}
+		if store.FactBatches[0].PurgeForgottenBefore != nil {
+			t.Fatalf("%v: a skipped batch purged forgotten facts the model never saw", failure)
+		}
 	}
 }
 
@@ -380,9 +403,10 @@ func TestRefreshUserFacts_HalvesATruncatedBatch(t *testing.T) {
 	}
 }
 
-// Forgotten facts are purged only by the batch that reaches the newest
-// message: an older backlog batch still needs them as do-not-re-add.
-func TestRefreshUserFacts_PurgesForgottenOnlyWhenDrained(t *testing.T) {
+// A batch purges only facts forgotten before its own last message: an older
+// backlog batch keeps a newer forget on the list, and the 60s settle window
+// can never drop the list before the forget turn has been read.
+func TestRefreshUserFacts_PurgeCutoffIsTheBatchsLastMessage(t *testing.T) {
 	var messages []chat.Message
 	base := time.Now().Add(-2 * time.Hour)
 	for i := range chat.UserFactBatchLimit + 1 {
@@ -396,9 +420,14 @@ func TestRefreshUserFacts_PurgesForgottenOnlyWhenDrained(t *testing.T) {
 	if len(store.FactBatches) != 2 {
 		t.Fatalf("batches = %d, want 2", len(store.FactBatches))
 	}
-	if store.FactBatches[0].PurgeForgottenBefore != nil || store.FactBatches[1].PurgeForgottenBefore == nil {
-		t.Fatalf("purge flags = %v / %v, want only the draining batch to purge",
-			store.FactBatches[0].PurgeForgottenBefore, store.FactBatches[1].PurgeForgottenBefore)
+	first, second := store.FactBatches[0].PurgeForgottenBefore, store.FactBatches[1].PurgeForgottenBefore
+	if first == nil || !first.Equal(messages[chat.UserFactBatchLimit-1].CreatedAt) {
+		t.Fatalf("first batch cutoff = %v, want its last message's date", first)
+	}
+	// The fake drops the forgotten list after the first purge, so the second
+	// batch has nothing left to purge.
+	if second != nil {
+		t.Fatalf("second batch cutoff = %v, want none once the list is empty", second)
 	}
 }
 
@@ -426,7 +455,7 @@ func TestFactsTranscript_BudgetAndToolMessages(t *testing.T) {
 	for i := range 60 {
 		messages = append(messages, msg(string(rune('A'+i)), "a", big, at))
 	}
-	transcript, labels, used := factsTranscript(messages)
+	transcript, labels, _, used := factsTranscript(messages)
 	if used >= len(messages) || used < 2 {
 		t.Fatalf("used = %d of %d, want the budget to stop the batch early", used, len(messages))
 	}
@@ -471,4 +500,72 @@ func TestUserFactsWriteEndpointsDoNotExist(t *testing.T) {
 			t.Fatalf("%s /api/me/facts = %d, want no write endpoint", method, rec.Code)
 		}
 	}
+}
+
+// A new user's backfill start is stored at once: a cursor written later by the
+// merge pass must not reset it to the start of the history.
+func TestRefreshUserFacts_BackfillCursorIsStored(t *testing.T) {
+	store := &fakeThreadStore{Messages: []chat.Message{msg("old", "thr_a", "ancient", time.Now().Add(-400*24*time.Hour))}}
+	s := &server{thread: store, llm: fakeChatClient{}}
+	if err := s.refreshUserFactsIfDue(context.Background(), testUser, 0); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if store.FactCursor == nil || store.FactCursor.LastCreatedAt == "" {
+		t.Fatalf("cursor = %+v, want the backfill start stored", store.FactCursor)
+	}
+}
+
+func TestSectionAge_GermanHeadingsAndUnknown(t *testing.T) {
+	updated := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		heading        string
+		durable, known bool
+		back           time.Duration
+	}{
+		{"arbeitskontext", true, true, 0},
+		{"persönlicher kontext", true, true, 0},
+		{"langfristiger hintergrund", true, true, 0},
+		{"letzte monate", false, true, 60 * 24 * time.Hour},
+		{"früherer kontext", false, true, 200 * 24 * time.Hour},
+		{"something else", false, false, 0},
+	} {
+		seen, durable, known := sectionAge(tc.heading, updated)
+		if durable != tc.durable || known != tc.known || !seen.Equal(updated.Add(-tc.back)) {
+			t.Fatalf("%q = %v %v %v, want %v %v -%v", tc.heading, seen, durable, known, tc.durable, tc.known, tc.back)
+		}
+	}
+}
+
+// Each op is dated by the newest message of its own threads, not the batch's.
+func TestToFactOps_DatesByTheOpsThreads(t *testing.T) {
+	early := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	late := early.Add(80 * 24 * time.Hour)
+	ops := toFactOps([]llm.FactOp{{Op: "add", Threads: []string{"T1"}}, {Op: "add"}},
+		map[string]string{"T1": "thr_a", "T2": "thr_b"}, map[string]time.Time{"T1": early, "T2": late})
+	if !ops[0].SeenAt.Equal(early) || !ops[1].SeenAt.IsZero() {
+		t.Fatalf("seen = %v / %v, want T1's date and the batch default", ops[0].SeenAt, ops[1].SeenAt)
+	}
+}
+
+// A merge reply that cannot fit or parse skips this week's pass instead of
+// retrying it every hourly sweep.
+func TestConsolidate_UnparseableReplySkipsTheWeek(t *testing.T) {
+	var facts []chat.UserFact
+	for i := range userFactsConsolidateMin {
+		facts = append(facts, fact(string(rune('a'+i)), "work", "fact", false, time.Now()))
+	}
+	store := &fakeThreadStore{FactCursor: &chat.UserFactCursor{}, Facts: facts}
+	s := &server{thread: store, llm: malformedMerges{}}
+	if err := s.consolidateUserFactsIfDue(context.Background(), testUser, chat.UserFactCursor{}); err != nil {
+		t.Fatalf("consolidate: %v", err)
+	}
+	if store.FactCursor.LastConsolidatedAt == nil {
+		t.Fatalf("a failed merge pass must still be stamped")
+	}
+}
+
+type malformedMerges struct{ fakeChatClient }
+
+func (malformedMerges) ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error) {
+	return nil, llm.ErrFactReplyMalformed
 }

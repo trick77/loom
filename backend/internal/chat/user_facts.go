@@ -87,8 +87,11 @@ type UserFactOp struct {
 	Durable      bool
 	SupersededBy string
 	Threads      []string
-	// SeenAt, when set on an add, overrides the batch's SeenAt: the one-time
-	// conversion dates each old memory section by how old it was.
+	// SeenAt, when set, is the op's own message date in place of the batch's:
+	// the new last_seen of an add, update or reinforce, and the first_seen of
+	// an extracted add. A converted add keeps first_seen at the batch's
+	// SeenAt (the conversion), so backdating an old section moves it into
+	// its bucket without faking months of reinforcement.
 	SeenAt time.Time
 }
 

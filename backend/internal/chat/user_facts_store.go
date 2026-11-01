@@ -112,14 +112,15 @@ func (s *Store) ApplyUserFactBatch(ctx context.Context, userID string, batch Use
 			continue
 		}
 		id := sqlutil.NewID()
-		addSeen := seen
-		if !op.SeenAt.IsZero() {
-			addSeen = formatFactTime(op.SeenAt)
+		last := opSeen(op, seen)
+		first := last
+		if batch.Origin == FactOriginConverted {
+			first = seen
 		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO user_facts (id, user_id, category, content, durable, origin, first_seen, last_seen)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, userID, op.Category, content, op.Durable, batch.Origin, addSeen, addSeen,
+			id, userID, op.Category, content, op.Durable, batch.Origin, first, last,
 		); err != nil {
 			return res, fmt.Errorf("apply user facts: add: %w", err)
 		}
@@ -149,14 +150,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 				}
 				if _, err := tx.ExecContext(ctx, `
 UPDATE user_facts SET content = ?, last_seen = MAX(last_seen, ?), updated_at = datetime('now')
-WHERE user_id = ? AND id = ?`, content, seen, userID, op.ID); err != nil {
+WHERE user_id = ? AND id = ?`, content, opSeen(op, seen), userID, op.ID); err != nil {
 					return res, fmt.Errorf("apply user facts: update: %w", err)
 				}
 				res.Updated++
 			} else {
 				if _, err := tx.ExecContext(ctx, `
 UPDATE user_facts SET last_seen = MAX(last_seen, ?), updated_at = datetime('now')
-WHERE user_id = ? AND id = ?`, seen, userID, op.ID); err != nil {
+WHERE user_id = ? AND id = ?`, opSeen(op, seen), userID, op.ID); err != nil {
 					return res, fmt.Errorf("apply user facts: reinforce: %w", err)
 				}
 				res.Reinforced++
@@ -520,6 +521,14 @@ SELECT ?, ?, id FROM threads WHERE user_id = ? AND id = ?`,
 		}
 	}
 	return nil
+}
+
+// opSeen is the op's own date when it has one, else the batch's.
+func opSeen(op UserFactOp, batchSeen string) string {
+	if op.SeenAt.IsZero() {
+		return batchSeen
+	}
+	return formatFactTime(op.SeenAt)
 }
 
 func opThreads(op UserFactOp, batch UserFactBatch) []string {
