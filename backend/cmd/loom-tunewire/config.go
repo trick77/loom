@@ -1,10 +1,10 @@
 package main
 
 import (
-	"errors"
-	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/trick77/ship/kit/env"
 )
 
 const (
@@ -26,29 +26,29 @@ type config struct {
 	storefront string
 }
 
+// loadConfig reads TUNEWIRE_* through kit's env reader: trimmed, empty is
+// unset, like loom's side of the same token.
 func loadConfig(getenv func(string) string) (config, error) {
-	or := func(key, def string) string {
-		if v := strings.TrimSpace(getenv(key)); v != "" {
-			return v
-		}
-		return def
-	}
+	r := env.New(getenv)
 	cfg := config{
-		addr:       or("TUNEWIRE_ADDR", defaultAddr),
-		token:      getenv("TUNEWIRE_TOKEN"),
-		data:       or("TUNEWIRE_DATA", defaultDataDir),
-		storefront: strings.ToLower(or("TUNEWIRE_STOREFRONT", defaultStorefront)),
+		addr:       r.String("TUNEWIRE_ADDR", defaultAddr),
+		token:      r.String("TUNEWIRE_TOKEN", ""),
+		data:       r.String("TUNEWIRE_DATA", defaultDataDir),
+		storefront: strings.ToLower(r.String("TUNEWIRE_STOREFRONT", defaultStorefront)),
 	}
 	// Required, unlike the sandbox's: this sidecar holds a personal Apple
 	// Music token, and nothing on the network may read with it unasked.
 	if len(cfg.token) < minTokenLen {
-		return config{}, fmt.Errorf("TUNEWIRE_TOKEN must be at least %d characters (openssl rand -hex 32)", minTokenLen)
+		r.Fail("TUNEWIRE_TOKEN must be at least %d characters (openssl rand -hex 32)", minTokenLen)
 	}
-	if strings.ContainsFunc(cfg.token, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
-		return config{}, errors.New("TUNEWIRE_TOKEN must not contain whitespace or control characters")
+	if strings.ContainsFunc(cfg.token, func(c rune) bool { return c <= ' ' || c == 0x7f }) {
+		r.Fail("TUNEWIRE_TOKEN must not contain whitespace or control characters")
 	}
 	if !storefrontRe.MatchString(cfg.storefront) {
-		return config{}, fmt.Errorf("TUNEWIRE_STOREFRONT must be a two-letter country code, got %q", cfg.storefront)
+		r.Fail("TUNEWIRE_STOREFRONT must be a two-letter country code, got %q", cfg.storefront)
+	}
+	if err := r.Err(); err != nil {
+		return config{}, err
 	}
 	return cfg, nil
 }

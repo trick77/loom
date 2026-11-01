@@ -56,6 +56,8 @@ var (
 var (
 	ErrNoBundle = errors.New("webtoken: the player page links no index bundle")
 	ErrNoToken  = errors.New("webtoken: the bundle holds no valid AMPWebPlay token")
+	// ErrStillRefused: the bundle still ships the token Apple refused.
+	ErrStillRefused = errors.New("webtoken: the bundle still holds the token Apple refused")
 )
 
 // Token is a developer token and its expiry.
@@ -88,6 +90,9 @@ type Source struct {
 	failedUntil time.Time
 	// inflight is closed when the running fetch ends; nil while none runs.
 	inflight chan struct{}
+	// refused is the last token Apple refused: a fetch that finds it again
+	// is a failure (with failBackoff), not a fresh token.
+	refused string
 }
 
 // Seed installs a token kept from an earlier run.
@@ -142,6 +147,12 @@ func (s *Source) refresh(ctx context.Context, now time.Time, done chan struct{})
 	defer cancel()
 	t, err := s.fetch(ctx, now)
 	s.mu.Lock()
+	// Backoffs count from now, when the fetch ended: a fetch that hung near
+	// fetchTimeout must not eat the backoff that follows it.
+	now = s.now()
+	if err == nil && t.Value == s.refused {
+		err = ErrStillRefused
+	}
 	var report bool
 	switch {
 	case err == nil:
@@ -188,7 +199,7 @@ func (s *Source) Invalidate(refused string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.tok.Value == refused {
-		s.tok, s.recheck = Token{}, time.Time{}
+		s.tok, s.recheck, s.refused = Token{}, time.Time{}, refused
 	}
 }
 

@@ -503,6 +503,8 @@ export const en = {
         "Apple rejected this token. Your previous token is still in use.",
       rejectedFirst:
         "Apple rejected this token. Copy a fresh one and try again.",
+      rejectedStale:
+        "Apple rejected this token. The stored one stays, but it isn’t working either: copy a fresh one and try again.",
       malformed:
         "That doesn’t look like a media-user-token. Paste only the cookie’s value.",
       unavailable: "Apple Music can’t be reached right now. Try again later.",

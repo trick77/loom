@@ -167,17 +167,27 @@ func runGetPlaylist(ctx context.Context, svc *service, args json.RawMessage) mcp
 	}
 	b.WriteString("\n\n")
 	for i, t := range tracks {
-		fmt.Fprintf(&b, "%d. %s — %s", i+1, t.Name, t.Artist)
+		line := fmt.Sprintf("%d. %s — %s", i+1, t.Name, t.Artist)
 		if t.Album != "" {
-			b.WriteString(" · " + t.Album)
+			line += " · " + t.Album
 		}
 		if t.Duration > 0 {
-			b.WriteString(" (" + clock(t.Duration) + ")")
+			line += " (" + clock(t.Duration) + ")"
 		}
-		b.WriteByte('\n')
+		// Stop at the budget and say so: a cut mid-list would leave the
+		// header claiming tracks the model never saw.
+		if b.Len()+len(line) > trackTextBudget {
+			fmt.Fprintf(&b, "… and %d more tracks not shown; ask for a shorter excerpt or another playlist.\n", len(tracks)-i)
+			break
+		}
+		b.WriteString(line + "\n")
 	}
 	return mcpserver.Result{Text: b.String(), Sources: []mcpserver.Source{playlistSource(p)}}
 }
+
+// trackTextBudget keeps get_playlist's text under mcpserver's 24 KB cap, with
+// room for the closing note.
+const trackTextBudget = 22 << 10
 
 // libraryIDPrefix starts every library playlist id (p.…), as list_playlists
 // shows them.

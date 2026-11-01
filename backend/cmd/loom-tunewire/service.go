@@ -146,9 +146,16 @@ func (s *service) record(token string, err error, count *int) {
 	}
 	switch {
 	case err == nil:
+		before := s.st
 		s.st.LastOKAt, s.st.LastError, s.st.LastErrorKind, s.st.Expired = s.now().UTC(), "", "", false
 		if count != nil {
 			s.st.PlaylistCount = count
+		}
+		// Only "last checked" moved: keep it in memory, write it to disk now
+		// and then. Every tool call rewriting and fsyncing the file, under
+		// the lock, would hold up the others for nothing.
+		if sameButOK(before, s.st) && s.st.LastOKAt.Sub(before.LastOKAt) < okSaveInterval {
+			return
 		}
 	case errors.Is(err, applemusic.ErrUserTokenExpired):
 		s.st.Expired, s.st.LastError, s.st.LastErrorKind = true, err.Error(), ""
@@ -164,6 +171,18 @@ func (s *service) record(token string, err error, count *int) {
 	}
 }
 
+// okSaveInterval is how stale the stored "last checked" may get before a
+// successful call writes it.
+const okSaveInterval = 10 * time.Minute
+
+// sameButOK reports whether a and b differ in LastOKAt at most.
+func sameButOK(a, b state) bool {
+	a.LastOKAt, b.LastOKAt = time.Time{}, time.Time{}
+	ac, bc := a.PlaylistCount, b.PlaylistCount
+	a.PlaylistCount, b.PlaylistCount = nil, nil
+	return a == b && (ac == nil) == (bc == nil) && (ac == nil || *ac == *bc)
+}
+
 // transient reports a failure that is the call's, not the connection's: a
 // deadline, a cancel, a network timeout.
 func transient(err error) bool {
@@ -173,7 +192,8 @@ func transient(err error) bool {
 }
 
 func errorKind(err error) string {
-	if errors.Is(err, applemusic.ErrDevTokenRefused) || errors.Is(err, webtoken.ErrNoBundle) || errors.Is(err, webtoken.ErrNoToken) {
+	if errors.Is(err, applemusic.ErrDevTokenRefused) || errors.Is(err, webtoken.ErrNoBundle) ||
+		errors.Is(err, webtoken.ErrNoToken) || errors.Is(err, webtoken.ErrStillRefused) {
 		return errorKindBridge
 	}
 	return errorKindUpstream

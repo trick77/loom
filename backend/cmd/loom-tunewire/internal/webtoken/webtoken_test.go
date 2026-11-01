@@ -244,6 +244,48 @@ func TestSource_fetchOutlivesTheCallersCancel(t *testing.T) {
 	}
 }
 
+// Apple refused the token, but the bundle still ships it: a failure with
+// backoff, not a fresh token downloaded again on every call.
+func TestSource_bundleStillShippingTheRefusedToken(t *testing.T) {
+	tok := jwt(issuer, now.Add(30*24*time.Hour))
+	var hits atomic.Int32
+	srv := player(t, tok, &hits)
+	s := &Source{BaseURL: srv.URL, HTTP: srv.Client(), Now: func() time.Time { return now }}
+	if got, _ := s.Token(context.Background()); got != tok {
+		t.Fatalf("token %q", got)
+	}
+	s.Invalidate(tok)
+	for range 3 {
+		if _, err := s.Token(context.Background()); !errors.Is(err, ErrStillRefused) {
+			t.Fatalf("err = %v, want ErrStillRefused", err)
+		}
+	}
+	if hits.Load() != 2 {
+		t.Errorf("hits = %d, want 2 (one fetch, then the backoff)", hits.Load())
+	}
+}
+
+// The backoff counts from when the fetch ended, not when it started.
+func TestSource_backoffCountsFromTheFetchsEnd(t *testing.T) {
+	var clock atomic.Int64
+	clock.Store(now.UnixNano())
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /us/browse", func(w http.ResponseWriter, _ *http.Request) {
+		clock.Add(int64(40 * time.Second)) // a slow fetch
+		_, _ = fmt.Fprint(w, "<html></html>")
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	s := &Source{BaseURL: srv.URL, HTTP: srv.Client(), Now: func() time.Time { return time.Unix(0, clock.Load()) }}
+	_, _ = s.Token(context.Background())
+	s.mu.Lock()
+	until := s.failedUntil
+	s.mu.Unlock()
+	if want := now.Add(40*time.Second + failBackoff); !until.Equal(want) {
+		t.Errorf("failedUntil = %v, want %v", until, want)
+	}
+}
+
 func TestSource_seededTokenIsUsed(t *testing.T) {
 	s := &Source{BaseURL: "http://127.0.0.1:1", Now: func() time.Time { return now }}
 	s.Seed(Token{Value: "kept", Expires: now.Add(10 * 24 * time.Hour)})

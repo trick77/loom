@@ -14,11 +14,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
+	"github.com/trick77/ship/kit/env"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/version"
 )
@@ -66,11 +66,8 @@ func serve() error {
 // at 25s.
 const shutdownTimeout = 30 * time.Second
 
-// envOr reads key the way loadConfig does (trimmed, empty is unset), so the
+// envOr reads key through kit's env reader, as loadConfig does, so the
 // healthcheck probes the address serve listens on.
 func envOr(key, def string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-		return v
-	}
-	return def
+	return env.New(os.Getenv).String(key, def)
 }

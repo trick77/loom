@@ -46,22 +46,23 @@ function statusLine(s: AppleMusicStatus, t: TFunction): string {
 }
 
 // failureText maps a failed call to localized text by the server's code. The
-// token is never part of it, nor is the server's own error text. working says
-// whether a working token stays in place after a refusal.
+// token is never part of it, nor is the server's own error text. stored is
+// the state of the token that stays in place after a refusal.
 function failureText(
   err: unknown,
   fallbackKey: string,
   t: TFunction,
-  working = false,
+  stored: AppleMusicStatus["state"] = "never",
 ): string {
   if (!(err instanceof AppleMusicError)) return t(fallbackKey);
   switch (err.code) {
     case "malformed":
       return t("settings.appleMusic.malformed");
     case "rejected":
-      return working
-        ? t("settings.appleMusic.rejected")
-        : t("settings.appleMusic.rejectedFirst");
+      // The stored token stays: say whether it still works.
+      if (stored === "connected") return t("settings.appleMusic.rejected");
+      if (stored === "never") return t("settings.appleMusic.rejectedFirst");
+      return t("settings.appleMusic.rejectedStale");
     case "bridge":
       return t("settings.appleMusic.errorBridge");
     case "upstream":
@@ -122,9 +123,7 @@ export function AppleMusicPanel() {
       setLoadError(null);
       return true;
     } catch (err) {
-      setActionError(
-        failureText(err, fallbackKey, t, status?.state === "connected"),
-      );
+      setActionError(failureText(err, fallbackKey, t, status?.state));
       return false;
     } finally {
       setBusy(null);

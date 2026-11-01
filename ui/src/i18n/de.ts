@@ -513,6 +513,8 @@ export const de = {
         "Apple hat diesen Token abgelehnt. Dein bisheriger Token bleibt aktiv.",
       rejectedFirst:
         "Apple hat diesen Token abgelehnt. Kopiere einen frischen und versuche es erneut.",
+      rejectedStale:
+        "Apple hat diesen Token abgelehnt. Der gespeicherte bleibt, funktioniert aber auch nicht: Kopiere einen frischen und versuche es erneut.",
       malformed:
         "Das sieht nicht nach einem media-user-token aus. Füge nur den Wert des Cookies ein.",
       unavailable:

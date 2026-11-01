@@ -55,13 +55,13 @@ func (f *fakeAppleMusic) ClearToken(ctx context.Context) (tunewire.Status, error
 	return f.Status(ctx, false)
 }
 
-func appleMusicServer(user auth.User, am AppleMusicService, users ...string) http.Handler {
+func appleMusicServer(user auth.User, am AppleMusicService, owner string) http.Handler {
 	return New(Deps{
 		Auth:            auth.NewMiddleware(fakeSessionStore{userID: user.ID}, fakeUserStore{user: user, ok: true}),
 		Sessions:        fakeSessionStore{userID: user.ID},
 		Users:           fakeUserStore{user: user, ok: true},
 		AppleMusic:      am,
-		AppleMusicUsers: users,
+		AppleMusicOwner: owner,
 	})
 }
 
@@ -81,16 +81,16 @@ func TestAppleMusic_meFlag(t *testing.T) {
 	owner := auth.User{ID: "usr_owner", Username: "jan", ResponseLanguage: "en"}
 	for name, tc := range map[string]struct {
 		am    AppleMusicService
-		users []string
+		owner string
 		want  bool
 	}{
-		"owner":        {&fakeAppleMusic{}, []string{"usr_owner"}, true},
-		"other user":   {&fakeAppleMusic{}, []string{"usr_someone"}, false},
-		"no sidecar":   {nil, []string{"usr_owner"}, false},
-		"empty owners": {&fakeAppleMusic{}, nil, false},
+		"owner":       {&fakeAppleMusic{}, "usr_owner", true},
+		"other user":  {&fakeAppleMusic{}, "usr_someone", false},
+		"no sidecar":  {nil, "usr_owner", false},
+		"empty owner": {&fakeAppleMusic{}, "", false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			h := appleMusicServer(owner, tc.am, tc.users...)
+			h := appleMusicServer(owner, tc.am, tc.owner)
 			for _, r := range [][3]string{{"GET", "/api/me", ""}, {"PATCH", "/api/me", `{"responseLanguage":"de"}`}} {
 				code, body := amRequest(t, h, r[0], r[1], r[2])
 				var me struct {

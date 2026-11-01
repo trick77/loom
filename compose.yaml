@@ -31,10 +31,10 @@ services:
       BACKEND_SANDBOX_URL: "http://sandbox:8070"
       BACKEND_SANDBOX_TOKEN: "${BACKEND_SANDBOX_TOKEN:-}"
       # Apple Music sidecar (docs/tunewire.md), opt-in: COMPOSE_PROFILES=tunewire
-      # plus BACKEND_TUNEWIRE_URL=http://tunewire:8060 and _USERS in .env.
-      # BACKEND_TUNEWIRE_TOKEN comes in through env_file.
+      # plus BACKEND_TUNEWIRE_URL=http://tunewire:8060 and _USER (the one owner)
+      # in .env. BACKEND_TUNEWIRE_TOKEN comes in through env_file.
       BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"
-      BACKEND_TUNEWIRE_USERS: "${BACKEND_TUNEWIRE_USERS:-}"
+      BACKEND_TUNEWIRE_USER: "${BACKEND_TUNEWIRE_USER:-}"
       BACKEND_OIDC_ISSUER: "${BACKEND_OIDC_ISSUER}"
       BACKEND_OIDC_CLIENT_ID: "${BACKEND_OIDC_CLIENT_ID}"
       BACKEND_OIDC_CLIENT_SECRET: "${BACKEND_OIDC_CLIENT_SECRET}"

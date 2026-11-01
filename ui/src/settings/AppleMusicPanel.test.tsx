@@ -213,9 +213,10 @@ describe("AppleMusicPanel", () => {
     fireEvent.change(tokenInput(), { target: { value: "stale" } });
     fireEvent.submit(tokenInput());
 
+    // The stored token stays, and the text says it isn't working either.
     expect(
       await screen.findByText(
-        "Apple rejected this token. Copy a fresh one and try again.",
+        "Apple rejected this token. The stored one stays, but it isn’t working either: copy a fresh one and try again.",
       ),
     ).toBeInTheDocument();
   });

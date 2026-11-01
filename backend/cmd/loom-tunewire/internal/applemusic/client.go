@@ -28,8 +28,8 @@ const (
 	// truncated.
 	MaxPlaylists = 20 * pageSize
 	// MaxTracks bounds one playlist's read the same way; the tool's text holds
-	// a few hundred tracks anyway.
-	MaxTracks        = 5 * pageSize
+	// about 250 track lines anyway.
+	MaxTracks        = 3 * pageSize
 	maxResponseBytes = 8 << 20
 	// maxRetryAfter caps how long a 429 makes a call wait before its one retry.
 	maxRetryAfter = 5 * time.Second

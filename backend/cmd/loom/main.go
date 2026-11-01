@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -261,7 +262,7 @@ func runServer() error {
 		ImageTools:                 imageTools,
 		Sandbox:                    sandboxRunner,
 		AppleMusic:                 appleMusicService(cfg),
-		AppleMusicUsers:            cfg.TunewireUsers,
+		AppleMusicOwner:            cfg.TunewireUser,
 		ImageDefaultModel:          cfg.ImageGenModel,
 		ImageGenTypographyModel:    cfg.ImageGenTypographyModel,
 		UsersDir:                   cfg.UsersDir,
@@ -453,7 +454,8 @@ func appleMusicService(cfg config.Config) httpapi.AppleMusicService {
 }
 
 // The loom-tunewire sidecar's two MCP servers: the user's Apple Music library
-// (restricted to BACKEND_TUNEWIRE_USERS) and catalog search (every user).
+// (restricted to its owner, BACKEND_TUNEWIRE_USER) and catalog search (every
+// user).
 const (
 	tunewireLibraryServer = "tunewire"
 	tunewireCatalogServer = "applemusic"
@@ -505,7 +507,7 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// loom-tunewire is best-effort, like the sandbox: a dead Apple Music
 	// sidecar costs its tools, never boot. Entries in the file still win.
 	if strings.TrimSpace(cfg.TunewireURL) != "" {
-		out.FileServers.Servers[tunewireLibraryServer] = mcp.TunewireLibraryServerConfig(cfg.TunewireURL, cfg.TunewireToken, cfg.TunewireUsers)
+		out.FileServers.Servers[tunewireLibraryServer] = mcp.TunewireLibraryServerConfig(cfg.TunewireURL, cfg.TunewireToken, []string{cfg.TunewireUser})
 		out.FileServers.Servers[tunewireCatalogServer] = mcp.TunewireCatalogServerConfig(cfg.TunewireURL, cfg.TunewireToken)
 	}
 	for name, server := range fileServers {
@@ -516,9 +518,13 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 		if existing, ok := out.FileServers.Servers[name]; ok && existing.BuiltIn {
 			slog.Warn("MCP servers file overrides built-in server", "server", name)
 			// The override replaces the endpoint, never the owner: a built-in
-			// that reads one person's data keeps its users unless the file
-			// sets its own.
-			if existing.RestrictUsers && !server.RestrictUsers {
+			// that reads one person's data keeps its users, whatever the file
+			// says, so the tools and the settings page (which owns the token)
+			// always agree on who that is.
+			if existing.RestrictUsers {
+				if server.RestrictUsers && !slices.Equal(server.Users, existing.Users) {
+					slog.Warn("MCP servers file sets users for a personal built-in; its owner stays", "server", name)
+				}
 				server.RestrictUsers, server.Users = true, existing.Users
 			}
 		}

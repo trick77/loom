@@ -21,6 +21,8 @@ import (
 
 const testToken = "0123456789abcdef0123456789abcdef"
 
+var now = time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+
 // fakeAPI answers like Apple for the token "good"; "bad" is refused.
 type fakeAPI struct {
 	mu        sync.Mutex
@@ -536,6 +538,57 @@ func TestTransient(t *testing.T) {
 	}
 	if transient(errors.New("apple returned 500")) || transient(applemusic.ErrUserTokenExpired) {
 		t.Error("a real failure counted as transient")
+	}
+}
+
+// A playlist longer than the text budget ends in a note, not a blunt cut.
+func TestGetPlaylist_longListEndsInANote(t *testing.T) {
+	svc, api, _ := newTestService(t)
+	var long []applemusic.Track
+	for i := range 300 {
+		long = append(long, applemusic.Track{Name: fmt.Sprintf("A fairly long song title number %d", i), Artist: "Some Band With A Name", Album: "An Album Title Of Some Length", Duration: 200 * time.Second})
+	}
+	api.tracks["p.1"] = long
+	if _, err := svc.SetToken(context.Background(), "good"); err != nil {
+		t.Fatal(err)
+	}
+	text, _ := callTool(t, newServer(config{token: testToken}, svc, "test"), "/mcp/library", "get_playlist", `{"playlist":"p.1"}`)
+	if len(text) > trackTextBudget+200 || !strings.Contains(text, "more tracks not shown") || strings.Contains(text, "[output truncated]") {
+		t.Errorf("len %d, tail %q", len(text), text[len(text)-120:])
+	}
+}
+
+// Repeated successful calls do not rewrite the file each time.
+func TestService_successWritesTheFileOnlyWhenSomethingChanged(t *testing.T) {
+	svc, _, dir := newTestService(t)
+	clock := now
+	svc.now = func() time.Time { return clock }
+	if _, err := svc.SetToken(context.Background(), "good"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, stateFile)
+	stat := func() time.Time {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.ModTime()
+	}
+	if err := os.Chtimes(path, now, now); err != nil {
+		t.Fatal(err)
+	}
+	clock = clock.Add(time.Minute)
+	svc.check(context.Background())
+	if !stat().Equal(now) {
+		t.Error("a check that changed only 'last checked' wrote the file")
+	}
+	clock = clock.Add(okSaveInterval)
+	svc.check(context.Background())
+	if stat().Equal(now) {
+		t.Error("a stale 'last checked' was never written")
+	}
+	if !sameButOK(state{UserToken: "a"}, state{UserToken: "a", LastOKAt: now}) || sameButOK(state{UserToken: "a"}, state{UserToken: "b"}) {
+		t.Error("sameButOK")
 	}
 }
 

@@ -4,7 +4,7 @@
 
 | loom server | path | tools | who |
 |---|---|---|---|
-| `tunewire` | `/mcp/library` | `list_playlists`, `get_playlist` | `BACKEND_TUNEWIRE_USERS` only |
+| `tunewire` | `/mcp/library` | `list_playlists`, `get_playlist` | its one owner, `BACKEND_TUNEWIRE_USER` |
 | `applemusic` | `/mcp/catalog` | `search_catalog` (songs, albums, artists with links and cover art) | every user |
 
 Both are best-effort: loom boots without the sidecar and offers the tools while it answers.
@@ -32,8 +32,11 @@ In `.env` (see `.env.example`):
 COMPOSE_PROFILES=tunewire
 BACKEND_TUNEWIRE_URL=http://tunewire:8060
 BACKEND_TUNEWIRE_TOKEN=<openssl rand -hex 32>
-BACKEND_TUNEWIRE_USERS=<your loom user id>
+BACKEND_TUNEWIRE_USER=<your loom user id, the "id" of /api/me>
 ```
+
+One owner, one token: only that account sees the settings section and the playlist tools. An `mcp.json` entry named
+`tunewire` may replace the endpoint, never the owner.
 
 Then sign in to loom, open Settings → Apple Music and paste the cookie value: music.apple.com → developer tools →
 Application (Safari: Storage) → Cookies → `https://music.apple.com` → `media-user-token`.
@@ -46,5 +49,6 @@ Catalog search keeps working, since it needs only the developer token.
 
 ## Sidecar routes
 
-All need `Authorization: Bearer <TUNEWIRE_TOKEN>`: `GET /healthz`, `POST /mcp/library`, `POST /mcp/catalog`,
-`GET /status[?check=1]`, `PUT /token`, `DELETE /token`.
+`POST /mcp/library`, `POST /mcp/catalog`, `GET /status[?check=1]`, `PUT /token` and `DELETE /token` need
+`Authorization: Bearer <TUNEWIRE_TOKEN>`. `GET /healthz` and `/readyz` are kit's probes: no token, but they answer only
+a caller on loopback (the container's own `loom-tunewire healthcheck`), 404 to anyone else.
