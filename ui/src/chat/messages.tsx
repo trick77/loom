@@ -37,6 +37,7 @@ import {
   type DownloadableResponse,
 } from "./artifacts";
 import { messageBlocks } from "./contentBlocks";
+import { compactURL } from "./compactURL";
 import { PastedTextCard } from "./PastedTextCard";
 import { stripPastedBlocks } from "./pastedText";
 import {
@@ -548,10 +549,31 @@ export const ProseMarkdown = memo(function ProseMarkdown({
   );
 });
 
+// A link label that is itself a URL.
+const SHOWN_URL = /^(?:https?:\/\/|www\.)\S+$/i;
+
 // markdownComponents maps markdown elements to the app's renderers. Nothing in
 // it depends on the message, so it is built once.
 const markdownComponents = {
   a({ children, ...props }) {
+    // A link labelled with its own long URL (a bare or autolinked URL) shows it
+    // compacted; the full URL stays the target and the tooltip. This also covers
+    // a "[label](https://…" still streaming: until ")" arrives, GFM autolinks the
+    // URL, which used to wrap over lines and then collapse into the label.
+    if (typeof children === "string" && SHOWN_URL.test(children)) {
+      const compact = compactURL(children);
+      if (compact !== children)
+        return (
+          <a
+            {...props}
+            title={props.title ?? children}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {compact}
+          </a>
+        );
+    }
     return (
       <a {...props} target="_blank" rel="noreferrer">
         {children}

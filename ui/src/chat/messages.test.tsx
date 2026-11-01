@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import type { Message } from "../api";
-import { MessageBubble } from "./messages";
+import { MessageBubble, ProseMarkdown } from "./messages";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 
 test("user message keeps its line breaks and indentation", () => {
@@ -527,4 +527,37 @@ test("the copied indicator's timer is cleared on unmount", async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+const LONG_URL =
+  "https://docs.example.com/guides/v2/streaming/markdown-links?utm_source=x";
+
+test("a streaming link whose URL is still open shows the URL compacted", () => {
+  const { container } = render(
+    <ProseMarkdown streaming>{`See [link](${LONG_URL}`}</ProseMarkdown>,
+  );
+  expect(container).toHaveTextContent("docs.example.com/…/markdown-links");
+  expect(container).not.toHaveTextContent("https://docs.example.com");
+});
+
+test("a link labelled with its own long URL shows it compacted", () => {
+  render(<ProseMarkdown>{`Read ${LONG_URL} first`}</ProseMarkdown>);
+  const link = screen.getByRole("link", {
+    name: "docs.example.com/…/markdown-links",
+  });
+  expect(link).toHaveAttribute("href", LONG_URL);
+  expect(link).toHaveAttribute("title", LONG_URL);
+});
+
+test("a named link and a short URL link keep their text", () => {
+  render(
+    <ProseMarkdown>{`[link](${LONG_URL}) and https://ex.com/a`}</ProseMarkdown>,
+  );
+  expect(screen.getByRole("link", { name: "link" })).toHaveAttribute(
+    "href",
+    LONG_URL,
+  );
+  expect(
+    screen.getByRole("link", { name: "https://ex.com/a" }),
+  ).not.toHaveAttribute("title");
 });
