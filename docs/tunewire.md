@@ -4,7 +4,7 @@
 
 | loom server | path | tools | who |
 |---|---|---|---|
-| `tunewire` | `/mcp/library` | `list_playlists`, `get_playlist` | its one owner, `BACKEND_TUNEWIRE_USER` |
+| `tunewire` | `/mcp/library` | `list_playlists`, `get_playlist` | `BACKEND_TUNEWIRE_USERS` only |
 | `applemusic` | `/mcp/catalog` | `search_catalog` (songs, albums, artists with links and cover art) | every user |
 
 Both are best-effort: loom boots without the sidecar and offers the tools while it answers.
@@ -32,11 +32,11 @@ In `.env` (see `.env.example`):
 COMPOSE_PROFILES=tunewire
 BACKEND_TUNEWIRE_URL=http://tunewire:8060
 BACKEND_TUNEWIRE_TOKEN=<openssl rand -hex 32>
-BACKEND_TUNEWIRE_USER=<your loom user id, the "id" of /api/me>
+BACKEND_TUNEWIRE_USERS=<loom user ids, comma-separated: the "id" of /api/me>
 ```
 
-One owner, one token: only that account sees the settings section and the playlist tools. An `mcp.json` entry named
-`tunewire` may replace the endpoint, never the owner.
+Only those accounts see the settings section and the playlist tools; they share the one Apple Music token. An
+`mcp.json` entry named `tunewire` may replace the endpoint, never these users.
 
 Then sign in to loom, open Settings → Apple Music and paste the cookie value: music.apple.com → developer tools →
 Application (Safari: Storage) → Cookies → `https://music.apple.com` → `media-user-token`.

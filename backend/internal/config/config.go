@@ -131,12 +131,13 @@ type Config struct {
 	ObscuraMCPToken string
 	// TunewireURL is the loom-tunewire sidecar (Apple Music); empty keeps it
 	// off. TunewireToken is its TUNEWIRE_TOKEN (minTunewireToken), required
-	// with the URL. TunewireUser is the one loom user id that owns it: the
-	// sidecar holds ONE person's Apple Music token, which only its owner may
-	// read, replace or disconnect. Catalog search is open to every user.
+	// with the URL. TunewireUsers are the loom user ids its library and
+	// settings serve (BACKEND_TUNEWIRE_USERS, comma-separated, like
+	// BACKEND_PEEQ_USERS); they share the one Apple Music token the sidecar
+	// holds. Catalog search is open to every user.
 	TunewireURL   string
 	TunewireToken string
-	TunewireUser  string
+	TunewireUsers []string
 	// SandboxURL is the loom-sandbox sidecar that runs run_python; empty keeps
 	// the tool off. SandboxToken authenticates loom to it, SandboxTimeout caps
 	// one job.
@@ -287,7 +288,7 @@ func Load() (Config, error) {
 		ObscuraMCPToken:         r.String("BACKEND_OBSCURA_MCP_TOKEN", ""),
 		TunewireURL:             r.String("BACKEND_TUNEWIRE_URL", ""),
 		TunewireToken:           r.String("BACKEND_TUNEWIRE_TOKEN", ""),
-		TunewireUser:            r.String("BACKEND_TUNEWIRE_USER", ""),
+		TunewireUsers:           r.List("BACKEND_TUNEWIRE_USERS", nil),
 		SandboxURL:              r.String("BACKEND_SANDBOX_URL", ""),
 		SandboxToken:            r.String("BACKEND_SANDBOX_TOKEN", ""),
 		MCPServersFile:          r.String("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
@@ -509,10 +510,8 @@ func tunewireProblem(cfg Config) string {
 		return "BACKEND_TUNEWIRE_URL must be an absolute http(s) URL"
 	case len(cfg.TunewireToken) < minTunewireToken:
 		return fmt.Sprintf("BACKEND_TUNEWIRE_TOKEN must be at least %d characters when BACKEND_TUNEWIRE_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minTunewireToken)
-	case cfg.TunewireUser == "":
-		return "BACKEND_TUNEWIRE_USER must name the loom user id whose Apple Music token the sidecar holds when BACKEND_TUNEWIRE_URL is set"
-	case strings.ContainsAny(cfg.TunewireUser, ", \t"):
-		return "BACKEND_TUNEWIRE_USER takes exactly one loom user id: the sidecar holds one person's Apple Music token, never a shared one"
+	case len(cfg.TunewireUsers) == 0:
+		return "BACKEND_TUNEWIRE_USERS must list the loom user id(s) whose Apple Music token the sidecar holds when BACKEND_TUNEWIRE_URL is set"
 	}
 	return ""
 }

@@ -402,7 +402,7 @@ func TestProductionComposeTunewire(t *testing.T) {
 		}
 	}
 	loom := composeService(t, compose, "loom")
-	for _, want := range []string{`BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"`, `BACKEND_TUNEWIRE_USER: "${BACKEND_TUNEWIRE_USER:-}"`} {
+	for _, want := range []string{`BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"`, `BACKEND_TUNEWIRE_USERS: "${BACKEND_TUNEWIRE_USERS:-}"`} {
 		if !strings.Contains(loom, want) {
 			t.Fatalf("loom service missing %q", want)
 		}

@@ -61,7 +61,7 @@ func appleMusicServer(user auth.User, am AppleMusicService, owner string) http.H
 		Sessions:        fakeSessionStore{userID: user.ID},
 		Users:           fakeUserStore{user: user, ok: true},
 		AppleMusic:      am,
-		AppleMusicOwner: owner,
+		AppleMusicUsers: []string{owner},
 	})
 }
 
