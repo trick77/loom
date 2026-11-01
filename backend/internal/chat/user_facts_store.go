@@ -91,15 +91,6 @@ func (s *Store) ApplyUserFactBatch(ctx context.Context, userID string, batch Use
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// The forgotten facts a purge may drop are those that existed before this
-	// refresh read them; one forgotten during the refresh waits for the next.
-	var purgeIDs []string
-	if batch.PurgeForgotten {
-		if purgeIDs, err = queryIDs(ctx, tx, `SELECT id FROM user_facts WHERE user_id = ? AND retire_reason = 'user'`, userID); err != nil {
-			return res, fmt.Errorf("apply user facts: forgotten: %w", err)
-		}
-	}
-
 	live, err := queryIDs(ctx, tx, `SELECT id FROM user_facts f WHERE `+activeFactFilter, userID)
 	if err != nil {
 		return res, fmt.Errorf("apply user facts: live ids: %w", err)
@@ -193,9 +184,14 @@ WHERE user_id = ? AND id = ?`, by, userID, op.ID); err != nil {
 	if err := promoteAndRetireOrphans(ctx, tx, userID); err != nil {
 		return res, err
 	}
-	if len(purgeIDs) > 0 {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM user_facts WHERE user_id = ? AND retire_reason = 'user' AND id IN (`+sqlutil.Placeholders(len(purgeIDs))+`)`,
-			append([]any{userID}, stringsToAny(purgeIDs)...)...); err != nil {
+	if batch.PurgeForgottenBefore != nil {
+		// Strictly before the second the refresh read them: retired_at has
+		// second resolution, so a fact forgotten in that same second, maybe
+		// after the read, waits for the next refresh instead of going unseen.
+		if _, err := tx.ExecContext(ctx, `
+DELETE FROM user_facts WHERE user_id = ? AND retire_reason = 'user' AND retired_at < ?`,
+			userID, formatFactTime(batch.PurgeForgottenBefore.Truncate(time.Second)),
+		); err != nil {
 			return res, fmt.Errorf("apply user facts: purge forgotten: %w", err)
 		}
 	}
@@ -561,12 +557,4 @@ func parseNullTime(v sql.NullString) (*time.Time, error) {
 		return nil, err
 	}
 	return &t, nil
-}
-
-func stringsToAny(values []string) []any {
-	out := make([]any, len(values))
-	for i, v := range values {
-		out[i] = v
-	}
-	return out
 }

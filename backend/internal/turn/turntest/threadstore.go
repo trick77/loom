@@ -415,7 +415,7 @@ func (f *ThreadStore) ListForgottenUserFacts(context.Context, string) ([]string,
 }
 
 // ApplyUserFactBatch records the batch, appends its valid adds to Facts, drops
-// ForgottenFacts on PurgeForgotten, and stores the cursor. Op semantics are the
+// ForgottenFacts on PurgeForgottenBefore, and stores the cursor. Op semantics are the
 // real store's job (chat tests); this fake only lets httpapi tests see what a
 // refresh sent.
 func (f *ThreadStore) ApplyUserFactBatch(_ context.Context, userID string, batch chat.UserFactBatch) (chat.UserFactApplyResult, error) {
@@ -432,7 +432,7 @@ func (f *ThreadStore) ApplyUserFactBatch(_ context.Context, userID string, batch
 			Content: op.Content, Durable: op.Durable, Origin: batch.Origin, FirstSeen: batch.SeenAt, LastSeen: batch.SeenAt})
 		res.Added++
 	}
-	if batch.PurgeForgotten {
+	if batch.PurgeForgottenBefore != nil {
 		f.ForgottenFacts = nil
 	}
 	if batch.Cursor != nil {

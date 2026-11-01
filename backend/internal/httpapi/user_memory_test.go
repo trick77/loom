@@ -203,7 +203,7 @@ func TestRefreshUserFacts_ForgottenSentOnceThenPurged(t *testing.T) {
 	if req := <-requests; len(req.Forgotten) != 1 || req.Forgotten[0] != "Works at Acme" {
 		t.Fatalf("forgotten = %v, want the forgotten fact as do-not-re-add", req.Forgotten)
 	}
-	if !store.FactBatches[0].PurgeForgotten || len(store.ForgottenFacts) != 0 {
+	if store.FactBatches[0].PurgeForgottenBefore == nil || len(store.ForgottenFacts) != 0 {
 		t.Fatalf("forgotten facts not purged after the refresh saw them")
 	}
 }

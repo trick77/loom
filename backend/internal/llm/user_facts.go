@@ -157,7 +157,7 @@ func (c *Client) factCompletion(ctx context.Context, systemPrompt, user, respons
 		return ErrFactReplyMalformed
 	}
 	if err := json.Unmarshal([]byte(raw), out); err != nil {
-		return fmt.Errorf("%w: %v", ErrFactReplyMalformed, err)
+		return fmt.Errorf("%w: %w", ErrFactReplyMalformed, err)
 	}
 	return nil
 }

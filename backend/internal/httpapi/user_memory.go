@@ -206,9 +206,14 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 	if err != nil {
 		return cursor, false, err
 	}
+	forgottenAt := time.Now()
 	forgotten, err := s.thread.ListForgottenUserFacts(ctx, user.ID)
 	if err != nil {
 		return cursor, false, err
+	}
+	var purgeBefore *time.Time
+	if len(forgotten) > 0 {
+		purgeBefore = &forgottenAt
 	}
 	var ops []chat.UserFactOp
 	if strings.TrimSpace(transcript) != "" {
@@ -232,12 +237,12 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 		threads = append(threads, id)
 	}
 	res, err := s.thread.ApplyUserFactBatch(ctx, user.ID, chat.UserFactBatch{
-		Ops:            ops,
-		Origin:         chat.FactOriginExtracted,
-		SeenAt:         last.CreatedAt,
-		Threads:        threads,
-		Cursor:         &cursor,
-		PurgeForgotten: len(forgotten) > 0,
+		Ops:                  ops,
+		Origin:               chat.FactOriginExtracted,
+		SeenAt:               last.CreatedAt,
+		Threads:              threads,
+		Cursor:               &cursor,
+		PurgeForgottenBefore: purgeBefore,
 	})
 	if err != nil {
 		return cursor, false, err

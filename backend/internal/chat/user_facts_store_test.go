@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -228,7 +229,16 @@ func TestUserFacts_ForgetThenPurgeOnNextRefresh(t *testing.T) {
 		t.Fatalf("ListForgottenUserFacts = %v, %v; want the two forgotten contents", contents, err)
 	}
 
-	applyBatch(t, store, userID, UserFactBatch{PurgeForgotten: true})
+	// A refresh that read the forgotten list before they were forgotten must
+	// not purge them: it never saw them as do-not-re-add.
+	before := time.Now().Add(-time.Hour)
+	applyBatch(t, store, userID, UserFactBatch{PurgeForgottenBefore: &before})
+	if contents, _ := store.ListForgottenUserFacts(ctx, userID); len(contents) != 2 {
+		t.Fatalf("forgotten facts purged by a refresh that read the list before the forget")
+	}
+
+	after := time.Now().Add(2 * time.Second)
+	applyBatch(t, store, userID, UserFactBatch{PurgeForgottenBefore: &after})
 	var rows int
 	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM user_facts WHERE user_id = ? AND content LIKE '%Acme%'`, userID).Scan(&rows); err != nil || rows != 0 {
 		t.Fatalf("forgotten rows left = %d (%v), want hard-deleted after the refresh", rows, err)
@@ -238,10 +248,10 @@ func TestUserFacts_ForgetThenPurgeOnNextRefresh(t *testing.T) {
 func TestUserFacts_ToolWritesValidateAndUpdateKeepsDurable(t *testing.T) {
 	ctx := context.Background()
 	store, _, userID := newFactStore(t)
-	if _, err := store.AddUserFact(ctx, userID, "", "history", "x", false); err != ErrUserFactInvalid {
+	if _, err := store.AddUserFact(ctx, userID, "", "history", "x", false); !errors.Is(err, ErrUserFactInvalid) {
 		t.Fatalf("bad category err = %v, want ErrUserFactInvalid", err)
 	}
-	if _, err := store.AddUserFact(ctx, userID, "", FactCategoryWork, strings.Repeat("x", MaxUserFactLength+1), false); err != ErrUserFactInvalid {
+	if _, err := store.AddUserFact(ctx, userID, "", FactCategoryWork, strings.Repeat("x", MaxUserFactLength+1), false); !errors.Is(err, ErrUserFactInvalid) {
 		t.Fatalf("too long err = %v, want ErrUserFactInvalid", err)
 	}
 	fact, err := store.AddUserFact(ctx, userID, "", FactCategoryWork, "Works at Acme", true)

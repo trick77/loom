@@ -102,9 +102,10 @@ type UserFactBatch struct {
 	Threads []string
 	// Cursor, when set, is stored as the new refresh cursor.
 	Cursor *UserFactCursor
-	// PurgeForgotten hard-deletes the facts the user forgot before this
-	// refresh: it has now seen them as "do not re-add" once.
-	PurgeForgotten bool
+	// PurgeForgottenBefore, when set, hard-deletes the facts the user forgot
+	// before that time: when the refresh read them as "do not re-add". A fact
+	// forgotten later (during the model call) waits for the next refresh.
+	PurgeForgottenBefore *time.Time
 }
 
 // UserFactCursor is a user's refresh position: the last message folded in,
