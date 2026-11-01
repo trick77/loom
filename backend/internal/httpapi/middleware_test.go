@@ -25,7 +25,8 @@ func TestRecoveryReturnsJSON500BeforeHeadersWereSent(t *testing.T) {
 
 // Once a handler has started its response (an SSE stream, a partial file), a
 // trailing error write would corrupt what the client already received; the
-// panic is logged and the response is left as it is.
+// panic is logged, nothing is written, and the response is aborted
+// (http.ErrAbortHandler) so the client never takes the cut-off body as whole.
 func TestRecoveryDoesNotWriteAfterHeadersWereSent(t *testing.T) {
 	h := middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -34,7 +35,14 @@ func TestRecoveryDoesNotWriteAfterHeadersWereSent(t *testing.T) {
 	}))
 	rec := httptest.NewRecorder()
 
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	func() {
+		defer func() {
+			if got := recover(); got != http.ErrAbortHandler {
+				t.Fatalf("recovered %v, want http.ErrAbortHandler", got)
+			}
+		}()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
+	}()
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want the 200 already sent", rec.Code)
