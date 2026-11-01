@@ -210,9 +210,13 @@ func rankArtists(lib []applemusic.Artist, signals ...signal) (top []candidate, f
 					if c = byName[norm(it.Artist)]; c == nil && len(names) > 0 {
 						c = byName[norm(names[0])]
 					}
-					if c != nil && c.catalogID == "" {
+					switch {
+					case c != nil && c.catalogID == "":
 						c.catalogID = it.ArtistID
 						byCatalog[it.ArtistID] = c
+					case c != nil && c.catalogID != it.ArtistID:
+						// Same name, another catalog artist: two artists, not one.
+						c = nil
 					}
 				}
 				if c == nil {
@@ -221,14 +225,27 @@ func rankArtists(lib []applemusic.Artist, signals ...signal) (top []candidate, f
 						name = names[0]
 					}
 					c = &candidate{name: name, catalogID: it.ArtistID}
-					add(c)
+					c.order = len(all)
+					all = append(all, c)
+					byCatalog[it.ArtistID] = c
+					// By name only when the name is free: a library artist of
+					// the same name keeps it.
+					if byName[norm(name)] == nil {
+						byName[norm(name)] = c
+					}
 				}
 				credit(c)
 			} else {
 				credit(byName[norm(it.Artist)])
 			}
-			// Featured artists the library holds count too.
-			for _, part := range names {
+			// Featured artists the library holds count too. With a catalog id
+			// the first name is the main artist, credited by id above: by name
+			// it could be another artist of the same name.
+			featured := names
+			if it.ArtistID != "" && len(names) > 0 {
+				featured = names[1:]
+			}
+			for _, part := range featured {
 				credit(byName[norm(part)])
 			}
 		}
@@ -303,11 +320,10 @@ feed:
 	return out
 }
 
+// lookupRelease reads one uncached candidate's latest release (lookupReleases
+// answers the cached ones) and caches it.
 func (s *service) lookupRelease(ctx context.Context, sf string, c candidate) outcome {
 	key := sf + "|" + c.key()
-	if hit, ok := s.releases.get(key, s.now()); ok {
-		return outcome{done: true, release: hit.release, found: hit.found}
-	}
 	if ctx.Err() != nil {
 		return outcome{}
 	}
@@ -442,12 +458,20 @@ func runNewReleases(ctx context.Context, svc *service, args json.RawMessage) mcp
 			from += " (only its first " + plural(len(lib), "artist") + " were read)"
 		}
 	}
-	l.line("Artists checked: %s, %d picked by recent listening%s.", plural(len(cands), "artist"), fromListening, from)
+	l.line("Artists picked: %s, %d by recent listening%s.", plural(len(cands), "artist"), fromListening, from)
+	// The caveats come before the list: a long list cannot push them past
+	// the text cap, and the model reads them before the results.
 	if len(missing) > 0 {
 		l.line("Incomplete: Apple could not give the user's %s right now, so artists from there may be missing.", strings.Join(missing, ", "))
 	}
+	if unchecked := len(cands) - checked; unchecked > 0 {
+		l.line("Partial list: only %d of the %d artists could be checked in time. Asking again checks the rest; the ones done are remembered for a few hours.", checked, len(cands))
+	}
+	if failed > 0 {
+		l.line("%s could not be checked: Apple answered with an error.", plural(failed, "artist"))
+	}
 	if len(releases) == 0 {
-		l.line("None of them released anything in the last %d days.", days)
+		l.line("None of the %s checked released anything in the last %d days.", plural(checked-failed, "artist"), days)
 	}
 	today := svc.now().UTC().Format(time.DateOnly)
 	for _, r := range releases {
@@ -457,12 +481,6 @@ func runNewReleases(ctx context.Context, svc *service, args json.RawMessage) mcp
 		}
 		r.Released = "" // in the tail, not as a year
 		l.add(r, false, tail)
-	}
-	if unchecked := len(cands) - checked; unchecked > 0 {
-		l.line("Partial list: only %d of %d artists could be checked in time. Asking again checks the rest; the ones done are remembered for a few hours.", checked, len(cands))
-	}
-	if failed > 0 {
-		l.line("%s could not be checked: Apple answered with an error.", plural(failed, "artist"))
 	}
 	return l.result()
 }

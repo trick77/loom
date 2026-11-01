@@ -196,12 +196,15 @@ export function MessageCitations({
   // video thumbnail) shows that picture, one per source, since every cover is
   // different; the rest collapse to one favicon per site. The sidebar still
   // lists every distinct page from `webSources`.
-  const pictured = webSources.filter((s) => hasImage(s));
-  const faviconSources = dedupeByDomain(webSources.filter((s) => !hasImage(s)));
-  const pile = [
-    ...pictured.map((source) => ({ source, picture: true })),
-    ...faviconSources.map((source) => ({ source, picture: false })),
-  ].slice(0, 10);
+  // In citation order, so a site cited first is never pushed out by a run of
+  // covers.
+  const faviconSources = new Set(
+    dedupeByDomain(webSources.filter((s) => !hasImage(s))),
+  );
+  const pile = webSources
+    .filter((s) => hasImage(s) || faviconSources.has(s))
+    .map((source) => ({ source, picture: hasImage(source) }))
+    .slice(0, 10);
   if (combined.length === 0 && webSources.length === 0) return null;
   const open = combined.find((source) => source.filename === openFile) ?? null;
 

@@ -133,13 +133,25 @@ func (c *Client) items(ctx context.Context, userToken, path string, size, max in
 // RecentlyPlayed lists the user's recently played tracks, newest first, at
 // most MaxRecent.
 func (c *Client) RecentlyPlayed(ctx context.Context, userToken string) ([]Item, error) {
-	return c.items(ctx, userToken, "/v1/me/recent/played/tracks", recentPageSize, MaxRecent)
+	return c.itemsWithArtists(ctx, userToken, "/v1/me/recent/played/tracks", recentPageSize, MaxRecent)
 }
 
 // HeavyRotation lists what the user played most lately: albums, playlists,
 // stations.
 func (c *Client) HeavyRotation(ctx context.Context, userToken string) ([]Item, error) {
-	return c.items(ctx, userToken, "/v1/me/history/heavy-rotation", heavyPageSize, heavyPageSize)
+	return c.itemsWithArtists(ctx, userToken, "/v1/me/history/heavy-rotation", heavyPageSize, heavyPageSize)
+}
+
+// itemsWithArtists reads a list asking Apple to include each entry's
+// artists: their catalog ids let new_releases check artists the library does
+// not hold. Whether these endpoints take the include is not documented; a 400
+// reads the list again without it.
+func (c *Client) itemsWithArtists(ctx context.Context, userToken, path string, size, max int) ([]Item, error) {
+	items, err := c.items(ctx, userToken, path+"?include=artists", size, max)
+	if errors.Is(err, ErrBadRequest) {
+		return c.items(ctx, userToken, path, size, max)
+	}
+	return items, err
 }
 
 // RecentlyAdded lists what the user added to the library lately, newest
@@ -155,7 +167,9 @@ func (c *Client) CatalogPlaylistTracks(ctx context.Context, userToken, storefron
 	path := "/v1/catalog/" + url.PathEscape(storefront) + "/playlists/" + url.PathEscape(playlistID) + "/tracks"
 	// A 404 here is a mix Apple does not know (ErrNotFound), not an empty one.
 	var out []Item
-	_, err := pagesOf(ctx, c, userToken, path, pageSize, MaxMixTracks, false, func(r resource) {
+	// One page of MaxMixTracks: a mix is short, and a second round trip would
+	// eat into the tool's deadline.
+	_, err := pagesOf(ctx, c, userToken, path, MaxMixTracks, MaxMixTracks, false, func(r resource) {
 		if it, ok := r.item(); ok {
 			out = append(out, it)
 		}

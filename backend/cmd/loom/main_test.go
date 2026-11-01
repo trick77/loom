@@ -176,11 +176,15 @@ func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 	}
 	// loom's own sidecar: labelled built-in, and its instructions (when to
 	// search the catalog) reach the prompt.
-	// Offered only in music and recommendation turns.
 	for _, sc := range []mcp.ServerConfig{lib, cat} {
-		if !sc.BuiltIn || !sc.TrustInstructions || !reflect.DeepEqual(sc.Categories, []string{"music", "entertainment_recs"}) {
-			t.Errorf("%s: BuiltIn %v TrustInstructions %v Categories %v", sc.URL, sc.BuiltIn, sc.TrustInstructions, sc.Categories)
+		if !sc.BuiltIn || !sc.TrustInstructions {
+			t.Errorf("%s: BuiltIn %v TrustInstructions %v", sc.URL, sc.BuiltIn, sc.TrustInstructions)
 		}
+	}
+	// The library only in music and recommendation turns; catalog search
+	// (links for anything named) in every turn.
+	if !reflect.DeepEqual(lib.Categories, []string{"music", "entertainment_recs"}) || len(cat.Categories) != 0 {
+		t.Errorf("categories: library %v, catalog %v", lib.Categories, cat.Categories)
 	}
 
 	// An mcp.json override replaces the endpoint, but keeps the owner, even

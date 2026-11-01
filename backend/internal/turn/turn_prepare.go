@@ -216,15 +216,17 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			}
 		},
 		// Semantic drift detection: on a continued turn whose sticky category does
-		// not already grant the coding-doc tools, re-classify THIS message so a
-		// thread that drifted into coding/how-to (in any language) still gets
-		// context7 et al. This reuses the same model classifier as the first
-		// message — no hand-maintained keyword lexicon. Skipped when the turn is
-		// being classified fresh or when the sticky category already grants those
-		// tools. Fail-safe: ClassifyThread returns General on failure, so a failed
-		// classification simply adds nothing.
+		// not already grant every category-gated tool, re-classify THIS message
+		// so a thread that drifted (into coding/how-to, into music, in any
+		// language) still gets context7, the music tools et al. This reuses the
+		// same model classifier as the first message — no hand-maintained
+		// keyword lexicon. Skipped when the turn is being classified fresh, or
+		// when the sticky category already grants the coding-doc tools and every
+		// other gated server this user may use. Fail-safe: ClassifyThread returns
+		// General on failure, so a failed classification simply adds nothing.
 		func() {
-			if scheduled || freshlyClassified || categoryGrantsCodingDocs(category) {
+			if scheduled || freshlyClassified ||
+				(categoryGrantsCodingDocs(category) && (t.e.mcp == nil || t.e.mcp.CoversGated(MCPPrincipal(t.user), category))) {
 				return
 			}
 			driftInference := gateInference(t.inference, "classify_drift")

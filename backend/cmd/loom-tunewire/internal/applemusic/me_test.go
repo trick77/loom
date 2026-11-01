@@ -44,7 +44,7 @@ func TestRecentlyPlayed_pagesAtThirtyAndSkipsNamelessItems(t *testing.T) {
 		t.Errorf("library song / video = %+v %+v", got[1], got[2])
 	}
 	r := *reqs
-	if len(r) != 2 || r[0].path != "/v1/me/recent/played/tracks?limit=30" || r[1].path != "/v1/me/recent/played/tracks?offset=30&limit=30" {
+	if len(r) != 2 || r[0].path != "/v1/me/recent/played/tracks?include=artists&limit=30" || r[1].path != "/v1/me/recent/played/tracks?offset=30&include=artists&limit=30" {
 		t.Errorf("requests %+v", r)
 	}
 	if r[0].user != "u" {
@@ -99,7 +99,7 @@ func TestHeavyRotationAndRecentlyAdded_mixedKinds(t *testing.T) {
 	if err != nil || len(added) != 1 || added[0].Kind != "album" || added[0].Added != "2026-10-30T08:00:00Z" {
 		t.Fatalf("added = %+v, %v", added, err)
 	}
-	if p := (*reqs)[0].path; p != "/v1/me/history/heavy-rotation?limit=10" {
+	if p := (*reqs)[0].path; p != "/v1/me/history/heavy-rotation?include=artists&limit=10" {
 		t.Errorf("heavy path %s", p)
 	}
 	if p := (*reqs)[1].path; p != "/v1/me/library/recently-added?limit=25" {
@@ -176,8 +176,25 @@ func TestCatalogPlaylistTracks_sendsTheUserTokenAndEscapes(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0].Name != "New One" {
 		t.Fatalf("%+v %v", got, err)
 	}
-	if q := (*reqs)[0]; q.user != "u" || q.path != "/v1/catalog/ch/playlists/pl.pm%2Fx/tracks?limit=100" {
+	if q := (*reqs)[0]; q.user != "u" || q.path != "/v1/catalog/ch/playlists/pl.pm%2Fx/tracks?limit=50" {
 		t.Errorf("request %+v", q)
+	}
+}
+
+// Apple refuses include=artists with a 400: the list is read again without
+// it, not lost.
+func TestRecentlyPlayed_withoutIncludeOn400(t *testing.T) {
+	c, _, reqs := newAPI(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("include") != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprint(w, `{"errors":[{"title":"Invalid Parameter Value"}]}`)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"data":[{"id":"1","type":"songs","attributes":{"name":"Song"}}]}`)
+	})
+	got, err := c.RecentlyPlayed(context.Background(), "u")
+	if err != nil || len(got) != 1 || len(*reqs) != 2 || (*reqs)[1].path != "/v1/me/recent/played/tracks?limit=30" {
+		t.Fatalf("%+v %v %+v", got, err, *reqs)
 	}
 }
 

@@ -302,6 +302,12 @@ func writeForYou(ctx context.Context, svc *service, l *listing, recs []applemusi
 	if mix == nil {
 		return nil, nil
 	}
+	if l.full() {
+		// No room for the mix: say so in one line instead of a header with
+		// nothing under it.
+		l.line("(the %s's tracks did not fit; ask for section for_you alone to see them)", mix.Name)
+		return nil, nil
+	}
 	tracks, err := svc.MixTracks(ctx, mix.ID)
 	if fatal(err) {
 		res := failure(err)

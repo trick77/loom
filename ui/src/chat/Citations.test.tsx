@@ -472,6 +472,31 @@ describe("SourcesSidebar selection", () => {
     expect(container).toBeTruthy();
   });
 
+  it("keeps citation order: a site cited first is not pushed out by covers", () => {
+    const many: Citation[] = [
+      webSource("https://en.wikipedia.org/wiki/Queen", 1, "Wikipedia"),
+      ...Array.from({ length: 12 }, (_, i) => ({
+        ...webSource(
+          `https://music.apple.com/ch/song/${i}`,
+          i + 2,
+          "Apple Music",
+        ),
+        image: `https://img.example/${i}.jpg`,
+      })),
+    ];
+    render(<MessageCitations citations={many} />);
+    const button = screen.getByRole("button", { name: /sources/i });
+    const pile = button.querySelectorAll("span.isolate > *");
+    expect(pile).toHaveLength(10);
+    // Wikipedia first, as cited, then nine covers.
+    expect(
+      pile[0].getAttribute("src")?.startsWith("/api/source-image") ?? false,
+    ).toBe(false);
+    expect(
+      button.querySelectorAll("img[src^='/api/source-image']"),
+    ).toHaveLength(9);
+  });
+
   it("marks only the pinned source's card", () => {
     openDrawer({ selected: new Set([1]) });
 

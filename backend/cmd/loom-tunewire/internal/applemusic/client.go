@@ -49,6 +49,9 @@ var (
 	ErrDevTokenRefused = errors.New("apple music refused the web player's developer token")
 	// ErrNotFound is a 404: no such playlist.
 	ErrNotFound = errors.New("apple music: not found")
+	// ErrBadRequest is a 400: Apple refused the request's shape (a limit or an
+	// include it does not take).
+	ErrBadRequest = errors.New("apple music: bad request")
 )
 
 // TokenSource hands out the developer token; *webtoken.Source implements it.
@@ -398,6 +401,9 @@ func (c *Client) get(ctx context.Context, userToken, path string, out any) error
 				return err
 			}
 		default:
+			if status == http.StatusBadRequest {
+				return fmt.Errorf("%w: %s: %s", ErrBadRequest, redact(path), apiError(body))
+			}
 			return fmt.Errorf("apple music: %s returned %d: %s", redact(path), status, apiError(body))
 		}
 	}

@@ -104,6 +104,9 @@ type ToolService interface {
 	// ToolAllowed reports whether a loom account may use a tool: a server can
 	// be limited to some accounts (see mcp.Principal).
 	ToolAllowed(user mcp.Principal, name string) bool
+	// CoversGated reports whether category alone already offers every
+	// category-gated server the account may use.
+	CoversGated(user mcp.Principal, category string) bool
 	// ServerInstructions is a server's own guidance for the model, empty when
 	// it gave none.
 	ServerInstructions(server string) string

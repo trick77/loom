@@ -138,7 +138,7 @@ func TestNewReleasesTool(t *testing.T) {
 	text, sc := callTool(t, h, "/mcp/library", "new_releases", `{}`)
 	for _, want := range []string{
 		"New releases from the user's artists on Apple Music (ch storefront), last 30 days.",
-		"Artists checked: 5 artists, 2 picked by recent listening, 3 more artists from the library in library order (only its first 4 artists were read).",
+		"Artists picked: 5 artists, 2 by recent listening, 3 more artists from the library in library order (only its first 4 artists were read).",
 		"[1] Soon — Zeta · out 2026-11-20 (pre-release)\n[2] Fresh — Beta · released 2026-10-20\n",
 	} {
 		if !strings.Contains(text, want) {
@@ -176,7 +176,7 @@ func TestNewReleasesTool(t *testing.T) {
 	}
 	delete(api.latest, "9")
 	svc.now = func() time.Time { return now.Add(releaseTTL) }
-	if text, _ := callTool(t, h, "/mcp/library", "new_releases", `{"days":5}`); !strings.Contains(text, "None of them released anything in the last 5 days.") {
+	if text, _ := callTool(t, h, "/mcp/library", "new_releases", `{"days":5}`); !strings.Contains(text, "None of the 5 artists checked released anything in the last 5 days.") {
 		t.Errorf("none: %s", text)
 	}
 	if api.called("latest") != 8 {
@@ -283,7 +283,8 @@ func TestNewReleases_partialWhenTimeRunsOut(t *testing.T) {
 	}
 	text, _ := callTool(t, h, "/mcp/library", "new_releases", `{}`)
 	if !strings.Contains(text, "Fresh") || strings.Contains(text, "Soon") ||
-		!strings.Contains(text, "Partial list: only 4 of 5 artists could be checked in time.") {
+		!strings.Contains(text, "Partial list: only 4 of the 5 artists could be checked in time.") ||
+		strings.Index(text, "Partial list") > strings.Index(text, "Fresh") {
 		t.Errorf("partial: %s", text)
 	}
 	api.latestHook = nil
@@ -306,6 +307,21 @@ func TestRankArtists_mainArtistByCatalogID(t *testing.T) {
 	top, fromListening := rankArtists(lib, signal{played, weightPlayed})
 	if len(top) != 2 || top[0].catalogID != "7" || top[0].score != 3 || top[1].name != "A" || top[1].score != 1 || fromListening != 2 {
 		t.Errorf("top = %+v, fromListening %d", top, fromListening)
+	}
+}
+
+// Two artists with one name but different catalog ids stay two: the
+// listened one is checked, the library one keeps its own id.
+func TestRankArtists_sameNameOtherArtist(t *testing.T) {
+	lib := []applemusic.Artist{{ID: "r.1", Name: "Phoenix", CatalogID: "111"}}
+	played := []applemusic.Item{{Kind: "song", Name: "s", Artist: "Phoenix", ArtistID: "222"}}
+	top, _ := rankArtists(lib, signal{played, weightPlayed})
+	ids := map[string]int{}
+	for _, c := range top {
+		ids[c.catalogID] = c.score
+	}
+	if len(top) != 2 || ids["222"] != 1 || ids["111"] != 0 {
+		t.Errorf("top = %+v", top)
 	}
 }
 

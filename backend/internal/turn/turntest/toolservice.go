@@ -40,6 +40,24 @@ func (f ToolService) Tools() []llm.Tool {
 	return f.ToolList
 }
 
+// CoversGated mirrors mcp.Service.CoversGated over ToolCategories (by tool,
+// counting only tools the user may call).
+func (f ToolService) CoversGated(p mcp.Principal, category string) bool {
+	for name, cats := range f.ToolCategories {
+		if len(cats) == 0 || !f.ToolAllowed(p, name) {
+			continue
+		}
+		covered := false
+		for _, c := range cats {
+			covered = covered || c == category
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
+}
+
 // ToolsFor mirrors mcp.Service.ToolsFor semantics: a category-neutral tool (none
 // registered in toolCategories) is always returned; a category-tagged tool is
 // returned only when the active set contains one of its categories. With no

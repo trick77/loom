@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -389,6 +390,26 @@ func (s *Service) ToolsFor(active map[string]bool) []llm.Tool {
 		}
 	}
 	return out
+}
+
+// CoversGated reports whether category alone already offers every
+// category-gated server the account may use: then re-classifying a turn
+// cannot add a server. A server the account may not use does not count.
+func (s *Service) CoversGated(p Principal, category string) bool {
+	if s == nil {
+		return true
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, sc := range s.cfg.Servers {
+		if len(sc.Categories) == 0 || !sc.userAllowed(p) {
+			continue
+		}
+		if !slices.Contains(sc.Categories, category) {
+			return false
+		}
+	}
+	return true
 }
 
 func anyCategoryActive(cats []string, active map[string]bool) bool {

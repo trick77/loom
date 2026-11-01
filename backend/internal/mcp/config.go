@@ -5,6 +5,8 @@ import (
 	"context"
 	"net/url"
 	"strings"
+
+	"github.com/trick77/loom/internal/classifier"
 )
 
 const (
@@ -168,14 +170,17 @@ func TunewireLibraryServerConfig(baseURL, token string, users []string) ServerCo
 		Users:             users,
 		TrustInstructions: true,
 		BuiltIn:           true,
-		Categories:        TunewireCategories,
+		Categories:        tunewireLibraryCategories(),
 	}
 }
 
-// TunewireCategories are the conversation categories that get the Apple Music
-// tools: music turns, and recommendations (which link what they recommend).
-// Other turns are spared their schemas.
-var TunewireCategories = []string{"music", "entertainment_recs"}
+// tunewireLibraryCategories are the conversation categories that get the
+// user's own Apple Music library: music turns and recommendations. Other
+// turns are spared their schemas. A fresh slice per call: no two configs
+// share one.
+func tunewireLibraryCategories() []string {
+	return []string{string(classifier.Music), string(classifier.EntertainmentRecs)}
+}
 
 // TunewireCatalogServerConfig is the sidecar's catalog search: Apple Music
 // links for songs, albums and artists. It reads no personal data, so every
@@ -187,7 +192,8 @@ func TunewireCatalogServerConfig(baseURL, token string) ServerConfig {
 		Headers:           map[string]string{"Authorization": "Bearer " + token},
 		TrustInstructions: true,
 		BuiltIn:           true,
-		Categories:        TunewireCategories,
+		// Ungated: a song or album can come up in any turn, and every one
+		// named gets its link.
 	}
 }
 
