@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -81,6 +83,46 @@ func TestRenderUserFacts_BucketsByTime(t *testing.T) {
 	}
 	if renderUserFacts(nil, now) != "" {
 		t.Fatalf("no facts must render nothing")
+	}
+}
+
+// Over the ceiling, recency decides what is left out, not category order:
+// a 3-year-old work fact goes before a 7-month-old interest fact.
+func TestFitRenderCeiling_DropsByLastSeenAcrossCategories(t *testing.T) {
+	now := time.Now()
+	day := 24 * time.Hour
+	filler := strings.Repeat("x", userFactsRenderCeiling-200)
+	sorted := []chat.UserFact{
+		fact("big", "personal", filler, false, now),
+		fact("work-old", "work", strings.Repeat("w", 150), false, now.Add(-1100*day)),
+		fact("interest-newer", "interest", strings.Repeat("i", 150), false, now.Add(-210*day)),
+	}
+	chat.SortUserFacts(sorted, now)
+	kept := fitRenderCeiling(sorted)
+	ids := make([]string, len(kept))
+	for i, f := range kept {
+		ids[i] = f.ID
+	}
+	if slices.Contains(ids, "work-old") || !slices.Contains(ids, "interest-newer") {
+		t.Fatalf("kept %v, want the least recently seen fact dropped first", ids)
+	}
+}
+
+// The collapse guard halves at most the size the prompt asks for: an
+// oversized prior condensed to target size is accepted, a fragment is not.
+func TestRefreshMemory_CondensingAnOversizedPriorIsAccepted(t *testing.T) {
+	prior := strings.Repeat("- fact line\n", 250) // ~3000 chars, over the prompt's 2000 target
+	for _, tc := range []struct {
+		result string
+		ok     bool
+	}{{strings.Repeat("y", 1400), true}, {strings.Repeat("y", 300), false}} {
+		store := projectStore(chat.ProjectMemory{Content: prior}, 0)
+		s := &server{thread: store, llm: fakeChatClient{ProjectMemory: tc.result}}
+		err := s.refreshMemory(context.Background(), testUser, s.projectMemoryScope(testUser, store.Project),
+			prior, []chat.Message{{Role: chat.RoleUser, Content: "hi"}}, 7, false)
+		if (err == nil) != tc.ok {
+			t.Fatalf("result of %d chars: err = %v, want accepted=%v", len(tc.result), err, tc.ok)
+		}
 	}
 }
 
@@ -226,11 +268,137 @@ func TestRefreshUserFacts_ConvertsOldMemoryFirst(t *testing.T) {
 		t.Fatalf("refresh: %v", err)
 	}
 	conv := store.FactBatches[0]
-	if conv.Origin != chat.FactOriginConverted || conv.Ops[1].Kind != "" || !conv.SeenAt.Equal(blobAt) {
-		t.Fatalf("conversion batch = %+v, want converted adds only, dated at the memory's refresh", conv)
+	if conv.Origin != chat.FactOriginConverted || len(conv.Ops) != 1 || conv.Ops[0].Kind != chat.FactOpAdd {
+		t.Fatalf("conversion batch = %+v, want converted adds only", conv)
 	}
 	if req := <-requests; strings.Contains(req.Transcript, "already in the memory text") || !strings.Contains(req.Transcript, "moved to Bern") {
 		t.Fatalf("after conversion the refresh must read only messages newer than the memory text:\n%s", req.Transcript)
+	}
+}
+
+// The old memory's time layers survive conversion: each section is converted
+// on its own and dated into its bucket, identity sections become long-term.
+func TestConvertUserMemory_KeepsSectionAges(t *testing.T) {
+	blobAt := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	store := &fakeThreadStore{UserMemory: chat.UserMemory{UpdatedAt: &blobAt, Content: "## Work context\n- Backend dev\n\n## Top of mind\n- Shipping v2\n\n## Brief history\n### Recent months\n- Started climbing\n\n### Earlier context\n- Old project"}}
+	s := &server{thread: store, llm: fakeChatClient{ConvertedOps: []llm.FactOp{{Op: "add", Category: "work", Content: "x"}}}}
+
+	if _, err := s.convertUserMemory(context.Background(), testUser); err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	ops := store.FactBatches[0].Ops
+	if len(ops) != 4 {
+		t.Fatalf("ops = %d, want one per non-empty section (the Brief history umbrella has none)", len(ops))
+	}
+	day := 24 * time.Hour
+	want := []struct {
+		seen    time.Time
+		durable bool
+	}{{blobAt, true}, {blobAt, false}, {blobAt.Add(-60 * day), false}, {blobAt.Add(-200 * day), false}}
+	for i, w := range want {
+		if !ops[i].SeenAt.Equal(w.seen) || ops[i].Durable != w.durable {
+			t.Fatalf("op %d = seen %v durable %v, want %v %v", i, ops[i].SeenAt, ops[i].Durable, w.seen, w.durable)
+		}
+	}
+	if (chat.UserFact{LastSeen: ops[3].SeenAt}).Bucket(blobAt) != chat.BucketEarlier {
+		t.Fatalf("Earlier context did not land in the Earlier bucket")
+	}
+}
+
+// Without old memory text the first refresh reads only the recent past, not
+// the whole history.
+func TestRefreshUserFacts_NewUserBackfillsRecentOnly(t *testing.T) {
+	store := &fakeThreadStore{Messages: []chat.Message{
+		msg("ancient", "thr_a", "two years ago", time.Now().Add(-700*24*time.Hour)),
+		msg("recent", "thr_a", "last week", time.Now().Add(-7*24*time.Hour)),
+	}}
+	requests := make(chan fakeFactRequest, 1)
+	s := &server{thread: store, llm: fakeChatClient{FactRequests: requests}}
+	if err := s.refreshUserFactsIfDue(context.Background(), testUser, memoryUserRefreshAge); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if req := <-requests; strings.Contains(req.Transcript, "two years ago") || !strings.Contains(req.Transcript, "last week") {
+		t.Fatalf("backfill transcript = %q, want only the last %v", req.Transcript, userFactsBackfill)
+	}
+}
+
+// A batch cursor must not reset the merge pass's date: the pass stays weekly.
+func TestRefreshUserFacts_BatchKeepsConsolidationWeekly(t *testing.T) {
+	recent := time.Now().Add(-2 * 24 * time.Hour)
+	var facts []chat.UserFact
+	for i := range userFactsConsolidateMin {
+		facts = append(facts, fact(string(rune('a'+i)), "work", "fact", false, time.Now()))
+	}
+	store := &fakeThreadStore{
+		FactCursor: &chat.UserFactCursor{LastConsolidatedAt: &recent},
+		Facts:      facts,
+		Messages:   []chat.Message{msg("m1", "thr_a", "hi", time.Now().Add(-time.Hour))},
+	}
+	s := &server{thread: store, llm: fakeChatClient{FactMerges: []llm.FactMerge{{IDs: []string{"a", "b"}, Content: "merged"}}}}
+	if err := s.refreshUserFactsIfDue(context.Background(), testUser, 0); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if len(store.FactBatches) != 1 || len(store.Merges) != 0 {
+		t.Fatalf("batches %d, merges %d: want the batch applied and no merge two days after the last", len(store.FactBatches), len(store.Merges))
+	}
+}
+
+// truncatingFacts cuts the reply off for any batch of more than maxMessages.
+type truncatingFacts struct {
+	fakeChatClient
+	maxMessages int
+	sizes       *[]int
+}
+
+func (f truncatingFacts) ExtractUserFacts(_ context.Context, _ []llm.FactInput, transcript, _ string, _ []string, _ string) ([]llm.FactOp, error) {
+	n := strings.Count(transcript, "User: ")
+	*f.sizes = append(*f.sizes, n)
+	if n > f.maxMessages {
+		return nil, llm.ErrMemoryTruncated
+	}
+	return nil, nil
+}
+
+// A batch whose reply is cut off is halved until it fits, so a dense backlog
+// still moves instead of retrying the same batch every sweep.
+func TestRefreshUserFacts_HalvesATruncatedBatch(t *testing.T) {
+	var messages []chat.Message
+	for i := range 8 {
+		messages = append(messages, msg(fmt.Sprintf("m%d", i), "thr_a", "hi", time.Now().Add(-time.Hour+time.Duration(i)*time.Second)))
+	}
+	store := &fakeThreadStore{FactCursor: &chat.UserFactCursor{}, Messages: messages}
+	var sizes []int
+	s := &server{thread: store, llm: truncatingFacts{maxMessages: 2, sizes: &sizes}}
+	if err := s.refreshUserFactsIfDue(context.Background(), testUser, 0); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if store.FactCursor.LastMessageID != "m7" {
+		t.Fatalf("cursor at %q, want the whole backlog folded in by halved batches (sizes %v)", store.FactCursor.LastMessageID, sizes)
+	}
+	if sizes[0] != 8 || sizes[1] != 4 || sizes[2] != 2 {
+		t.Fatalf("batch sizes = %v, want 8, 4, 2, ...", sizes)
+	}
+}
+
+// Forgotten facts are purged only by the batch that reaches the newest
+// message: an older backlog batch still needs them as do-not-re-add.
+func TestRefreshUserFacts_PurgesForgottenOnlyWhenDrained(t *testing.T) {
+	var messages []chat.Message
+	base := time.Now().Add(-2 * time.Hour)
+	for i := range chat.UserFactBatchLimit + 1 {
+		messages = append(messages, msg(fmt.Sprintf("m%05d", i), "thr_a", "x", base.Add(time.Duration(i)*time.Second)))
+	}
+	store := &fakeThreadStore{FactCursor: &chat.UserFactCursor{}, ForgottenFacts: []string{"Works at Acme"}, Messages: messages}
+	s := &server{thread: store, llm: fakeChatClient{}}
+	if err := s.refreshUserFactsIfDue(context.Background(), testUser, 0); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if len(store.FactBatches) != 2 {
+		t.Fatalf("batches = %d, want 2", len(store.FactBatches))
+	}
+	if store.FactBatches[0].PurgeForgottenBefore != nil || store.FactBatches[1].PurgeForgottenBefore == nil {
+		t.Fatalf("purge flags = %v / %v, want only the draining batch to purge",
+			store.FactBatches[0].PurgeForgottenBefore, store.FactBatches[1].PurgeForgottenBefore)
 	}
 }
 

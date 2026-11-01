@@ -114,7 +114,7 @@ func (s *Engine) addUserFactDigest(ctx context.Context, userID, threadID string,
 	if err != nil {
 		return "tool failed: " + err.Error()
 	}
-	return "Saved: " + renderFactLine(fact)
+	return "Saved: " + chat.RenderFactLine(fact)
 }
 
 func (s *Engine) updateUserFactDigest(ctx context.Context, userID, threadID string, args map[string]any) string {
@@ -133,7 +133,7 @@ func (s *Engine) updateUserFactDigest(ctx context.Context, userID, threadID stri
 	if !found {
 		return "No saved fact has that id. The user's current facts:\n" + s.currentFactsList(ctx, userID)
 	}
-	return "Updated: " + renderFactLine(fact)
+	return "Updated: " + chat.RenderFactLine(fact)
 }
 
 func (s *Engine) forgetUserFactDigest(ctx context.Context, userID string, args map[string]any) string {
@@ -177,12 +177,8 @@ func (s *Engine) currentFactsList(ctx context.Context, userID string) string {
 	}
 	var b strings.Builder
 	for _, f := range facts {
-		b.WriteString(renderFactLine(f))
+		b.WriteString(chat.RenderFactLine(f))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
-}
-
-func renderFactLine(f chat.UserFact) string {
-	return fmt.Sprintf("- [%s] (%s) %s", f.ID, f.Category, f.Content)
 }

@@ -40,15 +40,13 @@ const ProjectMemorySystemPrompt = "You maintain a compact, durable memory profil
 	"Write in a terse, telegraphic \"caveman\" style: keep only load-bearing words; drop articles (a/the), pronouns, and linking verbs (e.g. \"Chose Postgres over Mongo; deadline March 1\"). " +
 	"Keep the whole memory well under 2000 characters. Output ONLY the memory content, no preamble."
 
-// GenerateMemory re-summarizes a memory. It is given a scope-specific header
-// block (for example a project's name/description, or empty for user memory),
-// the prior memory, a transcript of recent messages, and an optional
-// excludedDirectives block (the user's explicit standing instructions that must
-// NOT be duplicated into derived memory — empty for project memory), and returns
-// a fresh, compact memory (re-summarize, not append) so the result stays bounded.
-// The systemPrompt selects the memory's style (project vs. user). It takes plain
-// strings to avoid a dependency on the chat package.
-func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transcript, excludedDirectives, systemPrompt, responseLanguage string) (string, error) {
+// GenerateMemory re-summarizes a text memory (project memory). It is given a
+// header block (the project's name/description), the prior memory and a
+// transcript of recent messages, and returns a fresh, compact memory
+// (re-summarize, not append) so the result stays bounded. The systemPrompt
+// selects the memory's style. It takes plain strings to avoid a dependency on
+// the chat package.
+func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transcript, systemPrompt, responseLanguage string) (string, error) {
 	start := time.Now()
 
 	var b strings.Builder
@@ -62,11 +60,6 @@ func (c *Client) GenerateMemory(ctx context.Context, header, priorMemory, transc
 	b.WriteString("\nRecent conversation:\n\"\"\"\n")
 	b.WriteString(strings.TrimSpace(transcript))
 	b.WriteString("\n\"\"\"\n")
-	if ex := strings.TrimSpace(excludedDirectives); ex != "" {
-		b.WriteString("\nAlready saved as the user's explicit standing instructions — do NOT restate or duplicate any of these in the memory:\n\"\"\"\n")
-		b.WriteString(ex)
-		b.WriteString("\n\"\"\"\n")
-	}
 	b.WriteString("\nUpdated memory:")
 
 	messages := []Message{

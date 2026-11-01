@@ -87,6 +87,9 @@ type UserFactOp struct {
 	Durable      bool
 	SupersededBy string
 	Threads      []string
+	// SeenAt, when set on an add, overrides the batch's SeenAt: the one-time
+	// conversion dates each old memory section by how old it was.
+	SeenAt time.Time
 }
 
 // UserFactBatch is one refresh's ops plus the cursor it advances to. The ops,

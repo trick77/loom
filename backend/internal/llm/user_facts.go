@@ -61,7 +61,7 @@ const UserFactsSystemPrompt = "You maintain a durable list of facts about the us
 	"- {\"op\":\"update\",\"id\":\"...\",\"content\":\"...\",\"threads\":[\"T2\"]}: an existing fact changed or became more precise, same subject.\n" +
 	"- {\"op\":\"reinforce\",\"id\":\"...\",\"threads\":[\"T1\"]}: the new messages mention or rely on an existing fact again without changing it. Emit this for EVERY existing fact the new messages touch, even in passing: it is how the memory knows a fact is still current.\n" +
 	"- {\"op\":\"retire\",\"id\":\"...\",\"superseded_by\":\"<id or ref>\"}: only when another fact replaces it (moved city: retire the old city, superseded_by the new one). Never retire a fact for being old, unmentioned or unimportant: old facts stay.\n" +
-	"threads lists the thread labels the op comes from. Do not add a fact that duplicates an existing one: reinforce or update it instead. " +
+	"threads is REQUIRED on add, update and reinforce: only the labels of the threads the op actually comes from (deleting those threads removes the fact). Do not add a fact that duplicates an existing one: reinforce or update it instead. " +
 	factRules + " " +
 	"If nothing about the user changed, output {\"ops\": []}."
 

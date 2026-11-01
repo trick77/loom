@@ -82,11 +82,13 @@ func TestEval_UserMemoryReplay(t *testing.T) {
 		}
 		before, _ := st.ListActiveUserFacts(ctx, user.ID)
 		rec.reset()
+		// The production batch path, budget and halving included.
 		for rest := d.messages; len(rest) > 0; {
-			_, used := factsTranscriptUsed(rest)
-			if _, _, err := s.applyUserFactsBatch(ctx, user, rest[:used]); err != nil {
+			_, used, err := s.applyUserFactsShrinking(ctx, user, rest[:min(len(rest), chat.UserFactBatchLimit)])
+			if err != nil {
 				r.FactErrors++
 				t.Logf("day %s: facts batch failed: %v", d.day, err)
+				break
 			}
 			rest = rest[used:]
 		}
@@ -335,7 +337,7 @@ func replayBlob(ctx context.Context, t *testing.T, client *llm.Client, days []ev
 		if strings.TrimSpace(transcript) == "" {
 			continue
 		}
-		next, err := client.GenerateMemory(ctx, "", blob, transcript, "", prompt, "")
+		next, err := client.GenerateMemory(ctx, "", blob, transcript, prompt, "")
 		switch {
 		case err != nil:
 			r.mu.Lock()
@@ -387,11 +389,6 @@ func (c *recordingFacts) ExtractUserFacts(ctx context.Context, facts []llm.FactI
 	}
 	c.mu.Unlock()
 	return ops, err
-}
-
-func factsTranscriptUsed(messages []chat.Message) (string, int) {
-	transcript, _, used := factsTranscript(messages[:min(len(messages), chat.UserFactBatchLimit)])
-	return transcript, used
 }
 
 func loadEvalHistory(t *testing.T, path string) []chat.Message {

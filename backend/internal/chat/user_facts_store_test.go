@@ -188,10 +188,12 @@ func TestUserFacts_ThreadDeleteRetiresOnlyOrphanedExtractedFacts(t *testing.T) {
 		t.Fatalf("DeleteThread: %v", err)
 	}
 	facts := activeFacts(t, store, userID)
-	if _, ok := factByContent(facts, "only in gone"); ok {
-		t.Fatalf("orphaned extracted fact still shown after its thread was deleted")
+	for _, gone := range []string{"only in gone", "durable in gone"} {
+		if _, ok := factByContent(facts, gone); ok {
+			t.Fatalf("extracted fact %q still shown after its only thread was deleted", gone)
+		}
 	}
-	for _, want := range []string{"durable in gone", "in both", "converted", "said remember in gone"} {
+	for _, want := range []string{"in both", "converted", "said remember in gone"} {
 		if _, ok := factByContent(facts, want); !ok {
 			t.Fatalf("fact %q lost by the thread delete", want)
 		}
@@ -301,6 +303,16 @@ func TestMergeUserFacts(t *testing.T) {
 	}
 	if ok, _ := store.MergeUserFacts(ctx, userID, []string{m.ID, "ghost"}, "x"); ok {
 		t.Fatalf("merge with an unknown id must not apply")
+	}
+
+	// The kept id repeated later in the list must not retire the kept fact.
+	applyBatch(t, store, userID, UserFactBatch{Threads: []string{b}, Ops: []UserFactOp{{Kind: FactOpAdd, Category: FactCategoryInterest, Content: "Boulders indoors"}}})
+	other, _ := factByContent(activeFacts(t, store, userID), "Boulders indoors")
+	if ok, err := store.MergeUserFacts(ctx, userID, []string{m.ID, other.ID, m.ID}, "Climbs and boulders"); err != nil || !ok {
+		t.Fatalf("MergeUserFacts with a repeated id = %v, %v", ok, err)
+	}
+	if got := activeFacts(t, store, userID); len(got) != 1 || got[0].ID != m.ID || got[0].Content != "Climbs and boulders" {
+		t.Fatalf("after merge with a repeated keep id: %+v, want the kept fact live with the merged content", got)
 	}
 }
 

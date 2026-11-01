@@ -124,7 +124,7 @@ func (f *blockingChatClient) GenerateWorkingTitle(context.Context, string, strin
 	return "", nil
 }
 
-func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string, string, string) (string, error) {
+func (f *blockingChatClient) GenerateMemory(context.Context, string, string, string, string, string) (string, error) {
 	return "", nil
 }
 

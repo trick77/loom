@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,6 +35,9 @@ const (
 	userFactsConsolidateEvery = 7 * 24 * time.Hour
 	// userFactsConsolidateMin is the fact count below which merging is skipped.
 	userFactsConsolidateMin = 10
+	// userFactsBackfill is how far back the first refresh reads for a user with
+	// no old memory text, instead of replaying the whole history.
+	userFactsBackfill = 90 * 24 * time.Hour
 	// userFactsRenderCeiling caps the facts block in the system prompt (runes),
 	// only against runaway duplicate growth: past it the least recently seen
 	// non-durable facts are left out of the prompt (they stay stored).
@@ -97,14 +101,16 @@ func renderUserFacts(facts []chat.UserFact, now time.Time) string {
 			b.WriteString(bucketHeadings[bucket])
 			b.WriteString("\n")
 		}
-		fmt.Fprintf(&b, "- [%s] (%s) %s\n", f.ID, f.Category, f.Content)
+		b.WriteString(chat.RenderFactLine(f))
+		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// fitRenderCeiling drops the least recently seen non-durable facts (the tail of
-// the sorted list) until the block fits userFactsRenderCeiling. Durable facts
-// are never dropped.
+// fitRenderCeiling drops the least recently seen non-durable facts, by
+// last_seen and whatever their bucket or category, until the block fits
+// userFactsRenderCeiling. Durable facts are never dropped; the sorted order
+// of what is kept is preserved.
 func fitRenderCeiling(sorted []chat.UserFact) []chat.UserFact {
 	total := 0
 	for _, f := range sorted {
@@ -113,18 +119,22 @@ func fitRenderCeiling(sorted []chat.UserFact) []chat.UserFact {
 	if total <= userFactsRenderCeiling {
 		return sorted
 	}
-	kept := append([]chat.UserFact(nil), sorted...)
-	dropped := 0
-	for i := len(kept) - 1; i >= 0 && total > userFactsRenderCeiling; i-- {
-		if kept[i].Durable {
+	byAge := slices.Clone(sorted)
+	slices.SortStableFunc(byAge, func(a, b chat.UserFact) int { return a.LastSeen.Compare(b.LastSeen) })
+	drop := map[string]bool{}
+	for _, f := range byAge {
+		if total <= userFactsRenderCeiling {
+			break
+		}
+		if f.Durable {
 			continue
 		}
-		total -= factLineRunes(kept[i])
-		kept = append(kept[:i], kept[i+1:]...)
-		dropped++
+		drop[f.ID] = true
+		total -= factLineRunes(f)
 	}
+	kept := slices.DeleteFunc(slices.Clone(sorted), func(f chat.UserFact) bool { return drop[f.ID] })
 	slog.Warn("user facts over the render ceiling; least recently seen left out of the prompt",
-		"facts", len(sorted), "dropped", dropped, "ceiling", userFactsRenderCeiling)
+		"facts", len(sorted), "dropped", len(drop), "ceiling", userFactsRenderCeiling)
 	return kept
 }
 
@@ -182,37 +192,59 @@ func (s *server) refreshUserFactsIfDue(ctx context.Context, user auth.User, minA
 			time.Since(*cursor.LastRefreshAt) < minAge && len(messages) < chat.UserFactBatchLimit {
 			break
 		}
-		next, done, err := s.applyUserFactsBatch(ctx, user, messages)
+		next, used, err := s.applyUserFactsShrinking(ctx, user, messages)
 		if err != nil {
 			return err
 		}
+		// A batch cursor knows nothing about the merge pass; keep its date so
+		// the pass stays weekly.
+		next.LastConsolidatedAt = cursor.LastConsolidatedAt
 		cursor = next
-		if done {
+		if used == len(messages) && len(messages) < chat.UserFactBatchLimit {
 			break
 		}
 	}
 	return s.consolidateUserFactsIfDue(ctx, user, cursor)
 }
 
+// applyUserFactsShrinking applies a batch, halving it while the model's reply
+// is cut off by the token cap, so a dense backlog still makes progress instead
+// of retrying the same oversized batch every sweep. It returns the advanced
+// cursor and how many of messages were folded in.
+func (s *server) applyUserFactsShrinking(ctx context.Context, user auth.User, messages []chat.Message) (chat.UserFactCursor, int, error) {
+	n := len(messages)
+	for {
+		// Only a batch that reaches the newest message may purge forgotten
+		// facts: an older backlog batch must keep them as "do not re-add".
+		drains := n == len(messages) && len(messages) < chat.UserFactBatchLimit
+		cursor, used, err := s.applyUserFactsBatch(ctx, user, messages[:n], drains)
+		if errors.Is(err, llm.ErrMemoryTruncated) && n > 1 {
+			n /= 2
+			continue
+		}
+		return cursor, used, err
+	}
+}
+
 // applyUserFactsBatch folds one batch of messages in and returns the advanced
-// cursor; done is true when the batch drained the backlog.
-func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messages []chat.Message) (chat.UserFactCursor, bool, error) {
+// cursor and how many messages it used. drains says the batch ends at the
+// newest message; only then are forgotten facts purged.
+func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messages []chat.Message, drains bool) (chat.UserFactCursor, int, error) {
 	transcript, labels, used := factsTranscript(messages)
 	last := messages[used-1]
 	cursor := chat.UserFactCursor{LastCreatedAt: last.CreatedAt.UTC().Format(time.DateTime), LastMessageID: last.ID}
-	done := used == len(messages) && len(messages) < chat.UserFactBatchLimit
 
 	facts, err := s.thread.ListActiveUserFacts(ctx, user.ID)
 	if err != nil {
-		return cursor, false, err
+		return cursor, 0, err
 	}
 	forgottenAt := time.Now()
 	forgotten, err := s.thread.ListForgottenUserFacts(ctx, user.ID)
 	if err != nil {
-		return cursor, false, err
+		return cursor, 0, err
 	}
 	var purgeBefore *time.Time
-	if len(forgotten) > 0 {
+	if len(forgotten) > 0 && drains && used == len(messages) {
 		purgeBefore = &forgottenAt
 	}
 	var ops []chat.UserFactOp
@@ -228,7 +260,7 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 		inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_memory", Round: 1}
 		replyOps, err := s.llm.ExtractUserFacts(llm.WithInferenceMetadata(lctx, inference), factInputs(facts), transcript, excluded, forgotten, user.ResponseLanguageName())
 		if err != nil {
-			return cursor, false, err
+			return cursor, 0, err
 		}
 		ops = toFactOps(replyOps, labels)
 	}
@@ -245,36 +277,49 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 		PurgeForgottenBefore: purgeBefore,
 	})
 	if err != nil {
-		return cursor, false, err
+		return cursor, 0, err
 	}
 	slog.Info("user facts refreshed", "user_id", user.ID, "messages", used,
 		"added", res.Added, "updated", res.Updated, "reinforced", res.Reinforced, "retired", res.Retired, "dropped", res.Dropped)
-	return cursor, done, nil
+	return cursor, used, nil
 }
 
 // convertUserMemory turns the old memory text, if any, into facts and returns
 // the starting cursor: right after the text's last refresh, so the messages it
-// had not folded in yet are read next. With no old text, the cursor starts at
-// the beginning of the history.
+// had not folded in yet are read next. With no old text, the cursor starts
+// userFactsBackfill ago instead of replaying the whole history.
+//
+// The text is converted one section at a time (a whole memory as JSON ops can
+// outgrow the answer budget), and each section keeps its age: Work, Personal
+// and Long-term become long-term facts, Recent months and Earlier context are
+// dated back so they land in their bucket instead of reading as top of mind.
+// All sections apply in one batch, so a failed section converts nothing and
+// the next sweep retries cleanly.
 func (s *server) convertUserMemory(ctx context.Context, user auth.User) (chat.UserFactCursor, error) {
 	memory, ok, err := s.thread.GetUserMemory(ctx, user.ID)
 	if err != nil {
 		return chat.UserFactCursor{}, err
 	}
 	if !ok || strings.TrimSpace(memory.Content) == "" || memory.UpdatedAt == nil {
-		return chat.UserFactCursor{}, nil
+		return chat.UserFactCursor{LastCreatedAt: time.Now().Add(-userFactsBackfill).UTC().Format(time.DateTime)}, nil
 	}
-	lctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
-	defer cancel()
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_memory_convert", Round: 1}
-	replyOps, err := s.llm.ConvertUserMemory(llm.WithInferenceMetadata(lctx, inference), memory.Content, user.ResponseLanguageName())
-	if err != nil {
-		return chat.UserFactCursor{}, fmt.Errorf("convert user memory: %w", err)
-	}
-	ops := toFactOps(replyOps, nil)
-	for i := range ops {
-		if ops[i].Kind != chat.FactOpAdd {
-			ops[i].Kind = "" // conversion only adds
+	var ops []chat.UserFactOp
+	for _, section := range memorySections(memory.Content) {
+		lctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
+		inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_memory_convert", Round: 1}
+		replyOps, err := s.llm.ConvertUserMemory(llm.WithInferenceMetadata(lctx, inference), section.text, user.ResponseLanguageName())
+		cancel()
+		if err != nil {
+			return chat.UserFactCursor{}, fmt.Errorf("convert user memory: %w", err)
+		}
+		seen, durable := sectionAge(section.heading, *memory.UpdatedAt)
+		for _, op := range toFactOps(replyOps, nil) {
+			if op.Kind != chat.FactOpAdd {
+				continue // conversion only adds
+			}
+			op.Durable = durable
+			op.SeenAt = seen
+			ops = append(ops, op)
 		}
 	}
 	cursor := chat.UserFactCursor{LastCreatedAt: memory.UpdatedAt.UTC().Format(time.DateTime)}
@@ -289,6 +334,54 @@ func (s *server) convertUserMemory(ctx context.Context, user auth.User) (chat.Us
 	}
 	slog.Info("user memory converted to facts", "user_id", user.ID, "added", res.Added, "dropped", res.Dropped)
 	return cursor, nil
+}
+
+type memorySection struct {
+	heading string // lowercased heading text, "" for text before any heading
+	text    string // heading line plus body, as sent to the model
+}
+
+// memorySections splits the old memory text at its markdown headings,
+// dropping headings with no body (the "## Brief history" umbrella).
+func memorySections(content string) []memorySection {
+	var out []memorySection
+	var heading string
+	var body []string
+	flush := func() {
+		if text := strings.TrimSpace(strings.Join(body, "\n")); text != "" {
+			full := text
+			if heading != "" {
+				full = heading + "\n" + text
+			}
+			out = append(out, memorySection{heading: strings.ToLower(strings.TrimLeft(heading, "# ")), text: full})
+		}
+	}
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			flush()
+			heading, body = strings.TrimSpace(line), nil
+			continue
+		}
+		body = append(body, line)
+	}
+	flush()
+	return out
+}
+
+// sectionAge maps an old memory section to the age its facts start with:
+// identity sections are long-term, the time layers are dated back into their
+// bucket (Recent months under 180 days, Earlier context past it).
+func sectionAge(heading string, updated time.Time) (time.Time, bool) {
+	switch {
+	case strings.Contains(heading, "long-term"), strings.Contains(heading, "work context"), strings.Contains(heading, "personal context"):
+		return updated, true
+	case strings.Contains(heading, "recent months"):
+		return updated.Add(-60 * 24 * time.Hour), false
+	case strings.Contains(heading, "earlier context"):
+		return updated.Add(-200 * 24 * time.Hour), false
+	default:
+		return updated, false
+	}
 }
 
 // consolidateUserFactsIfDue runs the merge pass at most once per

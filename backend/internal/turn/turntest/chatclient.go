@@ -192,7 +192,7 @@ func (f ChatClient) GenerateReasoningTitle(ctx context.Context, reasoning, _ str
 }
 
 // GenerateMemory fakes the memory refresh, which runs outside a turn.
-func (f ChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _, _ string) (string, error) {
+func (f ChatClient) GenerateMemory(_ context.Context, _, prior, _, _, _ string) (string, error) {
 	if f.MemoryPriors != nil {
 		f.MemoryPriors <- prior
 	}
@@ -424,7 +424,7 @@ func (f *ToolChatClient) GenerateWorkingTitle(context.Context, string, string) (
 }
 
 // GenerateMemory fakes the memory refresh, which runs outside a turn.
-func (f *ToolChatClient) GenerateMemory(_ context.Context, _, _, _, _, _, _ string) (string, error) {
+func (f *ToolChatClient) GenerateMemory(_ context.Context, _, _, _, _, _ string) (string, error) {
 	return "", nil
 }
 

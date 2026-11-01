@@ -118,6 +118,10 @@ func (s *server) refreshMemoryIfDue(ctx context.Context, user auth.User, scope m
 	return s.refreshMemory(ctx, user, scope, prior, messages, count, count < sourceCount)
 }
 
+// memoryCollapseBase caps the prior the collapse guard halves: the size the
+// project memory prompt asks for ("well under 2000 characters").
+const memoryCollapseBase = 2000
+
 // errMemoryCollapsed refuses a refresh whose result is under half the prior.
 var errMemoryCollapsed = errors.New("memory refresh collapsed the prior")
 
@@ -132,14 +136,19 @@ func (s *server) refreshMemory(ctx context.Context, user auth.User, scope memory
 		return nil
 	}
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: scope.purpose, Round: 1}
-	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, "", scope.systemPrompt, user.ResponseLanguageName())
+	content, err := s.llm.GenerateMemory(llm.WithInferenceMetadata(ctx, inference), scope.header, prior, transcript, scope.systemPrompt, user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}
 	if strings.TrimSpace(content) == "" {
 		return nil
 	}
-	if priorLen := len([]rune(strings.TrimSpace(prior))); !mayShrink && priorLen > 0 && 2*len([]rune(content)) < priorLen {
+	// Half of the prior, but measured against at most the size the prompt asks
+	// for: a prior above it (an old or edited memory) may legitimately be
+	// condensed to target size, and refusing that would stall the memory and
+	// repeat the call every refresh.
+	if priorLen := len([]rune(strings.TrimSpace(prior))); !mayShrink && priorLen > 0 &&
+		2*len([]rune(content)) < min(priorLen, memoryCollapseBase) {
 		slog.Warn("memory refresh refused: result under half the prior",
 			"scope", scope.name, "prior_chars", priorLen, "result_chars", len([]rune(content)))
 		return errMemoryCollapsed

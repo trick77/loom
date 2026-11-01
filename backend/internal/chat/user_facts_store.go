@@ -15,11 +15,11 @@ import (
 // user_facts as f.
 const userFactColumnsF = "f.id, f.user_id, f.category, f.content, f.durable, f.origin, f.first_seen, f.last_seen"
 
-// activeFactFilter selects a user's live facts. An extracted, non-durable fact
-// whose source threads are all deleted is hidden at once, before the next
-// refresh retires it.
+// activeFactFilter selects a user's live facts. An extracted fact whose source
+// threads are all deleted is hidden at once, before the next refresh retires
+// it: deleting the threads a fact came from removes it, long-term or not.
 const activeFactFilter = `f.user_id = ? AND f.retired_at IS NULL AND NOT (
-    f.origin = 'extracted' AND f.durable = 0 AND
+    f.origin = 'extracted' AND
     NOT EXISTS (SELECT 1 FROM user_fact_sources s WHERE s.fact_id = f.id))`
 
 func formatFactTime(t time.Time) string { return t.UTC().Format(time.DateTime) }
@@ -112,10 +112,14 @@ func (s *Store) ApplyUserFactBatch(ctx context.Context, userID string, batch Use
 			continue
 		}
 		id := sqlutil.NewID()
+		addSeen := seen
+		if !op.SeenAt.IsZero() {
+			addSeen = formatFactTime(op.SeenAt)
+		}
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO user_facts (id, user_id, category, content, durable, origin, first_seen, last_seen)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			id, userID, op.Category, content, op.Durable, batch.Origin, seen, seen,
+			id, userID, op.Category, content, op.Durable, batch.Origin, addSeen, addSeen,
 		); err != nil {
 			return res, fmt.Errorf("apply user facts: add: %w", err)
 		}
@@ -215,8 +219,8 @@ ON CONFLICT(user_id) DO UPDATE SET
 }
 
 // promoteAndRetireOrphans marks facts still reinforced UserFactDurableSpan
-// after first seen as long-term, and retires extracted, non-durable facts whose
-// source threads are all gone.
+// after first seen as long-term, and retires extracted facts whose source
+// threads are all gone.
 func promoteAndRetireOrphans(ctx context.Context, tx *sql.Tx, userID string) error {
 	if _, err := tx.ExecContext(ctx, `
 UPDATE user_facts SET durable = 1, updated_at = datetime('now')
@@ -228,7 +232,7 @@ WHERE user_id = ? AND retired_at IS NULL AND durable = 0
 	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE user_facts SET retired_at = datetime('now'), retire_reason = 'thread_deleted', updated_at = datetime('now')
-WHERE user_id = ? AND retired_at IS NULL AND origin = 'extracted' AND durable = 0
+WHERE user_id = ? AND retired_at IS NULL AND origin = 'extracted'
   AND NOT EXISTS (SELECT 1 FROM user_fact_sources s WHERE s.fact_id = user_facts.id)`,
 		userID,
 	); err != nil {
@@ -351,7 +355,7 @@ WHERE user_id = ? AND id = ? AND retired_at IS NULL`, userID, id)
 // retired as superseded by it. Nothing is merged unless every id is live.
 func (s *Store) MergeUserFacts(ctx context.Context, userID string, ids []string, content string) (bool, error) {
 	content, ok := validFactContent(content)
-	ids = slices.Compact(slices.Clone(ids))
+	ids = uniqueInOrder(ids)
 	if !ok || len(ids) < 2 {
 		return false, nil
 	}
@@ -480,8 +484,28 @@ LIMIT ?`,
 // activeFactFilterNoAlias is activeFactFilter for an UPDATE on user_facts,
 // which cannot alias the table.
 const activeFactFilterNoAlias = `user_id = ? AND retired_at IS NULL AND NOT (
-    origin = 'extracted' AND durable = 0 AND
+    origin = 'extracted' AND
     NOT EXISTS (SELECT 1 FROM user_fact_sources s WHERE s.fact_id = user_facts.id))`
+
+// uniqueInOrder drops repeated ids, keeping the first occurrence: the first id
+// of a merge is the fact that is kept.
+func uniqueInOrder(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// RenderFactLine renders one fact as "- [id] (category) content", the form
+// both the system prompt and the fact tools use.
+func RenderFactLine(f UserFact) string {
+	return "- [" + f.ID + "] (" + f.Category + ") " + f.Content
+}
 
 func addFactSources(ctx context.Context, tx *sql.Tx, userID, factID string, threads []string) error {
 	for _, threadID := range threads {

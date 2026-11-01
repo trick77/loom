@@ -261,7 +261,7 @@ type ChatClient interface {
 	ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error)
 	GenerateReasoningTitle(context.Context, string, string) (string, error)
 	GenerateWorkingTitle(context.Context, string, string) (string, error)
-	GenerateMemory(context.Context, string, string, string, string, string, string) (string, error)
+	GenerateMemory(context.Context, string, string, string, string, string) (string, error)
 	ExtractUserFacts(context.Context, []llm.FactInput, string, string, []string, string) ([]llm.FactOp, error)
 	ConvertUserMemory(context.Context, string, string) ([]llm.FactOp, error)
 	ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error)
