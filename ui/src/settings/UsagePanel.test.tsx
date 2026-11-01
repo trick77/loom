@@ -21,11 +21,9 @@ const sample: api.Usage = {
   codeRuns: 13,
   threadsCreated: 9,
   projectsCreated: 3,
-  userMemoryLength: 1234,
-  userMemoryMax: 2000,
+  userFactsCount: 1234,
+  userFactsLongTerm: 56,
   userMemoryUpdatedAt: null,
-  userMemorySourceMessages: 184,
-  userMemoryTotalMessages: 210,
   userMemoryRefreshWindowHours: 24,
   userDirectivesCount: 2,
   userDirectivesLength: 48,
@@ -35,7 +33,7 @@ const sample: api.Usage = {
 describe("UsagePanel", () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it("renders counters and memory length from the API", async () => {
+  it("renders counters and the memory's fact count from the API", async () => {
     vi.spyOn(api, "getUsage").mockResolvedValue(sample);
     render(<UsagePanel />);
 
@@ -47,10 +45,9 @@ describe("UsagePanel", () => {
     expect(screen.getByText("13")).toBeInTheDocument(); // code runs
     expect(screen.getByText("$0.01")).toBeInTheDocument(); // lifetime cost, nano-USD as dollars, to the cent
     // getByText normalizes the thin space (U+202F) to a regular space.
-    expect(screen.getByText("1 234 / 2 000 (62%)")).toBeInTheDocument(); // length + capacity %
-    expect(screen.getByText("Never")).toBeInTheDocument(); // last updated (no memory yet)
-    expect(screen.getByText("184 of 210")).toBeInTheDocument(); // messages captured
-    expect(screen.getByText("Eligible now (26 pending)")).toBeInTheDocument(); // next refresh
+    expect(screen.getByText("1 234 (56 long-term)")).toBeInTheDocument(); // facts
+    expect(screen.getByText("Never")).toBeInTheDocument(); // last updated (no refresh yet)
+    expect(screen.getByText("Within the hour")).toBeInTheDocument(); // next refresh
     // Exactly one Memory section (guards against a stale duplicate group).
     expect(screen.getAllByText("Memory")).toHaveLength(1);
   });

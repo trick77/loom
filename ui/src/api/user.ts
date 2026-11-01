@@ -1,8 +1,8 @@
 import { requestJSON } from "./http";
-import type { Usage, UserDirective, UserMemory } from "./types";
+import type { Usage, UserDirective, UserFact } from "./types";
 
-export async function getUserMemory(): Promise<UserMemory> {
-  return requestJSON(`/api/me/memory`, "failed to load user memory");
+export async function getUserFacts(): Promise<UserFact[]> {
+  return requestJSON(`/api/me/facts`, "failed to load user facts");
 }
 
 export async function getUserDirectives(): Promise<UserDirective[]> {

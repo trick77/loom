@@ -14,43 +14,33 @@ function fmt(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, "\u202f");
 }
 
-// nextRefreshLabel describes when the user memory is next eligible to refresh,
-// derived client-side from the rolling refresh window. The background worker only
-// regenerates when there is new activity (messages pending) AND the memory is past
-// its window, so: no pending -> up to date; never generated -> eligible now;
-// otherwise count down the remaining window.
-function nextRefreshLabel(u: Usage, pending: number, t: TFunction): string {
-  if (pending === 0) return t("settings.upToDate");
-  const note = t("settings.pendingNote", { formatted: fmt(pending) });
-  if (u.userMemoryUpdatedAt === null)
-    return t("settings.eligibleNow", { note });
+// nextRefreshLabel describes when the user's new messages are next folded into
+// their facts, derived client-side from the rolling refresh window. The
+// background sweep runs hourly, so a never-refreshed memory or an elapsed
+// window means within the hour; otherwise count down the remaining window.
+function nextRefreshLabel(u: Usage, t: TFunction): string {
+  if (u.userMemoryUpdatedAt === null) return t("settings.eligibleSoon");
   const windowMs = u.userMemoryRefreshWindowHours * 3_600_000;
   const remainingMs =
     windowMs - (Date.now() - new Date(u.userMemoryUpdatedAt).getTime());
-  if (remainingMs <= 0) return t("settings.eligibleNow", { note });
+  if (remainingMs <= 0) return t("settings.eligibleSoon");
   return t("settings.eligibleInHours", {
     hours: Math.ceil(remainingMs / 3_600_000),
-    note,
   });
 }
 
 function memoryRows(u: Usage, t: TFunction): Row[] {
-  const pct =
-    u.userMemoryMax > 0
-      ? Math.round((u.userMemoryLength / u.userMemoryMax) * 100)
-      : 0;
-  const pending = Math.max(
-    u.userMemoryTotalMessages - u.userMemorySourceMessages,
-    0,
-  );
   const directivesPct =
     u.userDirectivesMax > 0
       ? Math.round((u.userDirectivesLength / u.userDirectivesMax) * 100)
       : 0;
   return [
     {
-      label: t("settings.memoryLength"),
-      value: `${fmt(u.userMemoryLength)} / ${fmt(u.userMemoryMax)} (${pct}%)`,
+      label: t("settings.memoryFacts"),
+      value: t("settings.memoryFactsValue", {
+        count: fmt(u.userFactsCount),
+        longTerm: fmt(u.userFactsLongTerm),
+      }),
     },
     {
       label: t("settings.lastUpdated"),
@@ -60,15 +50,8 @@ function memoryRows(u: Usage, t: TFunction): Row[] {
           : formatTimeAgo(u.userMemoryUpdatedAt),
     },
     {
-      label: t("settings.messagesCaptured"),
-      value: t("settings.messagesCapturedValue", {
-        captured: fmt(u.userMemorySourceMessages),
-        total: fmt(u.userMemoryTotalMessages),
-      }),
-    },
-    {
       label: t("settings.nextRefresh"),
-      value: nextRefreshLabel(u, pending, t),
+      value: nextRefreshLabel(u, t),
     },
     {
       label: t("settings.otherInstructions"),
