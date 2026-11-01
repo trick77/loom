@@ -72,7 +72,9 @@ test("groups facts under their time bucket in server order", async () => {
   ]);
   const items = screen.getAllByRole("listitem");
   expect(items[0]).toHaveTextContent("Lives Zurich");
-  expect(within(items[0]).getByText(/Personal · last mentioned/)).toBeInTheDocument();
+  expect(
+    within(items[0]).getByText(/Personal · last mentioned/),
+  ).toBeInTheDocument();
   expect(items[2]).toHaveTextContent("Started climbing");
   expect(within(items[2]).getByText(/Interests/)).toBeInTheDocument();
 });
