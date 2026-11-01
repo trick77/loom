@@ -26,8 +26,8 @@ import (
 // design on a live model, then measures what survived. Live and costly: it
 // runs only with LOOM_EVAL=1.
 //
-//	LOOM_EVAL=1 LOOM_EVAL_HISTORY=history.json LOOM_EVAL_MODEL=mimo-v2.6-flash \
-//	LOOM_EVAL_OUT=report.json LLMWIRE_MIMO_API_KEY=... \
+//	LOOM_EVAL=1 LOOM_EVAL_HISTORY=history.json LOOM_EVAL_MODEL=<model id> \
+//	LOOM_EVAL_OUT=report.json LLMWIRE_<PROVIDER>_API_KEY=... \
 //	go test -run Eval_UserMemoryReplay -timeout 8h -v ./internal/httpapi/
 //
 // The history is a JSON array of {id, thread_id, role, content, created_at}
@@ -37,7 +37,10 @@ func TestEval_UserMemoryReplay(t *testing.T) {
 	if os.Getenv("LOOM_EVAL") != "1" {
 		t.Skip("live eval: set LOOM_EVAL=1")
 	}
-	model := envOr("LOOM_EVAL_MODEL", "mimo-v2.6-flash")
+	model := os.Getenv("LOOM_EVAL_MODEL")
+	if model == "" {
+		t.Fatal("LOOM_EVAL_MODEL is required: the llmwire model id to evaluate")
+	}
 	history := loadEvalHistory(t, os.Getenv("LOOM_EVAL_HISTORY"))
 	days := groupByDay(history)
 	maxDays, _ := strconv.Atoi(envOr("LOOM_EVAL_MAX_DAYS", "330"))
