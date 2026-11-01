@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -37,8 +38,8 @@ func TestRecoveryDoesNotWriteAfterHeadersWereSent(t *testing.T) {
 
 	func() {
 		defer func() {
-			if got := recover(); got != http.ErrAbortHandler {
-				t.Fatalf("recovered %v, want http.ErrAbortHandler", got)
+			if err, _ := recover().(error); !errors.Is(err, http.ErrAbortHandler) {
+				t.Fatalf("recovered %v, want http.ErrAbortHandler", err)
 			}
 		}()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
