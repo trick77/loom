@@ -4,10 +4,21 @@
 
 | loom server | path | tools | who |
 |---|---|---|---|
-| `tunewire` | `/mcp/library` | `list_playlists`, `get_playlist` | `BACKEND_TUNEWIRE_USERS` only |
+| `tunewire` | `/mcp/library` | `list_playlists`, `get_playlist`, `recently_played`, `new_music`, `new_releases` | `BACKEND_TUNEWIRE_USERS` only |
 | `applemusic` | `/mcp/catalog` | `search_catalog` (songs, albums, artists with links and cover art) | every user |
 
 Both are best-effort: loom boots without the sidecar and offers the tools while it answers.
+
+Listening tools (owner's storefront, all GET):
+
+| tool | reads |
+|---|---|
+| `recently_played` | `kind=recent`: `/v1/me/recent/played/tracks` (50 newest); `kind=heavy_rotation`: `/v1/me/history/heavy-rotation` |
+| `new_music` | `section=recently_added`: `/v1/me/library/recently-added`; `for_you`: `/v1/me/recommendations` plus the New Music Mix's tracks; default both |
+| `new_releases` | up to 50 artists, most listened first, then library order (`/v1/me/library/artists?include=catalog`); per artist `/v1/catalog/{sf}/artists/{id}/view/latest-release`, 4 at a time. `days` 1-120 (30); pre-releases always shown |
+
+`new_releases` keeps each artist's latest release in memory for 3 h (at most 1000) and the library's artist list for
+30 min, so a follow-up costs no lookups. Out of time (~20 s), it answers with what it has and says the list is partial.
 
 ## How it reaches Apple Music
 

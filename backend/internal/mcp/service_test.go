@@ -399,6 +399,26 @@ func TestNewServiceFromConfigsDropsFailedBestEffortServer(t *testing.T) {
 	}
 }
 
+// CoversGated: a category covers the gated servers only when every one the
+// account may use lists it; a server the account may not use does not count.
+func TestCoversGated(t *testing.T) {
+	s := &Service{cfg: Config{Servers: map[string]ServerConfig{
+		"context7": {Categories: []string{"coding", "how_to"}},
+		"tunewire": {Categories: []string{"music"}, RestrictUsers: true, Users: []string{"owner"}},
+		"tavily":   {},
+	}}}
+	if s.CoversGated(Principal{ID: "owner"}, "coding") {
+		t.Error("coding covers the owner's music server")
+	}
+	if !s.CoversGated(Principal{ID: "someone"}, "coding") {
+		t.Error("a server someone may not use counted against coding")
+	}
+	var nilService *Service
+	if !nilService.CoversGated(Principal{}, "x") {
+		t.Error("nil service")
+	}
+}
+
 // A best-effort built-in (a sidecar loom boots without) is labelled built-in,
 // not file-defined.
 func TestNewServiceFromConfigsLabelsBestEffortBuiltIns(t *testing.T) {

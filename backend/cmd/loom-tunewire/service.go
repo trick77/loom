@@ -46,6 +46,14 @@ type api interface {
 	Playlist(ctx context.Context, userToken, playlistID string) (applemusic.Playlist, error)
 	PlaylistTracks(ctx context.Context, userToken, playlistID string) ([]applemusic.Track, bool, error)
 	Search(ctx context.Context, storefront, term string, kinds []string, limit int) ([]applemusic.Item, error)
+	RecentlyPlayed(ctx context.Context, userToken string) ([]applemusic.Item, error)
+	HeavyRotation(ctx context.Context, userToken string) ([]applemusic.Item, error)
+	RecentlyAdded(ctx context.Context, userToken string) ([]applemusic.Item, error)
+	Recommendations(ctx context.Context, userToken string) ([]applemusic.Recommendation, error)
+	CatalogPlaylistTracks(ctx context.Context, userToken, storefront, playlistID string) ([]applemusic.Item, error)
+	LibraryArtists(ctx context.Context, userToken string) ([]applemusic.Artist, bool, error)
+	ArtistCatalogID(ctx context.Context, userToken, libraryID string) (string, error)
+	LatestRelease(ctx context.Context, storefront, artistID string) (applemusic.Item, bool, error)
 }
 
 // service holds the one user's token and records what each call learns about
@@ -62,6 +70,12 @@ type service struct {
 	tokenMu sync.Mutex
 	mu      sync.Mutex
 	st      state
+
+	// new_releases' memory (releases.go): latest releases per artist, the
+	// library's artists, and how long the artist lookups may run.
+	releases      releaseCache
+	artists       artistsCache
+	releaseBudget time.Duration
 }
 
 func newService(a api, store fileStore, storefront string) (*service, error) {
@@ -69,7 +83,7 @@ func newService(a api, store fileStore, storefront string) (*service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
-	return &service{api: a, store: store, storefront: storefront, now: time.Now, st: st}, nil
+	return &service{api: a, store: store, storefront: storefront, now: time.Now, st: st, releaseBudget: releaseBudget}, nil
 }
 
 // status is what loom's settings page shows. The token itself never leaves.
@@ -230,6 +244,65 @@ func (s *service) PlaylistTracks(ctx context.Context, id string) ([]applemusic.T
 	tracks, truncated, err := s.api.PlaylistTracks(ctx, tok, id)
 	s.record(tok, err, nil)
 	return tracks, truncated, err
+}
+
+// withToken runs a library call with the user's token and records what it
+// learned about the token.
+func withToken[T any](s *service, call func(tok string) (T, error)) (T, error) {
+	tok, err := s.userToken()
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	v, err := call(tok)
+	s.record(tok, err, nil)
+	return v, err
+}
+
+// ownerStorefront is the owner's own storefront, learned when the token was
+// set, else the configured one: the owner's tools read the catalog the owner
+// listens in.
+func (s *service) ownerStorefront() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.st.Storefront != "" {
+		return s.st.Storefront
+	}
+	return s.storefront
+}
+
+// RecentlyPlayed lists the owner's recently played tracks.
+func (s *service) RecentlyPlayed(ctx context.Context) ([]applemusic.Item, error) {
+	return withToken(s, func(tok string) ([]applemusic.Item, error) { return s.api.RecentlyPlayed(ctx, tok) })
+}
+
+// HeavyRotation lists what the owner played most lately.
+func (s *service) HeavyRotation(ctx context.Context) ([]applemusic.Item, error) {
+	return withToken(s, func(tok string) ([]applemusic.Item, error) { return s.api.HeavyRotation(ctx, tok) })
+}
+
+// RecentlyAdded lists what the owner added to the library lately.
+func (s *service) RecentlyAdded(ctx context.Context) ([]applemusic.Item, error) {
+	return withToken(s, func(tok string) ([]applemusic.Item, error) { return s.api.RecentlyAdded(ctx, tok) })
+}
+
+// Recommendations lists Apple's personal picks for the owner.
+func (s *service) Recommendations(ctx context.Context) ([]applemusic.Recommendation, error) {
+	return withToken(s, func(tok string) ([]applemusic.Recommendation, error) { return s.api.Recommendations(ctx, tok) })
+}
+
+// MixTracks reads a catalog playlist (a personal mix) in the owner's
+// storefront, with the owner's token.
+func (s *service) MixTracks(ctx context.Context, playlistID string) ([]applemusic.Item, error) {
+	sf := s.ownerStorefront()
+	return withToken(s, func(tok string) ([]applemusic.Item, error) {
+		return s.api.CatalogPlaylistTracks(ctx, tok, sf, playlistID)
+	})
+}
+
+// ArtistCatalogID maps a library artist to its catalog artist; "" for none.
+func (s *service) ArtistCatalogID(ctx context.Context, libraryID string) (string, error) {
+	return withToken(s, func(tok string) (string, error) { return s.api.ArtistCatalogID(ctx, tok, libraryID) })
 }
 
 // Search looks term up in the configured storefront's catalog: no user token.

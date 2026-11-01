@@ -86,6 +86,8 @@ func TestClassifyThread_eval(t *testing.T) {
 		// The newer categories, across languages.
 		{msg: "Was hilft gegen Kopfschmerzen ohne Medikamente?", want: []classifier.Category{classifier.Health}},
 		{msg: "recommend me a series like Severance", want: []classifier.Category{classifier.EntertainmentRecs}},
+		{msg: "was habe ich in letzter Zeit so gehört?", want: []classifier.Category{classifier.Music}},
+		{msg: "what's on my road trip playlist?", want: []classifier.Category{classifier.Music}},
 		{msg: "où bien manger une fondue à Fribourg?", want: []classifier.Category{classifier.LocalInfo}},
 		{msg: "Lohnt sich ein ETF-Sparplan bei den aktuellen Zinsen?", want: []classifier.Category{classifier.FinanceInvesting}},
 	}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Citation } from "../api";
@@ -120,8 +120,34 @@ export function SourcesSidebar({
 }
 
 // sourceImageURL routes a source's preview image through the backend proxy.
-function sourceImageURL(imageURL: string): string {
+export function sourceImageURL(imageURL: string): string {
   return `/api/source-image?u=${encodeURIComponent(imageURL)}`;
+}
+
+// SourcePreview is a source's preview image in a card: a video thumbnail
+// keeps its wide frame, a square one (album art) is shown square instead of
+// cropped. The shape is read from the loaded image.
+function SourcePreview({ image }: { image: string }) {
+  const [square, setSquare] = useState(false);
+  return (
+    // Fetched by the backend like favicons: the image host never sees the
+    // reader.
+    <img
+      src={sourceImageURL(image)}
+      alt=""
+      loading="lazy"
+      onLoad={(event) => {
+        const { naturalWidth: w, naturalHeight: h } = event.currentTarget;
+        setSquare(w > 0 && h > 0 && Math.abs(w - h) <= Math.max(w, h) * 0.05);
+      }}
+      // An image the proxy could not fetch disappears instead of leaving a
+      // broken-image box in the card.
+      onError={(event) => {
+        event.currentTarget.hidden = true;
+      }}
+      className={`mt-1 shrink-0 rounded-md object-cover ${square ? "h-[54px] w-[54px]" : "h-[54px] w-24"}`}
+    />
+  );
 }
 
 function cardKey(citation: Citation, index: number): string {
@@ -216,19 +242,7 @@ function SourceCard({
         )}
       </div>
       {citation.image !== undefined && citation.image !== "" && (
-        // A preview the source supplied (a video thumbnail), fetched by the
-        // backend like favicons: the image host never sees the reader.
-        <img
-          src={sourceImageURL(citation.image)}
-          alt=""
-          loading="lazy"
-          // An image the proxy could not fetch disappears instead of
-          // leaving a broken-image box in the card.
-          onError={(event) => {
-            event.currentTarget.hidden = true;
-          }}
-          className="mt-1 h-[54px] w-24 shrink-0 rounded-md object-cover"
-        />
+        <SourcePreview image={citation.image} />
       )}
     </a>
   );

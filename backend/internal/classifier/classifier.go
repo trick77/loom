@@ -39,6 +39,7 @@ const (
 	Translation        Category = "translation"
 	Health             Category = "health"
 	EntertainmentRecs  Category = "entertainment_recs"
+	Music              Category = "music"
 	LocalInfo          Category = "local_info"
 	FinanceInvesting   Category = "finance_investing"
 	URLLookup          Category = "url_lookup"
@@ -136,7 +137,11 @@ var catalog = []struct {
 	}},
 	{EntertainmentRecs, entry{
 		gloss: "recommendations for movies, series, books, music, or games",
-		block: "Give a shortlist with one line per item on why it fits the user's stated taste, and recommend one top pick. Note where to watch, read, or listen when known.",
+		block: "Give a shortlist with one line per item on why it fits the user's stated taste, and recommend one top pick. Note where to watch, read, or listen when known. When music tools are available, look every recommended song, album, or artist up and link it.",
+	}},
+	{Music, entry{
+		gloss: "songs, artists, albums, playlists, lyrics, or the user's own listening (what they played, saved, or what is new for them)",
+		block: "When music tools are available, use them instead of memory: look up every song, album, or artist you name and give it as a link, never a bare name; one search per item, several at once. For the user's own playlists, listening, and new releases, read them with the tools. Keep track lists compact, one line per track, and cite the links the tools return.",
 	}},
 	{LocalInfo, entry{
 		gloss: "places, restaurants, businesses, or services in a specific area",

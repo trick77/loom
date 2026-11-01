@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,6 +38,141 @@ type fakeAPI struct {
 	sizeCalls int
 	sizeErr   error                     // LibrarySize alone fails with it
 	sizeHook  func(ctx context.Context) // runs inside LibrarySize, mid-check
+
+	// Listening (listening_test.go, releases_test.go).
+	recent, heavy, added []applemusic.Item
+	recs                 []applemusic.Recommendation
+	mix                  map[string][]applemusic.Item // catalog playlist id → tracks
+	listenErr            map[string]error             // method name → its failure
+	libArtists           []applemusic.Artist
+	libTruncated         bool
+	catalogIDs           map[string]string          // library artist id → catalog id
+	latest               map[string]applemusic.Item // catalog artist id → latest release
+	latestErr            map[string]error
+	latestHook           func(ctx context.Context, id string) // runs inside LatestRelease
+	calls                map[string]int
+	mixStorefront        string
+	latestStorefront     string
+	inflight, maxFlight  atomic.Int32
+}
+
+// listen runs the shared part of a listening call: the token check, the
+// count, the method's own failure.
+func (f *fakeAPI) listen(name, tok string) error {
+	if err := f.check(tok); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.calls == nil {
+		f.calls = map[string]int{}
+	}
+	f.calls[name]++
+	return f.listenErr[name]
+}
+
+func (f *fakeAPI) called(name string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls[name]
+}
+
+func (f *fakeAPI) RecentlyPlayed(_ context.Context, tok string) ([]applemusic.Item, error) {
+	if err := f.listen("recent", tok); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.recent, nil
+}
+
+func (f *fakeAPI) HeavyRotation(_ context.Context, tok string) ([]applemusic.Item, error) {
+	if err := f.listen("heavy", tok); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.heavy, nil
+}
+
+func (f *fakeAPI) RecentlyAdded(_ context.Context, tok string) ([]applemusic.Item, error) {
+	if err := f.listen("added", tok); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.added, nil
+}
+
+func (f *fakeAPI) Recommendations(_ context.Context, tok string) ([]applemusic.Recommendation, error) {
+	if err := f.listen("recs", tok); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.recs, nil
+}
+
+func (f *fakeAPI) CatalogPlaylistTracks(_ context.Context, tok, sf, id string) ([]applemusic.Item, error) {
+	if err := f.listen("mix", tok); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.mixStorefront = sf
+	return f.mix[id], nil
+}
+
+func (f *fakeAPI) LibraryArtists(_ context.Context, tok string) ([]applemusic.Artist, bool, error) {
+	if err := f.listen("artists", tok); err != nil {
+		return nil, false, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.libArtists, f.libTruncated, nil
+}
+
+func (f *fakeAPI) ArtistCatalogID(_ context.Context, tok, id string) (string, error) {
+	if err := f.listen("catalogID", tok); err != nil {
+		return "", err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.catalogIDs[id], nil
+}
+
+// LatestRelease needs no user token, like Apple's.
+func (f *fakeAPI) LatestRelease(ctx context.Context, sf, id string) (applemusic.Item, bool, error) {
+	n := f.inflight.Add(1)
+	defer f.inflight.Add(-1)
+	for {
+		m := f.maxFlight.Load()
+		if n <= m || f.maxFlight.CompareAndSwap(m, n) {
+			break
+		}
+	}
+	f.mu.Lock()
+	if f.calls == nil {
+		f.calls = map[string]int{}
+	}
+	f.calls["latest"]++
+	f.latestStorefront = sf
+	hook, err, down := f.latestHook, f.latestErr[id], f.down
+	it, ok := f.latest[id]
+	f.mu.Unlock()
+	if hook != nil {
+		hook(ctx, id)
+	}
+	if down != nil {
+		return applemusic.Item{}, false, down
+	}
+	if err != nil {
+		return applemusic.Item{}, false, err
+	}
+	if err := ctx.Err(); err != nil {
+		return applemusic.Item{}, false, err
+	}
+	return it, ok, nil
 }
 
 func (f *fakeAPI) check(tok string) error {

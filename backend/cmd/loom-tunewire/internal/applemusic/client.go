@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +49,9 @@ var (
 	ErrDevTokenRefused = errors.New("apple music refused the web player's developer token")
 	// ErrNotFound is a 404: no such playlist.
 	ErrNotFound = errors.New("apple music: not found")
+	// ErrBadRequest is a 400: Apple refused the request's shape (a limit or an
+	// include it does not take).
+	ErrBadRequest = errors.New("apple music: bad request")
 )
 
 // TokenSource hands out the developer token; *webtoken.Source implements it.
@@ -86,16 +90,21 @@ type Track struct {
 	Duration time.Duration
 }
 
-// Item is one catalog search hit.
+// Item is one catalog search hit, or one entry of the user's listening lists.
 type Item struct {
-	Kind     string // song, album, artist
+	ID       string // listening lists only; search leaves it empty
+	Kind     string // song, album, artist, playlist, station, music video
 	Name     string
 	Artist   string
 	Album    string
 	Released string
+	Added    string // library entries: when the user added it
 	Duration time.Duration
 	URL      string
 	Artwork  string
+	// ArtistID is the catalog id of the item's (first) artist, when Apple
+	// sent the artists relationship.
+	ArtistID string
 }
 
 // Storefront returns the account's storefront ("ch", "us", …). It doubles as
@@ -133,8 +142,12 @@ func (a playlistAttrs) playlist(id string) Playlist {
 // Playlists lists the user's library playlists, at most MaxPlaylists;
 // truncated says the library holds more.
 func (c *Client) Playlists(ctx context.Context, userToken string) (list []Playlist, truncated bool, err error) {
-	truncated, err = pages(ctx, c, userToken, "/v1/me/library/playlists?limit="+strconv.Itoa(pageSize), MaxPlaylists, func(id string, a playlistAttrs) {
-		list = append(list, a.playlist(id))
+	type entry struct {
+		ID         string        `json:"id"`
+		Attributes playlistAttrs `json:"attributes"`
+	}
+	truncated, err = pages(ctx, c, userToken, "/v1/me/library/playlists", pageSize, MaxPlaylists, func(e entry) {
+		list = append(list, e.Attributes.playlist(e.ID))
 	})
 	return list, truncated, err
 }
@@ -193,8 +206,12 @@ func (c *Client) PlaylistTracks(ctx context.Context, userToken, playlistID strin
 		AlbumName        string `json:"albumName"`
 		DurationInMillis int64  `json:"durationInMillis"`
 	}
-	path := "/v1/me/library/playlists/" + url.PathEscape(playlistID) + "/tracks?limit=" + strconv.Itoa(pageSize)
-	truncated, err = pages(ctx, c, userToken, path, MaxTracks, func(_ string, a attrs) {
+	type entry struct {
+		Attributes attrs `json:"attributes"`
+	}
+	path := "/v1/me/library/playlists/" + url.PathEscape(playlistID) + "/tracks"
+	truncated, err = pages(ctx, c, userToken, path, pageSize, MaxTracks, func(e entry) {
+		a := e.Attributes
 		tracks = append(tracks, Track{Name: a.Name, Artist: a.ArtistName, Album: a.AlbumName, Duration: time.Duration(a.DurationInMillis) * time.Millisecond})
 	})
 	return tracks, truncated, err
@@ -265,19 +282,27 @@ func (a artwork) at(size int) string {
 
 // pages follows a resource list's next links, handing each resource to add,
 // until the list ends or max resources came in (truncated: there are more).
-// A 404 on the first page is an empty list (Apple's answer for an empty
-// library).
-func pages[A any](ctx context.Context, c *Client, userToken, path string, max int, add func(id string, a A)) (truncated bool, err error) {
+// size is the endpoint's page size: Apple caps it per endpoint, and a limit
+// past the cap is a 400. A 404 on the first page is an empty list (Apple's
+// answer for an empty library).
+func pages[D any](ctx context.Context, c *Client, userToken, path string, size, max int, add func(D)) (truncated bool, err error) {
+	return pagesOf(ctx, c, userToken, path, size, max, true, add)
+}
+
+// pagesOf is pages; emptyOn404 false makes a 404 on the first page
+// ErrNotFound instead of an empty list (a catalog resource that is not there,
+// not an empty library).
+func pagesOf[D any](ctx context.Context, c *Client, userToken, path string, size, max int, emptyOn404 bool, add func(D)) (truncated bool, err error) {
+	path += sep(path) + "limit=" + strconv.Itoa(size)
+	_, query, _ := strings.Cut(path, "?")
+	want, _ := url.ParseQuery(query)
 	for n, first := 0, true; path != ""; first = false {
 		var page struct {
-			Data []struct {
-				ID         string `json:"id"`
-				Attributes A      `json:"attributes"`
-			} `json:"data"`
+			Data []D    `json:"data"`
 			Next string `json:"next"`
 		}
 		if err := c.get(ctx, userToken, path, &page); err != nil {
-			if first && errors.Is(err, ErrNotFound) {
+			if first && emptyOn404 && errors.Is(err, ErrNotFound) {
 				return false, nil
 			}
 			return false, err
@@ -286,7 +311,7 @@ func pages[A any](ctx context.Context, c *Client, userToken, path string, max in
 			if n == max {
 				return true, nil
 			}
-			add(d.ID, d.Attributes)
+			add(d)
 			n++
 		}
 		path = page.Next
@@ -296,11 +321,30 @@ func pages[A any](ctx context.Context, c *Client, userToken, path string, max in
 		if path != "" && !strings.HasPrefix(path, "/v1/") {
 			return false, fmt.Errorf("apple music: unexpected next link %q", path)
 		}
-		if path != "" && !strings.Contains(path, "limit=") {
-			path += sep(path) + "limit=" + strconv.Itoa(pageSize)
+		if path != "" {
+			path = carry(path, want)
 		}
 	}
 	return false, nil
+}
+
+// carry adds the first request's query parameters (limit, include) that a
+// next link left out: Apple's next links carry the offset, not always the
+// rest.
+func carry(next string, want url.Values) string {
+	_, query, _ := strings.Cut(next, "?")
+	have, _ := url.ParseQuery(query)
+	keys := make([]string, 0, len(want))
+	for k := range want {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	for _, k := range keys {
+		if !have.Has(k) {
+			next += sep(next) + url.QueryEscape(k) + "=" + url.QueryEscape(want.Get(k))
+		}
+	}
+	return next
 }
 
 func sep(path string) string {
@@ -357,6 +401,9 @@ func (c *Client) get(ctx context.Context, userToken, path string, out any) error
 				return err
 			}
 		default:
+			if status == http.StatusBadRequest {
+				return fmt.Errorf("%w: %s: %s", ErrBadRequest, redact(path), apiError(body))
+			}
 			return fmt.Errorf("apple music: %s returned %d: %s", redact(path), status, apiError(body))
 		}
 	}

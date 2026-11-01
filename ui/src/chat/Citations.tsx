@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Citation } from "../api";
 import type { DisplayMap } from "./sourcePills";
 import { hostOf, SourceFavicon } from "./SourceFavicon";
-import { SourcesSidebar } from "./SourcesSidebar";
+import { sourceImageURL, SourcesSidebar } from "./SourcesSidebar";
 
 type CombinedSource = {
   filename: string;
@@ -51,6 +51,47 @@ export function combineLikeSources(sources: Citation[]): CombinedSource[] {
 // rather than a RAG document chunk.
 function isWebSource(citation: Citation): boolean {
   return typeof citation.url === "string" && citation.url !== "";
+}
+
+function hasImage(citation: Citation): boolean {
+  return typeof citation.image === "string" && citation.image !== "";
+}
+
+// SourcePicture is a source's own picture (album art, a video thumbnail) in
+// the pile, through the backend's image proxy. One that fails to load falls
+// back to the site's favicon.
+function SourcePicture({
+  citation,
+  className,
+  style,
+}: {
+  citation: Citation;
+  className: string;
+  style: CSSProperties;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <SourceFavicon
+        citation={citation}
+        size={18}
+        className={className}
+        style={style}
+      />
+    );
+  }
+  return (
+    <img
+      src={sourceImageURL(citation.image ?? "")}
+      alt=""
+      loading="lazy"
+      width={18}
+      height={18}
+      onError={() => setFailed(true)}
+      className={`h-[18px] w-[18px] shrink-0 rounded-[4px] object-cover ${className}`}
+      style={style}
+    />
+  );
 }
 
 // combineWebSources deduplicates web citations by URL, so the "Sources" row lists
@@ -151,9 +192,19 @@ export function MessageCitations({
   // unreachable if the list has already been collapsed to one entry per [n].
   const combined = combineLikeSources(citations.filter((c) => !isWebSource(c)));
   const webSources = combineWebSources(citations.filter(isWebSource), display);
-  // The pile is a per-site visual summary, so collapse to one favicon per site;
-  // the sidebar still lists every distinct page from `webSources`.
-  const faviconSources = dedupeByDomain(webSources);
+  // The pile is a visual summary: a source with its own picture (album art, a
+  // video thumbnail) shows that picture, one per source, since every cover is
+  // different; the rest collapse to one favicon per site. The sidebar still
+  // lists every distinct page from `webSources`.
+  // In citation order, so a site cited first is never pushed out by a run of
+  // covers.
+  const faviconSources = new Set(
+    dedupeByDomain(webSources.filter((s) => !hasImage(s))),
+  );
+  const pile = webSources
+    .filter((s) => hasImage(s) || faviconSources.has(s))
+    .map((source) => ({ source, picture: hasImage(source) }))
+    .slice(0, 10);
   if (combined.length === 0 && webSources.length === 0) return null;
   const open = combined.find((source) => source.filename === openFile) ?? null;
 
@@ -174,15 +225,24 @@ export function MessageCitations({
                 leaking into the transcript's stacking context and painting over the
                 sticky composer while scrolling. */}
             <span className="isolate flex items-center pl-[3px]">
-              {faviconSources.slice(0, 10).map((source, index, shown) => (
-                <SourceFavicon
-                  key={`fav-${source.index}-${source.url}`}
-                  citation={source}
-                  size={18}
-                  className={`relative ring-[3px] ring-[#1a1917] ${index > 0 ? "-ml-[3px]" : ""}`}
-                  style={{ zIndex: shown.length - index }}
-                />
-              ))}
+              {pile.map(({ source, picture }, index, shown) =>
+                picture ? (
+                  <SourcePicture
+                    key={`pic-${source.index}-${source.url}`}
+                    citation={source}
+                    className={`relative ring-[3px] ring-[#1a1917] ${index > 0 ? "-ml-[3px]" : ""}`}
+                    style={{ zIndex: shown.length - index }}
+                  />
+                ) : (
+                  <SourceFavicon
+                    key={`fav-${source.index}-${source.url}`}
+                    citation={source}
+                    size={18}
+                    className={`relative ring-[3px] ring-[#1a1917] ${index > 0 ? "-ml-[3px]" : ""}`}
+                    style={{ zIndex: shown.length - index }}
+                  />
+                ),
+              )}
             </span>
             <span className="text-[#858178] transition-colors group-hover:text-[#d8d4ca]">
               {t("citations.sources")}
