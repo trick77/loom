@@ -19,7 +19,11 @@ export function compactURL(url: string, max = COMPACT_URL_MAX): string {
   const path = (match?.[2] ?? "").replace(/\/+$/, "");
   const query = match?.[3] ?? "";
   const firstParam = query.split("&")[0];
-  const candidates = [host + path + query, host + path + firstParam, host + path];
+  const candidates = [
+    host + path + query,
+    host + path + firstParam,
+    host + path,
+  ];
   for (const candidate of candidates) {
     if (length(candidate) <= max) return candidate;
   }
