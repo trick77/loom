@@ -45,30 +45,43 @@ function statusLine(s: AppleMusicStatus, t: TFunction): string {
   }
 }
 
-// failureText maps a failed call to localized text. The token is never part of
-// it: the server's own error text is not shown either, only its status and
-// code. hadToken says whether a working token stays in place after a refusal.
+// failureText maps a failed call to localized text by the server's code. The
+// token is never part of it, nor is the server's own error text. working says
+// whether a working token stays in place after a refusal.
 function failureText(
   err: unknown,
   fallbackKey: string,
   t: TFunction,
-  hadToken = false,
+  working = false,
 ): string {
-  if (err instanceof AppleMusicError) {
-    if (err.status === 422) {
-      if (err.code === "malformed") return t("settings.appleMusic.malformed");
-      return hadToken
+  if (!(err instanceof AppleMusicError)) return t(fallbackKey);
+  switch (err.code) {
+    case "malformed":
+      return t("settings.appleMusic.malformed");
+    case "rejected":
+      return working
         ? t("settings.appleMusic.rejected")
         : t("settings.appleMusic.rejectedFirst");
-    }
-    if (err.status === 502 || err.status === 503)
+    case "bridge":
+      return t("settings.appleMusic.errorBridge");
+    case "upstream":
       return t("settings.appleMusic.unavailable");
+    case "storage":
+      return t("settings.appleMusic.storage");
+    case "config":
+      return t("settings.appleMusic.config");
   }
+  if (err.status === 422) return t("settings.appleMusic.rejectedFirst");
+  if (err.status === 502 || err.status === 503)
+    return t("settings.appleMusic.sidecarDown");
   return t(fallbackKey);
 }
 
+// Theme tokens only (index.css @theme), so a theme change reaches the panel.
+// No text colour here: each button sets its own, since two text-* classes on
+// one element resolve by CSS order, not by the order they are written in.
 const buttonClass =
-  "inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#3a3a36] px-2.5 py-1 text-xs text-[#d5d2c9] transition-colors hover:bg-[#2a2a28] disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex shrink-0 items-center gap-1.5 rounded-ui border border-border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
 // AppleMusicPanel lets the user store their music.apple.com media-user-token.
 // The token lives only in the input until it is sent; the server never returns
@@ -109,7 +122,9 @@ export function AppleMusicPanel() {
       setLoadError(null);
       return true;
     } catch (err) {
-      setActionError(failureText(err, fallbackKey, t, hasToken));
+      setActionError(
+        failureText(err, fallbackKey, t, status?.state === "connected"),
+      );
       return false;
     } finally {
       setBusy(null);
@@ -134,29 +149,29 @@ export function AppleMusicPanel() {
 
   return (
     <section>
-      <h1 className="font-serif text-2xl font-light tracking-tight text-[#f4f0e8]">
+      <h1 className="font-serif text-2xl font-light tracking-tight text-ink">
         {t("settings.appleMusic.title")}
       </h1>
-      <p className="mt-1 text-sm text-[#a8a399]">
+      <p className="mt-1 text-sm text-muted">
         {t("settings.appleMusic.description")}
       </p>
 
       {loadError !== null && (
-        <p className="mt-4 text-sm text-[#d98278]">{loadError}</p>
+        <p className="mt-4 text-sm text-danger">{loadError}</p>
       )}
       {loadError === null && status === null && (
-        <p className="mt-4 text-sm text-[#8f8b82]">{t("settings.loading")}</p>
+        <p className="mt-4 text-sm text-muted">{t("settings.loading")}</p>
       )}
 
       {status !== null && (
-        <div className="mt-4 flex flex-wrap items-center gap-3 border-y border-[#343432] py-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-y border-border py-3">
           <p
             className={`min-w-0 flex-1 text-sm ${
               status.state === "connected"
-                ? "text-[#f3f0e8]"
+                ? "text-ink"
                 : status.state === "never"
-                  ? "text-[#807d74]"
-                  : "text-[#d98278]"
+                  ? "text-muted"
+                  : "text-danger"
             }`}
           >
             {statusLine(status, t)}
@@ -164,7 +179,7 @@ export function AppleMusicPanel() {
           {hasToken && (
             <button
               type="button"
-              className={buttonClass}
+              className={`${buttonClass} text-ink hover:bg-active`}
               disabled={busy !== null}
               onClick={() =>
                 void run(
@@ -187,7 +202,7 @@ export function AppleMusicPanel() {
           {hasToken && (
             <button
               type="button"
-              className={`${buttonClass} text-[#ec7e7e] hover:bg-[#d03b3b] hover:text-white`}
+              className={`${buttonClass} text-danger hover:bg-danger hover:text-ink`}
               disabled={busy !== null}
               onClick={() =>
                 void run(
@@ -208,10 +223,10 @@ export function AppleMusicPanel() {
         </div>
       )}
 
-      <div className="mt-6 text-sm font-medium text-[#8f8b82]">
+      <div className="mt-6 text-sm font-medium text-muted">
         {t("settings.appleMusic.helpTitle")}
       </div>
-      <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[#cfccc3]">
+      <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink">
         <li>{t("settings.appleMusic.step1")}</li>
         <li>{t("settings.appleMusic.step2")}</li>
         <li>{t("settings.appleMusic.step3")}</li>
@@ -221,7 +236,7 @@ export function AppleMusicPanel() {
       <form className="mt-4 flex flex-col gap-2" onSubmit={(e) => void save(e)}>
         <label
           htmlFor="apple-music-token"
-          className="font-mono text-xs text-[#a8a399]"
+          className="font-mono text-xs text-muted"
         >
           {t("settings.appleMusic.tokenLabel")}
         </label>
@@ -231,7 +246,7 @@ export function AppleMusicPanel() {
             type="password"
             autoComplete="off"
             spellCheck={false}
-            className="min-w-0 flex-1 rounded-md border border-[#3a3a36] bg-[#1f1f1d] px-3 py-1.5 font-mono text-sm text-[#f3f0e8] placeholder:text-[#6f6c64] focus:border-[#5a5a54] focus:outline-none"
+            className="min-w-0 flex-1 rounded-ui border border-border bg-bg px-3 py-1.5 font-mono text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none"
             placeholder={t("settings.appleMusic.tokenPlaceholder")}
             value={token}
             disabled={busy === "save"}
@@ -239,7 +254,7 @@ export function AppleMusicPanel() {
           />
           <button
             type="submit"
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm text-[#eeeae2] transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-45"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-ui bg-accent px-3 py-1.5 text-sm text-ink transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-45"
             disabled={token.trim() === "" || busy !== null}
           >
             {busy === "save" && (
@@ -251,12 +266,12 @@ export function AppleMusicPanel() {
           </button>
         </div>
         {actionError !== null && (
-          <p className="text-sm text-[#d98278]" role="alert">
+          <p className="text-sm text-danger" role="alert">
             {actionError}
           </p>
         )}
       </form>
-      <p className="mt-3 text-xs text-[#807d74]">
+      <p className="mt-3 text-xs text-muted">
         {t("settings.appleMusic.privacy")}
       </p>
     </section>

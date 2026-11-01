@@ -27,23 +27,30 @@ const (
 // ErrUnavailable means the sidecar could not be reached or failed.
 var ErrUnavailable = errors.New("tunewire unavailable")
 
-// RejectedError carries the sidecar's reason for refusing a token. Code says
-// which: CodeMalformed (not a token at all) or CodeRejected (Apple refused
-// it). The old token stays.
-type RejectedError struct{ Reason, Code string }
-
-// The sidecar's 422 codes.
+// Codes say why a call failed, so the settings page can word it without the
+// sidecar's own (English, internal) text. A refused token leaves the old one in
+// place.
 const (
-	CodeMalformed = "malformed"
-	CodeRejected  = "rejected"
+	CodeMalformed = "malformed" // the pasted text is no token at all
+	CodeRejected  = "rejected"  // Apple refused the token
+	CodeBridge    = "bridge"    // Apple changed what the bridge relies on
+	CodeUpstream  = "upstream"  // Apple failed or could not be reached
+	CodeStorage   = "storage"   // the sidecar could not write /data
+	CodeConfig    = "config"    // loom's and the sidecar's tokens differ
 )
 
-func (e *RejectedError) Error() string { return "tunewire rejected the token: " + e.Reason }
+// Error is a call the sidecar answered with a reason. It wraps ErrUnavailable
+// for the codes that mean the sidecar itself cannot serve (storage, config).
+type Error struct{ Code, Reason string }
 
-// UpstreamError means the sidecar could not reach Apple to check a token.
-type UpstreamError struct{ Reason string }
+func (e *Error) Error() string { return "tunewire: " + e.Code + ": " + e.Reason }
 
-func (e *UpstreamError) Error() string { return "tunewire could not reach Apple Music: " + e.Reason }
+func (e *Error) Unwrap() error {
+	if e.Code == CodeStorage || e.Code == CodeConfig {
+		return ErrUnavailable
+	}
+	return nil
+}
 
 // Status is the connection as the settings page shows it. It never carries
 // the token. PlaylistCount is absent while unknown; ErrorKind ("bridge" or
@@ -124,20 +131,32 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (Stat
 		}
 		return st, nil
 	case http.StatusUnprocessableEntity:
-		code := CodeRejected
-		var e struct {
-			Code string `json:"code"`
-		}
-		if json.Unmarshal(raw, &e) == nil && e.Code == CodeMalformed {
-			code = CodeMalformed
-		}
-		return Status{}, &RejectedError{Reason: errorText(raw), Code: code}
+		return Status{}, &Error{Code: codeOf(raw, CodeRejected, CodeMalformed), Reason: errorText(raw)}
 	case http.StatusBadGateway:
-		return Status{}, &UpstreamError{Reason: errorText(raw)}
+		return Status{}, &Error{Code: codeOf(raw, CodeUpstream, CodeBridge), Reason: errorText(raw)}
+	case http.StatusInternalServerError:
+		return Status{}, &Error{Code: CodeStorage, Reason: errorText(raw)}
+	case http.StatusUnauthorized:
+		// The two tokens differ: a deploy problem, not the user's.
+		return Status{}, &Error{Code: CodeConfig, Reason: "the sidecar refused loom's BACKEND_TUNEWIRE_TOKEN"}
 	default:
-		// 401 means the two tokens differ: a deploy problem, not the user's.
 		return Status{}, fmt.Errorf("%w: %s returned %d", ErrUnavailable, path, resp.StatusCode)
 	}
+}
+
+// codeOf is the body's code when it is one of allowed, else def.
+func codeOf(raw []byte, def string, allowed ...string) string {
+	var e struct {
+		Code string `json:"code"`
+	}
+	if json.Unmarshal(raw, &e) == nil {
+		for _, a := range allowed {
+			if e.Code == a {
+				return a
+			}
+		}
+	}
+	return def
 }
 
 func errorText(raw []byte) string {

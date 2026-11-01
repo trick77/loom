@@ -13,11 +13,14 @@ import (
 // maxTokenBody bounds PUT /token: one JSON field holding a short token.
 const maxTokenBody = 16 << 10
 
-// Codes on a 422 from PUT /token, so loom's settings page can say which: the
-// pasted text is no token at all, or Apple refused it.
+// Codes on a failed PUT or DELETE /token, so loom's settings page can say
+// what went wrong: a 422 is codeMalformed (no token at all) or codeRejected
+// (Apple refused it); a 502 is errorKindBridge or errorKindUpstream; a 500 is
+// codeStorage (/data could not be written).
 const (
 	codeMalformed = "malformed"
 	codeRejected  = "rejected"
+	codeStorage   = "storage"
 )
 
 // newServer mounts kit's health probes (loopback only, the container's own
@@ -51,19 +54,21 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		case errors.Is(err, errRejected):
 			httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error(), "code": codeRejected})
 		case errors.Is(err, errStore):
-			httpx.WriteError(w, http.StatusInternalServerError, err.Error())
+			httpx.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": codeStorage})
 		case r.Context().Err() != nil:
 			// loom gave up and already told the user; nothing was stored.
 			return
 		default:
+			// The bridge broke (Apple changed the web player) or Apple failed:
+			// the code tells loom's page which, the token is not at fault.
 			slog.WarnContext(r.Context(), "tunewire: token check failed", "err", err)
-			httpx.WriteError(w, http.StatusBadGateway, "could not reach Apple Music: "+err.Error())
+			httpx.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": "could not check the token with Apple Music: " + err.Error(), "code": errorKind(err)})
 		}
 	})
 	api.HandleFunc("DELETE /token", func(w http.ResponseWriter, _ *http.Request) {
 		st, err := svc.ClearToken()
 		if err != nil {
-			httpx.WriteError(w, http.StatusInternalServerError, err.Error())
+			httpx.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": codeStorage})
 			return
 		}
 		httpx.WriteJSON(w, http.StatusOK, st)

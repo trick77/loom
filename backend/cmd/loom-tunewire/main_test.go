@@ -370,6 +370,10 @@ func TestLibraryTools(t *testing.T) {
 	if text, _ := callTool(t, h, "/mcp/library", "list_playlists", `{}`); !strings.Contains(text, "(the first 6; the library holds more)") {
 		t.Errorf("truncated list: %s", text)
 	}
+	// A miss in a truncated list is not "no such playlist".
+	if text, _ := callTool(t, h, "/mcp/library", "get_playlist", `{"playlist":"jazz"}`); !strings.Contains(text, "Only the first 6 playlists of the library could be searched") {
+		t.Errorf("truncated miss: %s", text)
+	}
 	if text, _ := callTool(t, h, "/mcp/library", "get_playlist", `{"playlist":"p.1"}`); !strings.Contains(text, "the first 1 tracks (it holds more)") {
 		t.Errorf("truncated tracks: %s", text)
 	}
@@ -414,13 +418,19 @@ func TestCatalogTool(t *testing.T) {
 	svc, api, _ := newTestService(t)
 	api.items = []applemusic.Item{
 		{Kind: "song", Name: "Bohemian Rhapsody", Artist: "Queen", Album: "A Night at the Opera", Released: "1975-10-31", Duration: 354 * time.Second, URL: "https://music.apple.com/ch/song/1", Artwork: "https://img/s.jpg"},
+		{Kind: "album", Name: "No Link", Artist: "Nobody"},
 		{Kind: "artist", Name: "Queen", Artist: "Queen", URL: "https://music.apple.com/ch/artist/2"},
 	}
 	h := newServer(config{token: testToken}, svc, "test")
 	// No user token needed.
 	text, sc := callTool(t, h, "/mcp/catalog", "search_catalog", `{"query":" bohemian rhapsody "}`)
-	if !strings.Contains(text, "[1] song: Bohemian Rhapsody — Queen · A Night at the Opera · 1975 · 5:54") || !strings.Contains(text, "[2] artist: Queen\n") {
+	// The hit without a link gets no [n], and the numbers keep matching.
+	if !strings.Contains(text, "[1] song: Bohemian Rhapsody — Queen · A Night at the Opera · 1975 · 5:54") ||
+		!strings.Contains(text, "- album: No Link — Nobody") || !strings.Contains(text, "[2] artist: Queen\n") {
 		t.Errorf("text: %s", text)
+	}
+	if n := len(sc["sources"].([]any)); n != 2 {
+		t.Errorf("%d sources, want 2", n)
 	}
 	s0 := sc["sources"].([]any)[0].(map[string]any)
 	if s0["url"] != "https://music.apple.com/ch/song/1" || s0["image"] != "https://img/s.jpg" || s0["label"] != "Apple Music" {
@@ -494,8 +504,13 @@ func TestServer_routes(t *testing.T) {
 		t.Errorf("check: %v", st)
 	}
 	api.refuse, api.down = false, errors.New("unreachable")
-	if code, e := do(t, h, "PUT", "/token", testToken, `{"token":"good"}`); code != http.StatusBadGateway || !strings.Contains(e["error"].(string), "unreachable") {
+	if code, e := do(t, h, "PUT", "/token", testToken, `{"token":"good"}`); code != http.StatusBadGateway || !strings.Contains(e["error"].(string), "unreachable") || e["code"] != errorKindUpstream {
 		t.Errorf("down: %d %v", code, e)
+	}
+	// The bridge broke: said so, not "Apple is down".
+	api.down = webtoken.ErrNoBundle
+	if code, e := do(t, h, "PUT", "/token", testToken, `{"token":"good"}`); code != http.StatusBadGateway || e["code"] != errorKindBridge {
+		t.Errorf("bridge: %d %v", code, e)
 	}
 	if code, st := do(t, h, "DELETE", "/token", testToken, ""); code != 200 || st["state"] != "never" {
 		t.Errorf("delete: %d %v", code, st)

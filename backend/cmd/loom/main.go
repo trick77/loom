@@ -515,6 +515,12 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 		}
 		if existing, ok := out.FileServers.Servers[name]; ok && existing.BuiltIn {
 			slog.Warn("MCP servers file overrides built-in server", "server", name)
+			// The override replaces the endpoint, never the owner: a built-in
+			// that reads one person's data keeps its users unless the file
+			// sets its own.
+			if existing.RestrictUsers && !server.RestrictUsers {
+				server.RestrictUsers, server.Users = true, existing.Users
+			}
 		}
 		out.FileServers.Servers[name] = server
 	}

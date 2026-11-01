@@ -25,7 +25,13 @@ func TestClient(t *testing.T) {
 			_, _ = fmt.Fprint(w, `{"error":"that does not look like a media-user-token","code":"malformed"}`)
 		case r.Method == http.MethodPut && strings.Contains(lastBody, "down"):
 			w.WriteHeader(http.StatusBadGateway)
-			_, _ = fmt.Fprint(w, `{"error":"could not reach Apple Music: timeout"}`)
+			_, _ = fmt.Fprint(w, `{"error":"could not check the token: timeout","code":"upstream"}`)
+		case r.Method == http.MethodPut && strings.Contains(lastBody, "broken"):
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = fmt.Fprint(w, `{"error":"no bundle","code":"bridge"}`)
+		case r.Method == http.MethodPut && strings.Contains(lastBody, "disk"):
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprint(w, `{"error":"could not store","code":"storage"}`)
 		case r.Method == http.MethodPut && strings.Contains(lastBody, "garbage"):
 			_, _ = fmt.Fprint(w, `{`)
 		case r.Method == http.MethodDelete:
@@ -51,16 +57,19 @@ func TestClient(t *testing.T) {
 	if st, err := c.SetToken(ctx, "good"); err != nil || st.State != "connected" || lastBody != `{"token":"good"}` {
 		t.Errorf("set: %+v %v %s", st, err, lastBody)
 	}
-	var rej *RejectedError
-	if _, err := c.SetToken(ctx, "bad"); !errors.As(err, &rej) || rej.Reason != "Apple Music refused the token" || rej.Code != CodeRejected {
-		t.Errorf("rejected: %v", err)
+	for token, want := range map[string]string{
+		"bad": CodeRejected, "a;b": CodeMalformed, "down": CodeUpstream, "broken": CodeBridge, "disk": CodeStorage,
+	} {
+		var e *Error
+		if _, err := c.SetToken(ctx, token); !errors.As(err, &e) || e.Code != want || e.Reason == "" {
+			t.Errorf("%s: %v, want code %s", token, err, want)
+		}
 	}
-	if _, err := c.SetToken(ctx, "a;b"); !errors.As(err, &rej) || rej.Code != CodeMalformed {
-		t.Errorf("malformed: %v", err)
+	if _, err := c.SetToken(ctx, "disk"); !errors.Is(err, ErrUnavailable) {
+		t.Errorf("storage is not unavailable: %v", err)
 	}
-	var up *UpstreamError
-	if _, err := c.SetToken(ctx, "down"); !errors.As(err, &up) {
-		t.Errorf("upstream: %v", err)
+	if _, err := c.SetToken(ctx, "bad"); errors.Is(err, ErrUnavailable) {
+		t.Errorf("a rejection counted as unavailable: %v", err)
 	}
 	if _, err := c.SetToken(ctx, "garbage"); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("bad json: %v", err)
@@ -74,14 +83,15 @@ func TestClient_unavailable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
-	if _, err := New(srv.URL, "x").Status(context.Background(), false); !errors.Is(err, ErrUnavailable) {
+	var e *Error
+	if _, err := New(srv.URL, "x").Status(context.Background(), false); !errors.As(err, &e) || e.Code != CodeConfig || !errors.Is(err, ErrUnavailable) {
 		t.Errorf("401: %v", err)
 	}
 	srv.Close()
 	if _, err := New(srv.URL, "x").Status(context.Background(), false); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("down: %v", err)
 	}
-	if (&RejectedError{Reason: "r"}).Error() == "" || (&UpstreamError{Reason: "u"}).Error() == "" {
+	if (&Error{Code: CodeRejected, Reason: "r"}).Error() == "" {
 		t.Error("empty error text")
 	}
 }

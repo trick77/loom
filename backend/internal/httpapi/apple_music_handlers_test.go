@@ -34,11 +34,17 @@ func (f *fakeAppleMusic) Status(_ context.Context, check bool) (tunewire.Status,
 func (f *fakeAppleMusic) SetToken(ctx context.Context, token string) (tunewire.Status, error) {
 	switch token {
 	case "bad":
-		return tunewire.Status{}, &tunewire.RejectedError{Reason: "Apple Music refused the token", Code: tunewire.CodeRejected}
+		return tunewire.Status{}, &tunewire.Error{Reason: "Apple Music refused the token", Code: tunewire.CodeRejected}
 	case "a;b":
-		return tunewire.Status{}, &tunewire.RejectedError{Reason: "that does not look like a media-user-token", Code: tunewire.CodeMalformed}
+		return tunewire.Status{}, &tunewire.Error{Reason: "that does not look like a media-user-token", Code: tunewire.CodeMalformed}
 	case "down":
-		return tunewire.Status{}, &tunewire.UpstreamError{Reason: "could not reach Apple Music: timeout"}
+		return tunewire.Status{}, &tunewire.Error{Reason: "timeout", Code: tunewire.CodeUpstream}
+	case "broken":
+		return tunewire.Status{}, &tunewire.Error{Reason: "no bundle", Code: tunewire.CodeBridge}
+	case "disk":
+		return tunewire.Status{}, &tunewire.Error{Reason: "could not store", Code: tunewire.CodeStorage}
+	case "mismatch":
+		return tunewire.Status{}, &tunewire.Error{Reason: "token", Code: tunewire.CodeConfig}
 	}
 	f.token = token
 	return f.Status(ctx, false)
@@ -140,8 +146,19 @@ func TestAppleMusic_ownerFlow(t *testing.T) {
 	if code, body := amRequest(t, h, "PUT", "/api/me/apple-music", `{"token":"a;b"}`); code != http.StatusUnprocessableEntity || !strings.Contains(body, `"code":"malformed"`) {
 		t.Errorf("malformed: %d %s", code, body)
 	}
-	if code, _ := amRequest(t, h, "PUT", "/api/me/apple-music", `{"token":"down"}`); code != http.StatusBadGateway {
-		t.Errorf("upstream: %d", code)
+	for token, want := range map[string]struct {
+		status int
+		code   string
+	}{
+		"down":     {http.StatusBadGateway, tunewire.CodeUpstream},
+		"broken":   {http.StatusBadGateway, tunewire.CodeBridge},
+		"disk":     {http.StatusInternalServerError, tunewire.CodeStorage},
+		"mismatch": {http.StatusServiceUnavailable, tunewire.CodeConfig},
+	} {
+		code, body := amRequest(t, h, "PUT", "/api/me/apple-music", `{"token":"`+token+`"}`)
+		if code != want.status || !strings.Contains(body, `"code":"`+want.code+`"`) {
+			t.Errorf("%s: %d %s", token, code, body)
+		}
 	}
 	if code, _ := amRequest(t, h, "PUT", "/api/me/apple-music", `{"tok":"x"}`); code != http.StatusBadRequest {
 		t.Errorf("bad body: %d", code)

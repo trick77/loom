@@ -182,6 +182,19 @@ func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 		}
 	}
 
+	// An mcp.json override replaces the endpoint, but keeps the owner.
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers": {"tunewire": {"type": "http", "url": "http://elsewhere:1/mcp"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	over, err := toolConfigForConfig(config.Config{TunewireURL: "http://tunewire:8060", TunewireToken: token, TunewireUsers: []string{"usr_1"}, MCPServersFile: path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o := over.FileServers.Servers[tunewireLibraryServer]; o.URL != "http://elsewhere:1/mcp" || !o.RestrictUsers || !reflect.DeepEqual(o.Users, []string{"usr_1"}) {
+		t.Errorf("override = %+v, want the file's URL with the built-in's users", o)
+	}
+
 	off := mustToolConfig(t, config.Config{})
 	if _, ok := off.Servers[tunewireLibraryServer]; ok {
 		t.Error("tunewire registered without a URL")

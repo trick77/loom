@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
@@ -65,8 +66,10 @@ func serve() error {
 // at 25s.
 const shutdownTimeout = 30 * time.Second
 
+// envOr reads key the way loadConfig does (trimmed, empty is unset), so the
+// healthcheck probes the address serve listens on.
 func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
 	}
 	return def

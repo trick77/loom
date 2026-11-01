@@ -196,12 +196,17 @@ func findPlaylist(ctx context.Context, svc *service, q string) (applemusic.Playl
 			return applemusic.Playlist{}, failure(err), false
 		}
 	}
-	list, _, err := svc.Playlists(ctx)
+	list, truncated, err := svc.Playlists(ctx)
 	if err != nil {
 		return applemusic.Playlist{}, failure(err), false
 	}
 	p, miss := resolvePlaylist(list, q)
 	if miss != "" {
+		if truncated {
+			// The playlist may be past the cut, not missing.
+			miss = fmt.Sprintf("Only the first %d playlists of the library could be searched, and none matched %q. "+
+				"Ask with the playlist's id (p.…) if the user has it. %s", len(list), q, miss)
+		}
 		return applemusic.Playlist{}, mcpserver.ErrorResult(miss), false
 	}
 	return p, mcpserver.Result{}, true
@@ -290,16 +295,20 @@ func runSearch(ctx context.Context, svc *service, args json.RawMessage) mcpserve
 	var b strings.Builder
 	fmt.Fprintf(&b, "Apple Music catalog (%s storefront), results for %q:\n", svc.storefront, a.Query)
 	sources := []mcpserver.Source{}
-	for i, it := range items {
+	for _, it := range items {
 		title, detail := describe(it)
-		fmt.Fprintf(&b, "%s %s: %s", marker(i), it.Kind, title)
+		// Only a hit with a link is citable; one without gets no [n], so the
+		// numbers keep matching the sources.
+		mark := "-"
+		if it.URL != "" && len(sources) < maxSources {
+			mark = marker(len(sources))
+			sources = append(sources, mcpserver.Source{URL: it.URL, Title: title, Label: label, Snippet: it.Kind + snippetTail(detail), Image: it.Artwork})
+		}
+		fmt.Fprintf(&b, "%s %s: %s", mark, it.Kind, title)
 		if detail != "" {
 			b.WriteString(" · " + detail)
 		}
 		b.WriteByte('\n')
-		if i < maxSources {
-			sources = append(sources, mcpserver.Source{URL: it.URL, Title: title, Label: label, Snippet: it.Kind + snippetTail(detail), Image: it.Artwork})
-		}
 	}
 	return mcpserver.Result{Text: b.String(), Sources: sources}
 }

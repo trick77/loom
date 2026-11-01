@@ -95,8 +95,13 @@ func TestSource_refetchesNearExpiryAndAfterInvalidate(t *testing.T) {
 	s := &Source{BaseURL: srv.URL, HTTP: srv.Client(), Now: func() time.Time { return now }}
 
 	s.Seed(Token{Value: "seeded", Expires: now.Add(12 * time.Hour)}) // inside refreshBefore
+	// Still valid: handed out at once while its successor is fetched.
+	if got, _ := s.Token(context.Background()); got != "seeded" {
+		t.Fatalf("valid seed not handed out: %q", got)
+	}
+	s.wait()
 	if got, _ := s.Token(context.Background()); got != tok {
-		t.Fatalf("near-expiry seed was used: %q", got)
+		t.Fatalf("refreshed token not used: %q", got)
 	}
 	s.Invalidate("some other token") // not ours: stays
 	_, _ = s.Token(context.Background())
@@ -116,9 +121,11 @@ func TestSource_nearExpiryBundleTokenIsNotRefetchedPerCall(t *testing.T) {
 	tok := jwt(issuer, now.Add(6*time.Hour))
 	var hits atomic.Int32
 	srv := player(t, tok, &hits)
-	clock := now
-	var reported int
-	s := &Source{BaseURL: srv.URL, HTTP: srv.Client(), Now: func() time.Time { return clock }, OnNew: func(Token) { reported++ }}
+	var clock atomic.Int64
+	clock.Store(now.UnixNano())
+	var reported atomic.Int32
+	s := &Source{BaseURL: srv.URL, HTTP: srv.Client(), Now: func() time.Time { return time.Unix(0, clock.Load()) },
+		OnNew: func(Token) { reported.Add(1) }}
 	for range 5 {
 		if got, err := s.Token(context.Background()); err != nil || got != tok {
 			t.Fatalf("token %q, %v", got, err)
@@ -127,10 +134,11 @@ func TestSource_nearExpiryBundleTokenIsNotRefetchedPerCall(t *testing.T) {
 	if hits.Load() != 1 {
 		t.Fatalf("hits = %d, want 1", hits.Load())
 	}
-	clock = clock.Add(minRecheck + time.Minute)
+	clock.Add(int64(minRecheck + time.Minute))
 	_, _ = s.Token(context.Background())
-	if hits.Load() != 2 || reported != 1 {
-		t.Errorf("hits = %d (want 2), OnNew %d times (want 1: the token did not change)", hits.Load(), reported)
+	s.wait()
+	if hits.Load() != 2 || reported.Load() != 1 {
+		t.Errorf("hits = %d (want 2), OnNew %d times (want 1: the token did not change)", hits.Load(), reported.Load())
 	}
 }
 
@@ -145,9 +153,54 @@ func TestSource_failedRefetchKeepsAValidToken(t *testing.T) {
 		if got, err := s.Token(context.Background()); err != nil || got != "kept" {
 			t.Fatalf("token %q, %v", got, err)
 		}
+		s.wait()
 	}
 	if hits.Load() != 1 {
 		t.Errorf("hits = %d, want 1", hits.Load())
+	}
+}
+
+// A refresh that hangs does not hold up callers while the cached token still
+// works.
+func TestSource_slowRefreshDoesNotBlockAValidToken(t *testing.T) {
+	release := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /us/browse", func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		_, _ = fmt.Fprint(w, "<html></html>")
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	defer close(release)
+	s := &Source{BaseURL: srv.URL, HTTP: srv.Client(), Now: func() time.Time { return now }}
+	s.Seed(Token{Value: "kept", Expires: now.Add(12 * time.Hour)}) // in the refresh window
+	start := time.Now()
+	for range 3 {
+		if got, err := s.Token(context.Background()); err != nil || got != "kept" {
+			t.Fatalf("token %q, %v", got, err)
+		}
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("callers waited %v on the refresh", d)
+	}
+}
+
+// A caller with no token waits for the fetch only as long as its own ctx.
+func TestSource_waitingCallerHonoursItsCtx(t *testing.T) {
+	release := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /us/browse", func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		_, _ = fmt.Fprint(w, "<html></html>")
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	defer close(release)
+	s := &Source{BaseURL: srv.URL, HTTP: srv.Client(), Now: func() time.Time { return now }}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := s.Token(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("err = %v, want the caller's deadline", err)
 	}
 }
 
@@ -173,16 +226,21 @@ func TestSource_failedFetchBacksOff(t *testing.T) {
 	}
 }
 
-// A canceled first caller does not abort the fetch the others wait on.
-func TestSource_fetchIgnoresTheCallersCancel(t *testing.T) {
+// A canceled first caller does not abort the fetch: the next caller gets its
+// token without a second download.
+func TestSource_fetchOutlivesTheCallersCancel(t *testing.T) {
 	tok := jwt(issuer, now.Add(30*24*time.Hour))
 	var hits atomic.Int32
 	srv := player(t, tok, &hits)
 	s := &Source{BaseURL: srv.URL, HTTP: srv.Client(), Now: func() time.Time { return now }}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if got, err := s.Token(ctx); err != nil || got != tok {
-		t.Fatalf("token %q, %v", got, err)
+	if _, err := s.Token(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	s.wait()
+	if got, err := s.Token(context.Background()); err != nil || got != tok || hits.Load() != 1 {
+		t.Fatalf("token %q, %v, %d hits", got, err, hits.Load())
 	}
 }
 

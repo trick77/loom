@@ -65,7 +65,10 @@ type Token struct {
 }
 
 // Source hands out the current developer token, fetching a new one when the
-// cached one nears its end or the API refused it. One fetch runs at a time.
+// cached one nears its end or the API refused it. One fetch runs at a time, in
+// the background and never under the lock: a token that still works is handed
+// out at once while its successor is fetched; a caller with none waits for the
+// fetch, as long as its own ctx allows.
 type Source struct {
 	BaseURL string
 	HTTP    *http.Client
@@ -83,6 +86,8 @@ type Source struct {
 	// to fall back on: until then, Token answers with failed at once.
 	failed      error
 	failedUntil time.Time
+	// inflight is closed when the running fetch ends; nil while none runs.
+	inflight chan struct{}
 }
 
 // Seed installs a token kept from an earlier run.
@@ -94,35 +99,79 @@ func (s *Source) Seed(t Token) {
 
 // Token returns a usable developer token.
 func (s *Source) Token(ctx context.Context) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := s.now()
-	valid := s.tok.Value != "" && now.Before(s.tok.Expires)
-	if valid && now.Before(s.recheck) {
-		return s.tok.Value, nil
-	}
-	if !valid && s.failed != nil && now.Before(s.failedUntil) {
-		return "", s.failed
-	}
-	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fetchTimeout)
-	defer cancel()
-	t, err := s.fetch(fctx, now)
-	if err != nil {
-		if valid {
-			// Still good for a while: keep it, look again later.
-			s.recheck = now.Add(minRecheck)
-			return s.tok.Value, nil
+	for {
+		s.mu.Lock()
+		now := s.now()
+		valid := s.tok.Value != "" && now.Before(s.tok.Expires)
+		if valid && now.Before(s.recheck) {
+			v := s.tok.Value
+			s.mu.Unlock()
+			return v, nil
 		}
+		if !valid && s.failed != nil && now.Before(s.failedUntil) {
+			err := s.failed
+			s.mu.Unlock()
+			return "", err
+		}
+		if s.inflight == nil {
+			s.inflight = make(chan struct{})
+			// Detached from this caller's cancel: others wait on the same fetch.
+			go s.refresh(context.WithoutCancel(ctx), now, s.inflight)
+		}
+		if valid {
+			// Still good: hand it out, its successor is on the way.
+			v := s.tok.Value
+			s.mu.Unlock()
+			return v, nil
+		}
+		done := s.inflight
+		s.mu.Unlock()
+		select {
+		case <-done:
+			// Look again: the fetch left a token or a failure behind.
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+}
+
+// refresh fetches a token and records the outcome. ctx carries no cancel (the
+// caller's is cut off): fetchTimeout bounds it.
+func (s *Source) refresh(ctx context.Context, now time.Time, done chan struct{}) {
+	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+	defer cancel()
+	t, err := s.fetch(ctx, now)
+	s.mu.Lock()
+	var report bool
+	switch {
+	case err == nil:
+		s.failed = nil
+		report = t.Value != s.tok.Value
+		s.tok, s.recheck = t, later(t.Expires.Add(-refreshBefore), now.Add(minRecheck))
+	case s.tok.Value != "" && now.Before(s.tok.Expires):
+		// The cached token still works: keep it, look again later.
+		s.recheck = now.Add(minRecheck)
+	default:
 		s.failed, s.failedUntil = err, now.Add(failBackoff)
-		return "", err
 	}
-	s.failed = nil
-	changed := t.Value != s.tok.Value
-	s.tok, s.recheck = t, later(t.Expires.Add(-refreshBefore), now.Add(minRecheck))
-	if changed && s.OnNew != nil {
-		s.OnNew(t)
+	s.inflight = nil
+	onNew := s.OnNew
+	s.mu.Unlock()
+	// Before the waiters go on: a caller sees the new token only once it is kept.
+	if report && onNew != nil {
+		onNew(t)
 	}
-	return t.Value, nil
+	close(done)
+}
+
+// wait blocks until no fetch runs (tests).
+func (s *Source) wait() {
+	s.mu.Lock()
+	done := s.inflight
+	s.mu.Unlock()
+	if done != nil {
+		<-done
+	}
 }
 
 func later(a, b time.Time) time.Time {

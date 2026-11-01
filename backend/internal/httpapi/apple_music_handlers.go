@@ -84,22 +84,37 @@ func (s *server) handleAppleMusicClearToken(w http.ResponseWriter, r *http.Reque
 	s.writeAppleMusic(w, r, st, err)
 }
 
-// writeAppleMusic answers with the status, or maps a sidecar failure: a
-// refused token is 422 with the reason and its code (malformed or rejected),
-// Apple out of reach 502, the sidecar itself 503. The token never appears in a response or a log line.
+// appleMusicStatus maps a sidecar code to the response status: a refused
+// token 422, Apple or the bridge 502, the sidecar's storage 500, the rest 503.
+var appleMusicStatus = map[string]int{
+	tunewire.CodeMalformed: http.StatusUnprocessableEntity,
+	tunewire.CodeRejected:  http.StatusUnprocessableEntity,
+	tunewire.CodeBridge:    http.StatusBadGateway,
+	tunewire.CodeUpstream:  http.StatusBadGateway,
+	tunewire.CodeStorage:   http.StatusInternalServerError,
+	tunewire.CodeConfig:    http.StatusServiceUnavailable,
+}
+
+// writeAppleMusic answers with the status, or maps a sidecar failure to its
+// HTTP status with {"error", "code"}: the page words it by code. A sidecar out
+// of reach is 503 "unavailable". The token never appears in a response or a
+// log line.
 func (s *server) writeAppleMusic(w http.ResponseWriter, r *http.Request, st tunewire.Status, err error) {
-	var rejected *tunewire.RejectedError
-	var upstream *tunewire.UpstreamError
+	var e *tunewire.Error
 	switch {
 	case err == nil:
-		w.Header().Set("Cache-Control", "no-store")
 		httpx.WriteJSON(w, http.StatusOK, st)
-	case errors.As(err, &rejected):
-		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": rejected.Reason, "code": rejected.Code})
-	case errors.As(err, &upstream):
-		httpx.WriteError(w, http.StatusBadGateway, upstream.Reason)
+	case errors.As(err, &e):
+		status, ok := appleMusicStatus[e.Code]
+		if !ok {
+			status = http.StatusServiceUnavailable
+		}
+		if status >= http.StatusInternalServerError && status != http.StatusBadGateway {
+			slog.ErrorContext(r.Context(), "apple music sidecar failed", "err", err)
+		}
+		httpx.WriteJSON(w, status, map[string]string{"error": e.Reason, "code": e.Code})
 	default:
 		slog.ErrorContext(r.Context(), "apple music sidecar failed", "err", err)
-		httpx.WriteError(w, http.StatusServiceUnavailable, "Apple Music connection unavailable")
+		httpx.WriteJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Apple Music connection unavailable", "code": "unavailable"})
 	}
 }

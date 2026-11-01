@@ -14,11 +14,11 @@ export type AppleMusicStatus = {
   errorKind?: "bridge" | "upstream";
 };
 
-// AppleMusicError is a non-2xx answer the panel branches on by status: 422
-// (the token was refused, the old one stays; code says why: "malformed" is
-// no token at all, "rejected" is Apple refusing it), 502/503 (Apple or the
-// sidecar unreachable), 404 (feature not allowed). message is the server's
-// text.
+// AppleMusicError is a non-2xx answer; the panel words it by code: malformed
+// or rejected (422, the old token stays), bridge or upstream (502, Apple
+// changed the player or failed), storage (500), config or unavailable (503,
+// loom's sidecar). 404 means the feature is not allowed. message is the
+// server's text, never shown.
 export class AppleMusicError extends Error {
   readonly status: number;
   readonly code: string;
@@ -35,7 +35,7 @@ const BASE = "/api/me/apple-music";
 
 // Statuses whose `{ error }` body the panel shows; anything else (and a 401,
 // which request maps to AuthExpiredError) fails generically in request.
-const EXPECTED_FAILURES = [404, 422, 502, 503];
+const EXPECTED_FAILURES = [404, 422, 500, 502, 503];
 
 async function call(
   url: string,

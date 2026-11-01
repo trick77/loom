@@ -506,6 +506,12 @@ export const en = {
       malformed:
         "That doesn’t look like a media-user-token. Paste only the cookie’s value.",
       unavailable: "Apple Music can’t be reached right now. Try again later.",
+      sidecarDown:
+        "loom’s Apple Music service isn’t running right now. Try again later.",
+      storage:
+        "The server couldn’t store the token. Nothing was changed; ask the admin to check the service’s storage.",
+      config:
+        "loom’s Apple Music service is misconfigured. Ask the admin to check its token setting.",
       loadFailed: "Failed to load the Apple Music status.",
       saveFailed: "Couldn’t save the token. Try again.",
       checkFailed: "Couldn’t check the token. Try again.",

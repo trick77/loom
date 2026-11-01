@@ -517,6 +517,12 @@ export const de = {
         "Das sieht nicht nach einem media-user-token aus. Füge nur den Wert des Cookies ein.",
       unavailable:
         "Apple Music ist gerade nicht erreichbar. Versuche es später erneut.",
+      sidecarDown:
+        "Der Apple-Music-Dienst von loom läuft gerade nicht. Versuche es später erneut.",
+      storage:
+        "Der Server konnte den Token nicht speichern. Es wurde nichts geändert; bitte den Admin, den Speicher des Dienstes zu prüfen.",
+      config:
+        "Der Apple-Music-Dienst von loom ist falsch konfiguriert. Bitte den Admin, die Token-Einstellung zu prüfen.",
       loadFailed: "Apple-Music-Status konnte nicht geladen werden.",
       saveFailed: "Token konnte nicht gespeichert werden. Versuche es erneut.",
       checkFailed: "Token konnte nicht geprüft werden. Versuche es erneut.",

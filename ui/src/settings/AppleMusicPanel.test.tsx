@@ -101,13 +101,13 @@ describe("AppleMusicPanel", () => {
 
   it("keeps the form usable when the status cannot load", async () => {
     vi.spyOn(api, "getAppleMusicStatus").mockRejectedValue(
-      new api.AppleMusicError(503, "sidecar down"),
+      new api.AppleMusicError(503, "sidecar down", "unavailable"),
     );
     render(<AppleMusicPanel />);
 
     expect(
       await screen.findByText(
-        "Apple Music can’t be reached right now. Try again later.",
+        "loom’s Apple Music service isn’t running right now. Try again later.",
       ),
     ).toBeInTheDocument();
     expect(tokenInput()).toBeEnabled();
@@ -145,7 +145,7 @@ describe("AppleMusicPanel", () => {
   it("shows a rejected token inline and keeps the old status", async () => {
     vi.spyOn(api, "getAppleMusicStatus").mockResolvedValue(connected);
     vi.spyOn(api, "setAppleMusicToken").mockRejectedValue(
-      new api.AppleMusicError(422, "apple said no"),
+      new api.AppleMusicError(422, "apple said no", "rejected"),
     );
     render(<AppleMusicPanel />);
     await screen.findByText(/^Connected/);
@@ -199,10 +199,52 @@ describe("AppleMusicPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows an unreachable Apple inline on 502", async () => {
+  // An expired token is no working token: a refusal must not claim one.
+  it("with an expired token, a rejection does not claim a working one", async () => {
+    vi.spyOn(api, "getAppleMusicStatus").mockResolvedValue({
+      state: "expired",
+    });
+    vi.spyOn(api, "setAppleMusicToken").mockRejectedValue(
+      new api.AppleMusicError(422, "apple said no", "rejected"),
+    );
+    render(<AppleMusicPanel />);
+    await screen.findByText(/has expired/);
+
+    fireEvent.change(tokenInput(), { target: { value: "stale" } });
+    fireEvent.submit(tokenInput());
+
+    expect(
+      await screen.findByText(
+        "Apple rejected this token. Copy a fresh one and try again.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "upstream",
+      502,
+      "Apple Music can’t be reached right now. Try again later.",
+    ],
+    [
+      "bridge",
+      502,
+      "Apple changed something loom’s Apple Music bridge relies on, so it needs an update. Your token is fine.",
+    ],
+    [
+      "storage",
+      500,
+      "The server couldn’t store the token. Nothing was changed; ask the admin to check the service’s storage.",
+    ],
+    [
+      "config",
+      503,
+      "loom’s Apple Music service is misconfigured. Ask the admin to check its token setting.",
+    ],
+  ])("words a %s failure by its code", async (code, status, text) => {
     vi.spyOn(api, "getAppleMusicStatus").mockResolvedValue({ state: "never" });
     vi.spyOn(api, "setAppleMusicToken").mockRejectedValue(
-      new api.AppleMusicError(502, "upstream"),
+      new api.AppleMusicError(status, "server text", code),
     );
     render(<AppleMusicPanel />);
     await screen.findByText("Not connected yet.");
@@ -210,11 +252,8 @@ describe("AppleMusicPanel", () => {
     fireEvent.change(tokenInput(), { target: { value: "tok" } });
     fireEvent.submit(tokenInput());
 
-    expect(
-      await screen.findByText(
-        "Apple Music can’t be reached right now. Try again later.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("server text");
   });
 
   it("disconnects", async () => {
