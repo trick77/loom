@@ -1,7 +1,10 @@
 services:
   loom:
     image: ghcr.io/trick77/loom:latest
-    user: "1000:1000"
+    # distroless nonroot's own uid, never 1000 (the host's first user). Host
+    # ./data (and per-user dirs below it) must belong to it:
+    # sudo chown -R 65532:65532 data
+    user: "65532:65532"
     restart: unless-stopped
     # Model choice (BACKEND_*_MODEL) and the LLMWIRE_<PROVIDER>_API_KEY a
     # model's provider reads come from .env as they are, so a model swap never

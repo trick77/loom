@@ -303,7 +303,7 @@ func TestProductionComposeUsesPhysicalDataDirectory(t *testing.T) {
 	service := composeService(t, compose, "loom")
 
 	for _, want := range []string{
-		`user: "1000:1000"`,
+		`user: "65532:65532"`,
 		"- ./data:/data",
 	} {
 		if !strings.Contains(service, want) {
