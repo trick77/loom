@@ -13,7 +13,7 @@ ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=${VERSION}" -o /out/loom-sandbox ./cmd/loom-sandbox
 
-FROM python:3.13-slim
+FROM python:3.15-slim
 # upgrade: the base image lags Debian's security fixes, and the release's trivy
 # scan fails on any fixed HIGH or CRITICAL finding. VERSION keys the layer, so
 # every release upgrades anew instead of reusing a cached answer.
