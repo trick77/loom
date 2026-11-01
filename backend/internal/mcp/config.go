@@ -168,8 +168,14 @@ func TunewireLibraryServerConfig(baseURL, token string, users []string) ServerCo
 		Users:             users,
 		TrustInstructions: true,
 		BuiltIn:           true,
+		Categories:        TunewireCategories,
 	}
 }
+
+// TunewireCategories are the conversation categories that get the Apple Music
+// tools: music turns, and recommendations (which link what they recommend).
+// Other turns are spared their schemas.
+var TunewireCategories = []string{"music", "entertainment_recs"}
 
 // TunewireCatalogServerConfig is the sidecar's catalog search: Apple Music
 // links for songs, albums and artists. It reads no personal data, so every
@@ -181,6 +187,7 @@ func TunewireCatalogServerConfig(baseURL, token string) ServerConfig {
 		Headers:           map[string]string{"Authorization": "Bearer " + token},
 		TrustInstructions: true,
 		BuiltIn:           true,
+		Categories:        TunewireCategories,
 	}
 }
 

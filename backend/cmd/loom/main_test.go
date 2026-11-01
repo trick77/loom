@@ -176,9 +176,10 @@ func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 	}
 	// loom's own sidecar: labelled built-in, and its instructions (when to
 	// search the catalog) reach the prompt.
+	// Offered only in music and recommendation turns.
 	for _, sc := range []mcp.ServerConfig{lib, cat} {
-		if !sc.BuiltIn || !sc.TrustInstructions {
-			t.Errorf("%s: BuiltIn %v TrustInstructions %v", sc.URL, sc.BuiltIn, sc.TrustInstructions)
+		if !sc.BuiltIn || !sc.TrustInstructions || !reflect.DeepEqual(sc.Categories, []string{"music", "entertainment_recs"}) {
+			t.Errorf("%s: BuiltIn %v TrustInstructions %v Categories %v", sc.URL, sc.BuiltIn, sc.TrustInstructions, sc.Categories)
 		}
 	}
 

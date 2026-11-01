@@ -420,6 +420,58 @@ describe("SourcesSidebar selection", () => {
     expect(images[0]).not.toBeVisible();
   });
 
+  it("shows a square picture (album art) square, a wide one wide", () => {
+    const covers: Citation[] = [
+      {
+        ...webSource("https://music.apple.com/ch/song/1", 1, "Apple Music"),
+        title: "Song — Band",
+        image: "https://img.example/cover.jpg",
+      },
+    ];
+    const { container } = render(
+      <MessageCitations citations={covers} sourcesOpen />,
+    );
+    const img = container.querySelector(
+      "aside img[src^='/api/source-image']",
+    ) as HTMLImageElement;
+    expect(img).toHaveClass("w-24");
+    Object.defineProperty(img, "naturalWidth", { value: 300 });
+    Object.defineProperty(img, "naturalHeight", { value: 300 });
+    fireEvent.load(img);
+    expect(img).toHaveClass("w-[54px]");
+    expect(img).not.toHaveClass("w-24");
+  });
+
+  it("puts each source's own picture in the pile, favicons for the rest", () => {
+    const mixed: Citation[] = [
+      {
+        ...webSource("https://music.apple.com/ch/song/1", 1, "Apple Music"),
+        image: "https://img.example/a.jpg",
+      },
+      {
+        ...webSource("https://music.apple.com/ch/song/2", 2, "Apple Music"),
+        image: "https://img.example/b.jpg",
+      },
+      webSource("https://music.apple.com/ch/song/3", 3, "Apple Music"),
+      sources[1],
+    ];
+    const { container } = render(<MessageCitations citations={mixed} />);
+    const button = screen.getByRole("button", { name: /sources/i });
+    // Two covers, one each (no per-site collapse), then favicons.
+    const pictures = button.querySelectorAll("img[src^='/api/source-image']");
+    expect(pictures).toHaveLength(2);
+    expect(pictures[0]).toHaveAttribute(
+      "src",
+      `/api/source-image?u=${encodeURIComponent("https://img.example/a.jpg")}`,
+    );
+    // A picture that fails falls back to the site's favicon.
+    fireEvent.error(pictures[0]);
+    expect(
+      button.querySelectorAll("img[src^='/api/source-image']"),
+    ).toHaveLength(1);
+    expect(container).toBeTruthy();
+  });
+
   it("marks only the pinned source's card", () => {
     openDrawer({ selected: new Set([1]) });
 
