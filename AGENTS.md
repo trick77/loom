@@ -8,15 +8,15 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 - Commit subjects + PR titles: Go style `area: what` (`httpapi: …`, `chat: …`, `rag: …`, `store: …`, `sandbox: …`, `turn: …`, `ui: …`), gated by ship; release notes list them by area.
 - Fresh clone: `ship hooks` before the first push (check, conform and init install it too); without the pre-push hook a push skips the gate.
 - Gate: `make check` (`ship check`): conform, lint, tests, floors 75 (Go, UI), patch 75, `ship.yaml` steps.
-  `make hooks` once per clone runs it on every push. Raise tests, never a floor. Sandbox escape test is CI
-  only (`sandbox-escape.yaml`, docker); isolation change → `make sandbox-escape-test` locally.
+  Raise tests, never a floor. Sandbox escape test is CI only (`sandbox-escape.yaml`, docker); isolation
+  change → `make sandbox-escape-test` locally.
 - Release by hand: `gh workflow run Release -f bump=auto` (patch, or `Release: minor` + `Release-note: …`
-  lines). Builds, scans and signs both images.
-- Plumbing kit (`github.com/trick77/ship/kit`) provides comes from kit, never hand-rolled. Lint config is
+  lines).
+- Plumbing kit (`github.com/trick77/ship/kit`) provides → from kit, never hand-rolled. Lint config is
   ship's, no local copy.
 
 ## Locked technical choices (change only with explicit agreement)
-- Go 1.27. **Pure-Go SQLite**: `ncruces/go-sqlite3` **v0.23.3** + `sqlite-vec-go-bindings/ncruces`
+- **Pure-Go SQLite**: `ncruces/go-sqlite3` **v0.23.3** + `sqlite-vec-go-bindings/ncruces`
   **v0.1.7-alpha.2**, bumped together by hand (v0.24+ breaks the binding ABI). `CGO_ENABLED=0`; never
   `mattn/go-sqlite3`. One SQLite file, `sqlite-vec` for vectors.
 - stdlib `net/http`, no framework. Streaming: SSE (kit `sse`).
@@ -54,10 +54,9 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
   write lock for minutes (rongo: 8m33s), far past the busy timeout. Deletes only warn.
 
 ## Frontend
-- Vite + React + TS + Tailwind, direction A (Warm Editorial): `--ui-*` tokens in `ui/src/index.css`,
-  themed classes (`bg-bg`, `bg-panel`, `text-ink`, `text-muted`, `bg-accent`, `rounded-ui`).
-- Build writes `backend/web/dist` (the Go embed, only `.gitkeep` tracked); unbuilt binary serves
-  `web/placeholder.html` with 503. Never commit built assets.
+- Direction A (Warm Editorial): themed classes from `ui/src/index.css` tokens (`bg-panel`, `text-ink`, …).
+- Build writes the Go embed `backend/web/dist`; unbuilt binary serves `web/placeholder.html` with 503.
+  Never commit built assets.
 
 ## Queued messages
 - Sent during a running turn → `queued_messages`, moved into `messages` only by `ConsumeQueued` (one tx,
