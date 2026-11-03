@@ -173,7 +173,7 @@ func TestHRZones(t *testing.T) {
 	// Strava's zones are the defaults: time in zones and the profile use the
 	// stored ones; the e-bike has none and keeps Strava's, labelled.
 	cyc = loadZones(t, svc)["cycling"]
-	wantNote := fmt.Sprintf("the user's own zones from hr_zones (cycling, LTHR %s, calculated 2026-11-03), not Strava's age-based defaults", bpm(cyc.LTHR))
+	wantNote := fmt.Sprintf("the user's own zones from their streams (cycling, LTHR %s, calculated 2026-11-03), not Strava's age-based defaults", bpm(cyc.LTHR))
 	ra := callTool(t, h, userA, "activity_analysis", `{"id":3002}`)
 	if !strings.Contains(ra.Text, wantNote) || strings.Contains(ra.Text, "HR zone times from Strava") {
 		t.Errorf("analysis zone note:\n%s", ra.Text)
@@ -185,9 +185,9 @@ func TestHRZones(t *testing.T) {
 		t.Errorf("e-bike zone note:\n%s", r.Text)
 	}
 	rp := callTool(t, h, userA, "profile", `{}`)
-	if !strings.Contains(rp.Text, "heart-rate zones (Strava's defaults, usually age-based; the user's own from hr_zones") ||
-		!strings.Contains(rp.Text, "heart-rate zones from the user's own streams (cycling, calculated 2026-11-03 by hr_zones, max 174 bpm, LTHR") ||
-		!strings.Contains(rp.Text, "(running, calculated 2026-11-03 by hr_zones, max 179 bpm") {
+	if !strings.Contains(rp.Text, "heart-rate zones (Strava's defaults, usually age-based; the user's own from their streams") ||
+		!strings.Contains(rp.Text, "heart-rate zones from the user's own streams (cycling, calculated 2026-11-03, max 174 bpm, LTHR") ||
+		!strings.Contains(rp.Text, "(running, calculated 2026-11-03, max 179 bpm") {
 		t.Errorf("profile zones:\n%s", rp.Text)
 	}
 
@@ -244,7 +244,7 @@ func TestHRZones_storedAndRecalculated(t *testing.T) {
 	svc2.now = f.clock
 	h2 := newServer(config{token: testToken}, svc2, "test")
 	lists := f.count("/athlete/activities")
-	if r := callTool(t, h2, userA, "profile", `{}`); !strings.Contains(r.Text, "(cycling, calculated 2026-11-03 by hr_zones, max 174 bpm") ||
+	if r := callTool(t, h2, userA, "profile", `{}`); !strings.Contains(r.Text, "(cycling, calculated 2026-11-03, max 174 bpm") ||
 		f.count("/athlete/activities") != lists {
 		t.Errorf("profile after a restart:\n%s", r.Text)
 	}
@@ -259,8 +259,65 @@ func TestHRZones_storedAndRecalculated(t *testing.T) {
 	}
 	now := loadZones(t, svc2)["cycling"]
 	if now.MaxHR != 180 || now.MaxAt.ID != 3001 || now.ConfirmAt.ID != 3011 || !now.CalculatedAt.Equal(f.clock()) || !now.CalculatedAt.After(first.CalculatedAt) ||
-		now.WithHR != first.WithHR+1 || now.Used != first.Used+1 {
+		now.WithHR != first.WithHR || now.Used != first.Used+1 {
 		t.Errorf("after the hard ride: %+v (before %+v)", now, first)
+	}
+	// A run's analysis leaves the cycling zones and their date alone.
+	f.advance(time.Hour)
+	if r := callTool(t, h2, userA, "activity_analysis", `{"id":3005}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	if z := loadZones(t, svc2)["cycling"]; !z.CalculatedAt.Equal(now.CalculatedAt) {
+		t.Errorf("a run recalculated the cycling zones: %v", z.CalculatedAt)
+	}
+}
+
+// Before hr_zones ran, an analysis makes no zones: one easy ride is no
+// estimate, and Strava's stay, labelled.
+func TestHRZones_noneBeforeAsked(t *testing.T) {
+	_, svc, _ := hrFixture(t)
+	h := newServer(config{token: testToken}, svc, "test")
+	r := callTool(t, h, userA, "activity_analysis", `{"id":3003}`)
+	if r.IsError || !strings.Contains(r.Text, "Strava's default zones, usually age-based; hr_zones estimates the user's own") {
+		t.Errorf("analysis before hr_zones:\n%s", r.Text)
+	}
+	if z := loadZones(t, svc); len(z) != 0 {
+		t.Errorf("zones made without hr_zones: %+v", z)
+	}
+}
+
+// Deleted on Strava, or its sport corrected: the activity stops counting.
+func TestHRZones_deletedAndCorrected(t *testing.T) {
+	f, svc, _ := hrFixture(t)
+	h := newServer(config{token: testToken}, svc, "test")
+	if r := callTool(t, h, userA, "hr_zones", `{"sport":"cycling"}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	f.mu.Lock()
+	var kept []map[string]any
+	for _, a := range f.activities[1] {
+		switch a["id"] {
+		case int64(3002): // the max: deleted
+		case int64(3001): // the best 20 min: an e-bike ride after all
+			a["sport_type"], a["type"] = "EBikeRide", "EBikeRide"
+			kept = append(kept, a)
+		default:
+			kept = append(kept, a)
+		}
+	}
+	f.activities[1] = kept
+	f.mu.Unlock()
+	f.advance(10 * time.Minute) // past the cached list
+	r := callTool(t, h, userA, "hr_zones", `{"sport":"cycling"}`)
+	if r.IsError || !strings.Contains(r.Text, "2 with heart rate, 2 read") || strings.Contains(r.Text, "· Gravel") || strings.Contains(r.Text, "Spike ride") {
+		t.Errorf("after delete and correction:\n%s", r.Text)
+	}
+	m, _ := svc.store.loadMetrics(userA)
+	if !m.Activities["3002"].Gone || m.Activities["3001"].Sport != "EBikeRide" {
+		t.Errorf("entries: 3002 %+v, 3001 %+v", m.Activities["3002"], m.Activities["3001"])
+	}
+	if z := m.HRZones["cycling"]; z.Used != 2 || z.MaxHR != 172 || z.Best20At == nil || z.Best20At.ID == 3001 {
+		t.Errorf("zones after delete and correction: %+v", z)
 	}
 }
 

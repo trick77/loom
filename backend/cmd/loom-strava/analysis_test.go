@@ -261,7 +261,7 @@ func TestMetrics_athleteGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	tl := &tools{svc: svc}
-	tl.storeMetrics(userA, 1, map[string]storedMetrics{"1": {V: metricsVersion}}, nil)
+	tl.storeMetrics(userA, 1, map[string]storedMetrics{"1": {V: metricsVersion}}, nil, nil)
 	if m, _ := svc.store.loadMetrics(userA); m.Athlete != 2 || len(m.Activities) != 1 {
 		t.Errorf("athlete 1's metrics went into athlete 2's file: %+v", m)
 	}

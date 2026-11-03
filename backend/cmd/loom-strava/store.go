@@ -109,8 +109,9 @@ type metricFile struct {
 	Athlete    int64                    `json:"athlete,omitempty"`
 	Activities map[string]storedMetrics `json:"activities"`
 	// HRZones are the heart-rate zones per sport family (hrzones.go), as last
-	// calculated from Activities: on every write of Activities and every
-	// hr_zones call. Derived, so a metricsVersion bump may drop them.
+	// calculated from Activities. hr_zones creates a family's; afterwards
+	// every write touching that family's entries recalculates it. Derived,
+	// so a metricsVersion bump may drop them.
 	HRZones map[string]storedHRZones `json:"hr_zones,omitempty"`
 }
 
@@ -130,6 +131,10 @@ type storedMetrics struct {
 	// alone. Entries from before them get both from hr_zones' list, free.
 	Sport string `json:"sport,omitempty"`
 	Name  string `json:"name,omitempty"`
+	// Gone: a complete list of its window no longer had it (deleted on
+	// Strava): the zones leave it out. Any later list or read that has it
+	// clears it, so a list cached before an upload does no lasting harm.
+	Gone bool `json:"gone,omitempty"`
 }
 
 func (s fileStore) metricsPath(user string) (string, error) {

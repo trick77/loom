@@ -279,27 +279,31 @@ func (t *tools) profile(ctx context.Context, _ json.RawMessage) mcpserver.Result
 	}
 	gearLine("bikes", a.Bikes)
 	gearLine("shoes", a.Shoes)
+	// The user's own, stored: what activity_analysis uses while Strava's
+	// are its defaults. Local, so shown when Strava's are unavailable too.
+	ownLines := func() {
+		own := t.loadHRZones(user, a.ID)
+		for _, f := range hrFamilies {
+			if oz, ok := own[f.key]; ok && oz.edges() != nil {
+				b.WriteString(ownZonesLine(f.key, oz))
+			}
+		}
+	}
 	switch {
 	case zerr != nil:
 		fmt.Fprintf(&b, "zones: unavailable (%s)\n", failure(zerr).Text)
+		ownLines()
 	default:
 		if z.HeartRate != nil && len(z.HeartRate.Zones) > 0 {
-			kind := "Strava's defaults, usually age-based; the user's own from hr_zones replace them where a sport has them, " +
-				"custom zones set in Strava replace both"
+			kind := "Strava's defaults, usually age-based; the user's own from their streams replace them where a sport " +
+				"has them, custom zones set in Strava replace both"
 			if z.HeartRate.CustomZones {
 				kind = "custom"
 			}
 			fmt.Fprintf(&b, "heart-rate zones (%s): %s\n", kind, zoneList(z.HeartRate.Zones, " bpm"))
 		}
-		// The user's own, stored by hr_zones: what activity_analysis uses
-		// while Strava's are its defaults.
 		if z.HeartRate == nil || !z.HeartRate.CustomZones {
-			own := t.loadHRZones(user, a.ID)
-			for _, f := range hrFamilies {
-				if oz, ok := own[f.key]; ok && len(oz.Zones) == 5 {
-					b.WriteString(ownZonesLine(f.key, oz))
-				}
-			}
+			ownLines()
 		}
 		if z.Power != nil && len(z.Power.Zones) > 0 {
 			fmt.Fprintf(&b, "power zones: %s\n", zoneList(z.Power.Zones, " W"))

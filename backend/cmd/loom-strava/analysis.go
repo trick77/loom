@@ -211,24 +211,51 @@ type comparison struct {
 	table          *weekTable
 }
 
-// storeMetrics merges add into the user's metric file, unless the user
-// disconnected meanwhile (checked under the lock disconnect holds).
-// known is what the caller loaded before: when add holds nothing new the
-// file is neither read again nor rewritten.
-func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string]storedMetrics) {
-	if !changes(add, known) {
+// storeMetrics merges add into the user's metric file, and gives the stored
+// entries of listed their sport and name. known is what the caller loaded
+// before: when neither changes anything the file is neither read again nor
+// rewritten.
+func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string]storedMetrics, listed []summaryActivity) {
+	if !changes(add, known) && !metaChanges(listed, known) {
 		return
 	}
-	t.updateMetrics(user, athleteID, add, nil, false)
+	t.updateMetrics(user, athleteID, metricsUpdate{add: add, listed: listed})
 }
 
-// updateMetrics merges add into the user's metric file and recalculates the
-// heart-rate zones from it, unless the user disconnected meanwhile (checked
-// under the lock disconnect holds). withHR is each listed family's count of
-// activities with heart rate (nil: as stored); force recalculates and saves
-// even when add changes nothing. It returns the zones as saved, nil when
-// nothing was written.
-func (t *tools) updateMetrics(user string, athleteID int64, add map[string]storedMetrics, withHR map[string]int, force bool) map[string]storedHRZones {
+// metricsUpdate is one write to a user's metric file.
+type metricsUpdate struct {
+	add map[string]storedMetrics
+	// listed are summaries the caller just read: their stored entries take
+	// sport and name (an older entry lacks them, a sport can be corrected)
+	// and are no longer gone.
+	listed []summaryActivity
+	// gone are stored entries a complete list no longer had.
+	gone []string
+	// withHR, from hr_zones' list: each family's activities with heart rate.
+	withHR map[string]int
+	// recalc: hr_zones' write, every family calculated even if unchanged
+	// and created if new. Otherwise only families that already have zones
+	// and whose entries this write touched: one easy ride must not make
+	// zones nobody asked for.
+	recalc bool
+}
+
+// metaChanges reports whether a listed activity's stored entry lacks its
+// sport or name, or is marked gone.
+func metaChanges(listed []summaryActivity, have map[string]storedMetrics) bool {
+	for _, x := range listed {
+		if sm, ok := have[strconv.FormatInt(x.ID, 10)]; ok && (sm.Sport != x.SportType || sm.Name != x.Name || sm.Gone) {
+			return true
+		}
+	}
+	return false
+}
+
+// updateMetrics applies u to the user's metric file and recalculates the
+// heart-rate zones it touches, unless the user disconnected meanwhile
+// (checked under the lock disconnect holds). It returns the zones and
+// whether they were saved.
+func (t *tools) updateMetrics(user string, athleteID int64, u metricsUpdate) (map[string]storedHRZones, bool) {
 	sl := t.svc.slot(user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
@@ -236,26 +263,67 @@ func (t *tools) updateMetrics(user string, athleteID int64, add map[string]store
 	// to a different Strava account meanwhile) must not inherit them.
 	c, ok := t.svc.conn(user)
 	if !ok || (c.AthleteID != 0 && c.AthleteID != athleteID) {
-		return nil
+		return nil, false
 	}
 	m, _ := t.svc.store.loadMetrics(user)
 	// The connection's athlete unknown: the file's own says whose it is.
 	if m.Athlete != 0 && m.Athlete != athleteID {
-		return nil
+		return nil, false
 	}
-	if !force && !changes(add, m.Activities) {
-		return nil
+	touched := map[string]bool{} // sports whose entries changed
+	for k, v := range u.add {
+		if changes(map[string]storedMetrics{k: v}, m.Activities) {
+			touched[m.Activities[k].Sport], touched[v.Sport] = true, true
+			m.Activities[k] = v
+		}
 	}
-	for k, v := range add {
-		m.Activities[k] = v
+	// Applied to the entry in the file, never to a snapshot read before the
+	// caller's stream reads: a concurrent write in between stays.
+	for _, x := range u.listed {
+		k := strconv.FormatInt(x.ID, 10)
+		if sm, ok := m.Activities[k]; ok && (sm.Sport != x.SportType || sm.Name != x.Name || sm.Gone) {
+			touched[sm.Sport], touched[x.SportType] = true, true
+			sm.Sport, sm.Name, sm.Gone = x.SportType, x.Name, false
+			m.Activities[k] = sm
+		}
+	}
+	for _, k := range u.gone {
+		if sm, ok := m.Activities[k]; ok && !sm.Gone {
+			touched[sm.Sport] = true
+			sm.Gone = true
+			m.Activities[k] = sm
+		}
+	}
+	if len(touched) == 0 && !u.recalc {
+		return m.HRZones, false
 	}
 	m.Athlete = athleteID
-	m.HRZones = calcHRZones(m.Activities, t.svc.now(), m.HRZones, withHR)
+	if m.HRZones == nil {
+		m.HRZones = map[string]storedHRZones{}
+	}
+	now := t.svc.now()
+	for _, f := range hrFamilies {
+		prev, had := m.HRZones[f.key]
+		hit := slices.ContainsFunc(f.sports, func(s string) bool { return touched[s] })
+		if !u.recalc && !(had && hit) {
+			continue
+		}
+		w, listed := u.withHR[f.key]
+		if !listed {
+			w = prev.WithHR
+		}
+		if z, ok := calcHRZones(f, m.Activities, now, w); ok {
+			m.HRZones[f.key] = z
+		} else {
+			delete(m.HRZones, f.key)
+		}
+	}
 	if err := t.svc.store.saveMetrics(user, m); err != nil {
 		// Only a cost: the streams are fetched again next time.
 		slog.Error("strava: saving metrics failed", "err", err)
+		return m.HRZones, false
 	}
-	return m.HRZones
+	return m.HRZones, true
 }
 
 // loadHRZones is the user's stored heart-rate zones for athleteID.
@@ -276,7 +344,7 @@ func changes(add, have map[string]storedMetrics) bool {
 	for k, v := range add {
 		h, ok := have[k]
 		if !ok || h.V != v.V || h.Rev != v.Rev || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) ||
-			h.Sport != v.Sport || h.Name != v.Name {
+			h.Sport != v.Sport || h.Name != v.Name || h.Gone != v.Gone {
 			return true
 		}
 	}
@@ -326,7 +394,7 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 			added[strconv.FormatInt(e.act.ID, 10)] = sm
 		}
 	}
-	t.storeMetrics(user, a.ID, added, stored)
+	t.storeMetrics(user, a.ID, added, stored, all)
 	for _, e := range c.entries {
 		switch {
 		case e.known:
@@ -538,12 +606,17 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		return failure(err)
 	}
 	u := unitsOf(a)
+	// The stored entry is zone-free, and stored first: a new best moves the
+	// user's zones before they bucket this very activity.
+	this := entryOf(computeMetrics(s, 0, s.n, nil, nil), d.summaryActivity)
+	t.storeMetrics(user, a.ID, map[string]storedMetrics{strconv.FormatInt(d.ID, 10): this}, nil, nil)
 	pE, hE := powerEdges(z, a.FTP), hrEdges(z)
-	// Strava's default zones are age-based: the user's own, stored by
-	// hr_zones for this sport, count instead. Custom zones always win.
+	// Strava's default zones are age-based: the user's own, stored for this
+	// sport, count instead. Custom zones always win, and without Strava's
+	// answer they may exist: then Strava's own fallback stays.
 	var own *storedHRZones
 	ownFam := ""
-	if z.HeartRate == nil || !z.HeartRate.CustomZones {
+	if zerr == nil && (z.HeartRate == nil || !z.HeartRate.CustomZones) {
 		if f, ok := familyOf(d.SportType); ok {
 			if oz, ok := t.loadHRZones(user, a.ID)[f.key]; ok && oz.edges() != nil {
 				own, ownFam, hE = &oz, f.key, oz.edges()
@@ -565,7 +638,6 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if section {
 		m = computeMetrics(s, ia, ib, pE, hE)
 	}
-	this := entryOf(whole, d.summaryActivity)
 
 	// Strava's own HR zone times need a subscription; ours come from the
 	// streams with the athlete's zones either way. Strava's are in its own
@@ -663,7 +735,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		}
 		switch {
 		case own != nil:
-			notes = append(notes, fmt.Sprintf("the user's own zones from hr_zones (%s, LTHR %s, calculated %s), not Strava's age-based defaults",
+			notes = append(notes, fmt.Sprintf("the user's own zones from their streams (%s, LTHR %s, calculated %s), not Strava's age-based defaults",
 				ownFam, bpm(own.LTHR), own.CalculatedAt.Format("2006-01-02")))
 		// Without own zones hE came from Strava, so z.HeartRate is set: the
 		// model must know they are Strava's age-based defaults.
@@ -1139,7 +1211,11 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 		}
 		entries = append(entries, baseEntry{act: d.summaryActivity, sm: sm, known: known})
 	}
-	t.storeMetrics(user, a.ID, added, stored)
+	listed := make([]summaryActivity, 0, len(entries))
+	for _, e := range entries {
+		listed = append(listed, e.act)
+	}
+	t.storeMetrics(user, a.ID, added, stored, listed)
 
 	var b strings.Builder
 	sources := make([]mcpserver.Source, 0, len(entries))

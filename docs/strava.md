@@ -62,9 +62,11 @@ reads streams only for the hardest activities not read yet (top max HR and top 2
 within the same budget; a later call reads more.
 
 The result is stored per family in the user's metrics file (`hr_zones`, with `calculated_at` and the activities it
-rests on) and recalculated from the stored entries alone, no Strava call, on every write of them (an analysis that
-reads a harder effort moves the zones) and on every `hr_zones` call. Entries carry sport and name for that; ones
-stored before get both from `hr_zones`' list. While Strava's zones are its defaults, `activity_analysis` buckets time
+rests on) and recalculated from the stored entries alone, no Strava call: on every `hr_zones` call, and on any write
+touching that family's entries once `hr_zones` has created it (an analysis that reads a harder effort moves the
+zones; one easy ride before anyone asked makes none). Entries carry sport and name, set under the file lock from any
+list at hand (older entries lack them, a sport can be corrected); a complete list of the window marks missing
+entries `gone` (deleted on Strava), and any later list or read that has them clears it. While Strava's zones are its defaults, `activity_analysis` buckets time
 in zones (and the streams CSV) with the stored zones of the activity's sport and says so; custom Strava zones always
 win, a sport without stored zones keeps Strava's, labelled as defaults. `profile` shows them with their date.
 

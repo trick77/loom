@@ -151,56 +151,48 @@ func estimateHR(pts []hrPoint) hrEstimate {
 	return e
 }
 
-// calcHRZones calculates every family's zones from the stored entries of the
-// window before now. withHR overrides a family's WithHR (hr_zones listed
-// them); otherwise prev's stays. A family with nothing is left out.
-func calcHRZones(acts map[string]storedMetrics, now time.Time, prev map[string]storedHRZones, withHR map[string]int) map[string]storedHRZones {
+// calcHRZones calculates family f's zones from the stored entries of the
+// window before now; withHR is the family's activities with heart rate as
+// last listed. False when there is nothing to tell.
+func calcHRZones(f hrFamily, acts map[string]storedMetrics, now time.Time, withHR int) (storedHRZones, bool) {
 	from := now.AddDate(0, 0, -hrWindowDays)
 	fromS := from.Format("2006-01-02T15:04:05")
-	out := map[string]storedHRZones{}
-	for _, f := range hrFamilies {
-		var pts []hrPoint
-		for k, sm := range acts {
-			if sm.Rev < entryRev || sm.Start < fromS || !slices.Contains(f.sports, sm.Sport) {
-				continue
-			}
-			if _, ok := sm.Vals["hr_max10"]; !ok {
-				continue
-			}
-			id, _ := strconv.ParseInt(k, 10, 64)
-			pts = append(pts, hrPoint{ref: hrRef{ID: id, Start: sm.Start, Name: sm.Name, Sport: sm.Sport}, vals: sm.Vals})
-		}
-		// Newest first: ties go the same way on every run.
-		slices.SortFunc(pts, func(a, b hrPoint) int {
-			if c := strings.Compare(b.ref.Start, a.ref.Start); c != 0 {
-				return c
-			}
-			return cmp.Compare(b.ref.ID, a.ref.ID)
-		})
-		w, listed := withHR[f.key]
-		if !listed {
-			w = prev[f.key].WithHR
-		}
-		if len(pts) == 0 && w == 0 {
+	var pts []hrPoint
+	for k, sm := range acts {
+		if sm.Rev < entryRev || sm.Gone || sm.Start < fromS || !slices.Contains(f.sports, sm.Sport) {
 			continue
 		}
-		e := estimateHR(pts)
-		z := storedHRZones{CalculatedAt: now.UTC(), From: from.Format("2006-01-02"), WithHR: max(w, len(pts)), Used: len(pts)}
-		if finite(e.MaxHR) {
-			z.MaxHR, z.ConfirmHR = e.MaxHR, e.ConfirmHR
-			z.MaxAt, z.ConfirmAt = &e.MaxAt, &e.ConfirmAt
+		if _, ok := sm.Vals["hr_max10"]; !ok {
+			continue
 		}
-		if finite(e.LTHR) {
-			z.Best20, z.Best20At = e.Best20, &e.Best20At
-			z.LTHR = math.Round(e.LTHR*10) / 10
-			z.Zones = f.zones(e.LTHR)
-			if finite(e.Best20W) {
-				z.Best20W = e.Best20W
-			}
-		}
-		out[f.key] = z
+		id, _ := strconv.ParseInt(k, 10, 64)
+		pts = append(pts, hrPoint{ref: hrRef{ID: id, Start: sm.Start, Name: sm.Name, Sport: sm.Sport}, vals: sm.Vals})
 	}
-	return out
+	// Newest first: ties go the same way on every run.
+	slices.SortFunc(pts, func(a, b hrPoint) int {
+		if c := strings.Compare(b.ref.Start, a.ref.Start); c != 0 {
+			return c
+		}
+		return cmp.Compare(b.ref.ID, a.ref.ID)
+	})
+	if len(pts) == 0 && withHR == 0 {
+		return storedHRZones{}, false
+	}
+	e := estimateHR(pts)
+	z := storedHRZones{CalculatedAt: now.UTC(), From: from.Format("2006-01-02"), WithHR: withHR, Used: len(pts)}
+	if finite(e.MaxHR) {
+		z.MaxHR, z.ConfirmHR = e.MaxHR, e.ConfirmHR
+		z.MaxAt, z.ConfirmAt = &e.MaxAt, &e.ConfirmAt
+	}
+	if finite(e.LTHR) {
+		z.Best20, z.Best20At = e.Best20, &e.Best20At
+		z.LTHR = math.Round(e.LTHR*10) / 10
+		z.Zones = f.zones(e.LTHR)
+		if finite(e.Best20W) {
+			z.Best20W = e.Best20W
+		}
+	}
+	return z, true
 }
 
 // hardestFirst orders the activities still to read: the highest max heart
@@ -270,13 +262,18 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 		return ok && sm.Rev >= entryRev
 	}
 
-	// Entries stored before sport and name were: the list has both, free.
-	added := map[string]storedMetrics{}
-	for _, x := range list {
-		k := strconv.FormatInt(x.ID, 10)
-		if sm, ok := stored[k]; ok && sm.Sport == "" {
-			sm.Sport, sm.Name = x.SportType, x.Name
-			added[k] = sm
+	// A complete list of the window lacks what was deleted on Strava.
+	var gone []string
+	if !more {
+		ids := map[string]bool{}
+		for _, x := range list {
+			ids[strconv.FormatInt(x.ID, 10)] = true
+		}
+		fromS := from.Format("2006-01-02T15:04:05")
+		for k, sm := range stored {
+			if !ids[k] && !sm.Gone && sm.Start >= fromS {
+				gone = append(gone, k)
+			}
 		}
 	}
 	// Per family: its activities with heart rate, and the hardest of those
@@ -300,17 +297,36 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 		withHR[f.key] = len(acts[i])
 	}
 	read := t.readStreams(ctx, user, interleave(queues))
+	added := map[string]storedMetrics{}
 	for id, sm := range read.got {
 		added[strconv.FormatInt(id, 10)] = sm
 	}
-	zones := t.updateMetrics(user, a.ID, added, withHR, true)
+	// Sport and name of the listed entries are set under the file's lock,
+	// on the entry as it is then: never from the snapshot above.
+	zones, saved := t.updateMetrics(user, a.ID, metricsUpdate{add: added, listed: list, gone: gone, withHR: withHR, recalc: true})
 	if zones == nil {
-		// Not saved (disconnected or another athlete meanwhile): this
-		// answer still gets its zones.
+		// Disconnected or another athlete meanwhile: this answer still gets
+		// its zones, unsaved.
 		for k, v := range added {
 			stored[k] = v
 		}
-		zones = calcHRZones(stored, now, nil, withHR)
+		for _, x := range list {
+			if sm, ok := stored[strconv.FormatInt(x.ID, 10)]; ok {
+				sm.Sport, sm.Name = x.SportType, x.Name
+				stored[strconv.FormatInt(x.ID, 10)] = sm
+			}
+		}
+		zones = map[string]storedHRZones{}
+		for _, f := range fams {
+			if z, ok := calcHRZones(f, stored, now, withHR[f.key]); ok {
+				zones[f.key] = z
+			}
+		}
+	}
+	keep := "calculated %s and stored: profile and activity_analysis use them while Strava's zones are its defaults, " +
+		"and an analysed activity that moves them recalculates them."
+	if !saved {
+		keep = "calculated %s, not stored this time (disconnected meanwhile, or the write failed)."
 	}
 
 	var b strings.Builder
@@ -325,8 +341,7 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 		}
 		return marker(i) + " " + r.date() + " · " + r.Name
 	}
-	fmt.Fprintf(&b, "Heart-rate zones from the user's own streams, %s – %s, calculated %s and stored: profile and "+
-		"activity_analysis use them while Strava's zones are its defaults. Max heart rate: the best 10 s, confirmed by a "+
+	fmt.Fprintf(&b, "Heart-rate zones from the user's own streams, %s – %s, "+keep+" Max heart rate: the best 10 s, confirmed by a "+
 		"second activity within %d bpm. Threshold heart rate (LTHR): %.0f %% of the best 20 min. Zones: Friel's, from the LTHR.\n",
 		from.Format("2006-01-02"), now.Format("2006-01-02"), now.UTC().Format("2006-01-02 15:04 UTC"), maxConfirmBPM, lthrShare*100)
 	retry := false
@@ -403,7 +418,7 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 
 // ownZonesLine is the profile's line for one family's stored zones.
 func ownZonesLine(key string, z storedHRZones) string {
-	s := fmt.Sprintf("heart-rate zones from the user's own streams (%s, calculated %s by hr_zones", key, z.CalculatedAt.Format("2006-01-02"))
+	s := fmt.Sprintf("heart-rate zones from the user's own streams (%s, calculated %s", key, z.CalculatedAt.Format("2006-01-02"))
 	if z.MaxHR > 0 {
 		s += ", max " + bpm(z.MaxHR)
 	}
