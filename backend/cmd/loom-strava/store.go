@@ -108,6 +108,10 @@ type metricFile struct {
 	// to another athlete must not inherit them.
 	Athlete    int64                    `json:"athlete,omitempty"`
 	Activities map[string]storedMetrics `json:"activities"`
+	// HRZones are the heart-rate zones per sport family (hrzones.go), as last
+	// calculated from Activities: on every write of Activities and every
+	// hr_zones call. Derived, so a metricsVersion bump may drop them.
+	HRZones map[string]storedHRZones `json:"hr_zones,omitempty"`
 }
 
 // storedMetrics are the stream metrics of one activity that do not depend on
@@ -122,6 +126,10 @@ type storedMetrics struct {
 	Start   string             `json:"start"`         // start_date_local, for pruning
 	MovingS int                `json:"moving_s"`
 	Vals    map[string]float64 `json:"vals,omitempty"`
+	// Sport and Name let the zones be calculated and cited from this file
+	// alone. Entries from before them get both from hr_zones' list, free.
+	Sport string `json:"sport,omitempty"`
+	Name  string `json:"name,omitempty"`
 }
 
 func (s fileStore) metricsPath(user string) (string, error) {

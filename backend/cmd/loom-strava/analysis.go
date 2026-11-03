@@ -165,6 +165,13 @@ func storedFrom(m rideMetrics, start time.Time) storedMetrics {
 	return sm
 }
 
+// entryOf is the stored entry of activity x: its metrics, sport and name.
+func entryOf(m rideMetrics, x summaryActivity) storedMetrics {
+	sm := storedFrom(m, x.localStart())
+	sm.Sport, sm.Name = x.SportType, x.Name
+	return sm
+}
+
 // sameFamily: the baseline holds the same sport_type; with mixIndoor a
 // virtual sport and its outdoor one count together.
 func sameFamily(a, b string, mixIndoor bool) bool {
@@ -212,6 +219,16 @@ func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string
 	if !changes(add, known) {
 		return
 	}
+	t.updateMetrics(user, athleteID, add, nil, false)
+}
+
+// updateMetrics merges add into the user's metric file and recalculates the
+// heart-rate zones from it, unless the user disconnected meanwhile (checked
+// under the lock disconnect holds). withHR is each listed family's count of
+// activities with heart rate (nil: as stored); force recalculates and saves
+// even when add changes nothing. It returns the zones as saved, nil when
+// nothing was written.
+func (t *tools) updateMetrics(user string, athleteID int64, add map[string]storedMetrics, withHR map[string]int, force bool) map[string]storedHRZones {
 	sl := t.svc.slot(user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
@@ -219,24 +236,38 @@ func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string
 	// to a different Strava account meanwhile) must not inherit them.
 	c, ok := t.svc.conn(user)
 	if !ok || (c.AthleteID != 0 && c.AthleteID != athleteID) {
-		return
+		return nil
 	}
 	m, _ := t.svc.store.loadMetrics(user)
 	// The connection's athlete unknown: the file's own says whose it is.
 	if m.Athlete != 0 && m.Athlete != athleteID {
-		return
+		return nil
 	}
-	if !changes(add, m.Activities) {
-		return
+	if !force && !changes(add, m.Activities) {
+		return nil
 	}
 	for k, v := range add {
 		m.Activities[k] = v
 	}
 	m.Athlete = athleteID
+	m.HRZones = calcHRZones(m.Activities, t.svc.now(), m.HRZones, withHR)
 	if err := t.svc.store.saveMetrics(user, m); err != nil {
 		// Only a cost: the streams are fetched again next time.
 		slog.Error("strava: saving metrics failed", "err", err)
 	}
+	return m.HRZones
+}
+
+// loadHRZones is the user's stored heart-rate zones for athleteID.
+func (t *tools) loadHRZones(user string, athleteID int64) map[string]storedHRZones {
+	sl := t.svc.slot(user)
+	sl.dataMu.Lock()
+	defer sl.dataMu.Unlock()
+	m, _ := t.svc.store.loadMetrics(user)
+	if m.Athlete != 0 && m.Athlete != athleteID {
+		return nil
+	}
+	return m.HRZones
 }
 
 // changes reports whether add holds an entry that have does not, or holds
@@ -244,7 +275,8 @@ func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string
 func changes(add, have map[string]storedMetrics) bool {
 	for k, v := range add {
 		h, ok := have[k]
-		if !ok || h.V != v.V || h.Rev != v.Rev || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) {
+		if !ok || h.V != v.V || h.Rev != v.Rev || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) ||
+			h.Sport != v.Sport || h.Name != v.Name {
 			return true
 		}
 	}
@@ -383,7 +415,7 @@ func (t *tools) readStreams(ctx context.Context, user string, acts []summaryActi
 			r.failed[x.ID] = true
 			continue
 		}
-		r.got[x.ID] = storedFrom(computeMetrics(s, 0, s.n, nil, nil), x.localStart())
+		r.got[x.ID] = entryOf(computeMetrics(s, 0, s.n, nil, nil), x)
 	}
 	return r
 }
@@ -507,6 +539,17 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	}
 	u := unitsOf(a)
 	pE, hE := powerEdges(z, a.FTP), hrEdges(z)
+	// Strava's default zones are age-based: the user's own, stored by
+	// hr_zones for this sport, count instead. Custom zones always win.
+	var own *storedHRZones
+	ownFam := ""
+	if z.HeartRate == nil || !z.HeartRate.CustomZones {
+		if f, ok := familyOf(d.SportType); ok {
+			if oz, ok := t.loadHRZones(user, a.ID)[f.key]; ok && oz.edges() != nil {
+				own, ownFam, hE = &oz, f.key, oz.edges()
+			}
+		}
+	}
 	whole := computeMetrics(s, 0, s.n, pE, hE)
 	ia, ib := 0, s.n
 	if section {
@@ -522,12 +565,13 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if section {
 		m = computeMetrics(s, ia, ib, pE, hE)
 	}
-	this := storedFrom(whole, d.localStart())
+	this := entryOf(whole, d.summaryActivity)
 
 	// Strava's own HR zone times need a subscription; ours come from the
-	// streams with the athlete's zones either way.
+	// streams with the athlete's zones either way. Strava's are in its own
+	// zones, so with the user's they do not count.
 	zoneNote := ""
-	if !section && s.n > 0 && hE != nil && s.hr != nil {
+	if !section && s.n > 0 && hE != nil && s.hr != nil && own == nil {
 		azs, err := t.svc.activityZones(ctx, user, id)
 		switch {
 		case summitRefused(err):
@@ -617,9 +661,13 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		if zoneNote != "" {
 			notes = append(notes, zoneNote)
 		}
-		// hE is set, so z.HeartRate is: the model must know the zones are
-		// Strava's age-based defaults, not the user's own.
-		if !z.HeartRate.CustomZones {
+		switch {
+		case own != nil:
+			notes = append(notes, fmt.Sprintf("the user's own zones from hr_zones (%s, LTHR %s, calculated %s), not Strava's age-based defaults",
+				ownFam, bpm(own.LTHR), own.CalculatedAt.Format("2006-01-02")))
+		// Without own zones hE came from Strava, so z.HeartRate is set: the
+		// model must know they are Strava's age-based defaults.
+		case !z.HeartRate.CustomZones:
 			note := "Strava's default zones, usually age-based"
 			if _, ok := familyOf(d.SportType); ok {
 				note += "; hr_zones estimates the user's own"
@@ -1086,7 +1134,7 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 			if err != nil {
 				return failure(err)
 			}
-			sm, known = storedFrom(computeMetrics(s, 0, s.n, nil, nil), d.localStart()), true
+			sm, known = entryOf(computeMetrics(s, 0, s.n, nil, nil), d.summaryActivity), true
 			added[key] = sm
 		}
 		entries = append(entries, baseEntry{act: d.summaryActivity, sm: sm, known: known})

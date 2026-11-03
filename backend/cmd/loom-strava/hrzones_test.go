@@ -21,7 +21,7 @@ func hrPt(id int64, max10, best20, w20 float64) hrPoint {
 	if w20 > 0 {
 		v["hr_20m_w"] = w20
 	}
-	return hrPoint{act: summaryActivity{ID: id}, vals: v}
+	return hrPoint{ref: hrRef{ID: id}, vals: v}
 }
 
 func TestEstimateHR(t *testing.T) {
@@ -102,6 +102,8 @@ func TestHRZones(t *testing.T) {
 	if err := svc.store.saveMetrics(userA, metricFile{Athlete: 1, Activities: map[string]storedMetrics{
 		"3003": {V: metricsVersion, Start: "2026-10-03T09:00:00", MovingS: 1, Vals: map[string]float64{"np": 1}},
 		"9999": {V: metricsVersion, Start: "2020-01-01T09:00:00", MovingS: 1, Vals: map[string]float64{"np": 1}},
+		// Read by 0.6.0: HR keys, no sport or name; those come from the list.
+		"3004": {V: metricsVersion, Rev: entryRev, Start: "2026-10-04T09:00:00", MovingS: 1, Vals: map[string]float64{"hr_max10": 170, "np": 2}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,8 @@ func TestHRZones(t *testing.T) {
 		"running (Run, TrailRun, VirtualRun): 2 with heart rate, 2 read",
 		"max heart rate: 179 bpm",
 		"Strava's heart-rate zones (Strava's defaults, usually age-based): Z1 0–123 bpm",
-		"Custom zones set in Strava",
+		"Custom zones set in Strava replace both",
+		"calculated 2026-11-03 10:02 UTC and stored",
 	} {
 		if !strings.Contains(r.Text, want) {
 			t.Errorf("hr_zones lacks %q:\n%s", want, r.Text)
@@ -143,6 +146,18 @@ func TestHRZones(t *testing.T) {
 	if v := m.Activities["9999"].Vals; v["np"] != 1 || len(v) != 1 {
 		t.Errorf("entry outside the window changed: %v", v)
 	}
+	if e := m.Activities["3004"]; e.Sport != "VirtualRide" || e.Name != "Zwift" || e.Vals["np"] != 2 || f.count("/activities/3004/streams") != 0 {
+		t.Errorf("sport and name not filled in from the list, or streams read again: %+v", e)
+	}
+	// The zones are stored with the date they were calculated.
+	cyc, run := m.HRZones["cycling"], m.HRZones["running"]
+	if !cyc.CalculatedAt.Equal(f.clock()) || cyc.MaxHR != 174 || cyc.MaxAt == nil || cyc.MaxAt.ID != 3002 || cyc.WithHR != 4 || cyc.Used != 4 ||
+		math.Abs(cyc.LTHR-lthr) > 0.05 || zoneList(cyc.Zones, "") != zoneList(hrFamilies[0].zones(lthr), "") || cyc.Best20W <= 0 || cyc.From != "2025-11-03" {
+		t.Errorf("stored cycling zones: %+v", cyc)
+	}
+	if run.MaxHR != 179 || run.Best20At == nil || run.Best20At.Name != "Run" || len(run.Zones) != 5 {
+		t.Errorf("stored running zones: %+v", run)
+	}
 
 	// Everything stored: a second call reads no stream.
 	before := f.count("/activities/3001/streams")
@@ -155,12 +170,25 @@ func TestHRZones(t *testing.T) {
 	if r := callTool(t, h, userA, "hr_zones", `{"sport":"swimming"}`); !r.IsError {
 		t.Errorf("unknown sport: %s", r.Text)
 	}
-	// Time in zones and the profile say the zones are Strava's defaults.
-	if r := callTool(t, h, userA, "activity_analysis", `{"id":3002}`); !strings.Contains(r.Text, "Strava's default zones, usually age-based; hr_zones estimates the user's own") {
-		t.Errorf("analysis zone note:\n%s", r.Text)
+	// Strava's zones are the defaults: time in zones and the profile use the
+	// stored ones; the e-bike has none and keeps Strava's, labelled.
+	cyc = loadZones(t, svc)["cycling"]
+	wantNote := fmt.Sprintf("the user's own zones from hr_zones (cycling, LTHR %s, calculated 2026-11-03), not Strava's age-based defaults", bpm(cyc.LTHR))
+	ra := callTool(t, h, userA, "activity_analysis", `{"id":3002}`)
+	if !strings.Contains(ra.Text, wantNote) || strings.Contains(ra.Text, "HR zone times from Strava") {
+		t.Errorf("analysis zone note:\n%s", ra.Text)
 	}
-	if r := callTool(t, h, userA, "profile", `{}`); !strings.Contains(r.Text, "heart-rate zones (Strava's defaults, usually age-based; hr_zones") {
-		t.Errorf("profile zone note:\n%s", r.Text)
+	if !strings.Contains(ra.file("strava_3002_streams.csv"), ",5\n") {
+		t.Error("the streams CSV does not bucket with the user's zones (the climb is their Z5)")
+	}
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":3007}`); !strings.Contains(r.Text, "Strava's default zones, usually age-based)") {
+		t.Errorf("e-bike zone note:\n%s", r.Text)
+	}
+	rp := callTool(t, h, userA, "profile", `{}`)
+	if !strings.Contains(rp.Text, "heart-rate zones (Strava's defaults, usually age-based; the user's own from hr_zones") ||
+		!strings.Contains(rp.Text, "heart-rate zones from the user's own streams (cycling, calculated 2026-11-03 by hr_zones, max 174 bpm, LTHR") ||
+		!strings.Contains(rp.Text, "(running, calculated 2026-11-03 by hr_zones, max 179 bpm") {
+		t.Errorf("profile zones:\n%s", rp.Text)
 	}
 
 	// Per user: Ben sees his own ride only, never Anna's values or file.
@@ -175,6 +203,64 @@ func TestHRZones(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, metricsDir, userB+".json")); err != nil {
 		t.Error(err)
+	}
+	// Ben's stored zones are his own; his custom Strava zones still win.
+	if z := mb.HRZones["cycling"]; z.LTHR <= 0 || z.MaxAt != nil || z.Best20At.ID != 4001 {
+		t.Errorf("Ben's stored zones: %+v", z)
+	}
+	if r := callTool(t, h, userB, "profile", `{}`); strings.Contains(r.Text, "from the user's own streams") {
+		t.Errorf("custom zones, yet the stored ones shown:\n%s", r.Text)
+	}
+	if r := callTool(t, h, userB, "activity_analysis", `{"id":4001}`); strings.Contains(r.Text, "the user's own zones") {
+		t.Errorf("custom zones, yet the stored ones used:\n%s", r.Text)
+	}
+}
+
+func loadZones(t *testing.T, svc *service) map[string]storedHRZones {
+	t.Helper()
+	m, err := svc.store.loadMetrics(userA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m.HRZones
+}
+
+// The stored zones outlive a restart, and a newly read activity recalculates
+// them with the date of that calculation.
+func TestHRZones_storedAndRecalculated(t *testing.T) {
+	f, svc, dir := hrFixture(t)
+	h := newServer(config{token: testToken}, svc, "test")
+	if r := callTool(t, h, userA, "hr_zones", `{}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	first := loadZones(t, svc)["cycling"]
+
+	// A fresh process over the same /data: the profile shows them without
+	// listing a single activity.
+	svc2, err := newService(config{clientID: testClientID, clientSecret: testSecret, base: svc.base}, f.srv.Client(), fileStore{dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc2.now = f.clock
+	h2 := newServer(config{token: testToken}, svc2, "test")
+	lists := f.count("/athlete/activities")
+	if r := callTool(t, h2, userA, "profile", `{}`); !strings.Contains(r.Text, "(cycling, calculated 2026-11-03 by hr_zones, max 174 bpm") ||
+		f.count("/athlete/activities") != lists {
+		t.Errorf("profile after a restart:\n%s", r.Text)
+	}
+
+	// A day later a harder ride is analysed: 179 bpm confirms the 180 that
+	// stood alone, and the zones are recalculated without hr_zones.
+	f.advance(24 * time.Hour)
+	hard := synthRideWith(1, 1, 9, false)
+	f.addActivity(1, 3011, "Hard", "Ride", local(2026, 11, 3, 9), &hard, map[string]any{"max_heartrate": 179.0})
+	if r := callTool(t, h2, userA, "activity_analysis", `{"id":3011}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	now := loadZones(t, svc2)["cycling"]
+	if now.MaxHR != 180 || now.MaxAt.ID != 3001 || now.ConfirmAt.ID != 3011 || !now.CalculatedAt.Equal(f.clock()) || !now.CalculatedAt.After(first.CalculatedAt) ||
+		now.WithHR != first.WithHR+1 || now.Used != first.Used+1 {
+		t.Errorf("after the hard ride: %+v (before %+v)", now, first)
 	}
 }
 

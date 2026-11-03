@@ -59,9 +59,14 @@ rides checked against FTP via `hr_20m_w`, the power over those same 20 minutes (
 different stretch). Families are explicit: cycling = Ride, GravelRide,
 MountainBikeRide, VirtualRide; running = Run, TrailRun, VirtualRun (5-10 bpm higher); e-bike, walk, hike are out. It
 reads streams only for the hardest activities not read yet (top max HR and top 20-min-plus average HR, in turns),
-within the same budget; a later call reads more. The zones themselves are never stored: a new hard effort moves
-them. `activity_analysis` keeps bucketing time in zones with Strava's zones (as Strava shows them) and says when
-those are the defaults.
+within the same budget; a later call reads more.
+
+The result is stored per family in the user's metrics file (`hr_zones`, with `calculated_at` and the activities it
+rests on) and recalculated from the stored entries alone, no Strava call, on every write of them (an analysis that
+reads a harder effort moves the zones) and on every `hr_zones` call. Entries carry sport and name for that; ones
+stored before get both from `hr_zones`' list. While Strava's zones are its defaults, `activity_analysis` buckets time
+in zones (and the streams CSV) with the stored zones of the activity's sport and says so; custom Strava zones always
+win, a sport without stored zones keeps Strava's, labelled as defaults. `profile` shows them with their date.
 
 New stored keys bump the per-entry `entryRev`, never `metricsVersion`: a `metricsVersion` bump drops every user's
 whole metrics file and re-reads every stream against the rate budget. Key presence alone can't tell "stored before
