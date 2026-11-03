@@ -51,6 +51,11 @@ BACKEND_TUNEWIRE_TOKEN=<openssl rand -hex 32>
 BACKEND_TUNEWIRE_USERS=<loom user ids, comma-separated: the "id" of /api/me>
 ```
 
+The sidecar's `/data` is the host dir `./tunewire-data` (backed up with `./data`, never inside it: loom mounts `./data`
+and must not read the tokens). Create it for uid 65532 before the first start, or Docker creates it root-owned:
+`sudo mkdir -p tunewire-data && sudo chown 65532:65532 tunewire-data`. Coming from the former named volume
+`tunewire-data`: stop the sidecar, `cp -a` the volume's content into `./tunewire-data`, chown it.
+
 Only those accounts see the settings section and the playlist tools. Each connects their own Apple Music account:
 nothing is shared. An `mcp.json` entry named `tunewire` may replace the endpoint, never these users or the per-user
 accounts.

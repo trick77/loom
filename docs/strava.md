@@ -118,7 +118,11 @@ user's entry, metrics and activities; a reconnect to another Strava athlete star
    STRAVA_CLIENT_SECRET=<the app's client secret>
    ```
 
-3. Each listed user signs in to loom, opens Settings → Strava and clicks Connect with Strava, leaving every permission
+3. The sidecar's `/data` is the host dir `./strava-data` (backed up with `./data`, never inside it: loom mounts
+   `./data` and must not read the tokens). Create it for uid 65532 before the first start, or Docker creates it
+   root-owned: `sudo mkdir -p strava-data && sudo chown 65532:65532 strava-data`. Coming from the former named
+   volume `strava-data`: stop the sidecar, `cp -a` the volume's content into `./strava-data`, chown it.
+4. Each listed user signs in to loom, opens Settings → Strava and clicks Connect with Strava, leaving every permission
    ticked (unticked ones show up in Settings: private activities or details then stay hidden).
 
 An `mcp.json` entry named `strava` may replace the endpoint, never these users or the per-user accounts.
