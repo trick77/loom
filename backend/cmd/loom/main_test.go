@@ -218,6 +218,27 @@ func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 	}
 }
 
+func TestToolConfigForConfigStravaIsBestEffortAndPerUser(t *testing.T) {
+	const token = "strava-token-0123456789abcdef012345"
+	got, err := toolConfigForConfig(config.Config{StravaURL: "http://strava:8050", StravaToken: token, StravaUsers: []string{"usr_1"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, required := got.Required.Servers[stravaServer]; required {
+		t.Error("strava is required: a dead sidecar would fail boot")
+	}
+	sc := got.FileServers.Servers[stravaServer]
+	if sc.URL != "http://strava:8050/mcp" || !sc.PerUser || !sc.RestrictUsers || !reflect.DeepEqual(sc.Users, []string{"usr_1"}) {
+		t.Errorf("strava = %+v", sc)
+	}
+	if _, ok := mustToolConfig(t, config.Config{}).Servers[stravaServer]; ok {
+		t.Error("strava registered without a URL")
+	}
+	if stravaService(config.Config{}) != nil || stravaService(config.Config{StravaURL: "http://strava:8050", StravaToken: token}) == nil {
+		t.Error("settings service on/off")
+	}
+}
+
 func TestToolConfigForConfigMergesFileServers(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "mcp.json")
 	if err := os.WriteFile(path, []byte(`{

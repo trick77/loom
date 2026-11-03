@@ -22,16 +22,26 @@ RUN echo "upgrade layer: ${VERSION}" \
     && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 COPY sandbox/requirements.lock /tmp/requirements.lock
+COPY sandbox/loomcharts/ /tmp/loomcharts/
 # Hash-pinned wheels only; no pip at run time, so pip goes once they are in
 # (its vendored libraries are the base image's, and the release scan flags
-# them). compileall writes the .pyc files now, because jobs run with -B on a
-# read-only root.
+# them). loomcharts, loom's chart module, goes into site-packages next to them:
+# jobs run with -I, so only the default sys.path reaches it. compileall writes
+# the .pyc files now, because jobs run with -B on a read-only root. Both paths
+# come from the interpreter: a hard-coded python3.X dir outlived a base image
+# bump once and compileall skipped the missing dir without failing.
 RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r /tmp/requirements.lock \
     && pip uninstall -y pip \
     && rm /tmp/requirements.lock \
-    && python -m compileall -q /usr/local/lib/python3.13
-# Prebuilt matplotlib font cache; each job gets a copy in its home.
-RUN MPLCONFIGDIR=/opt/mplconfig MPLBACKEND=Agg python -c "import matplotlib.pyplot as plt; plt.figure()" \
+    && site="$(python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" \
+    && mv /tmp/loomcharts "$site/loomcharts" \
+    && rm -rf "$site/loomcharts/__pycache__" \
+    && chmod -R a+rX "$site/loomcharts" \
+    && python -m compileall -q "$(python -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
+# Prebuilt matplotlib font cache; each job gets a copy in its home. The
+# loomcharts self-test draws every chart (building the cache on the way) and
+# fails the build on a broken one.
+RUN MPLCONFIGDIR=/opt/mplconfig MPLBACKEND=Agg python -I -B -m loomcharts.selftest \
     && chmod -R a+rX /opt/mplconfig
 # No setuid or setgid programs (su, mount, passwd): jobs run with no_new_privs
 # anyway, this removes the targets.

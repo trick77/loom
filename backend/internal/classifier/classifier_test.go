@@ -56,7 +56,7 @@ func TestBlock(t *testing.T) {
 		t.Errorf("Block(unknown) = %q, want empty", Block("not_a_category"))
 	}
 	// Every catalog category, including General, injects a non-empty block.
-	for _, c := range []Category{KnowledgeDiscovery, Coding, CookingRecipes, Weather, Translation, Health, EntertainmentRecs, Music, LocalInfo, FinanceInvesting, URLLookup, General} {
+	for _, c := range []Category{KnowledgeDiscovery, Coding, CookingRecipes, Weather, Translation, Health, Training, EntertainmentRecs, Music, LocalInfo, FinanceInvesting, URLLookup, General} {
 		if Block(string(c)) == "" {
 			t.Errorf("Block(%q) is empty, want a directive", c)
 		}
@@ -64,8 +64,8 @@ func TestBlock(t *testing.T) {
 }
 
 func TestValuesAndPromptGuideCoverEveryCategory(t *testing.T) {
-	if len(Values()) != 23 {
-		t.Fatalf("Values() has %d entries, want 23", len(Values()))
+	if len(Values()) != 24 {
+		t.Fatalf("Values() has %d entries, want 24", len(Values()))
 	}
 	guide := PromptGuide()
 	for _, c := range Values() {

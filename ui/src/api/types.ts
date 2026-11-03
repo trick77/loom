@@ -11,6 +11,8 @@ export type User = {
   responseLanguage?: string;
   // True only for users the server allows the Apple Music settings section.
   appleMusic?: boolean;
+  // True only for users the server allows the Strava settings section.
+  strava?: boolean;
 };
 
 export type Project = {

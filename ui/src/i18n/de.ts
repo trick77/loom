@@ -539,6 +539,48 @@ export const de = {
       privacy:
         "Der Token bleibt auf dem Server, wird nur zum Lesen deiner Playlists verwendet und nie wieder angezeigt.",
     },
+    strava: {
+      title: "Strava",
+      description:
+        "Verbinde dein eigenes Strava-Konto, damit loom deine Aktivitäten lesen, mit deinen letzten vergleichen und als Grafik zeigen kann.",
+      connected: "Verbunden als {{name}}",
+      connectedNoName: "Verbunden",
+      lastChecked: "zuletzt geprüft {{when}}",
+      never: "Noch nicht verbunden.",
+      expired:
+        "Strava hat die Anmeldung beendet. Verbinde neu, um loom wieder Zugriff zu geben.",
+      error:
+        "Die letzte Prüfung ist fehlgeschlagen: Strava hat mit einem Fehler geantwortet oder war nicht erreichbar. Versuche es später mit Jetzt prüfen.",
+      missingScopes:
+        "Einige Berechtigungen wurden nicht erteilt ({{scopes}}): private Aktivitäten oder Details bleiben verborgen. Verbinde neu und lass alle Häkchen gesetzt.",
+      connect: "Mit Strava verbinden",
+      reconnect: "Neu verbinden",
+      checkNow: "Jetzt prüfen",
+      checking: "Prüfe…",
+      disconnect: "Trennen",
+      disconnecting: "Trenne…",
+      outcome_connected: "Strava ist verbunden.",
+      outcome_denied:
+        "Strava wurde nicht verbunden: der Zugriff wurde abgelehnt.",
+      outcome_state:
+        "Die Verbindung liess sich nicht bestätigen. Beginne neu mit Mit Strava verbinden.",
+      outcome_rejected:
+        "Strava hat die Verbindung abgelehnt. Beginne neu mit Mit Strava verbinden.",
+      outcome_upstream:
+        "Strava ist gerade nicht erreichbar. Versuche es später noch einmal.",
+      outcome_storage:
+        "Der Server konnte die Verbindung nicht speichern. Bitte den Admin, den Speicher des Dienstes zu prüfen.",
+      outcome_config:
+        "Der Strava-Dienst von loom ist falsch eingerichtet. Bitte den Admin, die Token-Einstellung zu prüfen.",
+      outcome_unavailable:
+        "Der Strava-Dienst von loom läuft gerade nicht. Versuche es später noch einmal.",
+      loadFailed: "Der Strava-Status konnte nicht geladen werden.",
+      checkFailed:
+        "Die Verbindung konnte nicht geprüft werden. Versuche es noch einmal.",
+      disconnectFailed: "Trennen hat nicht geklappt. Versuche es noch einmal.",
+      privacy:
+        "Nur du siehst deine Aktivitäten. Die Tokens von Strava bleiben auf dem Server und werden nie angezeigt; Trennen widerruft sie bei Strava und löscht, was loom gespeichert hat.",
+    },
   },
   chats: {
     title: "Threads",

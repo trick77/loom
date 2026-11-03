@@ -527,6 +527,44 @@ export const en = {
       privacy:
         "The token stays on the server, is only used to read your playlists and is never shown again.",
     },
+    strava: {
+      title: "Strava",
+      description:
+        "Connect your own Strava account so loom can read your activities, compare them with your recent ones and chart them.",
+      connected: "Connected as {{name}}",
+      connectedNoName: "Connected",
+      lastChecked: "last checked {{when}}",
+      never: "Not connected yet.",
+      expired: "Strava ended the sign-in. Reconnect to give loom access again.",
+      error:
+        "The last check failed: Strava answered with an error or couldn’t be reached. Try Check now later.",
+      missingScopes:
+        "Some permissions were not granted ({{scopes}}): private activities or details stay hidden. Reconnect and leave every box ticked.",
+      connect: "Connect with Strava",
+      reconnect: "Reconnect",
+      checkNow: "Check now",
+      checking: "Checking…",
+      disconnect: "Disconnect",
+      disconnecting: "Disconnecting…",
+      outcome_connected: "Strava is connected.",
+      outcome_denied: "Strava wasn’t connected: access was declined.",
+      outcome_state:
+        "The connection could not be confirmed. Start again with Connect with Strava.",
+      outcome_rejected:
+        "Strava refused the connection. Start again with Connect with Strava.",
+      outcome_upstream: "Strava can’t be reached right now. Try again later.",
+      outcome_storage:
+        "The server couldn’t store the connection. Ask the admin to check the service’s storage.",
+      outcome_config:
+        "loom’s Strava service is misconfigured. Ask the admin to check its token setting.",
+      outcome_unavailable:
+        "loom’s Strava service isn’t running right now. Try again later.",
+      loadFailed: "Failed to load the Strava status.",
+      checkFailed: "Couldn’t check the connection. Try again.",
+      disconnectFailed: "Couldn’t disconnect. Try again.",
+      privacy:
+        "Only you see your activities. Strava’s tokens stay on the server and are never shown; Disconnect revokes them at Strava and deletes what loom kept.",
+    },
   },
   chats: {
     title: "Threads",

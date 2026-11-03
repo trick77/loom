@@ -1,20 +1,24 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { takeStravaOutcome, type StravaOutcome } from "../api";
 import { Icon, type IconName } from "../chat/Icon";
 import { AppleMusicPanel } from "./AppleMusicPanel";
 import { SharedChatsPanel } from "./SharedChatsPanel";
+import { StravaPanel } from "./StravaPanel";
 import { UsagePanel } from "./UsagePanel";
 import { useEscapeKey } from "../chat/useEscapeKey";
 
-type SettingsSection = "usage" | "shares" | "appleMusic";
+type SettingsSection = "usage" | "shares" | "appleMusic" | "strava";
+
+// Feature sections show only to users the server allows them (`/api/me`).
+type Feature = "appleMusic" | "strava";
 
 const SECTIONS: {
   id: SettingsSection;
   labelKey: string;
   icon: IconName;
-  // Shown only to users the server allows the feature (`/api/me` appleMusic).
-  appleMusicOnly?: boolean;
+  feature?: Feature;
 }[] = [
   { id: "usage", labelKey: "settings.usage", icon: "sliders" },
   { id: "shares", labelKey: "settings.sharedChats", icon: "upload" },
@@ -22,25 +26,42 @@ const SECTIONS: {
     id: "appleMusic",
     labelKey: "settings.appleMusic.title",
     icon: "volume",
-    appleMusicOnly: true,
+    feature: "appleMusic",
+  },
+  {
+    id: "strava",
+    labelKey: "settings.strava.title",
+    icon: "globe",
+    feature: "strava",
   },
 ];
 
 /**
  * SettingsModal — centered overlay modal with a left nav (Usage, Shared chats,
- * Apple Music when allowed). There is deliberately no search box (per design).
+ * Apple Music and Strava when allowed). There is deliberately no search box
+ * (per design). Back from Strava's consent page (?strava=…), it opens on the
+ * Strava section with the outcome.
  */
 export function SettingsModal({
   onClose,
   appleMusic = false,
+  strava = false,
 }: {
   onClose(): void;
   appleMusic?: boolean;
+  strava?: boolean;
 }) {
   const { t } = useTranslation();
-  const [section, setSection] = useState<SettingsSection>("usage");
+  // Read once: the outcome leaves the address bar as it is shown.
+  const [stravaOutcome] = useState<StravaOutcome | null>(() =>
+    takeStravaOutcome(),
+  );
+  const allowed: Record<Feature, boolean> = { appleMusic, strava };
   const sections = SECTIONS.filter(
-    (entry) => appleMusic || !entry.appleMusicOnly,
+    (entry) => entry.feature === undefined || allowed[entry.feature],
+  );
+  const [section, setSection] = useState<SettingsSection>(() =>
+    stravaOutcome !== null && strava ? "strava" : "usage",
   );
 
   useEscapeKey(onClose);
@@ -90,6 +111,7 @@ export function SettingsModal({
           {section === "usage" && <UsagePanel />}
           {section === "shares" && <SharedChatsPanel />}
           {section === "appleMusic" && <AppleMusicPanel />}
+          {section === "strava" && <StravaPanel outcome={stravaOutcome} />}
         </div>
       </div>
     </div>

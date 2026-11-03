@@ -36,6 +36,7 @@ import (
 	"github.com/trick77/loom/internal/sandbox"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/store"
+	"github.com/trick77/loom/internal/strava"
 	"github.com/trick77/loom/internal/tunewire"
 	"github.com/trick77/loom/internal/usage"
 	"github.com/trick77/loom/web"
@@ -263,6 +264,8 @@ func runServer() error {
 		Sandbox:                    sandboxRunner,
 		AppleMusic:                 appleMusicService(cfg),
 		AppleMusicUsers:            cfg.TunewireUsers,
+		Strava:                     stravaService(cfg),
+		StravaUsers:                cfg.StravaUsers,
 		ImageDefaultModel:          cfg.ImageGenModel,
 		ImageGenTypographyModel:    cfg.ImageGenTypographyModel,
 		UsersDir:                   cfg.UsersDir,
@@ -458,7 +461,19 @@ func appleMusicService(cfg config.Config) httpapi.AppleMusicService {
 const (
 	tunewireLibraryServer = "tunewire"
 	tunewireCatalogServer = "applemusic"
+	// stravaServer is the loom-strava sidecar's tools (strava__…).
+	stravaServer = "strava"
 )
+
+// stravaService is the strava sidecar's connection routes for the settings
+// page; nil (section hidden) when the sidecar is off. Like appleMusicService,
+// a nil *strava.Client must not reach the interface.
+func stravaService(cfg config.Config) httpapi.StravaService {
+	if strings.TrimSpace(cfg.StravaURL) == "" {
+		return nil
+	}
+	return strava.New(cfg.StravaURL, cfg.StravaToken)
+}
 
 // toolServerConfig splits MCP servers by discovery policy: Required servers are
 // the curated built-ins loom's boot depends on (discovery failure is fatal);
@@ -508,6 +523,10 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	if strings.TrimSpace(cfg.TunewireURL) != "" {
 		out.FileServers.Servers[tunewireLibraryServer] = mcp.TunewireLibraryServerConfig(cfg.TunewireURL, cfg.TunewireToken, cfg.TunewireUsers)
 		out.FileServers.Servers[tunewireCatalogServer] = mcp.TunewireCatalogServerConfig(cfg.TunewireURL, cfg.TunewireToken)
+	}
+	// loom-strava likewise: each listed user's own Strava, best-effort.
+	if strings.TrimSpace(cfg.StravaURL) != "" {
+		out.FileServers.Servers[stravaServer] = mcp.StravaServerConfig(cfg.StravaURL, cfg.StravaToken, cfg.StravaUsers)
 	}
 	for name, server := range fileServers {
 		if _, exists := required.Servers[name]; exists {

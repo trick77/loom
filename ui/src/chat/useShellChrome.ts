@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 
+import { hasStravaOutcome } from "../api";
 import { useMediaQuery } from "./useMediaQuery";
 
 // useShellChrome owns the shell's open/closed UI state that is not about any
@@ -9,7 +10,9 @@ import { useMediaQuery } from "./useMediaQuery";
 export function useShellChrome() {
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Open from the start when Strava's consent page sent the browser back
+  // (?strava=…): Settings shows the outcome on the Strava section.
+  const [settingsOpen, setSettingsOpen] = useState(hasStravaOutcome);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);

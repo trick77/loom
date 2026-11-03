@@ -1974,6 +1974,7 @@ export function ThreadShell({
           <SettingsModal
             onClose={closeSettings}
             appleMusic={user.appleMusic === true}
+            strava={user.strava === true}
           />
         </Suspense>
       )}

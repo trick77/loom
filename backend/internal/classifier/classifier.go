@@ -38,6 +38,7 @@ const (
 	Weather            Category = "weather"
 	Translation        Category = "translation"
 	Health             Category = "health"
+	Training           Category = "training"
 	EntertainmentRecs  Category = "entertainment_recs"
 	Music              Category = "music"
 	LocalInfo          Category = "local_info"
@@ -134,6 +135,10 @@ var catalog = []struct {
 	{Health, entry{
 		gloss: "medical, health, fitness, or nutrition questions",
 		block: "Answer in careful flowing prose. State how strong the evidence is behind each claim and distinguish established consensus from emerging findings; never diagnose. Close with when seeing a professional is warranted, if it is.",
+	}},
+	{Training, entry{
+		gloss: "the user's own workouts, rides, runs, training load, or fitness progress (their activities, not general health advice)",
+		block: "When training tools are available, read the user's activities with them instead of guessing; never estimate a number a tool can give. Lead with the numbers, with units, and compare with the user's recent activities when it helps; use a compact table for several activities and add one useful observation. Cite each activity you mention. Offer a chart when a ride profile or a comparison would read better as one, and draw it when asked. No medical diagnosis.",
 	}},
 	{EntertainmentRecs, entry{
 		gloss: "recommendations for movies, series, books, music, or games",

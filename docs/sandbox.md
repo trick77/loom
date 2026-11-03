@@ -69,3 +69,7 @@ too, so a mismatch keeps the tool withdrawn and is logged as an error.
 numpy, pandas, scipy, sympy, matplotlib, openpyxl, python-dateutil, pint, tabulate, pinned with
 hashes in `sandbox/requirements.lock` (regenerate it with the command in `requirements.in`).
 Nothing is installed at run time.
+
+`loomcharts` (`sandbox/loomcharts/`, in site-packages) draws the Strava charts from the attached
+CSVs in loom's dark style, one function per chart (`help(loomcharts)`); its self-test runs in the
+image build.

@@ -22,6 +22,8 @@ type ToolService struct {
 	CallFunc  func(ctx context.Context, name string, args map[string]any) (string, error)
 	// Sources are the structured sources every successful call returns.
 	Sources []mcp.Source
+	// Files are the run_python files every successful call returns.
+	Files []mcp.File
 	// Users limits a server (by name) to these loom user ids, mirroring a
 	// mcp.ServerConfig users allowlist; a server absent here is open.
 	Users map[string][]string
@@ -106,7 +108,7 @@ func (f ToolService) CallToolResult(ctx context.Context, name string, args map[s
 	if err != nil {
 		return mcp.CallResult{}, err
 	}
-	return mcp.CallResult{Text: text, Sources: f.Sources}, nil
+	return mcp.CallResult{Text: text, Sources: f.Sources, Files: f.Files}, nil
 }
 
 // ToolAllowed implements turn.ToolService.
