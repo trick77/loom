@@ -2593,7 +2593,9 @@ test("renders artifact card from historical assistant message", async () => {
   ).toBeInTheDocument();
 });
 
-test("renders a generated image artifact from its thumbnail without downloading it", () => {
+// The 144px thumbnail stretched to the card blurred charts: the card shows
+// the original, a lazy plain image load (cached, never a blob fetch).
+test("renders a generated image artifact from the original, not its thumbnail", () => {
   const fetchMock = vi.fn(async () => {
     throw new Error("unexpected fetch");
   });
@@ -2612,33 +2614,13 @@ test("renders a generated image artifact from its thumbnail without downloading 
     />,
   );
 
-  expect(screen.getByRole("img", { name: "robot.png" })).toHaveAttribute(
-    "src",
-    "/api/artifacts/art_1/thumbnail",
-  );
+  const img = screen.getByRole("img", { name: "robot.png" });
+  expect(img).toHaveAttribute("src", "/api/artifacts/art_1/download");
+  expect(img).toHaveAttribute("loading", "lazy");
   expect(fetchMock).not.toHaveBeenCalled();
   expect(
     screen.getByRole("button", { name: "Download robot.png" }),
   ).toBeInTheDocument();
-});
-
-test("an image artifact without a thumbnail previews the full image", () => {
-  render(
-    <GeneratedArtifactCard
-      artifact={{
-        id: "art_1",
-        displayFilename: "robot.png",
-        mimeType: "image/png",
-        sizeBytes: 12,
-        downloadUrl: "/api/artifacts/art_1/download",
-      }}
-    />,
-  );
-
-  expect(screen.getByRole("img", { name: "robot.png" })).toHaveAttribute(
-    "src",
-    "/api/artifacts/art_1/download",
-  );
 });
 
 test("clicking an image artifact opens a lightbox preview in the browser", async () => {

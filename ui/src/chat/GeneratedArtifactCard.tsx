@@ -30,14 +30,11 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const imageStats = isImage ? buildImageStats(artifact) : null;
   const typeLabel = fileTypeLabel(artifact.displayFilename);
 
-  // The card shows the server's small JPEG thumbnail when there is one and the
-  // full image otherwise; the lightbox always shows the full image. Both are
-  // plain image loads on the session cookie (the artifact library does the
-  // same), so a chat full of generated images no longer downloads every
-  // original as a blob just to render its preview.
-  const previewUrl = isImage
-    ? (artifact.thumbnailUrl ?? artifact.downloadUrl)
-    : "";
+  // The card shows the original, like the lightbox: the 144px thumbnail is for
+  // small preview boxes and, stretched to this card, blurred charts. A plain,
+  // lazy image load on the session cookie: the download is cached (ETag), so
+  // the card and the lightbox fetch it once, never as a blob.
+  const previewUrl = isImage ? artifact.downloadUrl : "";
 
   async function handleDownload() {
     setError("");
