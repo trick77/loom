@@ -31,4 +31,22 @@ describe("SettingsModal", () => {
 
     expect(await screen.findByText("Not connected yet.")).toBeInTheDocument();
   });
+
+  it("marks Apple Music and Strava with their brand, the rest from the icon font", () => {
+    render(<SettingsModal onClose={() => {}} appleMusic strava />);
+
+    for (const name of ["Apple Music", "Strava"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.querySelector("svg")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
+      expect(button.querySelector("span[aria-hidden]")).toBeNull();
+    }
+    for (const name of ["Usage", "Shared chats"]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.querySelector("svg")).toBeNull();
+      expect(button.querySelector("span[aria-hidden]")).not.toBeNull();
+    }
+  });
 });

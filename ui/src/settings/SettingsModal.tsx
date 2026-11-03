@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { StravaOutcome } from "../api";
 import { Icon, type IconName } from "../chat/Icon";
+import { AppleMusicIcon, StravaIcon } from "../chat/icons";
 import { AppleMusicPanel } from "./AppleMusicPanel";
 import { SharedChatsPanel } from "./SharedChatsPanel";
 import { StravaPanel } from "./StravaPanel";
@@ -14,24 +15,28 @@ type SettingsSection = "usage" | "shares" | "appleMusic" | "strava";
 // Feature sections show only to users the server allows them (`/api/me`).
 type Feature = "appleMusic" | "strava";
 
+const navIcon = (name: IconName) => (
+  <Icon name={name} size="18px" className="shrink-0" />
+);
+
 const SECTIONS: {
   id: SettingsSection;
   labelKey: string;
-  icon: IconName;
+  mark: ReactNode;
   feature?: Feature;
 }[] = [
-  { id: "usage", labelKey: "settings.usage", icon: "sliders" },
-  { id: "shares", labelKey: "settings.sharedChats", icon: "upload" },
+  { id: "usage", labelKey: "settings.usage", mark: navIcon("sliders") },
+  { id: "shares", labelKey: "settings.sharedChats", mark: navIcon("upload") },
   {
     id: "appleMusic",
     labelKey: "settings.appleMusic.title",
-    icon: "volume",
+    mark: <AppleMusicIcon />,
     feature: "appleMusic",
   },
   {
     id: "strava",
     labelKey: "settings.strava.title",
-    icon: "globe",
+    mark: <StravaIcon />,
     feature: "strava",
   },
 ];
@@ -92,7 +97,7 @@ export function SettingsModal({
               aria-current={section === entry.id ? "page" : undefined}
               onClick={() => setSection(entry.id)}
             >
-              <Icon name={entry.icon} size="18px" className="shrink-0" />
+              {entry.mark}
               {t(entry.labelKey)}
             </button>
           ))}
