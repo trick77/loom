@@ -226,8 +226,10 @@ services:
     environment:
       TUNEWIRE_TOKEN: "${BACKEND_TUNEWIRE_TOKEN:-}"
       TUNEWIRE_STOREFRONT: "${TUNEWIRE_STOREFRONT:-ch}"
+    # Host dir for backups, outside ./data (loom must never read these tokens);
+    # owned by 65532 or the sidecar refuses to start: docs/tunewire.md, Setup.
     volumes:
-      - tunewire-data:/data
+      - ./tunewire-data:/data
     healthcheck:
       test: ["CMD", "/loom-tunewire", "healthcheck"]
       interval: 60s
@@ -258,8 +260,10 @@ services:
       STRAVA_TOKEN: "${BACKEND_STRAVA_TOKEN:-}"
       STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID:-}"
       STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET:-}"
+    # Host dir for backups, outside ./data (loom must never read these tokens);
+    # owned by 65532 or the sidecar refuses to start: docs/strava.md, Setup.
     volumes:
-      - strava-data:/data
+      - ./strava-data:/data
     healthcheck:
       test: ["CMD", "/loom-strava", "healthcheck"]
       interval: 60s
@@ -272,11 +276,6 @@ services:
       - loom
     labels:
       traefik.enable: "false"
-
-volumes:
-  # The image's /data belongs to 65532, so a fresh volume does too.
-  tunewire-data:
-  strava-data:
 
 networks:
   loom:
