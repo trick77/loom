@@ -54,6 +54,12 @@ services:
       BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"
       BACKEND_TUNEWIRE_TOKEN: dev-tunewire-token-please-change-0123456789
       BACKEND_TUNEWIRE_USERS: "${BACKEND_TUNEWIRE_USERS:-}"
+      # Strava sidecar, opt-in: COMPOSE_PROFILES=strava,
+      # BACKEND_STRAVA_URL=http://localhost:8050, BACKEND_STRAVA_USERS and the
+      # Strava app's STRAVA_CLIENT_ID/_SECRET in .env (callback domain localhost).
+      BACKEND_STRAVA_URL: "${BACKEND_STRAVA_URL:-}"
+      BACKEND_STRAVA_TOKEN: dev-strava-token-please-change-0123456789
+      BACKEND_STRAVA_USERS: "${BACKEND_STRAVA_USERS:-}"
       # Extra MCP servers from ./conf/mcp.json (standard mcpServers format; merged on top of built-ins).
       BACKEND_MCP_SERVERS_FILE: "${BACKEND_MCP_SERVERS_FILE:-/conf/mcp.json}"
       IPVERSE_API_KEY: "${IPVERSE_API_KEY:-}"
@@ -180,6 +186,35 @@ services:
       start_interval: 5s
       retries: 3
 
+  strava:
+    # Strava sidecar, built from source, published on a localhost port.
+    build:
+      context: .
+      dockerfile: strava/Containerfile
+    profiles: ["strava"]
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Same value as loom's BACKEND_STRAVA_TOKEN above.
+      STRAVA_TOKEN: dev-strava-token-please-change-0123456789
+      STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID:-}"
+      STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET:-}"
+    volumes:
+      - strava-dev-data:/data
+    ports:
+      - "127.0.0.1:8050:8050"
+    healthcheck:
+      test: ["CMD", "/loom-strava", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+
 volumes:
   loom-dev-data:
   tunewire-dev-data:
+  strava-dev-data:

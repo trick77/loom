@@ -13,6 +13,8 @@ images:
   - { suffix: "-sandbox", containerfile: sandbox/Containerfile }
   # Apple Music sidecar (docs/tunewire.md), same version as loom.
   - { suffix: "-tunewire", containerfile: tunewire/Containerfile }
+  # Strava sidecar (docs/strava.md), same version as loom.
+  - { suffix: "-strava", containerfile: strava/Containerfile }
 visibility: public
 allow:
   - { rule: containerfile, image: "-sandbox", why: "loom-sandbox starts as root to drop each job to its own slot uid (cap_add SETUID/SETGID in compose)" }

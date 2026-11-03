@@ -39,11 +39,45 @@ type Source struct {
 	Image   string `json:"image,omitempty"`
 }
 
+// File is data a tool hands to loom's run_python for the running turn (an
+// MCP embedded resource): loom keeps it for that turn only, never shows it in
+// the chat and never puts it in the prompt.
+type File struct {
+	Name     string // a plain file name, e.g. strava_123_streams.csv
+	MimeType string // text/csv or application/json
+	Text     string
+}
+
+// maxFilesBytes bounds one result's files together, so the whole response
+// stays under loom's 4 MiB cap on an MCP reply and the text always arrives.
+const maxFilesBytes = 3 << 20
+
 // Result is what a tool produced. Sources[i] belongs to the text's item i+1.
 type Result struct {
 	Text    string
 	Sources []Source
+	Files   []File
 	IsError bool
+}
+
+// fileContent turns files into embedded resources, in order, while they fit
+// maxFilesBytes together; the names of those that do not are returned so the
+// text can say so.
+func fileContent(files []File) ([]map[string]any, []string) {
+	var out []map[string]any
+	var dropped []string
+	used := 0
+	for _, f := range files {
+		if used+len(f.Text) > maxFilesBytes {
+			dropped = append(dropped, f.Name)
+			continue
+		}
+		used += len(f.Text)
+		out = append(out, map[string]any{"type": "resource", "resource": map[string]any{
+			"uri": "file:///" + f.Name, "mimeType": f.MimeType, "text": f.Text,
+		}})
+	}
+	return out, dropped
 }
 
 // UserHeader carries the loom user id on every call loom makes to a
@@ -185,9 +219,18 @@ func (h *handler) callTool(w http.ResponseWriter, r *http.Request, req request, 
 	res := t.Run(ctx, p.Arguments)
 	slog.Info("mcp tool call", "server", h.name, "tool", p.Name, "is_error", res.IsError, "ms", time.Since(start).Milliseconds())
 
-	result := map[string]any{
-		"content": []map[string]any{{"type": "text", "text": capText(res.Text, maxToolTextBytes)}},
+	files, dropped := fileContent(res.Files)
+	text := res.Text
+	if len(dropped) > 0 {
+		// Capped first, so the note survives a long text: without it the
+		// model would ask run_python for a file it never got.
+		note := "\n(not attached, too large: " + strings.Join(dropped, ", ") + ")"
+		text = capText(text, maxToolTextBytes-len(note)) + note
+	} else {
+		text = capText(text, maxToolTextBytes)
 	}
+	content := []map[string]any{{"type": "text", "text": text}}
+	result := map[string]any{"content": append(content, files...)}
 	if res.Sources != nil {
 		result["structuredContent"] = map[string]any{"sources": res.Sources}
 	}

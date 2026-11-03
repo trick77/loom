@@ -35,6 +35,11 @@ services:
       # BACKEND_TUNEWIRE_TOKEN comes in through env_file.
       BACKEND_TUNEWIRE_URL: "${BACKEND_TUNEWIRE_URL:-}"
       BACKEND_TUNEWIRE_USERS: "${BACKEND_TUNEWIRE_USERS:-}"
+      # Strava sidecar (docs/strava.md), opt-in: COMPOSE_PROFILES=strava plus
+      # BACKEND_STRAVA_URL=http://strava:8050 and _USERS in .env.
+      # BACKEND_STRAVA_TOKEN comes in through env_file.
+      BACKEND_STRAVA_URL: "${BACKEND_STRAVA_URL:-}"
+      BACKEND_STRAVA_USERS: "${BACKEND_STRAVA_USERS:-}"
       BACKEND_OIDC_ISSUER: "${BACKEND_OIDC_ISSUER}"
       BACKEND_OIDC_CLIENT_ID: "${BACKEND_OIDC_CLIENT_ID}"
       BACKEND_OIDC_CLIENT_SECRET: "${BACKEND_OIDC_CLIENT_SECRET}"
@@ -208,8 +213,8 @@ services:
   tunewire:
     # Apple Music for loom (docs/tunewire.md): each user's own playlists and
     # catalog search over MCP. Holds every connected user's media-user-token in
-    # its volume, so every route needs TUNEWIRE_TOKEN. Opt-in via the profile; loom does not
-    # depend on it: a dead sidecar only costs its tools.
+    # its volume, so every route needs TUNEWIRE_TOKEN. Opt-in via the profile;
+    # loom does not depend on it: a dead sidecar only costs its tools.
     image: ghcr.io/trick77/loom-tunewire:latest
     profiles: ["tunewire"]
     restart: unless-stopped
@@ -236,9 +241,42 @@ services:
     labels:
       traefik.enable: "false"
 
+  strava:
+    # Strava for loom (docs/strava.md): each user's own activities over MCP.
+    # Holds every connected user's Strava tokens and computed metrics in its
+    # volume, plus the Strava app's client secret, so every route needs
+    # STRAVA_TOKEN. Opt-in via the profile; a dead sidecar only costs its tools.
+    image: ghcr.io/trick77/loom-strava:latest
+    profiles: ["strava"]
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      STRAVA_TOKEN: "${BACKEND_STRAVA_TOKEN:-}"
+      STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID:-}"
+      STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET:-}"
+    volumes:
+      - strava-data:/data
+    healthcheck:
+      test: ["CMD", "/loom-strava", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+    # The loom network: reachable from loom only, with egress to Strava.
+    networks:
+      - loom
+    labels:
+      traefik.enable: "false"
+
 volumes:
   # The image's /data belongs to 65532, so a fresh volume does too.
   tunewire-data:
+  strava-data:
 
 networks:
   loom:

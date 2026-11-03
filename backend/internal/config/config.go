@@ -138,6 +138,14 @@ type Config struct {
 	TunewireURL   string
 	TunewireToken string
 	TunewireUsers []string
+	// StravaURL is the loom-strava sidecar; empty keeps it off. StravaToken is
+	// its STRAVA_TOKEN (minStravaToken), required with the URL. StravaUsers are
+	// the loom user ids who may connect their own Strava account
+	// (BACKEND_STRAVA_USERS, comma-separated); the sidecar keeps one connection
+	// per user, never shared.
+	StravaURL   string
+	StravaToken string
+	StravaUsers []string
 	// SandboxURL is the loom-sandbox sidecar that runs run_python; empty keeps
 	// the tool off. SandboxToken authenticates loom to it, SandboxTimeout caps
 	// one job.
@@ -289,6 +297,9 @@ func Load() (Config, error) {
 		TunewireURL:             r.String("BACKEND_TUNEWIRE_URL", ""),
 		TunewireToken:           r.String("BACKEND_TUNEWIRE_TOKEN", ""),
 		TunewireUsers:           r.List("BACKEND_TUNEWIRE_USERS", nil),
+		StravaURL:               r.String("BACKEND_STRAVA_URL", ""),
+		StravaToken:             r.String("BACKEND_STRAVA_TOKEN", ""),
+		StravaUsers:             r.List("BACKEND_STRAVA_USERS", nil),
 		SandboxURL:              r.String("BACKEND_SANDBOX_URL", ""),
 		SandboxToken:            r.String("BACKEND_SANDBOX_TOKEN", ""),
 		MCPServersFile:          r.String("BACKEND_MCP_SERVERS_FILE", "/conf/mcp.json"),
@@ -357,6 +368,9 @@ func Load() (Config, error) {
 		r.Fail("BACKEND_OBSCURA_MCP_TOKEN must be at least %d characters when BACKEND_OBSCURA_MCP_URL is set: obscura refuses MCP without it (openssl rand -hex 32)", minObscuraMCPToken)
 	}
 	if msg := tunewireProblem(cfg); msg != "" {
+		r.Fail("%s", msg)
+	}
+	if msg := stravaProblem(cfg); msg != "" {
 		r.Fail("%s", msg)
 	}
 	cfg.SessionTTL = r.Duration("BACKEND_SESSION_TTL", defaultSessionTTL)
@@ -512,6 +526,29 @@ func tunewireProblem(cfg Config) string {
 		return fmt.Sprintf("BACKEND_TUNEWIRE_TOKEN must be at least %d characters when BACKEND_TUNEWIRE_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minTunewireToken)
 	case len(cfg.TunewireUsers) == 0:
 		return "BACKEND_TUNEWIRE_USERS must list the loom user id(s) who may connect their own Apple Music account when BACKEND_TUNEWIRE_URL is set"
+	}
+	return ""
+}
+
+// minStravaToken is the sidecar's own floor for STRAVA_TOKEN.
+const minStravaToken = 32
+
+// stravaProblem says what is wrong with a configured strava sidecar. It fails
+// boot like tunewire's: a half-set sidecar would hold personal Strava tokens
+// with nobody allowed to connect or see them. Strava's OAuth comes back to
+// loom's public URL, so oidc mode needs PUBLIC_FQDN (checked elsewhere) and
+// dev mode the loopback address.
+func stravaProblem(cfg Config) string {
+	if strings.TrimSpace(cfg.StravaURL) == "" {
+		return ""
+	}
+	switch {
+	case !isAbsoluteHTTPURL(cfg.StravaURL):
+		return "BACKEND_STRAVA_URL must be an absolute http(s) URL"
+	case len(cfg.StravaToken) < minStravaToken:
+		return fmt.Sprintf("BACKEND_STRAVA_TOKEN must be at least %d characters when BACKEND_STRAVA_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minStravaToken)
+	case len(cfg.StravaUsers) == 0:
+		return "BACKEND_STRAVA_USERS must list the loom user id(s) who may connect their own Strava account when BACKEND_STRAVA_URL is set"
 	}
 	return ""
 }

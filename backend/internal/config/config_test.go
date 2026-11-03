@@ -217,6 +217,36 @@ func TestLoad_tunewire(t *testing.T) {
 	}
 }
 
+func TestLoad_strava(t *testing.T) {
+	const token = "strava-token-0123456789abcdef012345"
+	requiredEnv(t)
+	t.Setenv("BACKEND_STRAVA_URL", "http://strava:8050")
+	t.Setenv("BACKEND_STRAVA_TOKEN", token)
+	t.Setenv("BACKEND_STRAVA_USERS", " usr_1 , usr_2")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.StravaURL != "http://strava:8050" || cfg.StravaToken != token || strings.Join(cfg.StravaUsers, "|") != "usr_1|usr_2" {
+		t.Fatalf("strava config = %q %q %q", cfg.StravaURL, cfg.StravaToken, cfg.StravaUsers)
+	}
+	for name, tc := range map[string]struct{ url, token, users, want string }{
+		"bad url":     {"strava:8050", token, "usr_1", "BACKEND_STRAVA_URL must be an absolute http(s) URL"},
+		"short token": {"http://strava:8050", "short", "usr_1", "BACKEND_STRAVA_TOKEN must be at least 32 characters"},
+		"no users":    {"http://strava:8050", token, " ", "BACKEND_STRAVA_USERS must list"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			requiredEnv(t)
+			t.Setenv("BACKEND_STRAVA_URL", tc.url)
+			t.Setenv("BACKEND_STRAVA_TOKEN", tc.token)
+			t.Setenv("BACKEND_STRAVA_USERS", tc.users)
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Load() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoad_obscuraTokenNotNeededWithoutURL(t *testing.T) {
 	requiredEnv(t)
 	if _, err := Load(); err != nil {
@@ -605,6 +635,9 @@ func requiredEnv(t *testing.T) {
 	t.Setenv("BACKEND_TUNEWIRE_URL", "")
 	t.Setenv("BACKEND_TUNEWIRE_TOKEN", "")
 	t.Setenv("BACKEND_TUNEWIRE_USERS", "")
+	t.Setenv("BACKEND_STRAVA_URL", "")
+	t.Setenv("BACKEND_STRAVA_TOKEN", "")
+	t.Setenv("BACKEND_STRAVA_USERS", "")
 	model, _ := anyChatModel(t)
 	t.Setenv("BACKEND_CHAT_MODEL", model)
 }

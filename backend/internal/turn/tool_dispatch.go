@@ -27,6 +27,7 @@ type toolRun struct {
 	argsErr    error
 	output     string
 	sources    []mcp.Source
+	files      []mcp.File
 	err        error
 	durationMS int64
 }
@@ -51,7 +52,7 @@ func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	defer cancel()
 	start := time.Now()
 	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, arguments)
-	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, err: err, durationMS: time.Since(start).Milliseconds()}
+	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files, err: err, durationMS: time.Since(start).Milliseconds()}
 }
 
 // finishToolCall turns a finished run into the tool result the model sees:
@@ -98,7 +99,43 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 		}
 	}
 	t.observeToolCall(call.Function.Name, arguments, sources, !strings.HasPrefix(output, toolFailedPrefix), false)
-	return capToolOutput(relabeled)
+	return capToolOutput(relabeled) + t.keepToolFiles(run.files)
+}
+
+// maxTurnToolFiles and maxTurnToolFileBytes bound what one turn's tools may
+// hand to run_python, so a chatty server cannot pile up memory for the turn.
+const (
+	maxTurnToolFiles     = 20
+	maxTurnToolFileBytes = 16 << 20
+)
+
+// keepToolFiles holds a tool's files for run_python until the turn ends
+// (a later file of the same name replaces the earlier one) and returns the
+// line that tells the model their names; "" when there are none or this turn
+// does not offer run_python (a scheduled run, the sidecar down). They are
+// never persisted, shown, or put into the prompt.
+func (t *Run) keepToolFiles(files []mcp.File) string {
+	if len(files) == 0 || t.offered[sandboxToolName] == nil {
+		return ""
+	}
+	if t.toolFiles == nil {
+		t.toolFiles = map[string]mcp.File{}
+	}
+	var kept []string
+	for _, f := range files {
+		old, replaces := t.toolFiles[f.Name]
+		total := t.toolFileBytes - len(old.Data) + len(f.Data)
+		if total > maxTurnToolFileBytes || (!replaces && len(t.toolFiles) == maxTurnToolFiles) {
+			continue
+		}
+		t.toolFiles[f.Name] = f
+		t.toolFileBytes = total
+		kept = append(kept, f.Name)
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return "\n\n[run_python can read these files in this turn only (in a later turn, call this tool again first): " + strings.Join(kept, ", ") + "]"
 }
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at

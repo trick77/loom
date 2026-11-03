@@ -73,7 +73,7 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, meResponse{User: user, AppleMusic: s.appleMusicAllowed(user)})
+	httpx.WriteJSON(w, http.StatusOK, s.me(user))
 }
 
 // meResponse is the profile plus the features this account may see.
@@ -81,6 +81,13 @@ type meResponse struct {
 	auth.User
 	// AppleMusic shows the settings section for the Apple Music connection.
 	AppleMusic bool `json:"appleMusic"`
+	// Strava shows the settings section for the Strava connection.
+	Strava bool `json:"strava"`
+}
+
+// me is user's profile with the features they may see.
+func (s *server) me(user auth.User) meResponse {
+	return meResponse{User: user, AppleMusic: s.appleMusicAllowed(user), Strava: s.stravaAllowed(user)}
 }
 
 // updateMeRequest is the body of PATCH /api/me. responseLanguage is the coupled
@@ -117,7 +124,7 @@ func (s *server) handleUpdateMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user.ResponseLanguage = body.ResponseLanguage
-	httpx.WriteJSON(w, http.StatusOK, meResponse{User: user, AppleMusic: s.appleMusicAllowed(user)})
+	httpx.WriteJSON(w, http.StatusOK, s.me(user))
 }
 
 func (s *server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {

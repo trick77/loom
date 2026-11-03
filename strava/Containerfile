@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+# Strava sidecar for loom: each user's own Strava data over MCP. Build from
+# the repository root:
+#   docker build -f strava/Containerfile -t loom-strava .
+
+FROM golang:1.27-alpine AS build
+WORKDIR /app/backend
+COPY backend/go.mod backend/go.sum ./
+COPY backend/cmd/loom-strava/ ./cmd/loom-strava/
+# The MCP server every loom sidecar shares; it imports nothing else of loom.
+COPY backend/internal/mcpserver/ ./internal/mcpserver/
+# ship release passes the release version. go build fetches only the modules
+# this binary imports (kit), not all of loom's.
+ARG VERSION=dev
+RUN --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=${VERSION}" -o /out/loom-strava ./cmd/loom-strava \
+    && mkdir -p /out/data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/loom-strava /loom-strava
+# /data holds the users' tokens (state.json) and computed metrics. Owned by
+# the nonroot uid 65532 here, so a fresh named volume mounted on it starts
+# with that owner too.
+COPY --from=build --chown=65532:65532 /out/data /data
+USER 65532:65532
+EXPOSE 8050
+ENTRYPOINT ["/loom-strava"]
+CMD ["serve"]

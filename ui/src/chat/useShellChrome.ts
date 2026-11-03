@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { clearStravaOutcome, readStravaOutcome } from "../api";
 import { useMediaQuery } from "./useMediaQuery";
 
 // useShellChrome owns the shell's open/closed UI state that is not about any
@@ -9,7 +10,14 @@ import { useMediaQuery } from "./useMediaQuery";
 export function useShellChrome() {
   const [openThreadMenuID, setOpenThreadMenuID] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Back from Strava's consent page (?strava=…): read during the first render,
+  // before the route effect rewrites the URL, and Settings opens on the
+  // Strava section with the outcome. The address bar loses it right after.
+  const [stravaOutcome, setStravaOutcome] = useState(readStravaOutcome);
+  const [settingsOpen, setSettingsOpen] = useState(stravaOutcome !== null);
+  useEffect(() => {
+    if (stravaOutcome !== null) clearStravaOutcome();
+  }, [stravaOutcome]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -32,7 +40,11 @@ export function useShellChrome() {
   );
   const closeUserMenu = useCallback(() => setUserMenuOpen(false), []);
   const openSettings = useCallback(() => setSettingsOpen(true), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  // The outcome is shown once: a later Settings opens plain.
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setStravaOutcome(null);
+  }, []);
   const openSearch = useCallback(() => setSearchOpen(true), []);
   const closeSearch = useCallback(() => setSearchOpen(false), []);
   const toggleThreadMenu = useCallback(
@@ -50,6 +62,7 @@ export function useShellChrome() {
     toggleUserMenu,
     closeUserMenu,
     settingsOpen,
+    stravaOutcome,
     openSettings,
     closeSettings,
     searchOpen,

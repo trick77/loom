@@ -141,7 +141,7 @@ var sandboxToolSpec = toolSpec{
 	schema:  sandboxTool,
 	offered: func(e *Engine, _ chat.Thread, gate toolGate) bool { return e.canStoreArtifacts() && gate.sandbox },
 	run: func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response) {
-		return t.e.runSandboxTool(ctx, t.stream, t.user, t.thread, call)
+		return t.e.runSandboxTool(ctx, t.stream, t.user, t.thread, call, t.toolFiles)
 	},
 	// Each job can hold a sandbox slot for up to a minute; a round that
 	// wants more is better split across rounds.

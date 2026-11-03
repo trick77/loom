@@ -53,6 +53,11 @@ type Deps struct {
 	// settings section. AppleMusicUsers are the loom user ids it serves.
 	AppleMusic      AppleMusicService
 	AppleMusicUsers []string
+	// Strava is the loom-strava sidecar's connection routes; nil hides the
+	// settings section. StravaUsers are the loom user ids who may connect
+	// their own Strava account.
+	Strava      StravaService
+	StravaUsers []string
 	// ImageDefaultModel is the configured baseline image model (e.g.
 	// "flux-2-klein-4b"); ImageGenTypographyModel (e.g. "flux-2-flex") is used instead
 	// for the first image of a thread when it reads as typography/logo/text work.
@@ -113,6 +118,8 @@ type server struct {
 	mcp                   ToolService
 	appleMusic            AppleMusicService
 	appleMusicUsers       []string
+	strava                StravaService
+	stravaUsers           []string
 	usersDir              string
 	faviconCacheDir       string
 	faviconClient         *http.Client             // nil → faviconDefaultClient (overridden in tests)
@@ -332,6 +339,8 @@ func newServer(d Deps) *server {
 		mcp:                   d.MCP,
 		appleMusic:            d.AppleMusic,
 		appleMusicUsers:       d.AppleMusicUsers,
+		strava:                d.Strava,
+		stravaUsers:           d.StravaUsers,
 		usersDir:              d.UsersDir,
 		faviconCacheDir:       faviconCacheDirFor(d.UsersDir),
 		oidcAdminGroup:        d.OIDCAdminGroup,
@@ -406,6 +415,13 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("POST /api/me/apple-music/check", s.requireAuth(http.HandlerFunc(s.handleAppleMusicCheck)))
 	mux.Handle("PUT /api/me/apple-music", s.requireAuth(http.HandlerFunc(s.handleAppleMusicSetToken)))
 	mux.Handle("DELETE /api/me/apple-music", s.requireAuth(http.HandlerFunc(s.handleAppleMusicClearToken)))
+	mux.Handle("GET /api/me/strava", s.requireAuth(http.HandlerFunc(s.handleStravaStatus)))
+	mux.Handle("POST /api/me/strava/check", s.requireAuth(http.HandlerFunc(s.handleStravaCheck)))
+	mux.Handle("GET /api/me/strava/connect", s.requireAuth(http.HandlerFunc(s.handleStravaConnect)))
+	mux.Handle("DELETE /api/me/strava", s.requireAuth(http.HandlerFunc(s.handleStravaDisconnect)))
+	// A top-level navigation back from Strava: a session that ended meanwhile
+	// lands back in the app with the outcome, not on a JSON 401.
+	mux.Handle("GET "+stravaCallbackPath, s.requireAuthOr(http.HandlerFunc(s.handleStravaCallback), http.HandlerFunc(s.handleStravaCallbackSignedOut)))
 	mux.Handle("GET /api/mcp/servers", s.requireAuth(http.HandlerFunc(s.handleMCPServers)))
 	mux.Handle("GET /api/mcp/tools", s.requireAuth(http.HandlerFunc(s.handleMCPTools)))
 	mux.Handle("GET /api/admin/users", s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdminUsers))))
@@ -830,6 +846,15 @@ func (r *activeStreamRegistry) stopAndWait(userID, threadID string, cause error,
 	case <-timer.C:
 		slog.Warn("stream did not stop within the wait window", "thread_id", threadID)
 	}
+}
+
+// requireAuthOr is requireAuth for a browser navigation: no session goes to
+// unauthenticated.
+func (s *server) requireAuthOr(next, unauthenticated http.Handler) http.Handler {
+	if s.auth == nil {
+		return unauthenticated
+	}
+	return s.auth.RequireAuthOr(next, unauthenticated)
 }
 
 func (s *server) requireAuth(next http.Handler) http.Handler {

@@ -88,6 +88,8 @@ func TestClassifyThread_eval(t *testing.T) {
 		{msg: "recommend me a series like Severance", want: []classifier.Category{classifier.EntertainmentRecs}},
 		{msg: "was habe ich in letzter Zeit so gehört?", want: []classifier.Category{classifier.Music}},
 		{msg: "what's on my road trip playlist?", want: []classifier.Category{classifier.Music}},
+		{msg: "how was my ride on Sunday?", want: []classifier.Category{classifier.Training}},
+		{msg: "wie viele Kilometer bin ich diesen Monat gefahren?", want: []classifier.Category{classifier.Training}},
 		{msg: "où bien manger une fondue à Fribourg?", want: []classifier.Category{classifier.LocalInfo}},
 		{msg: "Lohnt sich ein ETF-Sparplan bei den aktuellen Zinsen?", want: []classifier.Category{classifier.FinanceInvesting}},
 	}

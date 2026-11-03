@@ -12,6 +12,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 )
 
 // Run is one persisted chat turn's fixed state: who asks, in which thread,
@@ -57,6 +58,11 @@ type Run struct {
 	// content into the turn: from then on its text may carry instructions
 	// the user never gave.
 	readOutside bool
+	// toolFiles are the files MCP tools handed to run_python this turn, by
+	// name (keepToolFiles); dropped with the turn. A turn is one user's, so
+	// no other user's run reaches them.
+	toolFiles     map[string]mcp.File
+	toolFileBytes int
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.
