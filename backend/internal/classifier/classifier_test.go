@@ -64,9 +64,9 @@ func TestBlock(t *testing.T) {
 			t.Errorf("Block(%q) is empty, want a directive", c)
 		}
 	}
-	// Both turns that see the Strava tools carry the heart-rate zone rule.
+	// Both turns that see the training tools carry the heart-rate zone rule.
 	for _, c := range []Category{Training, Health} {
-		if !strings.HasSuffix(Block(string(c)), hrZoneRule) || !strings.Contains(hrZoneRule, "Strava's defaults") {
+		if !strings.HasSuffix(Block(string(c)), hrZoneRule) || !strings.Contains(hrZoneRule, "marks as defaults") {
 			t.Errorf("Block(%q) lacks the heart-rate zone rule", c)
 		}
 	}

@@ -218,11 +218,14 @@ type comparison struct {
 // entries of listed their sport and name. known is what the caller loaded
 // before: when neither changes anything the file is neither read again nor
 // rewritten.
-func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string]storedMetrics, listed []summaryActivity) {
+// It returns the zones as they stand after the write, nil when it wrote
+// nothing.
+func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string]storedMetrics, listed []summaryActivity) map[string]storedHRZones {
 	if !changes(add, known) && !metaChanges(listed, known) {
-		return
+		return nil
 	}
-	t.updateMetrics(user, athleteID, metricsUpdate{add: add, listed: listed})
+	z, _ := t.updateMetrics(user, athleteID, metricsUpdate{add: add, listed: listed})
+	return z
 }
 
 // metricsUpdate is one write to a user's metric file.
@@ -246,7 +249,7 @@ type metricsUpdate struct {
 // sport or name.
 func metaChanges(listed []summaryActivity, have map[string]storedMetrics) bool {
 	for _, x := range listed {
-		if sm, ok := have[strconv.FormatInt(x.ID, 10)]; ok && (sm.Sport != x.SportType || sm.Name != x.Name) {
+		if sm, ok := have[strconv.FormatInt(x.ID, 10)]; ok && metaDiffers(sm, x) {
 			return true
 		}
 	}
@@ -294,14 +297,14 @@ func applyUpdate(m *metricFile, u metricsUpdate, now time.Time) bool {
 	}
 	touched := map[string]bool{} // sports whose entries changed
 	for k, v := range u.add {
-		if changes(map[string]storedMetrics{k: v}, m.Activities) {
+		if h, ok := m.Activities[k]; !ok || entryDiffers(h, v) {
 			touched[m.Activities[k].Sport], touched[v.Sport] = true, true
 			m.Activities[k] = v
 		}
 	}
 	for _, x := range u.listed {
 		k := strconv.FormatInt(x.ID, 10)
-		if sm, ok := m.Activities[k]; ok && (sm.Sport != x.SportType || sm.Name != x.Name) {
+		if sm, ok := m.Activities[k]; ok && metaDiffers(sm, x) {
 			touched[sm.Sport], touched[x.SportType] = true, true
 			sm.Sport, sm.Name = x.SportType, x.Name
 			m.Activities[k] = sm
@@ -338,29 +341,57 @@ func recalcHRZones(m *metricFile, touched map[string]bool, asked []string, withH
 	}
 }
 
-// loadHRZones is the user's stored heart-rate zones for athleteID.
+// loadHRZones is the user's stored heart-rate zones for athleteID, fresh
+// (freshHRZones).
 func (t *tools) loadHRZones(user string, athleteID int64) map[string]storedHRZones {
 	sl := t.svc.slot(user)
 	sl.dataMu.Lock()
-	defer sl.dataMu.Unlock()
 	m, _ := t.svc.store.loadMetrics(user)
+	sl.dataMu.Unlock()
 	if m.Athlete != 0 && m.Athlete != athleteID {
 		return nil
 	}
-	return m.HRZones
+	return t.freshHRZones(user, athleteID, m.HRZones)
+}
+
+// freshHRZones recalculates zones older than hrZonesMaxAge first: with no
+// write touching their sport they would keep efforts that left the window.
+func (t *tools) freshHRZones(user string, athleteID int64, zones map[string]storedHRZones) map[string]storedHRZones {
+	var stale []string
+	for k, z := range zones {
+		if t.svc.now().Sub(z.CalculatedAt) > hrZonesMaxAge {
+			stale = append(stale, k)
+		}
+	}
+	if len(stale) == 0 {
+		return zones
+	}
+	if z, _ := t.updateMetrics(user, athleteID, metricsUpdate{recalc: stale}); z != nil {
+		return z
+	}
+	return zones
 }
 
 // changes reports whether add holds an entry that have does not, or holds
 // differently.
 func changes(add, have map[string]storedMetrics) bool {
 	for k, v := range add {
-		h, ok := have[k]
-		if !ok || h.V != v.V || h.Rev != v.Rev || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) ||
-			h.Sport != v.Sport || h.Name != v.Name {
+		if h, ok := have[k]; !ok || entryDiffers(h, v) {
 			return true
 		}
 	}
 	return false
+}
+
+// entryDiffers reports whether two stored entries of one activity differ.
+func entryDiffers(h, v storedMetrics) bool {
+	return h.V != v.V || h.Rev != v.Rev || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) ||
+		h.Sport != v.Sport || h.Name != v.Name
+}
+
+// metaDiffers reports whether a stored entry's sport or name is not x's.
+func metaDiffers(sm storedMetrics, x summaryActivity) bool {
+	return sm.Sport != x.SportType || sm.Name != x.Name
 }
 
 // compare builds the window: one list call for the summaries, streams for
@@ -639,7 +670,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	stored := t.loadMetrics(user, a.ID)
 	this := entryOf(whole, d.summaryActivity)
 	thisKey := strconv.FormatInt(d.ID, 10)
-	t.storeMetrics(user, a.ID, map[string]storedMetrics{thisKey: this}, stored, nil)
+	zones := t.storeMetrics(user, a.ID, map[string]storedMetrics{thisKey: this}, stored, nil)
 	stored[thisKey] = this
 	// Strava's default zones are age-based: the user's own, stored for this
 	// sport, count instead. Custom zones always win, and without Strava's
@@ -648,7 +679,12 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	ownFam := ""
 	if zerr == nil && (z.HeartRate == nil || !z.HeartRate.CustomZones) {
 		if f, ok := familyOf(d.SportType); ok {
-			if oz, ok := t.loadHRZones(user, a.ID)[f.key]; ok && oz.edges() != nil {
+			if zones == nil {
+				zones = t.loadHRZones(user, a.ID)
+			} else {
+				zones = t.freshHRZones(user, a.ID, zones)
+			}
+			if oz, ok := zones[f.key]; ok && oz.edges() != nil {
 				own, ownFam, hE = &oz, f.key, oz.edges()
 				if s.hr != nil {
 					whole.HasHRZones, whole.HRZoneS = true, hrZoneTimes(s, 0, s.n, hE)

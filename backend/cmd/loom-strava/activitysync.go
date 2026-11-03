@@ -212,8 +212,8 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 	uc := s.cache(user)
 	var m metricFile
 	var mErr error
-	loaded, metrics := false, false
-	touched := map[string]bool{} // sports of dropped entries: their zones move
+	loaded := false
+	var drop []string
 	for _, id := range ids {
 		key := strconv.FormatInt(id, 10)
 		uc.detail.remove(kindDetail + "/" + key)
@@ -233,15 +233,12 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 			m, mErr = s.store.loadMetrics(user)
 			loaded = true
 		}
-		if sm, ok := m.Activities[key]; ok && mErr == nil {
-			touched[sm.Sport] = true
-			delete(m.Activities, key)
-			metrics = true
+		if mErr == nil {
+			drop = append(drop, key)
 		}
 	}
-	if metrics {
-		// A deleted ride may have set the max or the LTHR.
-		recalcHRZones(&m, touched, nil, nil, s.now())
+	// A deleted ride may have set the max or the LTHR.
+	if loaded && mErr == nil && dropEntries(&m, drop, true, s.now()) {
 		if err := s.store.saveMetrics(user, m); err != nil {
 			slog.Error("strava: saving metrics failed", "err", err)
 		}
@@ -287,12 +284,10 @@ func (s *service) forget(user string, id int64) {
 	uc := s.cache(user)
 	uc.streams.remove(kindStreams + "/" + key)
 	uc.detail.remove(kindZones + "/" + key)
-	if m, err := s.store.loadMetrics(user); err == nil {
-		if _, ok := m.Activities[key]; ok {
-			delete(m.Activities, key)
-			if err := s.store.saveMetrics(user, m); err != nil {
-				slog.Error("strava: saving metrics failed", "err", err)
-			}
+	// The activity is still on Strava: its zones move, its count stays.
+	if m, err := s.store.loadMetrics(user); err == nil && dropEntries(&m, []string{key}, false, s.now()) {
+		if err := s.store.saveMetrics(user, m); err != nil {
+			slog.Error("strava: saving metrics failed", "err", err)
 		}
 	}
 }

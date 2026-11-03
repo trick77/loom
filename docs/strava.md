@@ -87,7 +87,9 @@ rests on) and recalculated from the stored entries alone, no Strava call: on eve
 touching that family's entries once `hr_zones` has created it (an analysis that reads a harder effort moves the
 zones; one easy ride before anyone asked makes none). Entries carry sport and name, set under the file lock from any
 list at hand (older entries lack them, a sport can be corrected); an activity deleted on Strava leaves the index with
-its entry, and the zones of its sport are recalculated right there. A `hr_zones` call for one sport never creates the
+its entry, and the zones of its sport are recalculated right there. Zones untouched for 7 days are recalculated when
+read, so an effort that left the window stops counting. The FTP check of the best 20 min only judges a ride from the
+last 90 days (today's FTP says little about older ones). A `hr_zones` call for one sport never creates the
 other's zones. While Strava's zones are its defaults, `activity_analysis` buckets time
 in zones (and the streams CSV) with the stored zones of the activity's sport and says so; custom Strava zones always
 win, a sport without stored zones keeps Strava's, labelled as defaults. `profile` shows them with their date.

@@ -44,6 +44,12 @@ const (
 	lowEffortShare = 0.85
 	// thresholdFTP: 20 min at this share of FTP or more is a threshold effort.
 	thresholdFTP = 0.95
+	// ftpRecentDays: only a best 20 min this recent is held against today's
+	// FTP; an older one was ridden at another fitness.
+	ftpRecentDays = 90
+	// hrZonesMaxAge: stored zones older than this are recalculated when
+	// read, so efforts that left the window stop counting.
+	hrZonesMaxAge = 7 * 24 * time.Hour
 )
 
 func familyOf(sport string) (hrFamily, bool) {
@@ -208,17 +214,44 @@ func hardestFirst(acts []summaryActivity) []summaryActivity {
 		}
 	}
 	slices.SortStableFunc(byAvg, func(a, b summaryActivity) int { return cmp.Compare(b.AverageHeartrate, a.AverageHeartrate) })
-	out := make([]summaryActivity, 0, len(acts))
 	seen := map[int64]bool{}
-	for i := 0; i < len(byMax) || i < len(byAvg); i++ {
-		for _, l := range [][]summaryActivity{byMax, byAvg} {
-			if i < len(l) && !seen[l[i].ID] {
-				seen[l[i].ID] = true
-				out = append(out, l[i])
+	return slices.DeleteFunc(interleave([][]summaryActivity{byMax, byAvg}), func(x summaryActivity) bool {
+		dup := seen[x.ID]
+		seen[x.ID] = true
+		return dup
+	})
+}
+
+// dropEntries removes keys from m and recalculates the zones of their
+// sports; gone (deleted on Strava) also counts them out of WithHR. False
+// when none was there.
+func dropEntries(m *metricFile, keys []string, gone bool, now time.Time) bool {
+	touched := map[string]bool{}
+	less := map[string]int{}
+	for _, k := range keys {
+		sm, ok := m.Activities[k]
+		if !ok {
+			continue
+		}
+		touched[sm.Sport] = true
+		if f, ok := familyOf(sm.Sport); ok && gone {
+			if _, hr := sm.Vals["hr_max10"]; hr {
+				less[f.key]++
 			}
 		}
+		delete(m.Activities, k)
 	}
-	return out
+	if len(touched) == 0 {
+		return false
+	}
+	withHR := map[string]int{}
+	for key, n := range less {
+		if z, ok := m.HRZones[key]; ok {
+			withHR[key] = max(0, z.WithHR-n)
+		}
+	}
+	recalcHRZones(m, touched, nil, withHR, now)
+	return true
 }
 
 func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Result {
@@ -364,13 +397,15 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 		fmt.Fprintf(&b, "  threshold heart rate (LTHR): %s, %.0f %% of the best 20 min (%s) in %s",
 			bpm(z.LTHR), lthrShare*100, bpm(z.Best20), cite(z.Best20At))
 		switch {
-		case f.key == "cycling" && a.FTP > 0 && z.Best20W > 0:
+		// Today's FTP says little about a ride months ago: only a recent
+		// one is judged by it. Coasting counts as 0 W in that average.
+		case f.key == "cycling" && a.FTP > 0 && z.Best20W > 0 && z.Best20At.Start >= now.AddDate(0, 0, -ftpRecentDays).Format("2006-01-02T15:04:05"):
 			share := z.Best20W / a.FTP
-			fmt.Fprintf(&b, "; those 20 min averaged %.0f W, %.0f %% of FTP", z.Best20W, share*100)
+			fmt.Fprintf(&b, "; those 20 min averaged %.0f W (coasting as 0 W), %.0f %% of today's FTP", z.Best20W, share*100)
 			if share >= thresholdFTP {
 				b.WriteString(": a threshold effort")
 			} else {
-				b.WriteString(": below threshold, so the LTHR is likely low")
+				b.WriteString(": below threshold, so the LTHR may be low")
 			}
 		case z.MaxHR > 0 && z.Best20 < lowEffortShare*z.MaxHR:
 			fmt.Fprintf(&b, "; under %.0f %% of the max heart rate: no threshold effort in the window, so the LTHR is likely low", lowEffortShare*100)

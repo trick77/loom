@@ -119,7 +119,7 @@ func TestHRZones(t *testing.T) {
 		"max heart rate: 174 bpm, best 10 s in [1] 2026-10-02 · Gravel; [2] 2026-10-03 · Steady within 5 bpm (172 bpm)",
 		fmt.Sprintf("threshold heart rate (LTHR): %.0f bpm", lthr),
 		"in [3] 2026-10-01 · Spike ride",
-		"96 % of FTP: a threshold effort",
+		"96 % of today's FTP: a threshold effort",
 		"zones: " + zoneList(hrFamilies[0].zones(lthr), " bpm"),
 		"running (Run, TrailRun, VirtualRun): 2 with heart rate, 2 read",
 		"max heart rate: 179 bpm",
@@ -194,7 +194,7 @@ func TestHRZones(t *testing.T) {
 	// Per user: Ben sees his own ride only, never Anna's values or file.
 	rb := callTool(t, h, userB, "hr_zones", `{}`)
 	if rb.IsError || !strings.Contains(rb.Text, "1 with heart rate, 1 read") || strings.Contains(rb.Text, "· Gravel") ||
-		!strings.Contains(rb.Text, "max heart rate: needs") || !strings.Contains(rb.Text, "below threshold, so the LTHR is likely low") || !strings.Contains(rb.Text, "Strava's heart-rate zones (custom)") {
+		!strings.Contains(rb.Text, "max heart rate: needs") || !strings.Contains(rb.Text, "below threshold, so the LTHR may be low") || !strings.Contains(rb.Text, "Strava's heart-rate zones (custom)") {
 		t.Errorf("Ben:\n%s", rb.Text)
 	}
 	mb, _ := svc.store.loadMetrics(userB)
@@ -326,7 +326,7 @@ func TestHRZones_deletedAndCorrected(t *testing.T) {
 	if _, ok := m.Activities["3002"]; ok {
 		t.Error("the deleted activity's entry stayed")
 	}
-	if z := m.HRZones["cycling"]; z.Used != 3 || z.MaxHR != 172 || z.MaxAt == nil || z.MaxAt.ID != 3003 {
+	if z := m.HRZones["cycling"]; z.Used != 3 || z.WithHR != 3 || z.MaxHR != 172 || z.MaxAt == nil || z.MaxAt.ID != 3003 {
 		t.Errorf("zones after the delete: %+v", z)
 	}
 
@@ -347,6 +347,33 @@ func TestHRZones_deletedAndCorrected(t *testing.T) {
 	}
 	if z := m.HRZones["cycling"]; z.Used != 2 || z.Best20At == nil || z.Best20At.ID == 3001 {
 		t.Errorf("zones after the correction: %+v", z)
+	}
+}
+
+// Untouched for longer than hrZonesMaxAge, the zones are recalculated when
+// read: an effort that left the window stops counting. A year on, the
+// October rides are all out.
+func TestHRZones_staleRecalculated(t *testing.T) {
+	f, svc, dir := hrFixture(t)
+	h := newServer(config{token: testToken}, svc, "test")
+	if r := callTool(t, h, userA, "hr_zones", `{"sport":"cycling"}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	f.advance(3 * 24 * time.Hour)
+	if r := callTool(t, h, userA, "profile", `{}`); !strings.Contains(r.Text, "(cycling, calculated 2026-11-03") {
+		t.Errorf("recalculated before hrZonesMaxAge:\n%s", r.Text)
+	}
+	f.advance(360 * 24 * time.Hour)
+	// A fresh process: no cached Strava answers to expire meanwhile.
+	svc2, err := newService(config{clientID: testClientID, clientSecret: testSecret, base: svc.base}, f.srv.Client(), fileStore{dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc2.now = f.clock
+	tl := &tools{svc: svc2}
+	z := tl.loadHRZones(userA, 1)["cycling"]
+	if z.Used != 0 || z.MaxAt != nil || len(z.Zones) != 0 || z.CalculatedAt.Before(f.clock()) {
+		t.Errorf("stale zones kept: %+v", z)
 	}
 }
 

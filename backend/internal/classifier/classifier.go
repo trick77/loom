@@ -67,10 +67,10 @@ type entry struct {
 }
 
 // hrZoneRule closes the training and health blocks: both turns see the
-// Strava tools, and "what is my zone 2?" lands in either. Strava's default
+// training tools, and "what is my zone 2?" lands in either. A tool's default
 // zones mostly come from 220 minus age, about a zone off for trained
 // athletes; custom_zones only says the user edited them, so "usually".
-const hrZoneRule = " Heart-rate zones: custom zones a tool reports win; otherwise a tested maximum or threshold heart rate in the user's personal context beats zones a tool marks as Strava's defaults, which are usually age-based estimates and often a zone off for trained athletes, so say so when time in zones matters. A tool's time in zones uses the tool's zones: when a tested value disagrees, say so instead of recomputing the times. Without zones from a tool or a tested value, give an age-based estimate only as a rough guide and say so, and offer to remember a tested maximum heart rate."
+const hrZoneRule = " Heart-rate zones: custom zones a tool reports win; otherwise a tested maximum or threshold heart rate in the user's personal context beats zones a tool marks as defaults, which are usually age-based estimates and often a zone off for trained athletes, so say so when time in zones matters. A tool's time in zones uses the tool's zones: when a tested value disagrees, say so instead of recomputing the times. Without zones from a tool or a tested value, give an age-based estimate only as a rough guide and say so, and offer to remember a tested maximum heart rate."
 
 // catalog is the ordered taxonomy. Order is the order categories are presented to
 // the classifying model and must stay stable.
