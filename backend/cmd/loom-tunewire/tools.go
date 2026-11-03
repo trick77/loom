@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/mcpserver"
+	"github.com/trick77/loom/internal/mcpserver"
 )
 
 const (

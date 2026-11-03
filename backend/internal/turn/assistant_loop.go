@@ -12,6 +12,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 )
 
 const (
@@ -250,6 +251,9 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		// below still handles the calls one at a time, in the model's order.
 		// A scheduled run's soft deadline also cuts the round's tool calls.
 		toolsCtx, cancelTools := t.roundContext(ctx)
+		// Every MCP call of the round knows its caller: a per-user server
+		// (each user's own account, never shared) refuses a call without one.
+		toolsCtx = mcp.WithPrincipal(toolsCtx, MCPPrincipal(t.user))
 		runsCtx, cancelRuns := context.WithCancel(toolsCtx)
 		runs := t.e.startToolRuns(runsCtx, result.ToolCalls, skipped)
 		lastRoundDeferred = false

@@ -63,6 +63,12 @@ type ServerConfig struct {
 	// unique, and the stored OIDC subject is rewritten when an account is
 	// adopted by verified email.
 	Users []string `json:"users"`
+	// PerUser marks one of loom's own sidecars that keeps a separate account
+	// per loom user: every tool call carries the caller's id
+	// (mcpserver.UserHeader) and a call without one is refused, never sent.
+	// Personal data is never shared across users; the Users list only says who
+	// may connect. Built-ins only: a third-party server never learns a loom id.
+	PerUser bool `json:"-"`
 	// TrustInstructions lets the server's own instructions into the system
 	// prompt while its tools are offered. Off by default: a third-party server
 	// could change them at any refresh.
@@ -82,6 +88,20 @@ type PDFExtractor func(ctx context.Context, body []byte) (string, error)
 // Principal names a loom account to a users allowlist by its user id.
 type Principal struct {
 	ID string
+}
+
+type principalKey struct{}
+
+// WithPrincipal returns ctx carrying the account a tool call is made for. A
+// per-user server (ServerConfig.PerUser) reads it; without it the call fails.
+func WithPrincipal(ctx context.Context, p Principal) context.Context {
+	return context.WithValue(ctx, principalKey{}, p)
+}
+
+// PrincipalFrom is the account WithPrincipal put into ctx.
+func PrincipalFrom(ctx context.Context) (Principal, bool) {
+	p, ok := ctx.Value(principalKey{}).(Principal)
+	return p, ok && p.ID != ""
 }
 
 // UsersAllow reports whether a users allowlist admits the account: an exact
@@ -158,9 +178,9 @@ func FetchServerConfig(pdf PDFExtractor) ServerConfig {
 }
 
 // TunewireLibraryServerConfig is the loom-tunewire sidecar's library endpoint:
-// one person's Apple Music playlists behind the token the sidecar holds, so
-// only users may call it (an empty list serves nobody). Loom's own sidecar:
-// its instructions are trusted.
+// each listed user's own Apple Music library, behind that user's own token in
+// the sidecar (PerUser), so only users may call it (an empty list serves
+// nobody). Loom's own sidecar: its instructions are trusted.
 func TunewireLibraryServerConfig(baseURL, token string, users []string) ServerConfig {
 	return ServerConfig{
 		Transport:         TransportStreamableHTTP,
@@ -168,6 +188,7 @@ func TunewireLibraryServerConfig(baseURL, token string, users []string) ServerCo
 		Headers:           map[string]string{"Authorization": "Bearer " + token},
 		RestrictUsers:     true,
 		Users:             users,
+		PerUser:           true,
 		TrustInstructions: true,
 		BuiltIn:           true,
 		Categories:        tunewireLibraryCategories(),

@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom Strava — Design Plan</title>
+<style>
+  :root {
+    --bg: #1c1b18; --panel: #24231f; --ink: #e8e5dd; --muted: #a8a399;
+    --accent: #c9a86a; --line: #36342e; --code-bg: #2a2823; --pill: #2f2d27;
+    --green: #8fae6e; --blue: #7fa8c9; --red: #c98a6a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 48px 28px 96px; }
+  h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 21px; margin: 44px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 26px 0 8px; color: var(--accent); }
+  p { margin: 10px 0; }
+  .sub { color: var(--muted); margin: 0 0 8px; }
+  .tag { display: inline-block; font-size: 12px; color: var(--bg); background: var(--accent);
+         border-radius: 999px; padding: 2px 10px; font-weight: 600; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: 13.5px;
+         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #ddd6c4; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+          padding: 18px 22px; margin: 14px 0; }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 11px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  td code { white-space: nowrap; }
+  .lead { font-size: 17px; color: var(--ink); }
+  .note { border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; color: var(--muted); margin: 12px 0; }
+  .dec { border-left: 3px solid var(--blue); }
+  .rec { color: var(--green); font-weight: 600; }
+  .summit { color: var(--red); font-size: 12px; font-weight: 600; }
+  .foot { color: var(--muted); font-size: 13px; margin-top: 60px; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="sub"><span class="tag">PLAN</span> &nbsp; 2026-11-03 &nbsp;·&nbsp; <code>loom</code> &nbsp;·&nbsp; branch <code>worktree-strava</code></p>
+  <h1>Strava in loom, and per-user integrations</h1>
+  <p class="lead">Every user connects its own accounts; no token is shared (§10–§13 rewrite tunewire and peeq to that rule).
+  Each user's own Strava data (profile, every activity, laps, splits, efforts, streams, gear,
+  routes, starred segments) is offered to the model by the <code>loom-strava</code> sidecar over MCP, read through the official OAuth API.
+  Zwift rides arrive through Strava's automatic upload.</p>
+
+  <h2>1 · Scope</h2>
+  <div class="card">
+    <p><strong>In:</strong> everything the read API returns about the connected user: athlete profile + zones, totals,
+    every activity (incl. <em>Only Me</em> and privacy-zone data), laps, splits, best efforts, segment efforts,
+    streams, gear, own routes (+ GPX), starred segments and the user's own efforts on them.</p>
+    <p><strong>Out:</strong> other athletes' data of any kind: clubs, club feeds, kudoers, comment text,
+    segment explore, leaderboards. Only counts (<code>kudos_count</code>, <code>comment_count</code>) stay.
+    No write scopes (<code>activity:write</code>, <code>profile:write</code>). No Zwift API, no Apple Health.</p>
+    <p class="note">Strava API Agreement (effective 2026-06-01): a user's data "can only be displayed or disclosed
+    … to that user". One connection per user, read only by that user, satisfies that. §4.4: delete all Strava data on termination → disconnect
+    revokes the token and deletes the row. The agreement has no AI clause (the 2024 training ban is gone).</p>
+  </div>
+
+  <h2>2 · Strava facts the design rests on</h2>
+  <table>
+    <tr><th>fact</th><th>value</th><th>consequence</th></tr>
+    <tr><td>Athlete capacity</td><td>new app = 1 ("Single Player Mode")</td><td>1 connected user without review; raise to 10 in the API settings (no review) for more listed users.</td></tr>
+    <tr><td>Rate limit (read)</td><td>100 / 15 min, 1000 / day per app</td><td>Cache everything immutable; read <code>X-ReadRateLimit-Usage</code>; refuse early with the reset time.</td></tr>
+    <tr><td>Access token</td><td>6 h; refresh may rotate the refresh token, the old one dies at once</td><td>Refresh under a mutex, persist the new pair before using it.</td></tr>
+    <tr><td>Revoke</td><td><code>POST /oauth/revoke</code> (Basic auth client_id:secret); legacy <code>/oauth/deauthorize</code> ends 2027-06-01</td><td>Use <code>/oauth/revoke</code> only.</td></tr>
+    <tr><td>Scopes</td><td>user can untick any; response returns the granted <code>scope</code></td><td>Store granted scope; settings shows what is missing.</td></tr>
+    <tr><td>Callback</td><td>redirect must sit in the app's Authorization Callback Domain; <code>localhost</code>/<code>127.0.0.1</code> whitelisted</td><td>Domain = <code>PUBLIC_FQDN</code>; dev works on loopback.</td></tr>
+    <tr><td>Paging</td><td><code>per_page</code> ≤ 200</td><td>A year of activities ≈ 1–3 calls.</td></tr>
+    <tr><td>Streams</td><td><code>time distance latlng altitude velocity_smooth heartrate cadence watts temp moving grade_smooth</code>, 1 s resolution</td><td>3 h ride ≈ 10k points × 11 keys: far over the tool output cap → summarise in Go.</td></tr>
+    <tr><td>Summit-only</td><td><code>/activities/{id}/zones</code>, <code>/segment_efforts</code>, <code>/segment_efforts/{id}</code></td><td>Zones computed locally from streams + athlete zones when Strava refuses.</td></tr>
+    <tr><td>Athlete stats</td><td>count only <em>Everyone</em>-visible activities</td><td>Tool says so; exact totals come from <code>list_activities</code> sums.</td></tr>
+  </table>
+
+  <h2>3 · Open decisions</h2>
+
+  <div class="card note dec">
+    <h3>D1 · Who connects</h3>
+    <p><span class="rec">Decided (2026-11-03): every user has its own token and its own data, never shared.</span>
+    <code>BACKEND_STRAVA_USERS</code> (loom user ids, comma-separated) says who may use Strava. Each listed account sees
+    Settings → Strava, connects its own Strava account and gets the tools over its own data only. Unlisted: settings 404,
+    no tools (<code>RestrictUsers</code> + <code>Users</code>).</p>
+    <p>Rule for every personal-data integration (§10): a <code>_USERS</code> list grants access, it never shares one
+    person's token. The sidecar keeps one connection per loom user id; caches keyed by user id.</p>
+    <p>Listed but not connected → a call answers "connect Strava in Settings → Strava". Strava's athlete capacity (1 by
+    default, 10 without review) must cover the listed users who connect.</p>
+  </div>
+
+  <div class="card note dec">
+    <h3>D2 · Live reads vs local mirror</h3>
+    <p><span class="rec">Decided (2026-11-03): v1 live reads + in-memory cache; history mirror later.</span></p>
+    <ul>
+      <li><strong>Live + cache:</strong> activity detail and streams are effectively immutable → cache 24 h (LRU,
+      ~300 activities); list 5 min; profile/zones/gear 1 h. "Analyse my last ride" = 3 calls; "my last 20 rides" = 1.
+      Fails at "best 20-min power across 2025": that needs streams of every ride (hundreds of calls).</li>
+      <li><strong>Mirror (later):</strong> backfill all summaries into the sidecar's own store, keep fresh via Strava webhook
+      (one subscription per app, callback must echo <code>hub.challenge</code> within 2 s, events create/update/delete
+      + deauthorization). Adds a <code>query_activities</code> tool with arbitrary filters/aggregates over the whole history,
+      and slowly backfills streams within the daily budget for power-curve / trend questions. Costs: a store in the
+      sidecar, a public unauthenticated webhook route (loom forwards it), a background worker.</li>
+    </ul>
+  </div>
+
+  <div class="card note dec">
+    <h3>D3 · Streams: summarise in Go, or also hand raw data to <code>run_python</code></h3>
+    <p><span class="rec">Decided (2026-11-03): summary in Go in the sidecar, always set against the user's recent
+    activities</span> (§6). Raw streams (~10k points × 11 series per ride) never reach the model; they reach
+    <code>run_python</code> only as CSV for charts (§6a).</p>
+  </div>
+
+  <div class="card note dec">
+    <h3>D4 · Classifier category</h3>
+    <p><span class="rec">Decided (2026-11-03): new category <code>training</code></span> ("the user's own workouts, rides, runs,
+    training load, fitness progress"), like <code>music</code> in #711. Gate the server on <code>training</code> +
+    <code>health</code>.</p>
+    <p>Tradeoff: <code>health</code>'s block ("careful flowing prose … never diagnose … see a professional") is wrong for
+    "how far did I ride last week". Ungated would put ~12 schemas into every turn of every connected user.
+    A new category touches the classifier prompt for everyone (one more gloss).</p>
+  </div>
+
+  <div class="card note dec">
+    <h3>D5 · Token storage</h3>
+    <p><span class="rec">Settled by D6:</span> tokens live in the sidecar's <code>/data/state.json</code> (0600), one entry per
+    loom user id, like tunewire. loom stores and logs none; no loom migration.</p>
+  </div>
+
+  <div class="card note dec">
+    <h3>D6 · In-process vs sidecar</h3>
+    <p><span class="rec">Decided (2026-11-03): sidecar <code>loom-strava</code>. Rule from now on: every integration is a sidecar.</span>
+    <code>backend/cmd/loom-strava</code>, image <code>loom-strava</code>, compose service + profile <code>strava</code>,
+    <code>Containerfile</code>, uid/gid 65532. Best-effort like tunewire: loom boots without it and offers the tools
+    while it answers. Client id + secret and every Strava token stay in the sidecar; loom only holds the service bearer.</p>
+  </div>
+
+  <h2>4 · Connection (PR 1: <code>strava: connect account</code>)</h2>
+  <h3>Config</h3>
+  <ul>
+    <li>loom: <code>BACKEND_STRAVA_URL</code> (empty = off), <code>BACKEND_STRAVA_TOKEN</code> (service bearer, ≥ 32 chars, required
+    with the URL; <code>stravaProblem</code> like <code>tunewireProblem</code>), <code>BACKEND_STRAVA_USERS</code> (list, <code>r.List</code>;
+    empty serves nobody). <code>.env.example</code>.</li>
+    <li>sidecar: <code>STRAVA_TOKEN</code> (same bearer), <code>STRAVA_CLIENT_ID</code>, <code>STRAVA_CLIENT_SECRET</code>; <code>/data</code> volume.</li>
+    <li>Redirect URI = loom's <code>PublicURL + /api/strava/callback</code>: the browser comes back to loom, never to the sidecar.</li>
+  </ul>
+  <h3>Sidecar state</h3>
+  <p><code>/data/state.json</code> (0600, written atomically): <code>users: {&lt;loom user id&gt;: {athlete_id, athlete_name, scope,
+  access_token, refresh_token, expires_at}}</code>. Every route acts only on the <code>X-Loom-User</code> entry (§11).</p>
+  <h3>Sidecar routes (bearer + <code>X-Loom-User</code>)</h3>
+  <table>
+    <tr><th>route</th><th>does</th></tr>
+    <tr><td><code>POST /mcp</code></td><td>the tools (§5), over the caller's connection</td></tr>
+    <tr><td><code>GET /status[?check=1]</code></td><td>connected, athlete, granted vs wanted scopes, last error (<em>expired</em>, <em>revoked</em>)</td></tr>
+    <tr><td><code>GET /authorize?redirect_uri=&amp;state=</code></td><td>the Strava authorize URL (<code>scope=read_all,profile:read_all,activity:read_all</code>, <code>approval_prompt=force</code>); the client id stays in the sidecar</td></tr>
+    <tr><td><code>PUT /connection</code> <code>{code, scope}</code></td><td>exchange the code with the client secret, store pair + granted scope</td></tr>
+    <tr><td><code>DELETE /connection</code></td><td><code>/oauth/revoke</code>, delete the entry, drop that user's cache</td></tr>
+  </table>
+  <p><code>/healthz</code>, <code>/readyz</code>: kit probes, loopback only, like tunewire.</p>
+  <h3>loom routes (listed users, each only its own connection; everyone else 404)</h3>
+  <table>
+    <tr><th>route</th><th>does</th></tr>
+    <tr><td><code>GET /api/me/strava</code></td><td>sidecar <code>/status</code></td></tr>
+    <tr><td><code>GET /api/me/strava/connect</code></td><td><code>state</code> = random nonce in a short-lived HttpOnly cookie bound to the session; 302 to the sidecar's authorize URL</td></tr>
+    <tr><td><code>GET /api/strava/callback</code></td><td>check state + session of a listed user, sidecar <code>PUT /connection</code> for that user, redirect to Settings → Strava (error shown there on <code>access_denied</code>)</td></tr>
+    <tr><td><code>DELETE /api/me/strava</code></td><td>sidecar <code>DELETE /connection</code></td></tr>
+  </table>
+  <h3>Token refresh (sidecar)</h3>
+  <p>Refresh 5 min before <code>expires_at</code> or on 401, serialised by a per-user mutex, new pair persisted before use
+  (the old refresh token dies at once). <code>invalid_grant</code> → status <em>expired</em>, tools answer
+  "Strava sign-in expired: reconnect in Settings → Strava".</p>
+  <h3>UI</h3>
+  <p><code>StravaPanel</code> in Settings next to Apple Music (listed users, each its own connection): Connect / Reconnect / Disconnect, athlete name,
+  a warning listing unticked scopes ("Only Me activities hidden" etc.). en + de strings. Connect is a top-level
+  navigation, not fetch.</p>
+
+  <h2>5 · Tools (PR 2: <code>strava: activity tools</code>)</h2>
+  <p>Server <code>strava</code> = the sidecar's <code>/mcp</code>, <code>BuiltIn</code>, <code>PerUser</code>, <code>RestrictUsers</code> + <code>BACKEND_STRAVA_USERS</code>, <code>TrustInstructions</code>, categories per D4.
+  Every call reads the caller's connection (§11), never anyone else's.
+  Units follow the athlete's <code>measurement_preference</code> (metric: km, km/h, min/km, m). Dates in and out in the
+  athlete's local time (<code>start_date_local</code>); arguments take <code>YYYY-MM-DD</code>.
+  Every activity returned → <code>structuredContent.sources</code> with <code>https://www.strava.com/activities/{id}</code>
+  (citation + "View on Strava" attribution). An <code>mcp.json</code> entry named <code>strava</code> replaces the built-in
+  (file entries win by name), but never its per-user gating: the file cannot widen <code>BACKEND_STRAVA_USERS</code> or share a connection.</p>
+  <table>
+    <tr><th>tool</th><th>Strava calls</th><th>returns</th></tr>
+    <tr><td><code>profile</code></td><td><code>/athlete</code>, <code>/athlete/zones</code></td><td>name, FTP, weight, bikes + shoes with distance, HR + power zones</td></tr>
+    <tr><td><code>totals</code></td><td><code>/athletes/{id}/stats</code></td><td>recent (4 wk) / YTD / all-time ride, run, swim: count, distance, time, elevation; biggest ride, biggest climb; note "Everyone-visible only"</td></tr>
+    <tr><td><code>list_activities</code></td><td><code>/athlete/activities</code> (200/page, up to 3 pages per call)</td><td>args <code>after</code>, <code>before</code>, <code>sport_type</code>, <code>limit</code> (≤ 500), <code>trainer_only</code>. One compact row each: id, date, name, sport_type, trainer/virtual (Zwift), distance, moving/elapsed time, elevation, avg speed/pace, avg/max HR, avg/weighted watts, kJ, relative effort, PR count, gear, kudos/comment counts. Plus window totals per sport_type and per week or month.</td></tr>
+    <tr><td><code>get_activity</code></td><td><code>/activities/{id}?include_all_efforts=true</code></td><td>everything in DetailedActivity: description, private note, device, calories, perceived exertion, workout type, gear, laps, metric splits, best efforts (run), segment efforts with PR rank / KOM rank, start/end location, photos count. Polyline omitted (bulk).</td></tr>
+    <tr><td><code>activity_analysis</code></td><td><code>/activities/{id}/streams</code> (all keys), <code>/activities/{id}/zones</code> <span class="summit">SUMMIT</span> (fallback: computed)</td><td>Derived in Go, per §6, always with the comparison against the last <code>weeks</code> (default 6). Optional <code>from_km</code>/<code>to_km</code> to analyse a section (a climb, an interval).</td></tr>
+    <tr><td><code>compare_activities</code></td><td>cached detail + streams of 2–5 ids</td><td>side-by-side table of the §6 metrics (same route, progress over time)</td></tr>
+    <tr><td><code>gear</code></td><td><code>/gear/{id}</code></td><td>brand, model, frame type, total distance, retired flag</td></tr>
+    <tr><td><code>routes</code></td><td><code>/athletes/{id}/routes</code>, <code>/routes/{id}</code></td><td>own routes: distance, elevation, est. moving time, segments on it. GPX export → follow-up (artifact).</td></tr>
+    <tr><td><code>segments</code></td><td><code>/segments/starred</code>, <code>/segments/{id}</code>, <code>/segment_efforts</code> <span class="summit">SUMMIT</span></td><td>starred segments with the user's PR + effort count; with Summit, the user's effort history on one segment (date, time, power, HR)</td></tr>
+  </table>
+  <p class="note">Summit refused (402/403) → the tool says "needs a Strava subscription" and falls back where it can
+  (zones from streams). Rate budget near its end (&gt; 90 % of 15-min or daily read) → answer "Strava rate limit: resets at HH:MM" without calling.</p>
+
+  <h2>6 · <code>activity_analysis</code> output</h2>
+  <ul>
+    <li><strong>Power</strong> (if <code>watts</code>): avg, max, normalized power, variability index, intensity factor + TSS
+    (FTP from profile; omitted without one), kJ, mean-max curve at 5 s / 30 s / 1 / 5 / 10 / 20 / 60 min, time in power zones.</li>
+    <li><strong>Heart rate</strong>: avg, max, time in HR zones, aerobic decoupling (power:HR or pace:HR, first vs second half), HR at the end of each hard effort.</li>
+    <li><strong>Cadence, temperature, grade</strong>: avg / max; time stopped (<code>moving</code>).</li>
+    <li><strong>Climbs</strong>: auto-detected sections ≥ 500 m at ≥ 3 % average grade: length, gain, avg grade, time, VAM, avg power + W/kg, avg HR.</li>
+    <li><strong>Intervals</strong>: laps if the device wrote them; else efforts ≥ 30 s above 105 % FTP.</li>
+    <li><strong>Series</strong>: per-km buckets (≤ 200 rows) of distance, time, speed, HR, power, cadence, altitude, grade, so the model can say where things happened. No latlng.</li>
+  </ul>
+  <p>Pure Go, table-driven tests from recorded fixtures (a Zwift ride, an outdoor ride without power, a run, a swim without streams).</p>
+
+  <h3>Compared with recent activities (always part of the answer)</h3>
+  <ul>
+    <li><strong>Baseline:</strong> the user's activities of the same <code>sport_type</code> in the <code>weeks</code> before this one
+    (arg, default 6, 1–26). Zwift (<code>VirtualRide</code>) and outdoor <code>Ride</code> stay separate unless
+    <code>mix_indoor=true</code>. The activity itself is excluded.</li>
+    <li><strong>Per metric</strong> (distance, moving time, speed/pace, elevation, avg HR, NP, IF, TSS, efficiency factor NP/HR or
+    pace/HR, decoupling, best 5 s / 1 / 5 / 20 min power, kJ): this activity, baseline median, delta in %, rank
+    ("3rd best of 14"), and a flag when it is the best or worst in the window.</li>
+    <li><strong>Like for like:</strong> earlier activities on the same route (start and end within 200 m, distance ± 5 %) listed
+    separately with the same metrics, so "faster than last time on this loop" is a direct comparison.</li>
+    <li><strong>Load:</strong> TSS (or moving time without power) of the last 7 days against the weekly average of the window,
+    plus that week's activity count, so the model can say "your heaviest week in the window".</li>
+    <li><strong>Trend:</strong> per week of the window: count, distance, time, TSS, median EF; one row per week.</li>
+  </ul>
+  <h3>Cost and the metric store</h3>
+  <ul>
+    <li>Summary metrics (distance, time, speed, avg HR, avg/weighted watts, kJ, elevation) come from one <code>list_activities</code>
+    page: 1 call for the whole baseline.</li>
+    <li>Stream metrics (NP, IF, TSS, EF, decoupling, power bests) need each activity's streams once. The sidecar keeps the
+    computed metrics per activity on disk (<code>/data/metrics/&lt;loom user id&gt;.json</code>, a few hundred bytes each,
+    no raw streams), so each activity's streams are fetched once ever. Deleted with the connection. Not the D2 mirror:
+    only activities the user has already looked at or compared.</li>
+    <li>Cold start (6 weeks ≈ 15–25 activities): fetch missing streams newest first, stop at 50 % of the 15-min read
+    budget; the answer marks the metrics it lacks ("NP baseline from 9 of 18 rides") and the next call fills the rest.</li>
+    <li>Metrics depending on FTP or zones are recomputed from stored inputs when the profile changes (FTP is part of the stored key).</li>
+  </ul>
+
+  <h2>6a · Charts through <code>run_python</code> (PR 3: <code>strava: charts</code>)</h2>
+  <p>The sandbox has pandas + matplotlib; files in <code>out/</code> become PNG artifacts. It has no network, and its inputs
+  today are only thread documents. Missing piece: Strava data into the sandbox without storing it in loom.</p>
+  <h3>Tool files (loom, generic)</h3>
+  <ul>
+    <li>An MCP tool result may carry CSV as standard MCP <em>embedded resources</em> (<code>{"type":"resource","resource":{uri,mimeType:"text/csv",text}}</code>).
+    loom keeps them in memory for the running turn only, lists them in the <code>run_python</code> guidance as inputs
+    (<code>strava_&lt;id&gt;_streams.csv</code>, …) and hands their bytes to the job like an upload.</li>
+    <li>Never persisted, never embedded into RAG, never shown in the chat; the model gets a one-line note per file, not
+    the content. Caps: 4 MiB per file, 16 MiB per turn, csv/json only.</li>
+    <li>Next turn ("make it bigger") → the model calls the tool again; the sidecar's cache answers without Strava.</li>
+    <li>Turn-scoped, so per user by construction: no one else's turn can see the files.</li>
+  </ul>
+  <h3>Files the Strava tools attach</h3>
+  <table>
+    <tr><th>file</th><th>from</th><th>columns</th></tr>
+    <tr><td><code>strava_&lt;id&gt;_streams.csv</code></td><td><code>activity_analysis</code></td><td>5 s resample: elapsed_s, distance_km, lat, lng, altitude_m, speed_kmh (or pace), hr, cadence, watts, grade, temp, moving, power_zone, hr_zone (3 h ≈ 2,200 rows, ~150 KB)</td></tr>
+    <tr><td><code>strava_&lt;id&gt;_power_curve.csv</code></td><td><code>activity_analysis</code></td><td>duration_s, this, window_best, window_median</td></tr>
+    <tr><td><code>strava_&lt;id&gt;_baseline.csv</code></td><td><code>activity_analysis</code></td><td>one row per baseline activity: date, name, same_route, every §6 metric</td></tr>
+    <tr><td><code>strava_weeks.csv</code></td><td><code>activity_analysis</code>, <code>list_activities</code></td><td>week, count, distance, time, elevation, TSS, median EF, per sport_type</td></tr>
+    <tr><td><code>strava_activities.csv</code></td><td><code>list_activities</code></td><td>the listed rows</td></tr>
+  </table>
+  <h3>Charts</h3>
+  <table>
+    <tr><th>chart</th><th>shows</th></tr>
+    <tr><td>Ride profile</td><td>elevation area coloured by power (or HR) zone, climbs shaded and labelled with VAM / W/kg, HR line on a second axis</td></tr>
+    <tr><td>Power curve</td><td>this activity vs 6-week best and median, log time axis, new bests marked</td></tr>
+    <tr><td>Zones</td><td>time in power / HR zones, this activity next to the baseline median, stacked bars</td></tr>
+    <tr><td>Decoupling</td><td>HR vs power scatter coloured by elapsed time, first vs second half fit lines</td></tr>
+    <tr><td>Load</td><td>weekly TSS (or hours) bars by sport, 7-day vs window average line, heaviest week marked</td></tr>
+    <tr><td>Same route</td><td>speed (or time gap) by distance against earlier rides of the loop</td></tr>
+    <tr><td>Track</td><td>lat/lng line coloured by speed or power, start/end marked (no basemap: the sandbox is offline)</td></tr>
+    <tr><td>Rank strip</td><td>for each §6 metric: where this activity sits among the baseline (dot on a strip of dots)</td></tr>
+  </table>
+  <div class="card note dec">
+    <h3>D8 · Who draws: a chart module in the sandbox image, or the model writes matplotlib each time</h3>
+    <p><span class="rec">Recommend: a small <code>loomcharts</code> module baked into the sandbox image</span> (one function per chart
+    above, reading the CSV columns, loom's Warm Editorial palette from <code>ui/src/index.css</code>, light + dark, 2× PNG).
+    The model writes three lines (<code>from loomcharts import ride_profile; ride_profile("strava_…_streams.csv", "out/profile.png")</code>)
+    and can still write raw matplotlib for anything else.</p>
+    <p>Tradeoff: every chart looks the same and is tested, and a call costs few tokens, but the sandbox image grows a
+    module to maintain (pinned like the other libraries). Model-written charts need nothing new, but look different every time
+    and spend tokens and the 60 s limit on plotting code.</p>
+  </div>
+  <p>Prompting: the <code>training</code> block says to offer a chart when a comparison or a ride profile would read better
+  as one, and to draw it when asked; server instructions name the attached files and the chart functions.</p>
+
+  <h2>7 · Prompting</h2>
+  <ul>
+    <li>Server instructions (trusted): read data with the tools, never estimate; cite each activity; compare with
+    earlier periods when it helps; units as returned.</li>
+    <li><code>training</code> block (D4): numbers first, short, a table for multi-activity answers, one useful observation;
+    no medical diagnosis (health stays in charge of that).</li>
+  </ul>
+
+  <h2>8 · Tests &amp; checks</h2>
+  <ul>
+    <li><code>strava</code> package against an <code>httptest</code> fake Strava: OAuth exchange, refresh rotation (old refresh token rejected
+    afterwards), concurrent refresh = one call, <code>invalid_grant</code>, missing scopes, 402 Summit, rate headers, paging.</li>
+    <li>Comparison: baseline selection (sport_type, window, indoor/outdoor split, self excluded), rank/median/delta, same-route
+    match, partial baseline under a tight rate budget, metric store reuse (second call fetches no streams), store per user.</li>
+    <li>httpapi: unlisted user 404 on every route, user A never sees or replaces user B's connection, state mismatch, callback without session, disconnect revokes + deletes.</li>
+    <li>Sidecar: state file round trip (0600, atomic), per-user entries never cross; mcp: <code>X-Loom-User</code> forwarding, per-user gating (two connected users, each call reads only the caller's), category gating; classifier test for <code>training</code>.</li>
+    <li>UI: <code>StravaPanel</code> tests; Playwright against the running app for the panel states. The real Strava consent page needs
+    your Strava app's client id/secret: one manual connect at the end.</li>
+    <li><code>make check</code> green (floors 75).</li>
+  </ul>
+
+  <h2>9 · Docs</h2>
+  <p><code>docs/strava.md</code>: create the app at <code>strava.com/settings/api</code> (callback domain = <code>PUBLIC_FQDN</code>,
+  capacity 1 is enough), env, connect, scopes, Summit-only parts, rate limits, what disconnect deletes. AGENTS.md: one line
+  under tools (Strava = <code>loom-strava</code> sidecar, one connection per user), plus the two rules: every integration is
+  a sidecar; personal data → own token, own data per user.</p>
+
+  <h2>10 · Rule: own token, own data</h2>
+  <div class="card">
+    <p><strong>Personal data involved → every loom user has its own token and its own data. Never shared.</strong>
+    A <code>_USERS</code> list only grants access; each listed user connects its own account.
+    Exception: non-personal services that fetch non-personal data (context7, ipverse, …) keep one operator key.</p>
+    <p><strong>Every integration loom builds is a sidecar</strong> (D6): its secrets, user tokens and caches live there, loom holds
+    only the service bearer.</p>
+    <table>
+      <tr><th>integration</th><th>today</th><th>verdict</th></tr>
+      <tr><td>tunewire library (Apple Music)</td><td>one <code>media-user-token</code> in the sidecar's <code>state.json</code>, read by every <code>BACKEND_TUNEWIRE_USERS</code> account</td><td><strong>shared → rewrite (§12)</strong></td></tr>
+      <tr><td>peeq (<code>mcp.json</code>)</td><td>one <code>PEEQ_MCP_TOKEN</code>, every <code>BACKEND_PEEQ_USERS</code> account reads the same library</td><td><strong>shared → rewrite (§13)</strong></td></tr>
+      <tr><td>Strava</td><td>new</td><td>per user from the start (D1)</td></tr>
+      <tr><td>tunewire catalog, Tavily, Obscura, fetch, ipverse, context7, LLM + image keys, sandbox</td><td>operator service keys, no person's data behind them</td><td>stay shared (a quota, not a person's account)</td></tr>
+    </table>
+    <p>AGENTS.md gets the rule (one line, with why: a list that shares a token shows one person's data to everyone on it).</p>
+  </div>
+
+  <h2>11 · Groundwork: the caller in every MCP call (PR 0)</h2>
+  <ul>
+    <li><code>runToolCall</code> puts <code>MCPPrincipal(t.user)</code> into the call's context (<code>mcp.WithPrincipal</code>);
+    scheduled runs carry <code>t.user</code> too. A per-user server called without a principal fails closed.</li>
+    <li>New <code>ServerConfig.PerUser</code> (<code>json:"perUser"</code>): the server serves each caller's own account.
+    Implies <code>RestrictUsers</code>; config refuses <code>perUser</code> without a users list.</li>
+    <li><strong>Own sidecars</strong> (tunewire): the remote client adds <code>X-Loom-User: &lt;user id&gt;</code> to each request. Trust
+    rests on the service bearer token, which only loom holds; the sidecar never accepts the header without it.</li>
+    <li><strong>File servers</strong> (peeq, any future one): each listed user pastes its own token in Settings → Connections; loom stores it per
+    <code>(user_id, server)</code> (migration <code>user_mcp_tokens</code>) and sends it as <code>${USER_TOKEN}</code> in the entry's headers
+    (<code>"Authorization": "Bearer ${USER_TOKEN}"</code>). No loom user id leaves loom; the third-party server sees only its own token.
+    Not set → the call answers "connect &lt;server&gt; in Settings".</li>
+    <li>Offered tools: a per-user server's tools are offered only to listed users who have connected (no dead schemas in the prompt).</li>
+    <li>Tests: two users, two tokens, each call carries only the caller's; no principal → refused; cache isolation.</li>
+  </ul>
+
+  <h2>12 · tunewire per user (PR A)</h2>
+  <ul>
+    <li>Sidecar <code>state.json</code>: <code>users: {&lt;loom user id&gt;: {token, storefront, checked_at}}</code>; developer token stays one
+    (it is the web player's public token, no one's data). File stays 0600.</li>
+    <li><code>PUT/DELETE /token</code>, <code>GET /status</code> act on the <code>X-Loom-User</code> account; <code>/mcp/library</code> reads that
+    user's token; missing header → 400 on <code>/mcp/library</code> and the token routes.</li>
+    <li>Caches: the library artist list (<code>artistsCache</code>) keyed by user; <code>releaseCache</code> stays shared (catalog data by
+    storefront + artist, no one's library).</li>
+    <li>loom: <code>TunewireLibraryServerConfig</code> gets <code>PerUser</code>; the settings handlers pass the signed-in user. Each listed user
+    pastes its own cookie; status per user.</li>
+    <li>Docs: <code>docs/tunewire.md</code> "they share the one Apple Music token" → each listed account connects its own.</li>
+  </ul>
+  <div class="card note dec">
+    <h3>D7 · The token already in <code>state.json</code></h3>
+    <p><span class="rec">Decided (2026-11-03): no migration.</span> The new sidecar ignores the old single token and
+    rewrites the file in the per-user shape; each listed user pastes a fresh <code>media-user-token</code>.</p>
+  </div>
+
+  <h2>13 · peeq per user (PR B)</h2>
+  <ul>
+    <li>loom side: the <code>peeq</code> entry gets <code>"perUser": true</code> and <code>Bearer ${USER_TOKEN}</code>; <code>PEEQ_MCP_TOKEN</code> goes away.
+    Settings → Connections shows peeq to listed users.</li>
+    <li>peeq side (its own repo, not in this plan): it must issue a token per user and serve that user's own library behind it.
+    Not checked from here; if peeq is one shared library today, that is a peeq change first.</li>
+  </ul>
+
+  <h2>14 · Order</h2>
+  <ol>
+    <li>PR 0 <code>mcp: caller identity and per-user tokens</code>: §11, AGENTS.md rule.</li>
+    <li>PR A <code>tunewire: one Apple Music account per user</code>: §12 (no token migration, D7).</li>
+    <li>PR B <code>mcp: peeq per user</code>: §13, after peeq can issue per-user tokens.</li>
+    <li>PR 1 <code>strava: connect account</code>: <code>loom-strava</code> sidecar skeleton (image, compose profile, state, OAuth, refresh),
+    loom config + routes + panel, docs (§4, §9).</li>
+    <li>PR 2 <code>strava: activity tools</code>: sidecar tools, analysis, cache; loom category + prompting (§5–§7). Release: minor.</li>
+    <li>PR 3 <code>strava: charts</code>: loom tool files (MCP embedded resources → <code>run_python</code> inputs, turn-scoped), sidecar
+    CSV attachments, chart module per D8 (§6a).</li>
+    <li>Later: history mirror + webhook + <code>query_activities</code> (D2), route GPX artifact.</li>
+  </ol>
+
+  <p class="foot">Sources: Strava API Agreement (2026-06-01), developers.strava.com docs (authentication, rate limits, webhooks, reference, swagger.json).</p>
+</div>
+</body>
+</html>

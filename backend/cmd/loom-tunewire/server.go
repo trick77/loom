@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/mcpserver"
+	"github.com/trick77/loom/internal/mcpserver"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/secret"
 )

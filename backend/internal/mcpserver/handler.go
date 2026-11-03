@@ -1,7 +1,8 @@
 // Package mcpserver is a small stateless MCP server over streamable HTTP
 // (JSON responses only), copied from peeq's internal/mcpserver with the tool
 // registry made a parameter. It answers the 2026-07-28 revision and the
-// initialize-era ones.
+// initialize-era ones. loom's sidecars share it; it imports nothing of loom,
+// so a sidecar image copies this directory alone.
 package mcpserver
 
 import (
@@ -12,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -37,11 +39,43 @@ type Source struct {
 	Image   string `json:"image,omitempty"`
 }
 
+// File is data a tool hands to loom's run_python for the running turn (an
+// MCP embedded resource): never shown in the chat, never part of the prompt.
+type File struct {
+	Name     string // a plain file name, e.g. strava_123_streams.csv
+	MimeType string // text/csv or application/json
+	Text     string
+}
+
 // Result is what a tool produced. Sources[i] belongs to the text's item i+1.
 type Result struct {
 	Text    string
 	Sources []Source
+	Files   []File
 	IsError bool
+}
+
+// UserHeader carries the loom user id on every call loom makes to a
+// per-user server. Only loom holds the bearer token the routes sit behind, so
+// the header is as trustworthy as that token.
+const UserHeader = "X-Loom-User"
+
+type userKey struct{}
+
+// WithUser returns ctx carrying the loom user id.
+func WithUser(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, userKey{}, id)
+}
+
+// User is the loom user id a call is made for; "" when loom sent none.
+func User(ctx context.Context) string {
+	id, _ := ctx.Value(userKey{}).(string)
+	return id
+}
+
+// UserFromRequest is the request's loom user id (UserHeader), trimmed.
+func UserFromRequest(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get(UserHeader))
 }
 
 // ErrorResult is a failed call the model reads and explains.
@@ -154,15 +188,19 @@ func (h *handler) callTool(w http.ResponseWriter, r *http.Request, req request, 
 	if len(p.Arguments) == 0 || string(p.Arguments) == "null" {
 		p.Arguments = json.RawMessage("{}")
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), toolTimeout)
+	ctx, cancel := context.WithTimeout(WithUser(r.Context(), UserFromRequest(r)), toolTimeout)
 	defer cancel()
 	start := time.Now()
 	res := t.Run(ctx, p.Arguments)
 	slog.Info("mcp tool call", "server", h.name, "tool", p.Name, "is_error", res.IsError, "ms", time.Since(start).Milliseconds())
 
-	result := map[string]any{
-		"content": []map[string]any{{"type": "text", "text": capText(res.Text, maxToolTextBytes)}},
+	content := []map[string]any{{"type": "text", "text": capText(res.Text, maxToolTextBytes)}}
+	for _, f := range res.Files {
+		content = append(content, map[string]any{"type": "resource", "resource": map[string]any{
+			"uri": "file:///" + f.Name, "mimeType": f.MimeType, "text": f.Text,
+		}})
 	}
+	result := map[string]any{"content": content}
 	if res.Sources != nil {
 		result["structuredContent"] = map[string]any{"sources": res.Sources}
 	}

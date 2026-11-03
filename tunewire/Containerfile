@@ -6,6 +6,8 @@ FROM golang:1.27-alpine AS build
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 COPY backend/cmd/loom-tunewire/ ./cmd/loom-tunewire/
+# The MCP server every loom sidecar shares; it imports nothing else of loom.
+COPY backend/internal/mcpserver/ ./internal/mcpserver/
 # ship release passes the release version. go build fetches only the modules
 # this binary imports (kit), not all of loom's.
 ARG VERSION=dev
