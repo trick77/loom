@@ -232,7 +232,7 @@ func TestToolList(t *testing.T) {
 	for _, x := range r.Result.Tools {
 		names = append(names, x.Name)
 	}
-	want := "profile hr_zones totals list_activities get_activity activity_analysis compare_activities gear routes segments"
+	want := "profile totals list_activities get_activity activity_analysis compare_activities gear routes segments"
 	if strings.Join(names, " ") != want {
 		t.Errorf("tools = %v", names)
 	}

@@ -32,8 +32,7 @@ const (
 const instructions = "The user's own Strava data: profile, totals, activities, laps, streams, gear, routes and " +
 	"starred segments. Read the numbers with these tools instead of estimating or guessing. Cite every activity " +
 	"you mention with its [n]. For one ride or run use activity_analysis: it compares the activity with the " +
-	"user's recent ones of the same sport. For heart-rate zones, max or threshold heart rate use hr_zones; " +
-	"a tested value the user stated beats its estimate. Give numbers with their units, as returned. When a chart would read " +
+	"user's recent ones of the same sport. Give numbers with their units, as returned. When a chart would read " +
 	"better (ride profile, power curve, weekly load, same-route gap), offer one and draw it with run_python from " +
 	"the attached CSV files."
 
@@ -60,6 +59,8 @@ func toolServer(svc *service, version string) mcpserver.Server {
 	idArg := func(what string) map[string]any {
 		return map[string]any{"type": []string{"integer", "string"}, "description": what}
 	}
+	refreshArg := map[string]any{"type": "boolean", "description": "Read the activity from Strava again instead of " +
+		"the stored copy. Only when the user says it changed on Strava (cropped, corrected, retagged): it costs Strava calls."}
 	return mcpserver.Server{
 		Name:         "strava",
 		Version:      version,
@@ -70,17 +71,6 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Description: "The user's Strava profile: name, FTP, weight, bikes and shoes with their distance, heart-rate and power zones.",
 				Schema:      mcpserver.ObjectSchema(map[string]any{}),
 				Run:         t.profile,
-			},
-			{
-				Name: "hr_zones", Title: "My heart-rate zones",
-				Description: "The user's heart-rate zones estimated from their own streams of the last 365 days, per sport " +
-					"(cycling, running): max heart rate (best 10 s, confirmed by a second activity), threshold heart rate " +
-					"(95 % of the best 20 min) and Friel's zones from it, next to Strava's own zones. Reads the streams of " +
-					"the hardest activities not read yet, within the rate budget; a later call reads more.",
-				Schema: mcpserver.ObjectSchema(map[string]any{
-					"sport": map[string]any{"type": "string", "enum": []string{"cycling", "running"}, "description": "Only this sport. Default: both."},
-				}),
-				Run: t.hrZones,
 			},
 			{
 				Name: "totals", Title: "My Strava totals",
@@ -107,7 +97,7 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Name: "get_activity", Title: "Read a Strava activity",
 				Description: "Everything Strava has on one of the user's activities: description, private note, device, " +
 					"calories, perceived exertion, gear, laps, splits, best efforts, segment efforts with PR and KOM rank.",
-				Schema: mcpserver.ObjectSchema(map[string]any{"id": idArg("The activity id, from list_activities.")}, "id"),
+				Schema: mcpserver.ObjectSchema(map[string]any{"id": idArg("The activity id, from list_activities."), "refresh": refreshArg}, "id"),
 				Run:    t.getActivity,
 			},
 			{
@@ -122,6 +112,7 @@ func toolServer(svc *service, version string) mcpserver.Server {
 					"mix_indoor": map[string]any{"type": "boolean", "description": "Compare indoor (VirtualRide) and outdoor (Ride) together. Default: kept apart."},
 					"from_km":    map[string]any{"type": "number", "minimum": 0, "description": "Analyse only the section from this distance (km)."},
 					"to_km":      map[string]any{"type": "number", "minimum": 0, "description": "Analyse only the section up to this distance (km)."},
+					"refresh":    refreshArg,
 				}, "id"),
 				Run: t.activityAnalysis,
 			},
@@ -284,7 +275,7 @@ func (t *tools) profile(ctx context.Context, _ json.RawMessage) mcpserver.Result
 		fmt.Fprintf(&b, "zones: unavailable (%s)\n", failure(zerr).Text)
 	default:
 		if z.HeartRate != nil && len(z.HeartRate.Zones) > 0 {
-			kind := "Strava's defaults, usually age-based; hr_zones estimates the user's own, and custom zones set in Strava replace these"
+			kind := "Strava's defaults"
 			if z.HeartRate.CustomZones {
 				kind = "custom"
 			}
@@ -355,7 +346,8 @@ func (t *tools) totals(ctx context.Context, _ json.RawMessage) mcpserver.Result 
 
 func (t *tools) getActivity(ctx context.Context, raw json.RawMessage) mcpserver.Result {
 	var args struct {
-		ID json.RawMessage `json:"id"`
+		ID      json.RawMessage `json:"id"`
+		Refresh bool            `json:"refresh"`
 	}
 	if err := mcpserver.DecodeArgs(raw, &args); err != nil {
 		return mcpserver.ErrorResult("get_activity needs an activity id")
@@ -368,17 +360,24 @@ func (t *tools) getActivity(ctx context.Context, raw json.RawMessage) mcpserver.
 	if fail != nil {
 		return *fail
 	}
-	d, res, ok := t.ownActivity(ctx, user, a, id)
+	fresh := args.Refresh && t.svc.mayRefresh(user, id)
+	defer t.svc.flushIndex(user)
+	d, res, ok := t.ownActivity(ctx, user, a, id, fresh)
 	if !ok {
 		return res
+	}
+	if fresh {
+		// What came from the old streams goes; the next analysis reads them.
+		t.svc.forget(user, id)
+		t.svc.markRefreshed(user, id)
 	}
 	return mcpserver.Result{Text: describeActivity(d, unitsOf(a)), Sources: []mcpserver.Source{activitySource(d.summaryActivity)}}
 }
 
 // ownActivity reads an activity and makes sure it is the user's own: the
-// tools never show anyone else's.
-func (t *tools) ownActivity(ctx context.Context, user string, a athlete, id int64) (detailedActivity, mcpserver.Result, bool) {
-	d, err := t.svc.activity(ctx, user, id)
+// tools never show anyone else's. refresh reads it from Strava again.
+func (t *tools) ownActivity(ctx context.Context, user string, a athlete, id int64, refresh bool) (detailedActivity, mcpserver.Result, bool) {
+	d, err := t.svc.activity(ctx, user, id, refresh)
 	if err != nil {
 		if notFound(err) || isStatus(err, 403) {
 			return d, mcpserver.ErrorResult(fmt.Sprintf("Activity %d is not one of the user's activities on Strava.", id)), false

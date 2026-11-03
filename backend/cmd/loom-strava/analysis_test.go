@@ -417,9 +417,14 @@ func TestListActivities(t *testing.T) {
 	_, h, _ := newTestService(t, f)
 	connect(t, h, userA, "code-a")
 
+	// The newest 30 need one page: the history is not read for them.
 	r := callTool(t, h, userA, "list_activities", `{}`)
-	if r.IsError || !strings.Contains(r.Text, "newest first: 30\n") || !strings.Contains(r.Text, "[1] Mon 2026-09-07 08:00 · Ride 249") {
-		t.Fatalf("default list:\n%s", r.Text)
+	if r.IsError || !strings.Contains(r.Text, "newest first: 30\n") || !strings.Contains(r.Text, "[1] Mon 2026-09-07 08:00 · Ride 249") ||
+		f.count("/athlete/activities") != 1 {
+		t.Fatalf("default list (%d list calls):\n%s", f.count("/athlete/activities"), r.Text)
+	}
+	if callTool(t, h, userA, "list_activities", `{}`); f.count("/athlete/activities") != 1 {
+		t.Error("a repeat list read Strava again")
 	}
 	if len(r.Sources) != maxSources || !strings.Contains(r.Text, "\n- ") {
 		t.Errorf("sources = %d; items past 20 get no marker", len(r.Sources))
@@ -431,8 +436,7 @@ func TestListActivities(t *testing.T) {
 		t.Errorf("activities header %q", first)
 	}
 
-	// Paging: 250 activities are two pages of 200; the first page is the
-	// one cached from the call above.
+	// A filter reads on to the end (the second page): two calls in all.
 	r = callTool(t, h, userA, "list_activities", `{"limit":500,"sport_type":"virtualride"}`)
 	if !strings.Contains(r.Text, "newest first: 50\n") || f.count("/athlete/activities") != 2 {
 		t.Errorf("paged filter (%d list calls):\n%.300s", f.count("/athlete/activities"), r.Text)

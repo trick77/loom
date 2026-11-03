@@ -243,8 +243,8 @@ services:
 
   strava:
     # Strava for loom (docs/strava.md): each user's own activities over MCP.
-    # Holds every connected user's Strava tokens and computed metrics in its
-    # volume, plus the Strava app's client secret, so every route needs
+    # Holds every connected user's Strava tokens, stored activities and
+    # computed metrics in its volume, plus the Strava app's client secret, so every route needs
     # STRAVA_TOKEN. Opt-in via the profile; a dead sidecar only costs its tools.
     image: ghcr.io/trick77/loom-strava:latest
     profiles: ["strava"]

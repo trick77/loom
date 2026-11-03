@@ -143,7 +143,7 @@ func metricRows(u units, sport string) []metricRow {
 
 // storedFrom keeps the FTP- and zone-free stream metrics of m.
 func storedFrom(m rideMetrics, start time.Time) storedMetrics {
-	sm := storedMetrics{V: metricsVersion, Rev: entryRev, Start: start.Format("2006-01-02T15:04:05"), MovingS: m.MovingS, Vals: map[string]float64{}}
+	sm := storedMetrics{V: metricsVersion, Start: start.Format("2006-01-02T15:04:05"), MovingS: m.MovingS, Vals: map[string]float64{}}
 	put := func(k string, v float64) {
 		if finite(v) {
 			sm.Vals[k] = math.Round(v*100) / 100
@@ -157,9 +157,6 @@ func storedFrom(m rideMetrics, start time.Time) storedMetrics {
 		}
 	}
 	put("avg_hr", m.AvgHR)
-	put("hr_max10", m.HRMax10)
-	put("hr_20m", m.HR20m)
-	put("hr_20m_w", m.HR20mW)
 	put("ef", m.EF)
 	put("decoupling", m.Decoupling)
 	return sm
@@ -199,9 +196,12 @@ type comparison struct {
 	entries        []baseEntry // newest first
 	known, missing int
 	stoppedBy      string
-	same           []baseEntry
-	gaps           [][]float64 // per same-route ride, at gapStepM steps
-	table          *weekTable
+	// listPartial: the activity list is not read back to the window's start
+	// yet (the backfill stopped at the rate budget).
+	listPartial bool
+	same        []baseEntry
+	gaps        [][]float64 // per same-route ride, at gapStepM steps
+	table       *weekTable
 }
 
 // storeMetrics merges add into the user's metric file, unless the user
@@ -244,7 +244,7 @@ func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string
 func changes(add, have map[string]storedMetrics) bool {
 	for k, v := range add {
 		h, ok := have[k]
-		if !ok || h.V != v.V || h.Rev != v.Rev || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) {
+		if !ok || h.V != v.V || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) {
 			return true
 		}
 	}
@@ -258,10 +258,11 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 	local, utc := d.localStart(), d.utcStart()
 	offset := local.Sub(utc)
 	c := &comparison{weeks: weeks, mixIndoor: mixIndoor, from: weekStart(local).AddDate(0, 0, -7*weeks)}
-	list, _, err := t.svc.listActivities(ctx, user, c.from.Add(-offset).Unix()-1, utc.Unix(), maxListPages)
+	list, more, err := t.svc.listActivities(ctx, user, c.from.Add(-offset).Unix()-1, utc.Unix(), maxBackfillPages)
 	if err != nil {
 		return nil, err
 	}
+	c.listPartial = more
 	stored := t.loadMetrics(user, a.ID)
 	all := []summaryActivity{}
 	for _, x := range list {
@@ -279,20 +280,31 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 
 	// Cold start: streams newest first while the budget lasts.
 	added := map[string]storedMetrics{strconv.FormatInt(d.ID, 10): this}
-	var todo []summaryActivity
-	for _, e := range c.entries {
-		if !e.known && !e.act.Manual {
-			todo = append(todo, e.act)
-		}
-	}
-	read := t.readStreams(ctx, user, todo)
-	c.stoppedBy = read.stoppedBy
+	fetched := 0
 	for i := range c.entries {
 		e := &c.entries[i]
-		if sm, ok := read.got[e.act.ID]; ok {
-			e.sm, e.known = sm, true
-			added[strconv.FormatInt(e.act.ID, 10)] = sm
+		if e.known || e.act.Manual {
+			continue
 		}
+		if reason := t.budgetLeft(ctx, fetched); reason != "" {
+			c.stoppedBy = reason
+			break
+		}
+		sctx, cancel := context.WithTimeout(ctx, streamTimeout)
+		s, err := t.svc.streams(sctx, user, e.act.ID, false)
+		cancel()
+		fetched++
+		var rl *rateLimitedError
+		if errors.As(err, &rl) {
+			c.stoppedBy = "the Strava rate budget"
+			break
+		}
+		if err != nil {
+			continue
+		}
+		m := computeMetrics(s, 0, s.n, nil, nil)
+		e.sm, e.known = storedFrom(m, e.act.localStart()), true
+		added[strconv.FormatInt(e.act.ID, 10)] = e.sm
 	}
 	t.storeMetrics(user, a.ID, added, stored)
 	for _, e := range c.entries {
@@ -353,47 +365,18 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 	return c, nil
 }
 
-// streamsRead is what readStreams got: the stream metrics by activity id,
-// the ids whose read failed (a later call retries them), and why it stopped
-// before the end ("" = every activity tried).
-type streamsRead struct {
-	got       map[int64]storedMetrics
-	failed    map[int64]bool
-	stoppedBy string
-}
-
-// readStreams reads the streams of acts in order, within the rate and time
-// budget, and stores nothing.
-func (t *tools) readStreams(ctx context.Context, user string, acts []summaryActivity) streamsRead {
-	r := streamsRead{got: map[int64]storedMetrics{}, failed: map[int64]bool{}}
-	for i, x := range acts {
-		if reason := t.budgetLeft(ctx, i); reason != "" {
-			r.stoppedBy = reason
-			return r
-		}
-		sctx, cancel := context.WithTimeout(ctx, streamTimeout)
-		s, err := t.svc.streams(sctx, user, x.ID)
-		cancel()
-		var rl *rateLimitedError
-		if errors.As(err, &rl) {
-			r.stoppedBy = "the Strava rate budget"
-			return r
-		}
-		if err != nil {
-			r.failed[x.ID] = true
-			continue
-		}
-		r.got[x.ID] = storedFrom(computeMetrics(s, 0, s.n, nil, nil), x.localStart())
-	}
-	return r
-}
-
 // budgetLeft says why the baseline must stop reading streams; "" to go on.
 func (t *tools) budgetLeft(ctx context.Context, fetched int) string {
 	if fetched >= maxColdFetches {
 		return "the per-call limit"
 	}
-	if t.svc.rate.fraction15(t.svc.now()) >= coldBudget {
+	return t.svc.spent(ctx)
+}
+
+// spent says why a cold read (baseline streams, list backfill) must stop:
+// half the 15-minute budget gone, or the tool's time running short.
+func (s *service) spent(ctx context.Context) string {
+	if s.rate.fraction15(s.now()) >= coldBudget {
 		return "the Strava rate budget"
 	}
 	if dl, ok := ctx.Deadline(); ok && time.Until(dl) < minTimeLeft {
@@ -461,6 +444,7 @@ type analysisArgs struct {
 	MixIndoor bool            `json:"mix_indoor"`
 	FromKm    *float64        `json:"from_km"`
 	ToKm      *float64        `json:"to_km"`
+	Refresh   bool            `json:"refresh"`
 }
 
 func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpserver.Result {
@@ -493,7 +477,11 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if fail != nil {
 		return *fail
 	}
-	d, res, ok := t.ownActivity(ctx, user, a, id)
+	// A refresh reads detail, streams and zones from Strava again; the
+	// metrics computed from them replace the stored ones below.
+	fresh := args.Refresh && t.svc.mayRefresh(user, id)
+	defer t.svc.flushIndex(user)
+	d, res, ok := t.ownActivity(ctx, user, a, id, fresh)
 	if !ok {
 		return res
 	}
@@ -501,9 +489,12 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if zerr != nil {
 		z = athleteZones{}
 	}
-	s, err := t.svc.streams(ctx, user, id)
+	s, err := t.svc.streams(ctx, user, id, fresh)
 	if err != nil {
 		return failure(err)
+	}
+	if fresh {
+		t.svc.markRefreshed(user, id)
 	}
 	u := unitsOf(a)
 	pE, hE := powerEdges(z, a.FTP), hrEdges(z)
@@ -528,7 +519,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	// streams with the athlete's zones either way.
 	zoneNote := ""
 	if !section && s.n > 0 && hE != nil && s.hr != nil {
-		azs, err := t.svc.activityZones(ctx, user, id)
+		azs, err := t.svc.activityZones(ctx, user, id, fresh)
 		switch {
 		case summitRefused(err):
 			zoneNote = "computed from the streams: Strava's own activity zones " + msgSubscription
@@ -613,21 +604,8 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	}
 	if m.HasHRZones && m.MovingS > 0 {
 		line := "time in HR zones Z1..Z5: " + zoneText(m.HRZoneS)
-		notes := []string{}
 		if zoneNote != "" {
-			notes = append(notes, zoneNote)
-		}
-		// hE is set, so z.HeartRate is: the model must know the zones are
-		// Strava's age-based defaults, not the user's own.
-		if !z.HeartRate.CustomZones {
-			note := "Strava's default zones, usually age-based"
-			if _, ok := familyOf(d.SportType); ok {
-				note += "; hr_zones estimates the user's own"
-			}
-			notes = append(notes, note)
-		}
-		if len(notes) > 0 {
-			line += " (" + strings.Join(notes, "; ") + ")"
+			line += " (" + zoneNote + ")"
 		}
 		b.WriteString(line + "\n")
 	}
@@ -776,6 +754,9 @@ func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user st
 	if len(c.entries) == 0 {
 		b.WriteString("  no earlier " + noun + " in the window\n")
 	}
+	if c.listPartial {
+		b.WriteString("  partial: the activity list is not read back to the window's start yet (Strava rate budget); the next call reads the rest\n")
+	}
 	if c.missing > 0 {
 		reason := c.stoppedBy
 		if reason == "" {
@@ -858,7 +839,7 @@ func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user st
 			var gaps []float64
 			if thisAt != nil && t.svc.rate.fraction15(t.svc.now()) < refuseFraction {
 				sctx, cancel := context.WithTimeout(ctx, streamTimeout)
-				os2, err := t.svc.streams(sctx, user, x.ID)
+				os2, err := t.svc.streams(sctx, user, x.ID, false)
 				cancel()
 				if err == nil && os2.dist != nil {
 					other := elapsedAt(os2, gapStepM, len(thisAt))
@@ -1070,19 +1051,20 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 	if fail != nil {
 		return *fail
 	}
+	defer t.svc.flushIndex(user)
 	u := unitsOf(a)
 	stored := t.loadMetrics(user, a.ID)
 	added := map[string]storedMetrics{}
 	entries := make([]baseEntry, 0, len(ids))
 	for _, id := range ids {
-		d, res, ok := t.ownActivity(ctx, user, a, id)
+		d, res, ok := t.ownActivity(ctx, user, a, id, false)
 		if !ok {
 			return res
 		}
 		key := strconv.FormatInt(id, 10)
 		sm, known := stored[key]
 		if !known && !d.Manual {
-			s, err := t.svc.streams(ctx, user, id)
+			s, err := t.svc.streams(ctx, user, id, false)
 			if err != nil {
 				return failure(err)
 			}

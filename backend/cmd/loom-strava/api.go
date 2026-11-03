@@ -350,76 +350,126 @@ func (s *service) gear(ctx context.Context, user, id string) (gearDetail, error)
 	return cached[gearDetail](ctx, s, user, s.cache(user).profile, "gear/"+id, "/gear/"+url.PathEscape(id), nil)
 }
 
-func (s *service) activity(ctx context.Context, user string, id int64) (detailedActivity, error) {
-	return cached[detailedActivity](ctx, s, user, s.cache(user).detail, fmt.Sprintf("activity/%d", id),
-		fmt.Sprintf("/activities/%d", id), url.Values{"include_all_efforts": {"true"}})
+// storedRead reads one activity's answer of kind: memory c, the store,
+// then Strava (always Strava with refresh). keep sees what Strava answered,
+// with the athlete the read was made for, and says whether to store it; it
+// then replaces what was kept.
+func storedRead[T any](ctx context.Context, s *service, user string, id int64, kind string, c *lru, refresh bool,
+	path string, q url.Values, decode func([]byte) (T, error), keep func(v T, athlete int64) bool) (T, error) {
+	var zero T
+	key := kind + "/" + strconv.FormatInt(id, 10)
+	if !refresh {
+		if v, ok := c.get(key, s.now()); ok {
+			if t, ok := v.(T); ok {
+				return t, nil
+			}
+		}
+		if b, ok := s.loadBody(user, id, kind); ok {
+			if v, err := decode(b); err == nil {
+				c.put(key, v, s.now())
+				return v, nil
+			}
+		}
+	}
+	athlete := s.athleteOf(user)
+	b, err := s.getRaw(ctx, user, path, q)
+	if err != nil {
+		return zero, err
+	}
+	v, err := decode(b)
+	if err != nil {
+		return zero, fmt.Errorf("strava %s: %w", path, err)
+	}
+	c.put(key, v, s.now())
+	if keep == nil || keep(v, athlete) {
+		s.keepBody(user, athlete, id, kind, b)
+	} else if refresh {
+		// The older copy must not come back once memory forgets this one.
+		s.discardBody(user, id, kind)
+	}
+	return v, nil
 }
 
-// activityZones is Strava's own time in zones (Summit only).
-func (s *service) activityZones(ctx context.Context, user string, id int64) ([]activityZone, error) {
-	uc := s.cache(user)
-	return summitOnly[[]activityZone](ctx, s, user, uc.detail, uc.detail, "zones", fmt.Sprintf("zones/%d", id), fmt.Sprintf("/activities/%d/zones", id), nil)
+func decodeJSON[T any](b []byte) (T, error) {
+	var v T
+	err := json.Unmarshal(b, &v)
+	return v, err
 }
+
+// activity reads one activity's detail through the store. A detail of the
+// user's own is stored once settled and its summary goes into the list;
+// Strava no longer having it drops what was kept.
+func (s *service) activity(ctx context.Context, user string, id int64, refresh bool) (detailedActivity, error) {
+	d, err := storedRead(ctx, s, user, id, kindDetail, s.cache(user).detail, refresh,
+		fmt.Sprintf("/activities/%d", id), url.Values{"include_all_efforts": {"true"}}, decodeJSON[detailedActivity],
+		func(d detailedActivity, athlete int64) bool {
+			if athlete != 0 && d.Athlete.ID != 0 && d.Athlete.ID != athlete {
+				return false
+			}
+			ok := s.settled(user, d.summaryActivity)
+			s.noteActivity(user, athlete, d.summaryActivity)
+			return ok
+		})
+	if notFound(err) {
+		s.dropActivity(user, id)
+	}
+	return d, err
+}
+
+// activityZones is Strava's own time in zones (Summit only), through the
+// store, with summitOnly's day-long refusal.
+func (s *service) activityZones(ctx context.Context, user string, id int64, refresh bool) ([]activityZone, error) {
+	uc := s.cache(user)
+	if v, ok := uc.detail.get(refusedKey("zones"), s.now()); ok {
+		return nil, v.(error)
+	}
+	z, err := storedRead(ctx, s, user, id, kindZones, uc.detail, refresh,
+		fmt.Sprintf("/activities/%d/zones", id), nil, decodeJSON[[]activityZone], nil)
+	if summitRefused(err) {
+		uc.detail.put(refusedKey("zones"), err, s.now())
+	}
+	return z, err
+}
+
+func refusedKey(endpoint string) string { return "summit-refused/" + endpoint }
 
 // summitOnly reads a Summit-only path through values, and keeps a refusal
 // in refusals (the day-long detail cache), keyed by the endpoint alone: a
 // user without a subscription is refused for every activity and segment,
 // so one refused read a day is enough.
 func summitOnly[T any](ctx context.Context, s *service, user string, values, refusals *lru, endpoint, key, path string, q url.Values) (T, error) {
-	refusedKey := "summit-refused/" + endpoint
-	if v, ok := refusals.get(refusedKey, s.now()); ok {
+	if v, ok := refusals.get(refusedKey(endpoint), s.now()); ok {
 		var zero T
 		return zero, v.(error)
 	}
 	out, err := cached[T](ctx, s, user, values, key, path, q)
 	if summitRefused(err) {
-		refusals.put(refusedKey, err, s.now())
+		refusals.put(refusedKey(endpoint), err, s.now())
 	}
 	return out, err
 }
 
-// streams reads one activity's streams; an activity without any (a manual
-// entry) answers 404, which is an empty set here.
-func (s *service) streams(ctx context.Context, user string, id int64) (series, error) {
+// streams reads one activity's streams through the store. Streams are final
+// at upload, so every answer is stored at once. An activity without any (a
+// manual entry) answers 404, which is an empty set here and not stored.
+func (s *service) streams(ctx context.Context, user string, id int64, refresh bool) (series, error) {
 	c := s.cache(user).streams
-	key := strconv.FormatInt(id, 10)
-	if v, ok := c.get(key, s.now()); ok {
-		return v.(series), nil
+	sr, err := storedRead(ctx, s, user, id, kindStreams, c, refresh,
+		fmt.Sprintf("/activities/%d/streams", id), url.Values{"keys": {streamKeys}, "key_by_type": {"true"}},
+		func(b []byte) (series, error) {
+			var set streamSet
+			if err := json.Unmarshal(b, &set); err != nil {
+				return series{}, err
+			}
+			return buildSeries(set), nil
+		}, nil)
+	if notFound(err) {
+		sr = buildSeries(streamSet{})
+		c.put(kindStreams+"/"+strconv.FormatInt(id, 10), sr, s.now())
+		return sr, nil
 	}
-	var set streamSet
-	err := s.get(ctx, user, fmt.Sprintf("/activities/%d/streams", id), url.Values{"keys": {streamKeys}, "key_by_type": {"true"}}, &set)
-	if err != nil && !notFound(err) {
-		return series{}, err
-	}
-	sr := buildSeries(set)
-	c.put(key, sr, s.now())
-	return sr, nil
+	return sr, err
 }
 
 // activitiesPerPage is Strava's maximum.
 const activitiesPerPage = 200
-
-// listActivities reads the user's activities between after and before
-// (unix seconds; 0 = open), up to maxPages pages. more says a page was full
-// at the last one, so there may be more.
-func (s *service) listActivities(ctx context.Context, user string, after, before int64, maxPages int) ([]summaryActivity, bool, error) {
-	var out []summaryActivity
-	for page := 1; page <= maxPages; page++ {
-		q := url.Values{"per_page": {strconv.Itoa(activitiesPerPage)}, "page": {strconv.Itoa(page)}}
-		if after > 0 {
-			q.Set("after", strconv.FormatInt(after, 10))
-		}
-		if before > 0 {
-			q.Set("before", strconv.FormatInt(before, 10))
-		}
-		got, err := cached[[]summaryActivity](ctx, s, user, s.cache(user).lists, "list?"+q.Encode(), "/athlete/activities", q)
-		if err != nil {
-			return out, false, err
-		}
-		out = append(out, got...)
-		if len(got) < activitiesPerPage {
-			return out, false, nil
-		}
-	}
-	return out, true, nil
-}

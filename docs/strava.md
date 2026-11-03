@@ -25,10 +25,9 @@ comment text, segment explore or leaderboards, and no write scope.
 | `profile` | athlete, FTP, weight, bikes and shoes, HR and power zones |
 | `totals` | recent, year-to-date and all-time totals (Strava counts only Everyone-visible activities here) |
 | `list_activities` | activities by date range and sport, with totals per sport and week; attaches `strava_activities.csv` |
-| `get_activity` | one activity in full: laps, splits, best efforts, segment efforts, gear, device |
+| `get_activity` | one activity in full: laps, splits, best efforts, segment efforts, gear, device; `refresh` reads it from Strava again |
 | `activity_analysis` | metrics from the streams (NP, IF, TSS, power curve, zones, decoupling, climbs, intervals, per-km rows), always compared with the user's same-sport activities of the last `weeks` (default 6); attaches the CSVs below |
 | `compare_activities` | 2-5 activities side by side |
-| `hr_zones` | max HR, threshold HR (LTHR) and Friel zones per sport (cycling, running) from the user's own streams of the last 365 days, next to Strava's zones |
 | `gear`, `routes`, `segments` | gear details, own routes, starred segments and own efforts (efforts need a Strava subscription) |
 
 Each activity named comes with a link to it on Strava (citation and attribution).
@@ -39,37 +38,41 @@ Each activity named comes with a link to it on Strava (citation and attribution)
 `_baseline`, `_same_route`, `strava_weeks.csv`, `strava_activities.csv`; columns in `sandbox/loomcharts/__init__.py`).
 loom keeps them for the running turn only and hands them to `run_python` by name; they are never stored, shown or put
 into the prompt. `loomcharts` in the sandbox image draws them in loom's style. A follow-up turn asks the tool again:
-the sidecar answers from its cache.
+the sidecar answers from its store.
 
 ## Limits and storage
 
 Strava allows 100 reads per 15 minutes and 1000 a day, per app. The sidecar reads the rate headers and refuses past
-90 % with the reset time. Activity details and streams are cached in memory for 24 h; list pages 5 min; profile and
-gear 1 h. Stream-derived metrics are kept per user in `/data/metrics/<loom id>.json` (no raw streams), so each
-activity's streams are fetched once; a first comparison stops at half the 15-minute budget and says what is still
-missing.
+90 % with the reset time.
 
-### Heart-rate zones
+Activities barely change after upload, so every activity read is kept per user in `/data/activities/<loom id>/`
+(0600, gzipped Strava answers) and read from there first: memory, then disk, then Strava. A restart costs no reread.
 
-Strava's default zones (`custom_zones: false`) are mostly 220 minus age: about a zone off for trained athletes, whose
-threshold sits higher relative to max. `hr_zones` derives them instead from two stored values per activity, `hr_max10`
-(best 10 s mean HR) and `hr_20m` (best 20 min): max HR is the highest `hr_max10` a second activity comes within 5 bpm
-of (a strap spike or cadence lock is one activity's), LTHR is 95 % of the best `hr_20m` (Friel's 20-minute test), on
-rides checked against FTP via `hr_20m_w`, the power over those same 20 minutes (a ride's best 20-min power can be a
-different stretch). Families are explicit: cycling = Ride, GravelRide,
-MountainBikeRide, VirtualRide; running = Run, TrailRun, VirtualRun (5-10 bpm higher); e-bike, walk, hike are out. It
-reads streams only for the hardest activities not read yet (top max HR and top 20-min-plus average HR, in turns),
-within the same budget; a later call reads more. The zones themselves are never stored: a new hard effort moves
-them. `activity_analysis` keeps bucketing time in zones with Strava's zones (as Strava shows them) and says when
-those are the defaults.
+- `index.json.gz`: every activity summary ever listed. The history is read newest first in pages of 200, only as far
+  back as a call needs (a window to its start, a sport filter 3 pages, the newest rows as many pages as the limit),
+  and at most until half the 15-minute budget: Strava's budget is the app's, shared by every user. Later calls go on
+  from there; `list_activities` says when older ones are still missing. Every 5 min at most, the 30 days before the
+  newest activity are read again: uploads arrive and deletions or retags there go. An older change shows up only
+  when that activity is read itself.
+- `<id>.detail.json.gz`, `.streams.json.gz`, `.zones.json.gz`: what Strava answered for one activity, replaced by
+  every newer answer. A detail is stored only an hour after the activity ended and an hour after a list first
+  brought it (Strava matches segments after the upload, which can be a day late); streams at once. Streams are
+  capped at 1 GB per user, least recently read first out.
+- `refresh: true` on `get_activity` or `activity_analysis` reads the activity from Strava again: for an activity
+  the user changed there (cropped, corrected, retagged). Not twice within 10 min. A refreshed detail drops the stored
+  streams and metrics, so the next analysis reads them again.
+- `activityRetention` (`activitystore.go`) bounds the age of anything stored; 0, the default, keeps it for good.
+  Set, an older body is read again and the whole store starts over once its index is that old.
+  Strava's API agreement is read by some as a 7-day cache limit; loom shows each user only their own data, the case
+  it exempts.
 
-New stored keys bump the per-entry `entryRev`, never `metricsVersion`: a `metricsVersion` bump drops every user's
-whole metrics file and re-reads every stream against the rate budget. Key presence alone can't tell "stored before
-the key" from "activity has no HR"; it re-read every HR-less activity on every call.
+Stream-derived metrics are kept per user in `/data/metrics/<loom id>.json`; IF and TSS are derived from them with the
+current FTP. A first comparison stops at half the 15-minute budget and says what is still missing. Profile, zones,
+gear, routes and segments are cached in memory only (1 h).
 
 Tokens live in `/data/state.json` (0600), one entry per loom user. Access tokens last 6 h; refresh rotates the refresh
 token and the sidecar stores the new one before using it. Disconnect revokes the token at Strava and deletes the
-user's entry and metrics.
+user's entry, metrics and activities; a reconnect to another Strava athlete starts empty.
 
 ## Setup
 
