@@ -74,7 +74,9 @@ func newFakeStrava(t *testing.T) *fakeStrava {
 	f := &fakeStrava{
 		t: t, now: time.Date(2026, 11, 3, 10, 2, 0, 0, time.UTC),
 		codes: map[string]int64{}, access: map[string]tokenInfo{}, refresh: map[string]int64{}, dead: map[string]bool{},
-		scope: "read,read_all,profile:read_all,activity:read_all", calls: map[string]int{}, revokeOK: true,
+		// As Strava answered in production: spaces, unlike the consent
+		// redirect's commas.
+		scope: "activity:read_all profile:read_all read read_all", calls: map[string]int{}, revokeOK: true,
 		athletes: map[int64]map[string]any{}, zones: map[int64]any{}, activities: map[int64][]map[string]any{},
 		streams: map[int64]map[string]any{}, summit: map[int64]bool{}, failStreams: map[int64]bool{},
 		rateLimit15: 100, rateLimitDay: 1000,
@@ -515,10 +517,17 @@ func (r toolResult) file(name string) string {
 	return ""
 }
 
-// connect walks a user through PUT /connection with the athlete's code.
+// connect walks a user through PUT /connection with the athlete's code, every
+// box ticked on the consent page.
 func connect(t *testing.T, h http.Handler, user, code string) map[string]any {
 	t.Helper()
-	status, body := request(t, h, http.MethodPut, "/connection", user, fmt.Sprintf(`{"code":%q,"scope":"read,activity:read_all"}`, code))
+	return connectScope(t, h, user, code, "read,activity:read_all,profile:read_all,read_all")
+}
+
+// connectScope is connect with the consent redirect reporting scope.
+func connectScope(t *testing.T, h http.Handler, user, code, scope string) map[string]any {
+	t.Helper()
+	status, body := request(t, h, http.MethodPut, "/connection", user, fmt.Sprintf(`{"code":%q,"scope":%q}`, code, scope))
 	if status != 200 {
 		t.Fatalf("connect %s: %d %v", user, status, body)
 	}

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -318,12 +319,13 @@ func TestConnection_lifecycle(t *testing.T) {
 	}
 }
 
-func TestConnection_missingScopesAndScopeFallback(t *testing.T) {
+// Unticked boxes count even when the token answer lists every scope: the
+// consent page's report is what the user granted.
+func TestConnection_missingScopesFromConsentPage(t *testing.T) {
 	f := newFakeStrava(t)
 	f.addAthlete(1, "Anna", "code-a", 265)
-	f.scope = "" // the token answer carries none: the consent page's report counts
 	_, h, _ := newTestService(t, f)
-	st := connect(t, h, userA, "code-a")
+	st := connectScope(t, h, userA, "code-a", "read,activity:read_all")
 	got, _ := json.Marshal(st["scopes"])
 	if string(got) != `["read","activity:read_all"]` {
 		t.Errorf("scopes = %s", got)
@@ -331,6 +333,35 @@ func TestConnection_missingScopesAndScopeFallback(t *testing.T) {
 	missing, _ := json.Marshal(st["missingScopes"])
 	if string(missing) != `["read_all","profile:read_all"]` {
 		t.Errorf("missingScopes = %s", missing)
+	}
+}
+
+// Without the consent page's report the token answer's spaced list counts,
+// stored comma-joined.
+func TestConnection_tokenAnswerScopeFallback(t *testing.T) {
+	f := newFakeStrava(t)
+	f.addAthlete(1, "Anna", "code-a", 265)
+	_, h, dir := newTestService(t, f)
+	st := connectScope(t, h, userA, "code-a", "")
+	if m := st["missingScopes"].([]any); len(m) != 0 {
+		t.Errorf("missingScopes = %v", m)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, stateFile))
+	if !strings.Contains(string(b), `"scope":"activity:read_all,profile:read_all,read,read_all"`) {
+		t.Errorf("state file: %s", b)
+	}
+}
+
+// A connection stored while the token answer's spaces went unsplit reads
+// whole without reconnecting.
+func TestConnection_scopeSeparators(t *testing.T) {
+	stored := "activity:read_all profile:read_all read read_all"
+	if got := missingScopes(splitScopes(stored)); len(got) != 0 {
+		t.Errorf("stored %q: missing %v", stored, got)
+	}
+	got := splitScopes(" read,activity:read_all  read\tread_all,")
+	if !slices.Equal(got, []string{"read", "activity:read_all", "read_all"}) {
+		t.Errorf("mixed separators: %v", got)
 	}
 }
 
