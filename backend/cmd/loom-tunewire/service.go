@@ -12,14 +12,21 @@ import (
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
+	"github.com/trick77/loom/internal/mcpserver"
 )
 
 // maxUserTokenBytes bounds a pasted media-user-token; real ones are a few
 // hundred bytes.
 const maxUserTokenBytes = 8 << 10
 
+// maxUserIDBytes bounds a loom user id; loom's are short opaque strings.
+const maxUserIDBytes = 128
+
 var (
 	errNotConnected = errors.New("no Apple Music token set")
+	// errNoUser: loom sent no user (mcpserver.UserHeader). Every account is one
+	// person's, so a call that names nobody reads nothing.
+	errNoUser = errors.New("no loom user given")
 	// errRejected: Apple refused a pasted token; the old one stays.
 	errRejected = errors.New("apple music refused the token")
 	// errMalformed: the pasted text cannot be a token at all.
@@ -56,23 +63,25 @@ type api interface {
 	LatestRelease(ctx context.Context, storefront, artistID string) (applemusic.Item, bool, error)
 }
 
-// service holds the one user's token and records what each call learns about
-// it, so the settings page can say whether it still works.
+// service holds one Apple Music account per loom user and records what each
+// call learns about it, so that user's settings page can say whether it still
+// works. A call reads only its caller's account (mcpserver.User).
 type service struct {
 	api        api
 	store      fileStore
 	storefront string
 	now        func() time.Time
 
-	// tokenMu serializes the token's changes (SetToken, ClearToken) whole,
+	// tokenMu serializes the tokens' changes (SetToken, ClearToken) whole,
 	// Apple's check included: a disconnect that arrives during a paste's check
 	// is applied after it, never undone by it.
 	tokenMu sync.Mutex
 	mu      sync.Mutex
 	st      state
 
-	// new_releases' memory (releases.go): latest releases per artist, the
-	// library's artists, and how long the artist lookups may run.
+	// new_releases' memory (releases.go): latest releases per artist (catalog
+	// data, shared), each user's library artists, and how long the artist
+	// lookups may run.
 	releases      releaseCache
 	artists       artistsCache
 	releaseBudget time.Duration
@@ -86,8 +95,22 @@ func newService(a api, store fileStore, storefront string) (*service, error) {
 	return &service{api: a, store: store, storefront: storefront, now: time.Now, st: st, releaseBudget: releaseBudget}, nil
 }
 
-// status is what loom's settings page shows. The token itself never leaves.
-// PlaylistCount is absent while unknown.
+// checkUser validates a loom user id from the request.
+func checkUser(user string) error {
+	if user == "" || len(user) > maxUserIDBytes {
+		return errNoUser
+	}
+	return nil
+}
+
+// callerOf is the loom user a tool call is made for.
+func callerOf(ctx context.Context) (string, error) {
+	user := mcpserver.User(ctx)
+	return user, checkUser(user)
+}
+
+// status is what loom's settings page shows its user. The token itself never
+// leaves. PlaylistCount is absent while unknown.
 type status struct {
 	State         string    `json:"state"` // never, connected, expired, error
 	Storefront    string    `json:"storefront,omitempty"`
@@ -98,19 +121,19 @@ type status struct {
 	ErrorKind     string    `json:"errorKind,omitempty"`
 }
 
-func (s *service) status() status {
+func (s *service) status(user string) status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	st := s.st
-	if st.UserToken == "" {
+	a, ok := s.st.Users[user]
+	if !ok || a.UserToken == "" {
 		return status{State: "never"}
 	}
-	out := status{Storefront: st.Storefront, PlaylistCount: st.PlaylistCount, SetAt: st.SetAt, LastOKAt: st.LastOKAt,
-		LastError: st.LastError, ErrorKind: st.LastErrorKind}
+	out := status{Storefront: a.Storefront, PlaylistCount: a.PlaylistCount, SetAt: a.SetAt, LastOKAt: a.LastOKAt,
+		LastError: a.LastError, ErrorKind: a.LastErrorKind}
 	switch {
-	case st.Expired:
+	case a.Expired:
 		out.State = "expired"
-	case st.LastError != "":
+	case a.LastError != "":
 		out.State = "error"
 	default:
 		out.State = "connected"
@@ -118,19 +141,26 @@ func (s *service) status() status {
 	return out
 }
 
-// check asks Apple once, with one request, so the status reflects its answer
-// now.
-func (s *service) check(ctx context.Context) status {
-	tok, err := s.userToken()
+// accounts is how many loom users have a token stored.
+func (s *service) accounts() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.st.Users)
+}
+
+// check asks Apple once, with one request, so the user's status reflects its
+// answer now.
+func (s *service) check(ctx context.Context, user string) status {
+	tok, err := s.tokenOf(user)
 	if err != nil {
-		return s.status()
+		return s.status(user)
 	}
 	n, exact, err := s.api.LibrarySize(ctx, tok)
 	if err != nil {
 		slog.InfoContext(ctx, "tunewire check failed", "err", err)
 	}
-	s.record(tok, err, countOf(n, exact))
-	return s.status()
+	s.record(user, tok, err, countOf(n, exact))
+	return s.status(user)
 }
 
 func countOf(n int, exact bool) *int {
@@ -140,46 +170,61 @@ func countOf(n int, exact bool) *int {
 	return &n
 }
 
-func (s *service) userToken() (string, error) {
+// tokenOf is user's own token.
+func (s *service) tokenOf(user string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.st.UserToken == "" {
+	a, ok := s.st.Users[user]
+	if !ok || a.UserToken == "" {
 		return "", errNotConnected
 	}
-	return s.st.UserToken, nil
+	return a.UserToken, nil
 }
 
-// record notes the outcome of a library call made with token; count, when not
-// nil, is the library's playlist count. A call that raced a token change says
-// nothing about the new one and is dropped.
-func (s *service) record(token string, err error, count *int) {
+// userToken is the calling user's token.
+func (s *service) userToken(ctx context.Context) (string, string, error) {
+	user, err := callerOf(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	tok, err := s.tokenOf(user)
+	return user, tok, err
+}
+
+// record notes the outcome of a library call made with user's token; count,
+// when not nil, is the library's playlist count. A call that raced a token
+// change says nothing about the new one and is dropped.
+func (s *service) record(user, token string, err error, count *int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.st.UserToken != token {
+	a, ok := s.st.Users[user]
+	if !ok || a.UserToken != token {
 		return
 	}
 	switch {
 	case err == nil:
-		before := s.st
-		s.st.LastOKAt, s.st.LastError, s.st.LastErrorKind, s.st.Expired = s.now().UTC(), "", "", false
+		before := a
+		a.LastOKAt, a.LastError, a.LastErrorKind, a.Expired = s.now().UTC(), "", "", false
 		if count != nil {
-			s.st.PlaylistCount = count
+			a.PlaylistCount = count
 		}
 		// Only "last checked" moved: keep it in memory, write it to disk now
 		// and then. Every tool call rewriting and fsyncing the file, under
 		// the lock, would hold up the others for nothing.
-		if sameButOK(before, s.st) && s.st.LastOKAt.Sub(before.LastOKAt) < okSaveInterval {
+		if sameButOK(before, a) && a.LastOKAt.Sub(before.LastOKAt) < okSaveInterval {
+			s.st.Users[user] = a
 			return
 		}
 	case errors.Is(err, applemusic.ErrUserTokenExpired):
-		s.st.Expired, s.st.LastError, s.st.LastErrorKind = true, err.Error(), ""
+		a.Expired, a.LastError, a.LastErrorKind = true, err.Error(), ""
 	case errors.Is(err, applemusic.ErrNotFound), transient(err):
 		// Says nothing about the token: a missing playlist, a call that ran out
 		// of time or was canceled.
 		return
 	default:
-		s.st.LastError, s.st.LastErrorKind = err.Error(), errorKind(err)
+		a.LastError, a.LastErrorKind = err.Error(), errorKind(err)
 	}
+	s.st.Users[user] = a
 	if err := s.store.save(s.st); err != nil {
 		slog.Error("tunewire: saving state failed", "err", err)
 	}
@@ -190,7 +235,7 @@ func (s *service) record(token string, err error, count *int) {
 const okSaveInterval = 10 * time.Minute
 
 // sameButOK reports whether a and b differ in LastOKAt at most.
-func sameButOK(a, b state) bool {
+func sameButOK(a, b account) bool {
 	a.LastOKAt, b.LastOKAt = time.Time{}, time.Time{}
 	ac, bc := a.PlaylistCount, b.PlaylistCount
 	a.PlaylistCount, b.PlaylistCount = nil, nil
@@ -213,96 +258,92 @@ func errorKind(err error) string {
 	return errorKindUpstream
 }
 
-// Playlists lists the library playlists; truncated says there are more.
+// Playlists lists the caller's library playlists; truncated says there are
+// more.
 func (s *service) Playlists(ctx context.Context) ([]applemusic.Playlist, bool, error) {
-	tok, err := s.userToken()
+	user, tok, err := s.userToken(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	list, truncated, err := s.api.Playlists(ctx, tok)
-	s.record(tok, err, countOf(len(list), err == nil && !truncated))
+	s.record(user, tok, err, countOf(len(list), err == nil && !truncated))
 	return list, truncated, err
 }
 
-// Playlist reads one playlist's details by id.
+// Playlist reads one of the caller's playlists by id.
 func (s *service) Playlist(ctx context.Context, id string) (applemusic.Playlist, error) {
-	tok, err := s.userToken()
-	if err != nil {
-		return applemusic.Playlist{}, err
-	}
-	p, err := s.api.Playlist(ctx, tok, id)
-	s.record(tok, err, nil)
-	return p, err
+	return withToken(ctx, s, func(tok string) (applemusic.Playlist, error) { return s.api.Playlist(ctx, tok, id) })
 }
 
-// PlaylistTracks reads one playlist; truncated says it holds more.
+// PlaylistTracks reads one of the caller's playlists; truncated says it holds
+// more.
 func (s *service) PlaylistTracks(ctx context.Context, id string) ([]applemusic.Track, bool, error) {
-	tok, err := s.userToken()
+	user, tok, err := s.userToken(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	tracks, truncated, err := s.api.PlaylistTracks(ctx, tok, id)
-	s.record(tok, err, nil)
+	s.record(user, tok, err, nil)
 	return tracks, truncated, err
 }
 
-// withToken runs a library call with the user's token and records what it
-// learned about the token.
-func withToken[T any](s *service, call func(tok string) (T, error)) (T, error) {
-	tok, err := s.userToken()
+// withToken runs a library call with the caller's token and records what it
+// learned about that token.
+func withToken[T any](ctx context.Context, s *service, call func(tok string) (T, error)) (T, error) {
+	user, tok, err := s.userToken(ctx)
 	if err != nil {
 		var zero T
 		return zero, err
 	}
 	v, err := call(tok)
-	s.record(tok, err, nil)
+	s.record(user, tok, err, nil)
 	return v, err
 }
 
-// ownerStorefront is the owner's own storefront, learned when the token was
-// set, else the configured one: the owner's tools read the catalog the owner
-// listens in.
-func (s *service) ownerStorefront() string {
+// ownerStorefront is the caller's own storefront, learned when the token was
+// set, else the configured one: the caller's tools read the catalog the
+// caller listens in.
+func (s *service) ownerStorefront(ctx context.Context) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.st.Storefront != "" {
-		return s.st.Storefront
+	if a, ok := s.st.Users[mcpserver.User(ctx)]; ok && a.Storefront != "" {
+		return a.Storefront
 	}
 	return s.storefront
 }
 
-// RecentlyPlayed lists the owner's recently played tracks.
+// RecentlyPlayed lists the caller's recently played tracks.
 func (s *service) RecentlyPlayed(ctx context.Context) ([]applemusic.Item, error) {
-	return withToken(s, func(tok string) ([]applemusic.Item, error) { return s.api.RecentlyPlayed(ctx, tok) })
+	return withToken(ctx, s, func(tok string) ([]applemusic.Item, error) { return s.api.RecentlyPlayed(ctx, tok) })
 }
 
-// HeavyRotation lists what the owner played most lately.
+// HeavyRotation lists what the caller played most lately.
 func (s *service) HeavyRotation(ctx context.Context) ([]applemusic.Item, error) {
-	return withToken(s, func(tok string) ([]applemusic.Item, error) { return s.api.HeavyRotation(ctx, tok) })
+	return withToken(ctx, s, func(tok string) ([]applemusic.Item, error) { return s.api.HeavyRotation(ctx, tok) })
 }
 
-// RecentlyAdded lists what the owner added to the library lately.
+// RecentlyAdded lists what the caller added to the library lately.
 func (s *service) RecentlyAdded(ctx context.Context) ([]applemusic.Item, error) {
-	return withToken(s, func(tok string) ([]applemusic.Item, error) { return s.api.RecentlyAdded(ctx, tok) })
+	return withToken(ctx, s, func(tok string) ([]applemusic.Item, error) { return s.api.RecentlyAdded(ctx, tok) })
 }
 
-// Recommendations lists Apple's personal picks for the owner.
+// Recommendations lists Apple's personal picks for the caller.
 func (s *service) Recommendations(ctx context.Context) ([]applemusic.Recommendation, error) {
-	return withToken(s, func(tok string) ([]applemusic.Recommendation, error) { return s.api.Recommendations(ctx, tok) })
+	return withToken(ctx, s, func(tok string) ([]applemusic.Recommendation, error) { return s.api.Recommendations(ctx, tok) })
 }
 
-// MixTracks reads a catalog playlist (a personal mix) in the owner's
-// storefront, with the owner's token.
+// MixTracks reads a catalog playlist (a personal mix) in the caller's
+// storefront, with the caller's token.
 func (s *service) MixTracks(ctx context.Context, playlistID string) ([]applemusic.Item, error) {
-	sf := s.ownerStorefront()
-	return withToken(s, func(tok string) ([]applemusic.Item, error) {
+	sf := s.ownerStorefront(ctx)
+	return withToken(ctx, s, func(tok string) ([]applemusic.Item, error) {
 		return s.api.CatalogPlaylistTracks(ctx, tok, sf, playlistID)
 	})
 }
 
 // ArtistCatalogID maps a library artist to its catalog artist; "" for none.
 func (s *service) ArtistCatalogID(ctx context.Context, libraryID string) (string, error) {
-	return withToken(s, func(tok string) (string, error) { return s.api.ArtistCatalogID(ctx, tok, libraryID) })
+	return withToken(ctx, s, func(tok string) (string, error) { return s.api.ArtistCatalogID(ctx, tok, libraryID) })
 }
 
 // Search looks term up in the configured storefront's catalog: no user token.
@@ -310,11 +351,14 @@ func (s *service) Search(ctx context.Context, term string, kinds []string, limit
 	return s.api.Search(ctx, s.storefront, term, kinds, limit)
 }
 
-// SetToken checks a pasted token with Apple (two requests) and stores it only
-// if Apple accepts it; a refused one leaves the old token in place. When the
-// caller gave up meanwhile (loom's timeout), nothing is stored: loom has told
-// the user it failed.
-func (s *service) SetToken(ctx context.Context, raw string) (status, error) {
+// SetToken checks user's pasted token with Apple (two requests) and stores it
+// as that user's only if Apple accepts it; a refused one leaves the old token
+// in place. When the caller gave up meanwhile (loom's timeout), nothing is
+// stored: loom has told the user it failed.
+func (s *service) SetToken(ctx context.Context, user, raw string) (status, error) {
+	if err := checkUser(user); err != nil {
+		return status{}, err
+	}
 	tok, err := normalizeToken(raw)
 	if err != nil {
 		return status{}, err
@@ -335,14 +379,15 @@ func (s *service) SetToken(ctx context.Context, raw string) (status, error) {
 	if err := ctx.Err(); err != nil {
 		return status{}, err
 	}
-	s.mu.Lock()
-	next := state{DevToken: s.st.DevToken, DevTokenExp: s.st.DevTokenExp,
-		UserToken: tok, Storefront: sf, SetAt: s.now().UTC(), LastOKAt: s.now().UTC()}
+	a := account{UserToken: tok, Storefront: sf, SetAt: s.now().UTC(), LastOKAt: s.now().UTC()}
 	if countErr == nil {
-		next.PlaylistCount = countOf(n, exact)
+		a.PlaylistCount = countOf(n, exact)
 	} else if !transient(countErr) {
-		next.LastError, next.LastErrorKind = countErr.Error(), errorKind(countErr)
+		a.LastError, a.LastErrorKind = countErr.Error(), errorKind(countErr)
 	}
+	s.mu.Lock()
+	next := s.st.clone()
+	next.Users[user] = a
 	err = s.store.save(next)
 	if err == nil {
 		s.st = next
@@ -352,15 +397,20 @@ func (s *service) SetToken(ctx context.Context, raw string) (status, error) {
 		slog.ErrorContext(ctx, "tunewire: saving the token failed", "err", err)
 		return status{}, errStore
 	}
-	return s.status(), nil
+	s.artists.forget(user)
+	return s.status(user), nil
 }
 
-// ClearToken forgets the user token, keeping the developer token.
-func (s *service) ClearToken() (status, error) {
+// ClearToken forgets user's token; every other account stays.
+func (s *service) ClearToken(user string) (status, error) {
+	if err := checkUser(user); err != nil {
+		return status{}, err
+	}
 	s.tokenMu.Lock()
 	defer s.tokenMu.Unlock()
 	s.mu.Lock()
-	next := state{DevToken: s.st.DevToken, DevTokenExp: s.st.DevTokenExp}
+	next := s.st.clone()
+	delete(next.Users, user)
 	err := s.store.save(next)
 	if err == nil {
 		s.st = next
@@ -370,7 +420,8 @@ func (s *service) ClearToken() (status, error) {
 		slog.Error("tunewire: saving the cleared state failed", "err", err)
 		return status{}, errStore
 	}
-	return s.status(), nil
+	s.artists.forget(user)
+	return s.status(user), nil
 }
 
 // devToken is the developer token kept from an earlier run.

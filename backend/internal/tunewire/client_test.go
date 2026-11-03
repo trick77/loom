@@ -9,13 +9,16 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/trick77/loom/internal/mcpserver"
 )
 
 func TestClient(t *testing.T) {
-	var lastBody, lastAuth, lastPath string
+	var lastBody, lastAuth, lastPath, lastUser string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		lastBody, lastAuth, lastPath = string(b), r.Header.Get("Authorization"), r.Method+" "+r.URL.RequestURI()
+		lastUser = r.Header.Get(mcpserver.UserHeader)
 		switch {
 		case r.Method == http.MethodPut && strings.Contains(lastBody, "bad"):
 			w.WriteHeader(http.StatusUnprocessableEntity)
@@ -44,38 +47,43 @@ func TestClient(t *testing.T) {
 	c := New(srv.URL+"/", "tok")
 	ctx := context.Background()
 
-	st, err := c.Status(ctx, false)
+	st, err := c.Status(ctx, "usr_1", false)
 	if err != nil || st.State != "connected" || st.PlaylistCount == nil || *st.PlaylistCount != 7 || st.LastOKAt.IsZero() {
 		t.Fatalf("status: %+v %v", st, err)
 	}
-	if lastAuth != "Bearer tok" || lastPath != "GET /status" {
-		t.Errorf("request: %s %s", lastAuth, lastPath)
+	if lastAuth != "Bearer tok" || lastPath != "GET /status" || lastUser != "usr_1" {
+		t.Errorf("request: %s %s user %q", lastAuth, lastPath, lastUser)
 	}
-	if _, _ = c.Status(ctx, true); lastPath != "GET /status?check=1" {
+	if _, _ = c.Status(ctx, "usr_1", true); lastPath != "GET /status?check=1" {
 		t.Errorf("check path: %s", lastPath)
 	}
-	if st, err := c.SetToken(ctx, "good"); err != nil || st.State != "connected" || lastBody != `{"token":"good"}` {
-		t.Errorf("set: %+v %v %s", st, err, lastBody)
+	if st, err := c.SetToken(ctx, "usr_2", "good"); err != nil || st.State != "connected" || lastBody != `{"token":"good"}` || lastUser != "usr_2" {
+		t.Errorf("set: %+v %v %s user %q", st, err, lastBody, lastUser)
 	}
 	for token, want := range map[string]string{
 		"bad": CodeRejected, "a;b": CodeMalformed, "down": CodeUpstream, "broken": CodeBridge, "disk": CodeStorage,
 	} {
 		var e *Error
-		if _, err := c.SetToken(ctx, token); !errors.As(err, &e) || e.Code != want || e.Reason == "" {
+		if _, err := c.SetToken(ctx, "usr_1", token); !errors.As(err, &e) || e.Code != want || e.Reason == "" {
 			t.Errorf("%s: %v, want code %s", token, err, want)
 		}
 	}
-	if _, err := c.SetToken(ctx, "disk"); !errors.Is(err, ErrUnavailable) {
+	if _, err := c.SetToken(ctx, "usr_1", "disk"); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("storage is not unavailable: %v", err)
 	}
-	if _, err := c.SetToken(ctx, "bad"); errors.Is(err, ErrUnavailable) {
+	if _, err := c.SetToken(ctx, "usr_1", "bad"); errors.Is(err, ErrUnavailable) {
 		t.Errorf("a rejection counted as unavailable: %v", err)
 	}
-	if _, err := c.SetToken(ctx, "garbage"); !errors.Is(err, ErrUnavailable) {
+	if _, err := c.SetToken(ctx, "usr_1", "garbage"); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("bad json: %v", err)
 	}
-	if st, err := c.ClearToken(ctx); err != nil || st.State != "never" || lastPath != "DELETE /token" {
-		t.Errorf("clear: %+v %v", st, err)
+	if st, err := c.ClearToken(ctx, "usr_3"); err != nil || st.State != "never" || lastPath != "DELETE /token" || lastUser != "usr_3" {
+		t.Errorf("clear: %+v %v user %q", st, err, lastUser)
+	}
+	// A call for nobody never leaves loom.
+	lastPath = ""
+	if _, err := c.Status(ctx, "", false); !errors.Is(err, ErrUnavailable) || lastPath != "" {
+		t.Errorf("no user: %v, reached %q", err, lastPath)
 	}
 }
 
@@ -84,11 +92,11 @@ func TestClient_unavailable(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	var e *Error
-	if _, err := New(srv.URL, "x").Status(context.Background(), false); !errors.As(err, &e) || e.Code != CodeConfig || !errors.Is(err, ErrUnavailable) {
+	if _, err := New(srv.URL, "x").Status(context.Background(), "usr_1", false); !errors.As(err, &e) || e.Code != CodeConfig || !errors.Is(err, ErrUnavailable) {
 		t.Errorf("401: %v", err)
 	}
 	srv.Close()
-	if _, err := New(srv.URL, "x").Status(context.Background(), false); !errors.Is(err, ErrUnavailable) {
+	if _, err := New(srv.URL, "x").Status(context.Background(), "usr_1", false); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("down: %v", err)
 	}
 	if (&Error{Code: CodeRejected, Reason: "r"}).Error() == "" {

@@ -23,29 +23,34 @@ const (
 	codeStorage   = "storage"
 )
 
+// codeNoUser: a per-user route was called without the loom user
+// (mcpserver.UserHeader); loom always sends one.
+const codeNoUser = "no_user"
+
 // newServer mounts kit's health probes (loopback only, the container's own
-// healthcheck) and, behind the bearer token, /mcp/library (the user's
-// playlists, loom offers it to that user only), /mcp/catalog (search, open to
-// every loom user) and the token routes loom's settings page drives.
+// healthcheck) and, behind the bearer token, /mcp/library (each loom user's
+// own library, for the user loom names), /mcp/catalog (search, open to every
+// loom user) and the token routes loom's settings page drives for its user.
 func newServer(cfg config, svc *service, version string) http.Handler {
 	api := http.NewServeMux()
-	api.Handle("/mcp/library", mcpserver.New(libraryServer(svc, version)))
+	api.Handle("/mcp/library", requireUser(mcpserver.New(libraryServer(svc, version))))
 	api.Handle("/mcp/catalog", mcpserver.New(catalogServer(svc, version)))
-	api.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
+	api.Handle("GET /status", requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := mcpserver.UserFromRequest(r)
 		if r.URL.Query().Get("check") == "1" {
-			httpx.WriteJSON(w, http.StatusOK, svc.check(r.Context()))
+			httpx.WriteJSON(w, http.StatusOK, svc.check(r.Context(), user))
 			return
 		}
-		httpx.WriteJSON(w, http.StatusOK, svc.status())
-	})
-	api.HandleFunc("PUT /token", func(w http.ResponseWriter, r *http.Request) {
+		httpx.WriteJSON(w, http.StatusOK, svc.status(user))
+	})))
+	api.Handle("PUT /token", requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Token string `json:"token"`
 		}
 		if !httpx.DecodeJSON(w, r, &body, maxTokenBody) {
 			return
 		}
-		st, err := svc.SetToken(r.Context(), body.Token)
+		st, err := svc.SetToken(r.Context(), mcpserver.UserFromRequest(r), body.Token)
 		switch {
 		case err == nil:
 			httpx.WriteJSON(w, http.StatusOK, st)
@@ -64,15 +69,15 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 			slog.WarnContext(r.Context(), "tunewire: token check failed", "err", err)
 			httpx.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": "could not check the token with Apple Music: " + err.Error(), "code": errorKind(err)})
 		}
-	})
-	api.HandleFunc("DELETE /token", func(w http.ResponseWriter, _ *http.Request) {
-		st, err := svc.ClearToken()
+	})))
+	api.Handle("DELETE /token", requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		st, err := svc.ClearToken(mcpserver.UserFromRequest(r))
 		if err != nil {
 			httpx.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": codeStorage})
 			return
 		}
 		httpx.WriteJSON(w, http.StatusOK, st)
-	})
+	})))
 
 	root := http.NewServeMux()
 	httpx.Health(root, nil)
@@ -85,4 +90,16 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		api.ServeHTTP(w, r)
 	}))
 	return root
+}
+
+// requireUser refuses a per-user route that names no loom user: every
+// account is one person's, and a request for nobody must not reach any.
+func requireUser(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if checkUser(mcpserver.UserFromRequest(r)) != nil {
+			httpx.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "the loom user is missing", "code": codeNoUser})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

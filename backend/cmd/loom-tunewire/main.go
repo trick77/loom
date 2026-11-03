@@ -58,7 +58,7 @@ func serve() error {
 	dev.Seed(svc.devToken())
 	dev.OnNew = svc.keepDevToken
 	srv := httpx.NewServer(cfg.addr, newServer(cfg, svc, version.Version))
-	slog.Info("tunewire listening", "addr", cfg.addr, "storefront", cfg.storefront, "state", svc.status().State)
+	slog.Info("tunewire listening", "addr", cfg.addr, "storefront", cfg.storefront, "accounts", svc.accounts())
 	return httpx.Serve(context.Background(), srv, shutdownTimeout)
 }
 

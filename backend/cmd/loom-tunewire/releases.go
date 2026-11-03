@@ -94,38 +94,52 @@ func (c *releaseCache) put(key string, e cachedRelease) {
 	c.m[key] = e
 }
 
-// artistsCache keeps the library's artist list for one token a while: paging
-// it is the slow part of new_releases.
+// artistsCache keeps each user's library artist list a while, for the token it
+// was read with: paging it is the slow part of new_releases. One entry per
+// loom user; no user ever reads another's.
 type artistsCache struct {
-	mu        sync.Mutex
+	mu sync.Mutex
+	m  map[string]cachedArtists
+}
+
+type cachedArtists struct {
 	token     string
 	at        time.Time
 	list      []applemusic.Artist
 	truncated bool
 }
 
-// LibraryArtists lists the owner's library artists, from memory when read
+// forget drops user's entry (a new or removed token).
+func (c *artistsCache) forget(user string) {
+	c.mu.Lock()
+	delete(c.m, user)
+	c.mu.Unlock()
+}
+
+// LibraryArtists lists the caller's library artists, from memory when read
 // lately with the same token.
 func (s *service) LibraryArtists(ctx context.Context) ([]applemusic.Artist, bool, error) {
-	tok, err := s.userToken()
+	user, tok, err := s.userToken(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 	c := &s.artists
 	c.mu.Lock()
-	if c.token == tok && s.now().Sub(c.at) < libraryArtistsTTL {
-		list, truncated := c.list, c.truncated
+	if e, ok := c.m[user]; ok && e.token == tok && s.now().Sub(e.at) < libraryArtistsTTL {
 		c.mu.Unlock()
-		return list, truncated, nil
+		return e.list, e.truncated, nil
 	}
 	c.mu.Unlock()
 	list, truncated, err := s.api.LibraryArtists(ctx, tok)
-	s.record(tok, err, nil)
+	s.record(user, tok, err, nil)
 	if err != nil {
 		return nil, false, err
 	}
 	c.mu.Lock()
-	c.token, c.at, c.list, c.truncated = tok, s.now(), list, truncated
+	if c.m == nil {
+		c.m = map[string]cachedArtists{}
+	}
+	c.m[user] = cachedArtists{token: tok, at: s.now(), list: list, truncated: truncated}
 	c.mu.Unlock()
 	return list, truncated, nil
 }
@@ -379,7 +393,7 @@ func runNewReleases(ctx context.Context, svc *service, args json.RawMessage) mcp
 		days = defaultReleaseDays
 	}
 	days = min(days, maxReleaseDays)
-	if _, err := svc.userToken(); err != nil {
+	if _, _, err := svc.userToken(ctx); err != nil {
 		return failure(err)
 	}
 
@@ -422,7 +436,7 @@ func runNewReleases(ctx context.Context, svc *service, args json.RawMessage) mcp
 		return mcpserver.Result{Text: "The user's Apple Music library has no artists and there is no recent listening to go by: no favourite artists to check."}
 	}
 
-	sf := svc.ownerStorefront()
+	sf := svc.ownerStorefront(ctx)
 	outs := svc.lookupReleases(ctx, sf, cands)
 	var (
 		releases        []applemusic.Item

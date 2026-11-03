@@ -133,8 +133,8 @@ type Config struct {
 	// off. TunewireToken is its TUNEWIRE_TOKEN (minTunewireToken), required
 	// with the URL. TunewireUsers are the loom user ids its library and
 	// settings serve (BACKEND_TUNEWIRE_USERS, comma-separated, like
-	// BACKEND_PEEQ_USERS); they share the one Apple Music token the sidecar
-	// holds. Catalog search is open to every user.
+	// BACKEND_PEEQ_USERS); each connects their own Apple Music account, which
+	// the sidecar keeps per user. Catalog search is open to every user.
 	TunewireURL   string
 	TunewireToken string
 	TunewireUsers []string

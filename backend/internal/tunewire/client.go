@@ -1,7 +1,7 @@
 // Package tunewire is loom's client for the loom-tunewire sidecar's token
-// routes: the settings page reads the Apple Music connection's status and
-// hands the user's media-user-token through. Loom never stores the token; the
-// sidecar keeps it.
+// routes: the settings page reads the signed-in user's Apple Music connection
+// and hands that user's media-user-token through. Every loom user has their
+// own; loom never stores one, the sidecar keeps them per user.
 package tunewire
 
 import (
@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/trick77/loom/internal/mcpserver"
 )
 
 const (
@@ -77,31 +79,35 @@ func New(baseURL, token string) *Client {
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), token: token, http: &http.Client{Timeout: requestTimeout}}
 }
 
-// Status reads the connection; check asks Apple first.
-func (c *Client) Status(ctx context.Context, check bool) (Status, error) {
+// Status reads user's own connection; check asks Apple first.
+func (c *Client) Status(ctx context.Context, user string, check bool) (Status, error) {
 	path := "/status"
 	if check {
 		path += "?check=1"
 	}
-	return c.do(ctx, http.MethodGet, path, nil)
+	return c.do(ctx, user, http.MethodGet, path, nil)
 }
 
-// SetToken hands a pasted token to the sidecar, which stores it only if Apple
-// accepts it.
-func (c *Client) SetToken(ctx context.Context, token string) (Status, error) {
+// SetToken hands user's pasted token to the sidecar, which stores it as that
+// user's only if Apple accepts it.
+func (c *Client) SetToken(ctx context.Context, user, token string) (Status, error) {
 	body, err := json.Marshal(map[string]string{"token": token})
 	if err != nil {
 		return Status{}, err
 	}
-	return c.do(ctx, http.MethodPut, "/token", body)
+	return c.do(ctx, user, http.MethodPut, "/token", body)
 }
 
-// ClearToken makes the sidecar forget the token.
-func (c *Client) ClearToken(ctx context.Context) (Status, error) {
-	return c.do(ctx, http.MethodDelete, "/token", nil)
+// ClearToken makes the sidecar forget user's token; other users' stay.
+func (c *Client) ClearToken(ctx context.Context, user string) (Status, error) {
+	return c.do(ctx, user, http.MethodDelete, "/token", nil)
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body []byte) (Status, error) {
+func (c *Client) do(ctx context.Context, user, method, path string, body []byte) (Status, error) {
+	if user == "" {
+		// Every account is one person's: a call for nobody is a bug here.
+		return Status{}, fmt.Errorf("%w: no loom user", ErrUnavailable)
+	}
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -111,6 +117,7 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (Stat
 		return Status{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set(mcpserver.UserHeader, user)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

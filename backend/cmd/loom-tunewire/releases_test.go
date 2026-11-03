@@ -242,7 +242,7 @@ func TestNewReleasesTool_errors(t *testing.T) {
 		t.Errorf("mapping down (Eta, Theta): %s", text)
 	}
 
-	if _, err := svc.ClearToken(); err != nil {
+	if _, err := svc.ClearToken(testUser); err != nil {
 		t.Fatal(err)
 	}
 	if text, _ := callTool(t, h, "/mcp/library", "new_releases", `{}`); !strings.HasPrefix(text, "ERROR: Apple Music is not connected") {
