@@ -10,6 +10,10 @@ import { PdfLightbox } from "./PdfLightbox";
 import { isPdfAttachment } from "./useDocumentAttachments";
 import { downloadBlob } from "./download";
 
+// MAX_INLINE_PIXELS is the largest original the card decodes inline (a 6000 x
+// 4000 photo; RGBA ~100 MB); larger ones would stall the tab on scroll.
+const MAX_INLINE_PIXELS = 24_000_000;
+
 export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const { t } = useTranslation();
   const [error, setError] = useState("");
@@ -32,9 +36,14 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
 
   // The card shows the original, like the lightbox: the 144px thumbnail is for
   // small preview boxes and, stretched to this card, blurred charts. A plain,
-  // lazy image load on the session cookie: the download is cached (ETag), so
-  // the card and the lightbox fetch it once, never as a blob.
-  const previewUrl = isImage ? artifact.downloadUrl : "";
+  // lazy image load on the session cookie, cached (immutable), on the same URL
+  // as the lightbox. Only an image too big to decode inline while scrolling
+  // keeps the thumbnail (none past the server's own limit: click to open).
+  const previewUrl = !isImage
+    ? ""
+    : (artifact.width ?? 0) * (artifact.height ?? 0) > MAX_INLINE_PIXELS
+      ? (artifact.thumbnailUrl ?? "")
+      : artifact.downloadUrl;
 
   async function handleDownload() {
     setError("");
@@ -57,7 +66,7 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
     <div className="max-w-[28rem] overflow-hidden rounded-lg border border-[#3e3d39] bg-[#282826] text-[#f3f0e8]">
       {isImage &&
         // Reserve the image's vertical space up-front so the card never collapses while the
-        // blob loads asynchronously (or when it remounts on stream -> committed). A collapse
+        // image loads (or when it remounts on stream -> committed). A collapse
         // would shrink scrollHeight and make the browser clamp scrollTop upward = unwanted
         // upward jump. With known dimensions we reserve the exact box via aspect-ratio;
         // otherwise we fall back to a min-height floor that bounds the collapse.
