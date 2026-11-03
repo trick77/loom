@@ -14,9 +14,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=${VERSION}" -o /out/loom-sandbox ./cmd/loom-sandbox
 
 # The UI's sans as static TTFs for the charts (sandbox/fonts.py). Only the TTFs
-# reach the final image, so fonttools and brotli stay out of the release scan.
+# reach the final image, so fonttools and brotli stay out of the release scan;
+# pinned so a rebuild makes the same fonts.
 FROM python:3.15-slim AS fonts
-RUN pip install --no-cache-dir --root-user-action=ignore fonttools brotli
+RUN pip install --no-cache-dir --root-user-action=ignore --only-binary=:all: fonttools==4.68.0 brotli==1.2.1
 COPY ui/src/fonts/SansWebVariable-TextRegular.woff2 sandbox/fonts.py /tmp/
 RUN python /tmp/fonts.py /tmp/SansWebVariable-TextRegular.woff2 /out/fonts
 

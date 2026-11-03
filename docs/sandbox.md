@@ -76,6 +76,8 @@ image build.
 
 That style (`STYLE` in `loomcharts/_style.py`) is also every chart's default: the build writes it
 as `/opt/mplconfig/matplotlibrc`, which each job copies, so hand-written matplotlib charts look the
-same without the model choosing colours. Text is the UI's sans (`ui/src/fonts/`), turned into
-static TTFs by `sandbox/fonts.py` in a build stage. The self-test (`--rc`) fails the build when the
-rc is not the one matplotlib read, differs from `STYLE`, or the font does not resolve.
+same without the model choosing colours (heatmaps: `Blues_r`, `loom_ramp` exists only after
+`import loomcharts`). Text is the UI's sans (`ui/src/fonts/`, Latin only, DejaVu Sans fills in per
+glyph), turned into static TTFs by `sandbox/fonts.py` in a build stage. The self-test (`--rc`)
+fails the build when the rc is not the one matplotlib read, differs from `STYLE`, the font does not
+resolve, or matplotlib warns.

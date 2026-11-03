@@ -35,8 +35,10 @@ SERIES = (THIS, BEST, MEDIAN, "#c98500", "#d55181", "#008300", "#9085e9", "#e667
 
 # The UI's sans, converted to static TTFs in the image build (sandbox/fonts.py).
 # The self-test fails the build when it does not resolve: a missing family would
-# print a findfont warning into every job's output.
+# print a findfont warning into every job's output. It has Latin only (580
+# glyphs): DejaVu Sans fills in per glyph (μ, Δ, ✓, Cyrillic) instead of tofu.
 FONT = "Anthropic Sans"
+FALLBACK = "DejaVu Sans"
 
 STYLE = {
     "figure.facecolor": BG,
@@ -52,7 +54,7 @@ STYLE = {
     "xtick.labelcolor": MUTED,
     "ytick.labelcolor": MUTED,
     "text.color": INK,
-    "font.family": FONT,
+    "font.family": [FONT, FALLBACK],
     "font.size": 9.5,
     "axes.grid": True,
     "axes.grid.axis": "y",  # value lines only, as every chart function draws them
@@ -78,9 +80,15 @@ STYLE = {
 
 WIDTH = 8.6  # inches; 1,720 px at dpi 200
 
-# Left out of the image's matplotlibrc: loom_ramp exists only once this module
-# registered it, after the rc file is read.
-RC_SKIP = frozenset({"image.cmap"})
+# Where the image's matplotlibrc differs from STYLE: loom_ramp exists only once
+# this module registered it, after the rc file is read, so plain heatmaps get
+# the nearest built-in (dark navy to pale blue, like ZONES).
+RC_OVERRIDES = {"image.cmap": "Blues_r"}
+
+
+def rc_style():
+    """STYLE as the image's matplotlibrc holds it."""
+    return {**STYLE, **RC_OVERRIDES}
 
 
 def _rc_value(value):
@@ -88,15 +96,17 @@ def _rc_value(value):
     if hasattr(value, "by_key"):
         parts = ", ".join(f"{k}={[str(c).lstrip('#') for c in v]!r}" for k, v in value.by_key().items())
         return f"cycler({parts})"
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_rc_value(v) for v in value)
     if isinstance(value, str):
         return value.lstrip("#")
     return str(value)
 
 
 def matplotlibrc():
-    """STYLE as matplotlibrc text: the image installs it as every job's default."""
+    """rc_style() as matplotlibrc text: the image installs it as every job's default."""
     lines = ["# Written by loomcharts.rc from loomcharts/_style.py STYLE; edit that, not this."]
-    lines += [f"{k}: {_rc_value(v)}" for k, v in STYLE.items() if k not in RC_SKIP]
+    lines += [f"{k}: {_rc_value(v)}" for k, v in rc_style().items()]
     return "\n".join(lines) + "\n"
 
 
