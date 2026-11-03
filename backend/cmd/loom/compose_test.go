@@ -364,6 +364,25 @@ func TestProductionComposeIsolatesTheSandbox(t *testing.T) {
 	}
 }
 
+// Every service's data is a host dir, backed up with the host: a named
+// volume sits outside the backups. The sidecars' dirs are not under ./data,
+// which loom mounts: loom must never read their tokens.
+func TestProductionComposeHostDirsOnly(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	compose := string(data)
+	if strings.Contains(compose, "\nvolumes:") {
+		t.Fatal("production compose declares named volumes: use host dirs")
+	}
+	for svc, want := range map[string]string{"tunewire": "- ./tunewire-data:/data", "strava": "- ./strava-data:/data"} {
+		if s := composeService(t, compose, svc); !strings.Contains(s, want) || strings.Contains(s, "./data/") {
+			t.Errorf("%s must mount %q, outside ./data", svc, want)
+		}
+	}
+}
+
 // tunewire holds one person's Apple Music token: it is opt-in, reachable from
 // loom only (no Traefik, no ports), runs locked down as 65532, and loom boots
 // without it.
@@ -382,7 +401,7 @@ func TestProductionComposeTunewire(t *testing.T) {
 		"cap_drop: [ALL]",
 		"- no-new-privileges:true",
 		`TUNEWIRE_TOKEN: "${BACKEND_TUNEWIRE_TOKEN:-}"`,
-		"- tunewire-data:/data",
+		"- ./tunewire-data:/data",
 		`test: ["CMD", "/loom-tunewire", "healthcheck"]`,
 		"\n      interval: 60s",
 		`traefik.enable: "false"`,
