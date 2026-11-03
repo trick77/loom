@@ -39,19 +39,10 @@ type Source struct {
 	Image   string `json:"image,omitempty"`
 }
 
-// File is data a tool hands to loom's run_python for the running turn (an
-// MCP embedded resource): never shown in the chat, never part of the prompt.
-type File struct {
-	Name     string // a plain file name, e.g. strava_123_streams.csv
-	MimeType string // text/csv or application/json
-	Text     string
-}
-
 // Result is what a tool produced. Sources[i] belongs to the text's item i+1.
 type Result struct {
 	Text    string
 	Sources []Source
-	Files   []File
 	IsError bool
 }
 
@@ -194,13 +185,9 @@ func (h *handler) callTool(w http.ResponseWriter, r *http.Request, req request, 
 	res := t.Run(ctx, p.Arguments)
 	slog.Info("mcp tool call", "server", h.name, "tool", p.Name, "is_error", res.IsError, "ms", time.Since(start).Milliseconds())
 
-	content := []map[string]any{{"type": "text", "text": capText(res.Text, maxToolTextBytes)}}
-	for _, f := range res.Files {
-		content = append(content, map[string]any{"type": "resource", "resource": map[string]any{
-			"uri": "file:///" + f.Name, "mimeType": f.MimeType, "text": f.Text,
-		}})
+	result := map[string]any{
+		"content": []map[string]any{{"type": "text", "text": capText(res.Text, maxToolTextBytes)}},
 	}
-	result := map[string]any{"content": content}
 	if res.Sources != nil {
 		result["structuredContent"] = map[string]any{"sources": res.Sources}
 	}

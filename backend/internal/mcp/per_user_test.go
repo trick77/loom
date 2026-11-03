@@ -96,6 +96,35 @@ func TestRemoteClientSharedServerNeverGetsUser(t *testing.T) {
 	}
 }
 
+// The service refuses a per-user call without a caller, and a per-user server
+// whose override cannot name the caller (a stdio entry), whatever the client.
+func TestServicePerUserGuard(t *testing.T) {
+	server, seen := perUserServer(t)
+	cfg := Config{Servers: map[string]ServerConfig{
+		"lib": {Transport: TransportStreamableHTTP, URL: server.URL, PerUser: true, RestrictUsers: true, Users: []string{"alice"}},
+	}}
+	svc, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, server.Client(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CallToolResult(context.Background(), "lib__mine", nil); err == nil || !strings.Contains(err.Error(), "needs the calling user") {
+		t.Fatalf("no caller: %v", err)
+	}
+	if _, err := svc.CallToolResult(WithPrincipal(context.Background(), Principal{ID: "alice"}), "lib__mine", nil); err != nil {
+		t.Fatalf("alice: %v", err)
+	}
+	if got := seen(); len(got) != 1 || got[0] != "alice" {
+		t.Fatalf("users seen = %v", got)
+	}
+	stdio := ServerConfig{Transport: TransportStdio, PerUser: true}
+	if err := perUserReady(WithPrincipal(context.Background(), Principal{ID: "alice"}), stdio, "x__y"); err == nil {
+		t.Error("a stdio per-user server was allowed: it cannot name the caller")
+	}
+	if err := perUserReady(context.Background(), ServerConfig{Transport: TransportStdio}, "x__y"); err != nil {
+		t.Errorf("a shared server needs no caller: %v", err)
+	}
+}
+
 func TestPrincipalFrom(t *testing.T) {
 	if _, ok := PrincipalFrom(context.Background()); ok {
 		t.Error("empty context has a principal")

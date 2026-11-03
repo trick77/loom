@@ -74,26 +74,98 @@ func TestLibraryArtists_cachePerUser(t *testing.T) {
 	}
 }
 
-// Per-user routes refuse a request that names no user; catalog search does not
-// need one.
+// The token routes refuse a request that names no user. Tool discovery needs
+// none (loom lists the tools for nobody in particular); a library tool call
+// without one reads no account.
 func TestServer_perUserRoutesNeedTheUser(t *testing.T) {
 	svc, _, _ := newTestService(t)
+	if _, err := svc.SetToken(context.Background(), testUser, "good"); err != nil {
+		t.Fatal(err)
+	}
 	h := newServer(config{token: testToken}, svc, "test")
-	send := func(method, path, body string) int {
+	send := func(method, path, body string) (int, string) {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+testToken)
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
-		return rec.Code
+		return rec.Code, rec.Body.String()
 	}
-	call := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
-	for _, r := range [][3]string{{"GET", "/status", ""}, {"PUT", "/token", `{"token":"good"}`}, {"DELETE", "/token", ""}, {"POST", "/mcp/library", call}} {
-		if code := send(r[0], r[1], r[2]); code != http.StatusBadRequest {
+	for _, r := range [][3]string{{"GET", "/status", ""}, {"PUT", "/token", `{"token":"good"}`}, {"DELETE", "/token", ""}} {
+		if code, _ := send(r[0], r[1], r[2]); code != http.StatusBadRequest {
 			t.Errorf("%s %s without a user: %d", r[0], r[1], code)
 		}
 	}
-	if code := send("POST", "/mcp/catalog", call); code != http.StatusOK {
-		t.Errorf("catalog without a user: %d", code)
+	list := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+	for _, path := range []string{"/mcp/library", "/mcp/catalog"} {
+		if code, body := send("POST", path, list); code != http.StatusOK || !strings.Contains(body, `"tools"`) {
+			t.Errorf("discovery on %s without a user: %d %s", path, code, body)
+		}
+	}
+	call := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_playlists","arguments":{}}}`
+	if _, body := send("POST", "/mcp/library", call); !strings.Contains(body, "need the signed-in loom user") || strings.Contains(body, "Playlist") {
+		t.Errorf("a call for nobody: %s", body)
+	}
+	if svc.status(testUser).State != "connected" {
+		t.Error("a call for nobody touched the account")
+	}
+}
+
+// One user's slow token check never holds up another user's change.
+func TestService_tokenChangesLockPerUser(t *testing.T) {
+	svc, api, _ := newTestService(t)
+	if _, err := svc.SetToken(context.Background(), "bob", "good-bob"); err != nil {
+		t.Fatal(err)
+	}
+	inCheck, release := make(chan struct{}), make(chan struct{})
+	api.sizeHook = func(context.Context) {
+		close(inCheck)
+		<-release
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := svc.SetToken(context.Background(), "alice", "good-alice")
+		done <- err
+	}()
+	<-inCheck
+	cleared := make(chan error, 1)
+	go func() {
+		_, err := svc.ClearToken("bob")
+		cleared <- err
+	}()
+	select {
+	case err := <-cleared:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("bob's disconnect waited on alice's check")
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if svc.status("alice").State != "connected" || svc.status("bob").State != "never" {
+		t.Fatalf("alice %+v bob %+v", svc.status("alice"), svc.status("bob"))
+	}
+}
+
+// A legacy file on a /data that cannot be written still starts the sidecar,
+// without the old token.
+func TestStore_legacyTokenOnReadOnlyData(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, stateFile), []byte(`{"user_token":"someones"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	svc, err := newService(&fakeAPI{}, fileStore{dir: dir}, "ch")
+	if err != nil {
+		t.Fatalf("read-only /data kept the sidecar from starting: %v", err)
+	}
+	if svc.accounts() != 0 {
+		t.Errorf("legacy token became an account")
 	}
 }
 

@@ -68,9 +68,5 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 ## Security invariants
 - Every DB query scoped by `user_id`. Per-user file access confined to the user's root (`..`, absolute,
   symlink escape rejected). Admin endpoints role-gated.
-- **Personal-data integration → own token, own data per loom user, never shared.** A `_USERS` list only
-  grants access; each listed user connects their own account (`ServerConfig.PerUser`, `X-Loom-User`, call
-  without a caller refused). A list sharing one token showed one person's library to everyone on it (tunewire
-  before per-user). Non-personal services (context7, ipverse, Tavily) keep one key.
-- New integration → its own sidecar (`backend/cmd/loom-<name>`, shared `internal/mcpserver`): secrets, user
-  tokens, caches live there; loom holds only the bearer.
+- Personal data → own token per user, never shared (`PerUser`; `_USERS` only grants). New integration → own
+  sidecar.

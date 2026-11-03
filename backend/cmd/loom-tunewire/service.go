@@ -72,12 +72,13 @@ type service struct {
 	storefront string
 	now        func() time.Time
 
-	// tokenMu serializes the tokens' changes (SetToken, ClearToken) whole,
-	// Apple's check included: a disconnect that arrives during a paste's check
-	// is applied after it, never undone by it.
-	tokenMu sync.Mutex
-	mu      sync.Mutex
-	st      state
+	// tokenLocks serialize each user's token changes (SetToken, ClearToken)
+	// whole, Apple's check included: a disconnect that arrives during a paste's
+	// check is applied after it, never undone by it. Per user: one user's slow
+	// check never holds up another's.
+	tokenLocks sync.Map // loom user id → *sync.Mutex
+	mu         sync.Mutex
+	st         state
 
 	// new_releases' memory (releases.go): latest releases per artist (catalog
 	// data, shared), each user's library artists, and how long the artist
@@ -363,8 +364,8 @@ func (s *service) SetToken(ctx context.Context, user, raw string) (status, error
 	if err != nil {
 		return status{}, err
 	}
-	s.tokenMu.Lock()
-	defer s.tokenMu.Unlock()
+	unlock := s.lockTokens(user)
+	defer unlock()
 	sf, err := s.api.Storefront(ctx, tok)
 	if errors.Is(err, applemusic.ErrUserTokenExpired) {
 		return status{}, errRejected
@@ -406,8 +407,8 @@ func (s *service) ClearToken(user string) (status, error) {
 	if err := checkUser(user); err != nil {
 		return status{}, err
 	}
-	s.tokenMu.Lock()
-	defer s.tokenMu.Unlock()
+	unlock := s.lockTokens(user)
+	defer unlock()
 	s.mu.Lock()
 	next := s.st.clone()
 	delete(next.Users, user)
@@ -422,6 +423,15 @@ func (s *service) ClearToken(user string) (status, error) {
 	}
 	s.artists.forget(user)
 	return s.status(user), nil
+}
+
+// lockTokens takes user's token-change lock and returns its release. The
+// locks stay: one small mutex per loom user who ever connected.
+func (s *service) lockTokens(user string) func() {
+	m, _ := s.tokenLocks.LoadOrStore(user, &sync.Mutex{})
+	mu := m.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // devToken is the developer token kept from an earlier run.

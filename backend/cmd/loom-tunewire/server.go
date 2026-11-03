@@ -33,7 +33,10 @@ const codeNoUser = "no_user"
 // loom user) and the token routes loom's settings page drives for its user.
 func newServer(cfg config, svc *service, version string) http.Handler {
 	api := http.NewServeMux()
-	api.Handle("/mcp/library", requireUser(mcpserver.New(libraryServer(svc, version))))
+	// Not behind requireUser: loom discovers the tools (server/discover,
+	// tools/list) for nobody in particular. Each tool call reads its caller's
+	// account and answers an error without one (errNoUser).
+	api.Handle("/mcp/library", mcpserver.New(libraryServer(svc, version)))
 	api.Handle("/mcp/catalog", mcpserver.New(catalogServer(svc, version)))
 	api.Handle("GET /status", requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user := mcpserver.UserFromRequest(r)

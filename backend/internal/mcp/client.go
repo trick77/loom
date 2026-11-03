@@ -217,12 +217,11 @@ func (c *remoteClient) discover(ctx context.Context) error {
 }
 
 func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[string]any) (CallResult, error) {
-	if c.cfg.PerUser {
-		if _, ok := PrincipalFrom(ctx); !ok {
-			// Fail closed: without the caller the sidecar cannot pick the
-			// account, and must never fall back to someone else's.
-			return CallResult{}, fmt.Errorf("MCP tool %q needs the calling user", name)
-		}
+	// Belt and braces under Service's check (perUserReady): this client is
+	// the one that names the caller, so it never sends a per-user call
+	// without one.
+	if err := perUserReady(ctx, c.cfg, name); err != nil {
+		return CallResult{}, err
 	}
 	var result callToolResult
 	if err := c.request(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments}, &result); err != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -69,9 +70,14 @@ func (s fileStore) load() (state, error) {
 		return state{}, err
 	}
 	if st.LegacyToken != "" {
+		// Dropped in memory whatever the write does: a read-only or full
+		// /data must not keep the sidecar from starting; the next save
+		// rewrites the file anyway.
 		st.LegacyToken = ""
 		if err := s.save(st); err != nil {
-			return state{}, err
+			slog.Warn("tunewire: could not rewrite the state file without the old shared token", "err", err)
+		} else {
+			slog.Info("tunewire: dropped the old shared Apple Music token; each user connects their own")
 		}
 	}
 	return st, nil

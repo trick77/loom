@@ -153,12 +153,14 @@ type candidate struct {
 	order     int
 }
 
-// key names the artist in the release cache.
-func (c candidate) key() string {
+// key names the artist in the release cache. A catalog id is shared catalog
+// data; a library id is one user's library, mapped with that user's token, so
+// its entry is that user's alone.
+func (c candidate) key(user string) string {
 	if c.catalogID != "" {
 		return c.catalogID
 	}
-	return "l:" + c.libraryID
+	return "l:" + user + ":" + c.libraryID
 }
 
 type signal struct {
@@ -272,10 +274,11 @@ func rankArtists(lib []applemusic.Artist, signals ...signal) (top []candidate, f
 		if len(top) == maxReleaseArtists {
 			break
 		}
-		if c.catalogID == "" && c.libraryID == "" || seen[c.key()] {
+		// One user's list: the cache key without a user dedupes it.
+		if c.catalogID == "" && c.libraryID == "" || seen[c.key("")] {
 			continue
 		}
-		seen[c.key()] = true
+		seen[c.key("")] = true
 		top = append(top, *c)
 		if c.score > 0 {
 			fromListening++
@@ -306,7 +309,7 @@ func (s *service) lookupReleases(ctx context.Context, sf string, cands []candida
 	// leave them out.
 	var todo []int
 	for i, c := range cands {
-		if hit, ok := s.releases.get(sf+"|"+c.key(), s.now()); ok {
+		if hit, ok := s.releases.get(sf+"|"+c.key(mcpserver.User(ctx)), s.now()); ok {
 			out[i] = outcome{done: true, release: hit.release, found: hit.found}
 			continue
 		}
@@ -337,7 +340,7 @@ feed:
 // lookupRelease reads one uncached candidate's latest release (lookupReleases
 // answers the cached ones) and caches it.
 func (s *service) lookupRelease(ctx context.Context, sf string, c candidate) outcome {
-	key := sf + "|" + c.key()
+	key := sf + "|" + c.key(mcpserver.User(ctx))
 	if ctx.Err() != nil {
 		return outcome{}
 	}
