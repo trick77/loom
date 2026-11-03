@@ -6,16 +6,15 @@ import (
 	"time"
 )
 
-// Cache sizes per user. Activity detail is effectively immutable, so a day is
-// safe; lists change with every upload, so minutes. Streams are bounded far
-// below the details: a 3 h ride at 1 Hz is ~10.8k samples x 11 series x 8 B
-// (~1 MB parsed), so 300 of them would be ~300 MB per user. The metric store
-// keeps what the baseline needs from them anyway.
+// Memory cache sizes per user, in front of the activity store on disk.
+// Streams are bounded far below the details: a 3 h ride at 1 Hz is ~10.8k
+// samples x 11 series x 8 B (~1 MB parsed), so 300 of them would be ~300 MB
+// per user. listTTL is how often the list's head is read from Strava again:
+// uploads arrive there.
 const (
 	detailCacheSize  = 300
 	detailTTL        = 24 * time.Hour
 	streamCacheSize  = 40
-	listCacheSize    = 50
 	listTTL          = 5 * time.Minute
 	profileCacheSize = 100
 	profileTTL       = time.Hour
@@ -73,6 +72,15 @@ func (c *lru) put(key string, val any, now time.Time) {
 	}
 }
 
+func (c *lru) remove(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if el, ok := c.items[key]; ok {
+		c.order.Remove(el)
+		delete(c.items, key)
+	}
+}
+
 func (c *lru) len() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -84,7 +92,6 @@ func (c *lru) len() int {
 type userCache struct {
 	detail  *lru // activity detail, activity zones
 	streams *lru // parsed streams
-	lists   *lru // activity list pages
 	profile *lru // athlete, zones, stats, gear, routes, segments
 }
 
@@ -92,7 +99,6 @@ func newUserCache() *userCache {
 	return &userCache{
 		detail:  newLRU(detailCacheSize, detailTTL),
 		streams: newLRU(streamCacheSize, detailTTL),
-		lists:   newLRU(listCacheSize, listTTL),
 		profile: newLRU(profileCacheSize, profileTTL),
 	}
 }

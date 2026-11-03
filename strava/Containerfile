@@ -18,7 +18,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/loom-strava /loom-strava
-# /data holds the users' tokens (state.json) and computed metrics. Owned by
+# /data holds the users' tokens (state.json), stored activities and computed
+# metrics. Owned by
 # the nonroot uid 65532 here, so a fresh named volume mounted on it starts
 # with that owner too.
 COPY --from=build --chown=65532:65532 /out/data /data

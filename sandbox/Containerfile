@@ -13,14 +13,6 @@ ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=${VERSION}" -o /out/loom-sandbox ./cmd/loom-sandbox
 
-# The UI's sans as static TTFs for the charts (sandbox/fonts.py). Only the TTFs
-# reach the final image, so fonttools and brotli stay out of the release scan;
-# pinned so a rebuild makes the same fonts.
-FROM python:3.15-slim AS fonts
-RUN pip install --no-cache-dir --root-user-action=ignore --only-binary=:all: fonttools==4.68.0 brotli==1.2.1
-COPY ui/src/fonts/SansWebVariable-TextRegular.woff2 sandbox/fonts.py /tmp/
-RUN python /tmp/fonts.py /tmp/SansWebVariable-TextRegular.woff2 /out/fonts
-
 FROM python:3.15-slim
 # upgrade: the base image lags Debian's security fixes, and the release's trivy
 # scan fails on any fixed HIGH or CRITICAL finding. VERSION keys the layer, so
@@ -46,17 +38,11 @@ RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r /tmp/requ
     && rm -rf "$site/loomcharts/__pycache__" \
     && chmod -R a+rX "$site/loomcharts" \
     && python -m compileall -q "$(python -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
-COPY --from=fonts /out/fonts/ /usr/share/fonts/truetype/loom/
-# /opt/mplconfig is copied into each job's home: its matplotlibrc (loomcharts'
-# STYLE) makes loom's chart style every chart's default, and the prebuilt font
-# cache saves each run the font scan. The rc goes in first so the cache sees the
-# fonts. The loomcharts self-test draws every chart (building the cache on the
-# way), checks the rc is the one matplotlib read and the font resolves, and fails
-# the build otherwise.
-RUN MPLCONFIGDIR=/tmp/mplrc python -I -B -m loomcharts.rc /opt/mplconfig/matplotlibrc \
-    && rm -rf /tmp/mplrc \
-    && MPLCONFIGDIR=/opt/mplconfig MPLBACKEND=Agg python -I -B -m loomcharts.selftest --rc /opt/mplconfig/matplotlibrc \
-    && chmod -R a+rX /opt/mplconfig /usr/share/fonts/truetype/loom
+# Prebuilt matplotlib font cache; each job gets a copy in its home. The
+# loomcharts self-test draws every chart (building the cache on the way) and
+# fails the build on a broken one.
+RUN MPLCONFIGDIR=/opt/mplconfig MPLBACKEND=Agg python -I -B -m loomcharts.selftest \
+    && chmod -R a+rX /opt/mplconfig
 # No setuid or setgid programs (su, mount, passwd): jobs run with no_new_privs
 # anyway, this removes the targets.
 RUN find / -xdev -type f -perm /6000 -exec chmod a-s {} +

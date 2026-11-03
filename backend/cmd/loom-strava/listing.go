@@ -17,11 +17,10 @@ import (
 const (
 	defaultListLimit = 30
 	maxListLimit     = 500
-	// maxListPages is how many 200-activity pages one call reads.
-	maxListPages = 3
-	// dayPadS widens a local-date window into the UTC epochs Strava filters
-	// on: no time zone is further than 14 h from UTC. The local dates then
-	// filter exactly.
+	// filterPages: how far back a sport or trainer filter without dates reads.
+	filterPages = 3
+	// dayPadS widens a local-date window into UTC epochs: no time zone is
+	// further than 14 h from UTC. The local dates then filter exactly.
 	dayPadS = 14 * 3600
 	// maxGearDetails bounds the /gear/{id} reads of one call.
 	maxGearDetails = 10
@@ -75,14 +74,21 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 	if !before.IsZero() {
 		beforeE = before.Unix() + dayPadS
 	}
-	// Newest first without after: as many pages as the limit needs, more
-	// when a filter thins them. With after Strava answers oldest first, so
-	// all pages are read and sorted here.
-	pages := (limit + activitiesPerPage - 1) / activitiesPerPage
-	if !after.IsZero() || args.SportType != "" || args.TrainerOnly {
-		pages = maxListPages
+	// The backfill reads as far as the call needs, not the whole history:
+	// Strava's budget is the app's, all users share it. A window reads back
+	// to its start; a filter thins rows, so it reads a few pages; the
+	// newest rows only as many pages as the limit, none once indexed.
+	pages := maxBackfillPages
+	switch {
+	case !after.IsZero():
+	case args.SportType != "" || args.TrainerOnly:
+		pages = filterPages
+	case t.svc.indexed(user) >= limit:
+		pages = 0
+	default:
+		pages = (limit + activitiesPerPage - 1) / activitiesPerPage
 	}
-	list, more, err := t.svc.listActivities(ctx, user, afterE, beforeE, min(pages, maxListPages))
+	list, more, err := t.svc.listActivities(ctx, user, afterE, beforeE, pages)
 	if err != nil {
 		return failure(err)
 	}
@@ -103,6 +109,11 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 	rows = rows[:min(len(rows), limit)]
 	u := unitsOf(a)
 	if len(rows) == 0 {
+		if more {
+			// Not read that far back yet: "none" would be a false answer.
+			return mcpserver.Result{Text: "No Strava activities read yet" + windowText(args.After, args.Before, args.SportType, args.TrainerOnly) +
+				": older activities are still being read from Strava (rate budget). Ask again in a few minutes; do not conclude there are none."}
+		}
 		return mcpserver.Result{Text: "No Strava activities match" + windowText(args.After, args.Before, args.SportType, args.TrainerOnly) + "."}
 	}
 	gearNames := map[string]string{}
@@ -113,14 +124,13 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Strava activities%s, newest first: %d", windowText(args.After, args.Before, args.SportType, args.TrainerOnly), len(rows))
-	// The count is only exact when every page was read. A full last page
-	// matters when it left the list short, or with after: Strava then
-	// answers oldest first, so the newest are past the pages read.
+	// The count is only exact once the history is read to its start; the
+	// newest are read first, so only a short list can lack some.
 	if !more && matched > len(rows) {
 		fmt.Fprintf(&b, " of %d (limit %d)", matched, limit)
 	}
-	if more && (len(rows) < limit || !after.IsZero()) {
-		fmt.Fprintf(&b, "; one call reads at most %d activities, there are more: narrow the dates", maxListPages*activitiesPerPage)
+	if more && len(rows) < limit {
+		b.WriteString("; older activities are still being read from Strava (rate budget): ask again in a few minutes for the rest")
 	}
 	b.WriteString("\n")
 	sources := []mcpserver.Source{}

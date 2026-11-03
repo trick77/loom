@@ -129,6 +129,7 @@ def weekly_load(weeks, out, metric="tss", sport_type=None, title=None):
     x, bars, labels = _bars(ax, vals, colors, fmt, show, 0.45 if n <= 8 else 0.62)
     wk = [f"W{d.isocalendar()[1]}" for d in g.index]
     _thin_ticks(ax, x, wk)
+    ax.grid(axis="x", visible=False)
     ax.spines["bottom"].set_visible(False)
     _xlim(ax, n)
     top = float(np.nanmax(vals)) if n else 1.0
@@ -223,6 +224,7 @@ def activities_summary(activities, out, metric="distance_km", by="week", title=N
     show = np.ones(n, dtype=bool) if n <= 16 else np.isin(np.arange(n), [int(np.nanargmax(vals))])
     x, _, _ = _bars(ax, vals, [BEST] * n, fmt, show, 0.55 if n <= 10 else 0.7)
     _thin_ticks(ax, x, names, max_labels=12 if by == "activity" else 16)
+    ax.grid(axis="x", visible=False)
     ax.spines["bottom"].set_visible(False)
     ax.tick_params(axis="x", length=0)
     _xlim(ax, n)

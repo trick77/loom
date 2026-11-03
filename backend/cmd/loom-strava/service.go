@@ -94,9 +94,17 @@ type slot struct {
 	// token the moment it hands out a new one, so two refreshes at once
 	// would leave one caller holding a dead token.
 	tokenMu sync.Mutex
-	// dataMu serializes the user's metric file.
+	// dataMu serializes the user's metric file and activity store, and
+	// guards index and refreshed.
 	dataMu sync.Mutex
-	cache  *userCache
+	// syncCh: one list sync per user at a time (a one-slot semaphore, so a
+	// waiter can give up at its deadline). Held across Strava calls, so
+	// never taken under dataMu.
+	syncCh     chan struct{}
+	index      *activityIndex
+	indexDirty bool
+	refreshed  map[int64]time.Time // last successful refresh, by activity
+	cache      *userCache
 }
 
 type service struct {
@@ -185,7 +193,7 @@ func (s *service) slot(user string) *slot {
 	defer s.mu.Unlock()
 	sl, ok := s.slots[user]
 	if !ok {
-		sl = &slot{cache: newUserCache()}
+		sl = &slot{cache: newUserCache(), syncCh: make(chan struct{}, 1)}
 		s.slots[user] = sl
 	}
 	return sl
@@ -409,21 +417,21 @@ func (s *service) connect(ctx context.Context, user, code, scope string) (status
 		slog.ErrorContext(ctx, "strava: saving the connection failed", "err", err)
 		return status{}, errStore
 	}
-	// Only a different, known athlete wipes the metrics.
+	// Only a different, known athlete wipes the metrics and activities.
 	if had && prev.AthleteID != 0 && next.AthleteID != prev.AthleteID {
-		s.deleteMetricsOf(ctx, user)
+		s.deleteStoreOf(ctx, user)
 	}
 	s.dropCache(user)
 	slog.InfoContext(ctx, "strava connected", "athlete", next.AthleteID)
 	return s.status(user), nil
 }
 
-func (s *service) deleteMetricsOf(ctx context.Context, user string) {
+func (s *service) deleteStoreOf(ctx context.Context, user string) {
 	sl := s.slot(user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
-	if err := s.store.deleteMetrics(user); err != nil {
-		slog.ErrorContext(ctx, "strava: deleting the previous athlete's metrics failed", "err", err)
+	if err := s.deleteStoreLocked(user, sl); err != nil {
+		slog.ErrorContext(ctx, "strava: deleting the previous athlete's data failed", "err", err)
 	}
 }
 
@@ -455,9 +463,11 @@ func (s *service) learnAthlete(ctx context.Context, user string, a athlete) {
 	sl := s.slot(user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
-	if m, _ := s.store.loadMetrics(user); old != 0 || (m.Athlete != 0 && m.Athlete != a.ID) {
-		if err := s.store.deleteMetrics(user); err != nil {
-			slog.ErrorContext(ctx, "strava: deleting another athlete's metrics failed", "err", err)
+	m, _ := s.store.loadMetrics(user)
+	x := s.store.loadIndex(user)
+	if old != 0 || (m.Athlete != 0 && m.Athlete != a.ID) || (x != nil && x.Athlete != 0 && x.Athlete != a.ID) {
+		if err := s.deleteStoreLocked(user, sl); err != nil {
+			slog.ErrorContext(ctx, "strava: deleting another athlete's data failed", "err", err)
 		}
 	}
 }
@@ -475,13 +485,13 @@ func (s *service) disconnect(ctx context.Context, user string) (status, error) {
 			slog.WarnContext(ctx, "strava: revoking the token failed; deleting it here anyway", "err", err)
 		}
 	}
-	// The metric file and the entry go under dataMu together: an analysis
-	// saving metrics checks the connection under the same lock, so it can
-	// never write the file back between the two.
+	// The stored data and the entry go under dataMu together: everything
+	// storing data checks the connection under the same lock, so it can
+	// never write it back between the two.
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
-	if err := s.store.deleteMetrics(user); err != nil {
-		slog.ErrorContext(ctx, "strava: deleting metrics failed", "err", err)
+	if err := s.deleteStoreLocked(user, sl); err != nil {
+		slog.ErrorContext(ctx, "strava: deleting stored data failed", "err", err)
 		return status{}, errStore
 	}
 	if ok {
@@ -673,18 +683,30 @@ func (s *service) recordLocked(user, token string, err error) bool {
 // call when the rate budget is nearly spent, and retries once with a fresh
 // token after a 401.
 func (s *service) get(ctx context.Context, user, path string, q url.Values, into any) error {
+	body, err := s.getRaw(ctx, user, path, q)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(body, into); err != nil {
+		return fmt.Errorf("strava %s: %w", path, err)
+	}
+	return nil
+}
+
+// getRaw is get's answer as Strava sent it, for the activity store.
+func (s *service) getRaw(ctx context.Context, user, path string, q url.Values) ([]byte, error) {
 	for attempt := 0; ; attempt++ {
 		if reset, ok := s.rate.blocked(s.now()); ok {
-			return &rateLimitedError{reset: reset}
+			return nil, &rateLimitedError{reset: reset}
 		}
 		tok, err := s.accessToken(ctx, user)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		code, body, err := s.do(ctx, path, q, tok)
 		if err == nil && code == http.StatusUnauthorized && attempt == 0 {
 			if err := s.refreshAfter401(ctx, user, tok); err != nil {
-				return err
+				return nil, err
 			}
 			continue
 		}
@@ -700,12 +722,9 @@ func (s *service) get(ctx context.Context, user, path string, q url.Values, into
 		}
 		s.record(user, tok, err)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if err := json.Unmarshal(body, into); err != nil {
-			return fmt.Errorf("strava %s: %w", path, err)
-		}
-		return nil
+		return body, nil
 	}
 }
 
