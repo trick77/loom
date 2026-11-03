@@ -151,6 +151,16 @@ func TestSandboxGuidanceListsOnlyInScopeInputs(t *testing.T) {
 	}
 }
 
+// The image's chart style keeps a y grid that an image draws under (zorder 0)
+// and no rc key can lift per artist: only the prompt keeps it off heatmaps.
+func TestSandboxGuidanceTurnsGridOffOnImages(t *testing.T) {
+	for _, want := range []string{"grid off", "imshow", "matshow"} {
+		if !strings.Contains(sandboxGuidancePrompt, want) {
+			t.Fatalf("guidance lost the image grid rule (%q):\n%s", want, sandboxGuidancePrompt)
+		}
+	}
+}
+
 func TestSandboxGuidanceOffersUserGlobalDocuments(t *testing.T) {
 	f := newSandboxFixture(t)
 	g := f.srv.sandboxGuidance(context.Background(), testUser.ID, f.thread, nil)
