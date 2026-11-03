@@ -309,8 +309,8 @@ func (s *service) authorizeURL(redirectURI, oauthState string) (string, error) {
 }
 
 // tokenResponse is Strava's answer to both grants. The athlete comes only
-// with the code exchange; scope is not documented there, so the consent
-// page's own report (loom passes it) is the fallback.
+// with the code exchange; scope is not documented there (in production it
+// came space-separated), so it only stands in for the consent page's report.
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -373,9 +373,11 @@ func (s *service) connect(ctx context.Context, user, code, scope string) (status
 	if err != nil {
 		return status{}, err
 	}
-	granted := tr.Scope
-	if granted == "" {
-		granted = scope
+	// The consent redirect's report is documented as what the user ticked;
+	// the token answer's (undocumented, adds read) only fills in without one.
+	granted := scope
+	if strings.TrimSpace(granted) == "" {
+		granted = tr.Scope
 	}
 	next := connection{
 		AccessToken: tr.AccessToken, RefreshToken: tr.RefreshToken, ExpiresAt: tr.ExpiresAt,

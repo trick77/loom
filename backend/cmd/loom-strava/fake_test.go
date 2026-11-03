@@ -517,10 +517,17 @@ func (r toolResult) file(name string) string {
 	return ""
 }
 
-// connect walks a user through PUT /connection with the athlete's code.
+// connect walks a user through PUT /connection with the athlete's code, every
+// box ticked on the consent page.
 func connect(t *testing.T, h http.Handler, user, code string) map[string]any {
 	t.Helper()
-	status, body := request(t, h, http.MethodPut, "/connection", user, fmt.Sprintf(`{"code":%q,"scope":"read,activity:read_all"}`, code))
+	return connectScope(t, h, user, code, "read,activity:read_all,profile:read_all,read_all")
+}
+
+// connectScope is connect with the consent redirect reporting scope.
+func connectScope(t *testing.T, h http.Handler, user, code, scope string) map[string]any {
+	t.Helper()
+	status, body := request(t, h, http.MethodPut, "/connection", user, fmt.Sprintf(`{"code":%q,"scope":%q}`, code, scope))
 	if status != 200 {
 		t.Fatalf("connect %s: %d %v", user, status, body)
 	}
