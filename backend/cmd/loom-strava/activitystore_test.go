@@ -340,14 +340,14 @@ func TestStore_unreadableFilesAreMissing(t *testing.T) {
 	if _, err := st.writeBody(userA, 1, kindDetail, []byte(`{"id":1}`)); err != nil {
 		t.Fatal(err)
 	}
-	if b, ok := st.readBody(userA, 1, kindDetail, time.Now()); !ok || string(b) != `{"id":1}` {
+	if b, ok := st.readBody(userA, 1, kindDetail); !ok || string(b) != `{"id":1}` {
 		t.Fatalf("round trip: %q %v", b, ok)
 	}
 	p := filepath.Join(dir, activitiesDir, userA, "1.detail.json.gz")
 	if err := os.WriteFile(p, []byte("not gzip"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := st.readBody(userA, 1, kindDetail, time.Now()); ok || exists(p) {
+	if _, ok := st.readBody(userA, 1, kindDetail); ok || exists(p) {
 		t.Error("an unreadable body was served or kept")
 	}
 	if err := os.WriteFile(filepath.Join(dir, activitiesDir, userA, indexFile), []byte("x"), 0o600); err != nil {
@@ -464,30 +464,59 @@ func TestStore_lateUploadWaits(t *testing.T) {
 	}
 }
 
-// With a retention set, an older index starts over and takes its bodies
-// along; a younger body is used.
-func TestStore_retention(t *testing.T) {
+// Nothing stored expires: a year on, after a restart, detail, streams and
+// list still come from the store.
+func TestStore_keptForGood(t *testing.T) {
 	f, svc, dir := analysisFixture(t)
 	h := newServer(config{token: testToken}, svc, "test")
-	if r := callTool(t, h, userA, "get_activity", `{"id":1001}`); r.IsError {
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`); r.IsError {
 		t.Fatal(r.Text)
 	}
 	if r := callTool(t, h, userA, "list_activities", `{}`); r.IsError {
 		t.Fatal(r.Text)
 	}
-	t.Cleanup(func() { activityRetention = 0 })
-	activityRetention = 7 * 24 * time.Hour
-	if _, ok := svc.store.readBody(userA, 1001, kindDetail, f.clock()); !ok {
-		t.Error("a young body was not used")
-	}
-	f.advance(8 * 24 * time.Hour)
+	listed := len(svc.store.loadIndex(userA).Activities)
+	details, streams := f.count("/activities/1001"), f.count("/activities/1001/streams")
+	f.advance(365 * 24 * time.Hour)
 	svc2, _ := restart(t, f, svc, dir)
+	if _, err := svc2.activity(t.Context(), userA, 1001, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc2.streams(t.Context(), userA, 1001, false); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("/activities/1001") - details; n != 0 {
+		t.Errorf("a year-old detail was read again: %d calls", n)
+	}
+	if n := f.count("/activities/1001/streams") - streams; n != 0 {
+		t.Errorf("year-old streams were read again: %d calls", n)
+	}
 	sl := svc2.slot(userA)
 	sl.dataMu.Lock()
-	x := svc2.indexLocked(userA, sl)
+	n := len(svc2.indexLocked(userA, sl).Activities)
 	sl.dataMu.Unlock()
-	if len(x.Activities) != 0 || exists(storedFile(dir, 1001, kindDetail)) {
-		t.Errorf("an old store survived: %d listed, detail %v", len(x.Activities), exists(storedFile(dir, 1001, kindDetail)))
+	if n != listed {
+		t.Errorf("a year-old index lost activities: %d of %d listed", n, listed)
+	}
+}
+
+// An index written before the created field went still loads.
+func TestStore_indexWithCreatedLoads(t *testing.T) {
+	dir := t.TempDir()
+	st := fileStore{dir: dir}
+	body := fmt.Sprintf(`{"v":%d,"athlete":1,"created":"2026-11-03T10:00:00Z","complete":true,"activities":{"7":{"id":7}}}`, indexVersion)
+	z, err := gzipBytes([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, activitiesDir, userA), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, activitiesDir, userA, indexFile), z, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if x := st.loadIndex(userA); x == nil || !x.Complete || len(x.Activities) != 1 {
+		t.Errorf("legacy index: %+v", x)
 	}
 }
 
@@ -570,7 +599,7 @@ func TestStore_unopenableBodyStays(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(p, 0o600) })
-	if _, ok := st.readBody(userA, 1, kindDetail, time.Now()); ok {
+	if _, ok := st.readBody(userA, 1, kindDetail); ok {
 		t.Skip("running with permission to read anything")
 	}
 	if !exists(p) {

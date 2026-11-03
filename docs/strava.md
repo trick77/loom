@@ -61,10 +61,9 @@ Activities barely change after upload, so every activity read is kept per user i
 - `refresh: true` on `get_activity` or `activity_analysis` reads the activity from Strava again: for an activity
   the user changed there (cropped, corrected, retagged). Not twice within 10 min. A refreshed detail drops the stored
   streams and metrics, so the next analysis reads them again.
-- `activityRetention` (`activitystore.go`) bounds the age of anything stored; 0, the default, keeps it for good.
-  Set, an older body is read again and the whole store starts over once its index is that old.
-  Strava's API agreement is read by some as a 7-day cache limit; loom shows each user only their own data, the case
-  it exempts.
+- Nothing stored expires: kept for good, by design (no age limit, no knob). Activities do not change, and every
+  reread costs the shared rate budget. What does remove or replace stored data: a newer read or a refresh, Strava's
+  404, a head read no longer listing it, the stream cap, a corrupt file, disconnect, another athlete.
 
 Stream-derived metrics are kept per user in `/data/metrics/<loom id>.json`; IF and TSS are derived from them with the
 current FTP. A first comparison stops at half the 15-minute budget and says what is still missing. Profile, zones,
