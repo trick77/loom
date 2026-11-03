@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -74,7 +73,7 @@ type hrPoint struct {
 type hrEstimate struct {
 	MaxHR, ConfirmHR float64
 	MaxAt, ConfirmAt summaryActivity
-	Best20, Best20W  float64 // the best 20 min mean HR and that activity's best 20 min power
+	Best20, Best20W  float64 // the best 20 min mean HR and the mean power over those 20 min
 	Best20At         summaryActivity
 	LTHR             float64
 }
@@ -88,7 +87,7 @@ func estimateHR(pts []hrPoint) hrEstimate {
 		}
 		if v, ok := p.vals["hr_20m"]; ok && (math.IsNaN(e.Best20) || v > e.Best20) {
 			e.Best20, e.Best20At, e.Best20W = v, p.act, nan
-			if w, ok := p.vals["mm_1200"]; ok {
+			if w, ok := p.vals["hr_20m_w"]; ok {
 				e.Best20W = w
 			}
 		}
@@ -154,15 +153,24 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 	}
 	now := t.svc.now()
 	from := now.AddDate(0, 0, -hrWindowDays)
-	list, more, err := t.svc.listActivities(ctx, user, from.Unix(), 0, maxListPages)
+	// Newest first, no after: with after Strava answers oldest first, and a
+	// full list would then drop the newest activities, today's fitness.
+	all, more, err := t.svc.listActivities(ctx, user, 0, 0, maxListPages)
 	if err != nil {
 		return failure(err)
 	}
+	var list []summaryActivity
+	for _, x := range all {
+		if !x.localStart().Before(from) {
+			list = append(list, x)
+		}
+	}
+	// The pages ran out inside the window only when the last row is in it.
+	more = more && len(all) > 0 && !all[len(all)-1].localStart().Before(from)
 	stored := t.loadMetrics(user, a.ID)
 	known := func(x summaryActivity) (storedMetrics, bool) {
 		sm, ok := stored[strconv.FormatInt(x.ID, 10)]
-		_, has := sm.Vals["hr_max10"]
-		return sm, ok && has
+		return sm, ok && sm.Rev >= entryRev
 	}
 
 	// Per family: its activities with heart rate, and the hardest of those
@@ -183,7 +191,11 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 		}
 		queues[i] = hardestFirst(need)
 	}
-	added, stoppedBy := t.readHR(ctx, user, queues)
+	read := t.readStreams(ctx, user, interleave(queues))
+	added := map[string]storedMetrics{}
+	for id, sm := range read.got {
+		added[strconv.FormatInt(id, 10)] = sm
+	}
 	t.storeMetrics(user, a.ID, added, stored)
 	for k, v := range added {
 		stored[k] = v
@@ -204,23 +216,30 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 	fmt.Fprintf(&b, "Heart-rate zones from the user's own streams, %s – %s. Max heart rate: the best 10 s, confirmed by a "+
 		"second activity within %d bpm. Threshold heart rate (LTHR): %.0f %% of the best 20 min. Zones: Friel's, from the LTHR.\n",
 		from.Format("2006-01-02"), now.Format("2006-01-02"), maxConfirmBPM, lthrShare*100)
-	unread := false
+	retry := false
 	for i, f := range fams {
 		var pts []hrPoint
+		notTried, failed := 0, 0
 		for _, x := range acts[i] {
-			if sm, ok := known(x); ok {
-				pts = append(pts, hrPoint{act: x, vals: sm.Vals})
+			switch sm, ok := known(x); {
+			case ok:
+				if _, has := sm.Vals["hr_max10"]; has {
+					pts = append(pts, hrPoint{act: x, vals: sm.Vals})
+				}
+			case read.failed[x.ID]:
+				failed++
+			default:
+				notTried++
 			}
 		}
-		fmt.Fprintf(&b, "%s (%s): %d with heart rate, %d read", f.key, strings.Join(f.sports, ", "), len(acts[i]), len(pts))
-		if n := len(acts[i]) - len(pts); n > 0 {
-			unread = true
-			why := stoppedBy
-			if why == "" {
-				why = "Strava sent no heart-rate stream"
-			}
-			fmt.Fprintf(&b, "; %d not read yet (%s)", n, why)
+		fmt.Fprintf(&b, "%s (%s): %d with heart rate, %d read", f.key, strings.Join(f.sports, ", "), len(acts[i]), len(acts[i])-notTried-failed)
+		if notTried > 0 {
+			fmt.Fprintf(&b, "; %d not read yet (%s)", notTried, read.stoppedBy)
 		}
+		if failed > 0 {
+			fmt.Fprintf(&b, "; %d failed to read (a later call retries)", failed)
+		}
+		retry = retry || notTried > 0 || failed > 0
 		b.WriteByte('\n')
 		if len(pts) == 0 {
 			continue
@@ -255,7 +274,7 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 	if more {
 		fmt.Fprintf(&b, "The list stopped at %d activities: older ones in the window are left out.\n", maxListPages*activitiesPerPage)
 	}
-	if unread && stoppedBy != "" {
+	if retry {
 		b.WriteString("Call hr_zones again later to read more.\n")
 	}
 
@@ -273,38 +292,19 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 	return mcpserver.Result{Text: b.String(), Sources: sources}
 }
 
-// readHR reads the streams of the queued activities, one family after the
-// other in turns, within the rate and time budget; stoppedBy says why it
-// stopped early.
-func (t *tools) readHR(ctx context.Context, user string, queues [][]summaryActivity) (map[string]storedMetrics, string) {
-	added := map[string]storedMetrics{}
-	fetched := 0
+// interleave takes one from each queue in turn, so a budget stop leaves
+// every family some reads.
+func interleave(queues [][]summaryActivity) []summaryActivity {
+	var out []summaryActivity
 	for i := 0; ; i++ {
-		progressed := false
+		took := false
 		for _, q := range queues {
-			if i >= len(q) {
-				continue
+			if i < len(q) {
+				out, took = append(out, q[i]), true
 			}
-			progressed = true
-			if reason := t.budgetLeft(ctx, fetched); reason != "" {
-				return added, reason
-			}
-			x := q[i]
-			sctx, cancel := context.WithTimeout(ctx, streamTimeout)
-			s, err := t.svc.streams(sctx, user, x.ID)
-			cancel()
-			fetched++
-			var rl *rateLimitedError
-			if errors.As(err, &rl) {
-				return added, "the Strava rate budget"
-			}
-			if err != nil {
-				continue
-			}
-			added[strconv.FormatInt(x.ID, 10)] = storedFrom(computeMetrics(s, 0, s.n, nil, nil), x.localStart())
 		}
-		if !progressed {
-			return added, ""
+		if !took {
+			return out
 		}
 	}
 }

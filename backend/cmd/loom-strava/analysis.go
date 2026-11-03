@@ -143,7 +143,7 @@ func metricRows(u units, sport string) []metricRow {
 
 // storedFrom keeps the FTP- and zone-free stream metrics of m.
 func storedFrom(m rideMetrics, start time.Time) storedMetrics {
-	sm := storedMetrics{V: metricsVersion, Start: start.Format("2006-01-02T15:04:05"), MovingS: m.MovingS, Vals: map[string]float64{}}
+	sm := storedMetrics{V: metricsVersion, Rev: entryRev, Start: start.Format("2006-01-02T15:04:05"), MovingS: m.MovingS, Vals: map[string]float64{}}
 	put := func(k string, v float64) {
 		if finite(v) {
 			sm.Vals[k] = math.Round(v*100) / 100
@@ -159,6 +159,7 @@ func storedFrom(m rideMetrics, start time.Time) storedMetrics {
 	put("avg_hr", m.AvgHR)
 	put("hr_max10", m.HRMax10)
 	put("hr_20m", m.HR20m)
+	put("hr_20m_w", m.HR20mW)
 	put("ef", m.EF)
 	put("decoupling", m.Decoupling)
 	return sm
@@ -243,7 +244,7 @@ func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string
 func changes(add, have map[string]storedMetrics) bool {
 	for k, v := range add {
 		h, ok := have[k]
-		if !ok || h.V != v.V || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) {
+		if !ok || h.V != v.V || h.Rev != v.Rev || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) {
 			return true
 		}
 	}
@@ -278,31 +279,20 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 
 	// Cold start: streams newest first while the budget lasts.
 	added := map[string]storedMetrics{strconv.FormatInt(d.ID, 10): this}
-	fetched := 0
+	var todo []summaryActivity
+	for _, e := range c.entries {
+		if !e.known && !e.act.Manual {
+			todo = append(todo, e.act)
+		}
+	}
+	read := t.readStreams(ctx, user, todo)
+	c.stoppedBy = read.stoppedBy
 	for i := range c.entries {
 		e := &c.entries[i]
-		if e.known || e.act.Manual {
-			continue
+		if sm, ok := read.got[e.act.ID]; ok {
+			e.sm, e.known = sm, true
+			added[strconv.FormatInt(e.act.ID, 10)] = sm
 		}
-		if reason := t.budgetLeft(ctx, fetched); reason != "" {
-			c.stoppedBy = reason
-			break
-		}
-		sctx, cancel := context.WithTimeout(ctx, streamTimeout)
-		s, err := t.svc.streams(sctx, user, e.act.ID)
-		cancel()
-		fetched++
-		var rl *rateLimitedError
-		if errors.As(err, &rl) {
-			c.stoppedBy = "the Strava rate budget"
-			break
-		}
-		if err != nil {
-			continue
-		}
-		m := computeMetrics(s, 0, s.n, nil, nil)
-		e.sm, e.known = storedFrom(m, e.act.localStart()), true
-		added[strconv.FormatInt(e.act.ID, 10)] = e.sm
 	}
 	t.storeMetrics(user, a.ID, added, stored)
 	for _, e := range c.entries {
@@ -361,6 +351,41 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 		c.sports = append([]string{d.SportType}, c.sports...)
 	}
 	return c, nil
+}
+
+// streamsRead is what readStreams got: the stream metrics by activity id,
+// the ids whose read failed (a later call retries them), and why it stopped
+// before the end ("" = every activity tried).
+type streamsRead struct {
+	got       map[int64]storedMetrics
+	failed    map[int64]bool
+	stoppedBy string
+}
+
+// readStreams reads the streams of acts in order, within the rate and time
+// budget, and stores nothing.
+func (t *tools) readStreams(ctx context.Context, user string, acts []summaryActivity) streamsRead {
+	r := streamsRead{got: map[int64]storedMetrics{}, failed: map[int64]bool{}}
+	for i, x := range acts {
+		if reason := t.budgetLeft(ctx, i); reason != "" {
+			r.stoppedBy = reason
+			return r
+		}
+		sctx, cancel := context.WithTimeout(ctx, streamTimeout)
+		s, err := t.svc.streams(sctx, user, x.ID)
+		cancel()
+		var rl *rateLimitedError
+		if errors.As(err, &rl) {
+			r.stoppedBy = "the Strava rate budget"
+			return r
+		}
+		if err != nil {
+			r.failed[x.ID] = true
+			continue
+		}
+		r.got[x.ID] = storedFrom(computeMetrics(s, 0, s.n, nil, nil), x.localStart())
+	}
+	return r
 }
 
 // budgetLeft says why the baseline must stop reading streams; "" to go on.
@@ -595,7 +620,11 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		// hE is set, so z.HeartRate is: the model must know the zones are
 		// Strava's age-based defaults, not the user's own.
 		if !z.HeartRate.CustomZones {
-			notes = append(notes, "Strava's default zones, usually age-based; hr_zones estimates the user's own")
+			note := "Strava's default zones, usually age-based"
+			if _, ok := familyOf(d.SportType); ok {
+				note += "; hr_zones estimates the user's own"
+			}
+			notes = append(notes, note)
 		}
 		if len(notes) > 0 {
 			line += " (" + strings.Join(notes, "; ") + ")"

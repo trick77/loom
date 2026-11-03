@@ -55,15 +55,17 @@ Strava's default zones (`custom_zones: false`) are mostly 220 minus age: about a
 threshold sits higher relative to max. `hr_zones` derives them instead from two stored values per activity, `hr_max10`
 (best 10 s mean HR) and `hr_20m` (best 20 min): max HR is the highest `hr_max10` a second activity comes within 5 bpm
 of (a strap spike or cadence lock is one activity's), LTHR is 95 % of the best `hr_20m` (Friel's 20-minute test), on
-rides checked against FTP via that ride's 20-minute power. Families are explicit: cycling = Ride, GravelRide,
+rides checked against FTP via `hr_20m_w`, the power over those same 20 minutes (a ride's best 20-min power can be a
+different stretch). Families are explicit: cycling = Ride, GravelRide,
 MountainBikeRide, VirtualRide; running = Run, TrailRun, VirtualRun (5-10 bpm higher); e-bike, walk, hike are out. It
 reads streams only for the hardest activities not read yet (top max HR and top 20-min-plus average HR, in turns),
 within the same budget; a later call reads more. The zones themselves are never stored: a new hard effort moves
 them. `activity_analysis` keeps bucketing time in zones with Strava's zones (as Strava shows them) and says when
 those are the defaults.
 
-New stored keys need no `metricsVersion` bump: a bump drops every user's whole metrics file and re-reads every
-stream against the rate budget; entries lacking a key read as unknown.
+New stored keys bump the per-entry `entryRev`, never `metricsVersion`: a `metricsVersion` bump drops every user's
+whole metrics file and re-reads every stream against the rate budget. Key presence alone can't tell "stored before
+the key" from "activity has no HR"; it re-read every HR-less activity on every call.
 
 Tokens live in `/data/state.json` (0600), one entry per loom user. Access tokens last 6 h; refresh rotates the refresh
 token and the sidecar stores the new one before using it. Disconnect revokes the token at Strava and deletes the

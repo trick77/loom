@@ -7,9 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
-func hrPt(id int64, max10, best20, mm1200 float64) hrPoint {
+func hrPt(id int64, max10, best20, w20 float64) hrPoint {
 	v := map[string]float64{}
 	if max10 > 0 {
 		v["hr_max10"] = max10
@@ -17,8 +18,8 @@ func hrPt(id int64, max10, best20, mm1200 float64) hrPoint {
 	if best20 > 0 {
 		v["hr_20m"] = best20
 	}
-	if mm1200 > 0 {
-		v["mm_1200"] = mm1200
+	if w20 > 0 {
+		v["hr_20m_w"] = w20
 	}
 	return hrPoint{act: summaryActivity{ID: id}, vals: v}
 }
@@ -188,5 +189,47 @@ func TestHRZones_budget(t *testing.T) {
 	}
 	if f.count("/activities/3002/streams") != 0 {
 		t.Error("streams read past the budget")
+	}
+}
+
+// More activities than the list reads: the newest are kept, the oldest of the
+// window are said to be left out.
+func TestHRZones_longList(t *testing.T) {
+	f, svc, _ := hrFixture(t)
+	for i := range maxListPages * activitiesPerPage {
+		f.addActivity(1, int64(5000+i), "Walk", "Walk", local(2026, 1, 1, 0).Add(time.Duration(i)*time.Hour), nil, nil)
+	}
+	h := newServer(config{token: testToken}, svc, "test")
+	r := callTool(t, h, userA, "hr_zones", `{"sport":"cycling"}`)
+	if r.IsError || !strings.Contains(r.Text, "4 with heart rate, 4 read") ||
+		!strings.Contains(r.Text, "The list stopped at 600 activities: older ones in the window are left out.") {
+		t.Errorf("long list:\n%s", r.Text)
+	}
+}
+
+// A stream without heart rate is read once; a failed read is retried. The
+// running family, fully read, gives no reason of the other's.
+func TestHRZones_noHRAndFailures(t *testing.T) {
+	f, svc, _ := hrFixture(t)
+	noHR := synthRide(false)
+	noHR.HR = nil
+	f.addActivity(1, 3009, "Strap dead", "Ride", local(2026, 10, 9, 9), &noHR, nil)
+	broken := synthRide(false)
+	f.addActivity(1, 3010, "Broken", "Ride", local(2026, 10, 10, 9), &broken, nil)
+	f.failStreams[3010] = true
+	h := newServer(config{token: testToken}, svc, "test")
+	for range 2 {
+		r := callTool(t, h, userA, "hr_zones", `{}`)
+		if r.IsError || !strings.Contains(r.Text, "6 with heart rate, 5 read; 1 failed to read (a later call retries)") ||
+			!strings.Contains(r.Text, "Call hr_zones again later") || !strings.Contains(r.Text, "max heart rate: 174 bpm") ||
+			!strings.Contains(r.Text, "2 with heart rate, 2 read\n") {
+			t.Errorf("failures:\n%s", r.Text)
+		}
+	}
+	if n := f.count("/activities/3009/streams"); n != 1 {
+		t.Errorf("a stream without heart rate read %d times", n)
+	}
+	if n := f.count("/activities/3010/streams"); n < 2 {
+		t.Errorf("a failed read not retried: %d", n)
 	}
 }

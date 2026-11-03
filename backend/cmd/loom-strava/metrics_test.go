@@ -175,8 +175,13 @@ func TestComputeMetrics_synthRide(t *testing.T) {
 		t.Errorf("HR best 20 min = %v", m.HR20m)
 	}
 	st := storedFrom(m, time.Time{})
-	if st.Vals["hr_max10"] != 170 || st.Vals["hr_20m"] != math.Round(m.HR20m*100)/100 {
-		t.Errorf("stored HR keys: %v", st.Vals)
+	if st.Vals["hr_max10"] != 170 || st.Vals["hr_20m"] != math.Round(m.HR20m*100)/100 || st.Rev != entryRev {
+		t.Errorf("stored HR keys: %v (rev %d)", st.Vals, st.Rev)
+	}
+	// The power of the same 20 minutes as the best HR, not the best 20 min
+	// of power: the ride's last 20 min, climb included, at 200..300 W.
+	if w := st.Vals["hr_20m_w"]; w <= 200 || w >= 300 {
+		t.Errorf("power over the best-HR 20 min = %v", w)
 	}
 	// Under 20 minutes: a best 10 s, no best 20 min; no HR stream: neither.
 	a0, b0 := s.sub(5000, 7000)
