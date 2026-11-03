@@ -31,4 +31,18 @@ describe("SettingsModal", () => {
 
     expect(await screen.findByText("Not connected yet.")).toBeInTheDocument();
   });
+
+  it("marks Apple Music and Strava with their brand, hidden from readers", () => {
+    render(<SettingsModal onClose={() => {}} appleMusic strava />);
+
+    for (const [name, brand] of [
+      ["Apple Music", "appleMusic"],
+      ["Strava", "strava"],
+    ]) {
+      const mark = screen
+        .getByRole("button", { name })
+        .querySelector(`svg[data-brand="${brand}"]`);
+      expect(mark).toHaveAttribute("aria-hidden", "true");
+    }
+  });
 });

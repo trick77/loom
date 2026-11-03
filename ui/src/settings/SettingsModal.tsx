@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import type { StravaOutcome } from "../api";
 import { Icon, type IconName } from "../chat/Icon";
 import { AppleMusicPanel } from "./AppleMusicPanel";
+import { BrandIcon, type Brand } from "./BrandIcon";
 import { SharedChatsPanel } from "./SharedChatsPanel";
 import { StravaPanel } from "./StravaPanel";
 import { UsagePanel } from "./UsagePanel";
@@ -14,24 +15,23 @@ type SettingsSection = "usage" | "shares" | "appleMusic" | "strava";
 // Feature sections show only to users the server allows them (`/api/me`).
 type Feature = "appleMusic" | "strava";
 
-const SECTIONS: {
+const SECTIONS: ({
   id: SettingsSection;
   labelKey: string;
-  icon: IconName;
   feature?: Feature;
-}[] = [
+} & ({ icon: IconName } | { brand: Brand }))[] = [
   { id: "usage", labelKey: "settings.usage", icon: "sliders" },
   { id: "shares", labelKey: "settings.sharedChats", icon: "upload" },
   {
     id: "appleMusic",
     labelKey: "settings.appleMusic.title",
-    icon: "volume",
+    brand: "appleMusic",
     feature: "appleMusic",
   },
   {
     id: "strava",
     labelKey: "settings.strava.title",
-    icon: "globe",
+    brand: "strava",
     feature: "strava",
   },
 ];
@@ -92,7 +92,11 @@ export function SettingsModal({
               aria-current={section === entry.id ? "page" : undefined}
               onClick={() => setSection(entry.id)}
             >
-              <Icon name={entry.icon} size="18px" className="shrink-0" />
+              {"brand" in entry ? (
+                <BrandIcon brand={entry.brand} className="shrink-0" />
+              ) : (
+                <Icon name={entry.icon} size="18px" className="shrink-0" />
+              )}
               {t(entry.labelKey)}
             </button>
           ))}
