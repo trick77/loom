@@ -499,8 +499,8 @@ func loadSandbox(cfg *Config) {
 const minTunewireToken = 32
 
 // tunewireProblem says what is wrong with a configured tunewire sidecar. It
-// fails boot: a half-set sidecar would hold a personal Apple Music token with
-// no clear owner.
+// fails boot: a half-set sidecar would hold personal Apple Music tokens with
+// nobody allowed to connect or see them.
 func tunewireProblem(cfg Config) string {
 	if strings.TrimSpace(cfg.TunewireURL) == "" {
 		return ""
@@ -511,7 +511,7 @@ func tunewireProblem(cfg Config) string {
 	case len(cfg.TunewireToken) < minTunewireToken:
 		return fmt.Sprintf("BACKEND_TUNEWIRE_TOKEN must be at least %d characters when BACKEND_TUNEWIRE_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minTunewireToken)
 	case len(cfg.TunewireUsers) == 0:
-		return "BACKEND_TUNEWIRE_USERS must list the loom user id(s) whose Apple Music token the sidecar holds when BACKEND_TUNEWIRE_URL is set"
+		return "BACKEND_TUNEWIRE_USERS must list the loom user id(s) who may connect their own Apple Music account when BACKEND_TUNEWIRE_URL is set"
 	}
 	return ""
 }
