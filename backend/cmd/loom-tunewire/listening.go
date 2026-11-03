@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/mcpserver"
+	"github.com/trick77/loom/internal/mcpserver"
 )
 
 const (
@@ -48,7 +48,7 @@ func isNewMusicMix(it applemusic.Item) bool {
 // refused token, a refused developer token. Every other call would fail the
 // same way.
 func fatal(err error) bool {
-	return errors.Is(err, errNotConnected) || errors.Is(err, applemusic.ErrUserTokenExpired) ||
+	return errors.Is(err, errNotConnected) || errors.Is(err, errNoUser) || errors.Is(err, applemusic.ErrUserTokenExpired) ||
 		errors.Is(err, applemusic.ErrDevTokenRefused)
 }
 
@@ -198,7 +198,7 @@ func runNewMusic(ctx context.Context, svc *service, args json.RawMessage) mcpser
 		}
 	}
 	var l listing
-	l.line("New on Apple Music for the user (%s storefront).", svc.ownerStorefront())
+	l.line("New on Apple Music for the user (%s storefront).", svc.ownerStorefront(ctx))
 	var failed []error
 	if added {
 		limit := 0 // all of it
@@ -317,7 +317,7 @@ func writeForYou(ctx context.Context, svc *service, l *listing, recs []applemusi
 	defer l.endSection()
 	switch {
 	case errors.Is(err, applemusic.ErrNotFound):
-		l.line("(Apple does not know this mix in the %s storefront right now)", svc.ownerStorefront())
+		l.line("(Apple does not know this mix in the %s storefront right now)", svc.ownerStorefront(ctx))
 	case err != nil:
 		// The picks are there; only the mix's tracks are missing.
 		slog.WarnContext(ctx, "tunewire: mix tracks failed", "err", err)

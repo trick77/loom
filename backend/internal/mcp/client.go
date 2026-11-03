@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/trick77/loom/internal/mcpserver"
 )
 
 const (
@@ -215,6 +217,12 @@ func (c *remoteClient) discover(ctx context.Context) error {
 }
 
 func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[string]any) (CallResult, error) {
+	// Belt and braces under Service's check (perUserReady): this client is
+	// the one that names the caller, so it never sends a per-user call
+	// without one.
+	if err := perUserReady(ctx, c.cfg, name); err != nil {
+		return CallResult{}, err
+	}
 	var result callToolResult
 	if err := c.request(ctx, "tools/call", map[string]any{"name": name, "arguments": arguments}, &result); err != nil {
 		return CallResult{}, err
@@ -380,6 +388,11 @@ func (c *remoteClient) call(ctx context.Context, method string, params map[strin
 	}
 	for key, value := range c.cfg.Headers {
 		req.Header.Set(key, value)
+	}
+	// After the configured headers: no header map can name the user.
+	req.Header.Del(mcpserver.UserHeader)
+	if p, ok := PrincipalFrom(ctx); ok && c.cfg.PerUser {
+		req.Header.Set(mcpserver.UserHeader, p.ID)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

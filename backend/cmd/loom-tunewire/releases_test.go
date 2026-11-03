@@ -48,7 +48,7 @@ func TestRankArtists_listeningFirstThenTheLibrary(t *testing.T) {
 	top, fromListening := rankArtists(lib, signal{recent, weightPlayed}, signal{heavy, weightHeavy})
 	var got []string
 	for _, c := range top {
-		got = append(got, fmt.Sprintf("%s:%s:%d", c.name, c.key(), c.score))
+		got = append(got, fmt.Sprintf("%s:%s:%d", c.name, c.key("u"), c.score))
 	}
 	if want := "Beta:b.2:4 Gamma:3:2 Zeta:z.9:1 Alpha:1:0"; strings.Join(got, " ") != want {
 		t.Errorf("ranked %v, want %s", got, want)
@@ -62,7 +62,8 @@ func TestRankArtists_listeningFirstThenTheLibrary(t *testing.T) {
 		many = append(many, applemusic.Artist{ID: fmt.Sprintf("r.%d", i), Name: fmt.Sprintf("Band %d", i)})
 	}
 	top, fromListening = rankArtists(many)
-	if len(top) != maxReleaseArtists || fromListening != 0 || top[0].key() != "l:r.0" {
+	// A library-only artist is keyed by its user: library ids are per library.
+	if len(top) != maxReleaseArtists || fromListening != 0 || top[0].key("u") != "l:u:r.0" || top[0].key("v") == top[0].key("u") {
 		t.Errorf("%d picked, %d from listening, first %+v", len(top), fromListening, top[0])
 	}
 }
@@ -242,7 +243,7 @@ func TestNewReleasesTool_errors(t *testing.T) {
 		t.Errorf("mapping down (Eta, Theta): %s", text)
 	}
 
-	if _, err := svc.ClearToken(); err != nil {
+	if _, err := svc.ClearToken(testUser); err != nil {
 		t.Fatal(err)
 	}
 	if text, _ := callTool(t, h, "/mcp/library", "new_releases", `{}`); !strings.HasPrefix(text, "ERROR: Apple Music is not connected") {

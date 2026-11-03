@@ -68,3 +68,5 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 ## Security invariants
 - Every DB query scoped by `user_id`. Per-user file access confined to the user's root (`..`, absolute,
   symlink escape rejected). Admin endpoints role-gated.
+- Personal data → own token per user, never shared (`PerUser`; `_USERS` only grants). New integration → own
+  sidecar.

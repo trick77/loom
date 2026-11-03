@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/mcpserver"
+	"github.com/trick77/loom/internal/mcpserver"
 )
 
 const (
@@ -133,6 +133,9 @@ func failure(err error) mcpserver.Result {
 	switch {
 	case errors.Is(err, errNotConnected):
 		return mcpserver.ErrorResult(msgNotConnected)
+	case errors.Is(err, errNoUser):
+		// loom always names the caller; without one no account is read.
+		return mcpserver.ErrorResult("Apple Music library tools need the signed-in loom user; none was given.")
 	case errors.Is(err, applemusic.ErrUserTokenExpired):
 		return mcpserver.ErrorResult(msgExpired)
 	case errors.Is(err, applemusic.ErrDevTokenRefused):

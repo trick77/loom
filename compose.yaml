@@ -206,9 +206,9 @@ services:
       traefik.enable: "false"
 
   tunewire:
-    # Apple Music for loom (docs/tunewire.md): the user's playlists and catalog
-    # search over MCP. Holds one person's media-user-token in its volume, so
-    # every route needs TUNEWIRE_TOKEN. Opt-in via the profile; loom does not
+    # Apple Music for loom (docs/tunewire.md): each user's own playlists and
+    # catalog search over MCP. Holds every connected user's media-user-token in
+    # its volume, so every route needs TUNEWIRE_TOKEN. Opt-in via the profile; loom does not
     # depend on it: a dead sidecar only costs its tools.
     image: ghcr.io/trick77/loom-tunewire:latest
     profiles: ["tunewire"]

@@ -201,8 +201,8 @@ func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if o := over.FileServers.Servers[tunewireLibraryServer]; o.URL != "http://elsewhere:1/mcp" || !o.RestrictUsers || !reflect.DeepEqual(o.Users, []string{"usr_1"}) {
-			t.Errorf("%s: override = %+v, want the file's URL with the owner", entry, o)
+		if o := over.FileServers.Servers[tunewireLibraryServer]; o.URL != "http://elsewhere:1/mcp" || !o.RestrictUsers || !o.PerUser || !reflect.DeepEqual(o.Users, []string{"usr_1"}) {
+			t.Errorf("%s: override = %+v, want the file's URL, its users and per-user accounts", entry, o)
 		}
 	}
 

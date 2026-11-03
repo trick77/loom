@@ -16,54 +16,56 @@ import (
 // maxAppleMusicTokenBody bounds PUT /api/me/apple-music: one short token.
 const maxAppleMusicTokenBody = 16 << 10
 
-// AppleMusicService is the loom-tunewire sidecar's token routes;
-// *tunewire.Client implements it.
+// AppleMusicService is the loom-tunewire sidecar's token routes, each for
+// one loom user's own account; *tunewire.Client implements it.
 type AppleMusicService interface {
-	Status(ctx context.Context, check bool) (tunewire.Status, error)
-	SetToken(ctx context.Context, token string) (tunewire.Status, error)
-	ClearToken(ctx context.Context) (tunewire.Status, error)
+	Status(ctx context.Context, user string, check bool) (tunewire.Status, error)
+	SetToken(ctx context.Context, user, token string) (tunewire.Status, error)
+	ClearToken(ctx context.Context, user string) (tunewire.Status, error)
 }
 
-// appleMusicAllowed reports whether the account owns the sidecar's Apple
-// Music connection: the one user the library tools are restricted to. An
-// unset owner matches nobody.
+// appleMusicAllowed reports whether the account may connect Apple Music: it
+// is on BACKEND_TUNEWIRE_USERS. Each listed user connects their own account;
+// an unset list matches nobody.
 func (s *server) appleMusicAllowed(user auth.User) bool {
 	return s.appleMusic != nil && mcp.UsersAllow(s.appleMusicUsers, turn.MCPPrincipal(user))
 }
 
-// appleMusicUser returns the signed-in owner. Anyone else gets 404: the
-// connection holds one person's token, and another account must not learn
-// its state, let alone replace the token with theirs.
-func (s *server) appleMusicUser(w http.ResponseWriter, r *http.Request) bool {
+// appleMusicUser returns the signed-in user when listed. Anyone else gets
+// 404: the section does not exist for them.
+func (s *server) appleMusicUser(w http.ResponseWriter, r *http.Request) (auth.User, bool) {
 	user, ok := currentUser(w, r)
 	if !ok {
-		return false
+		return auth.User{}, false
 	}
 	if !s.appleMusicAllowed(user) {
 		httpx.WriteError(w, http.StatusNotFound, "not found")
-		return false
+		return auth.User{}, false
 	}
-	return true
+	return user, true
 }
 
 func (s *server) handleAppleMusicStatus(w http.ResponseWriter, r *http.Request) {
-	if !s.appleMusicUser(w, r) {
+	user, ok := s.appleMusicUser(w, r)
+	if !ok {
 		return
 	}
-	st, err := s.appleMusic.Status(r.Context(), false)
+	st, err := s.appleMusic.Status(r.Context(), user.ID, false)
 	s.writeAppleMusic(w, r, st, err)
 }
 
 func (s *server) handleAppleMusicCheck(w http.ResponseWriter, r *http.Request) {
-	if !s.appleMusicUser(w, r) {
+	user, ok := s.appleMusicUser(w, r)
+	if !ok {
 		return
 	}
-	st, err := s.appleMusic.Status(r.Context(), true)
+	st, err := s.appleMusic.Status(r.Context(), user.ID, true)
 	s.writeAppleMusic(w, r, st, err)
 }
 
 func (s *server) handleAppleMusicSetToken(w http.ResponseWriter, r *http.Request) {
-	if !s.appleMusicUser(w, r) {
+	user, ok := s.appleMusicUser(w, r)
+	if !ok {
 		return
 	}
 	var body struct {
@@ -73,15 +75,16 @@ func (s *server) handleAppleMusicSetToken(w http.ResponseWriter, r *http.Request
 		writeDecodeError(w, err)
 		return
 	}
-	st, err := s.appleMusic.SetToken(r.Context(), body.Token)
+	st, err := s.appleMusic.SetToken(r.Context(), user.ID, body.Token)
 	s.writeAppleMusic(w, r, st, err)
 }
 
 func (s *server) handleAppleMusicClearToken(w http.ResponseWriter, r *http.Request) {
-	if !s.appleMusicUser(w, r) {
+	user, ok := s.appleMusicUser(w, r)
+	if !ok {
 		return
 	}
-	st, err := s.appleMusic.ClearToken(r.Context())
+	st, err := s.appleMusic.ClearToken(r.Context(), user.ID)
 	s.writeAppleMusic(w, r, st, err)
 }
 

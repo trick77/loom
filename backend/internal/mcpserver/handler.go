@@ -1,7 +1,8 @@
 // Package mcpserver is a small stateless MCP server over streamable HTTP
 // (JSON responses only), copied from peeq's internal/mcpserver with the tool
 // registry made a parameter. It answers the 2026-07-28 revision and the
-// initialize-era ones.
+// initialize-era ones. loom's sidecars share it; it imports nothing of loom,
+// so a sidecar image copies this directory alone.
 package mcpserver
 
 import (
@@ -12,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -42,6 +44,29 @@ type Result struct {
 	Text    string
 	Sources []Source
 	IsError bool
+}
+
+// UserHeader carries the loom user id on every call loom makes to a
+// per-user server. Only loom holds the bearer token the routes sit behind, so
+// the header is as trustworthy as that token.
+const UserHeader = "X-Loom-User"
+
+type userKey struct{}
+
+// WithUser returns ctx carrying the loom user id.
+func WithUser(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, userKey{}, id)
+}
+
+// User is the loom user id a call is made for; "" when loom sent none.
+func User(ctx context.Context) string {
+	id, _ := ctx.Value(userKey{}).(string)
+	return id
+}
+
+// UserFromRequest is the request's loom user id (UserHeader), trimmed.
+func UserFromRequest(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get(UserHeader))
 }
 
 // ErrorResult is a failed call the model reads and explains.
@@ -154,7 +179,7 @@ func (h *handler) callTool(w http.ResponseWriter, r *http.Request, req request, 
 	if len(p.Arguments) == 0 || string(p.Arguments) == "null" {
 		p.Arguments = json.RawMessage("{}")
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), toolTimeout)
+	ctx, cancel := context.WithTimeout(WithUser(r.Context(), UserFromRequest(r)), toolTimeout)
 	defer cancel()
 	start := time.Now()
 	res := t.Run(ctx, p.Arguments)

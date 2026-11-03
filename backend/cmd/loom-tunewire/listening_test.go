@@ -22,7 +22,7 @@ func connected(t *testing.T) (*service, *fakeAPI, http.Handler) {
 	if text, _ := callTool(t, h, "/mcp/library", "recently_played", `{}`); !strings.Contains(text, "ERROR: Apple Music is not connected") {
 		t.Fatalf("not connected: %s", text)
 	}
-	if _, err := svc.SetToken(context.Background(), "good"); err != nil {
+	if _, err := svc.SetToken(context.Background(), testUser, "good"); err != nil {
 		t.Fatal(err)
 	}
 	return svc, api, h
@@ -86,7 +86,7 @@ func TestListening_recordsTheTokenState(t *testing.T) {
 	svc, api, h := connected(t)
 	api.refuse = true
 	callTool(t, h, "/mcp/library", "new_music", `{"section":"for_you"}`)
-	if st := svc.status(); st.State != "expired" {
+	if st := svc.status(testUser); st.State != "expired" {
 		t.Errorf("state %+v", st)
 	}
 }

@@ -454,11 +454,33 @@ func (s *Service) CallTool(ctx context.Context, name string, arguments map[strin
 func (s *Service) CallToolResult(ctx context.Context, name string, arguments map[string]any) (CallResult, error) {
 	s.mu.RLock()
 	route, ok := s.routes[name]
+	server, _, _ := SplitExposedToolName(name)
+	sc := s.cfg.Servers[server]
 	s.mu.RUnlock()
 	if !ok {
 		return CallResult{}, fmt.Errorf("unknown MCP tool %q", name)
 	}
+	if err := perUserReady(ctx, sc, name); err != nil {
+		return CallResult{}, err
+	}
 	return route.client.CallTool(ctx, route.name, arguments)
+}
+
+// perUserReady fails closed for a per-user server: without the caller it
+// cannot pick the account and must never fall back to someone else's, and
+// only the HTTP transport carries the caller (mcpserver.UserHeader). It holds
+// whatever client serves the route, an mcp.json override included.
+func perUserReady(ctx context.Context, sc ServerConfig, name string) error {
+	if !sc.PerUser {
+		return nil
+	}
+	if _, ok := PrincipalFrom(ctx); !ok {
+		return fmt.Errorf("MCP tool %q needs the calling user", name)
+	}
+	if sc.Transport != TransportStreamableHTTP {
+		return fmt.Errorf("MCP tool %q keeps one account per user and needs the HTTP transport to name the caller", name)
+	}
+	return nil
 }
 
 // sortedServerNames returns a map's keys in a stable order, so discovery and
