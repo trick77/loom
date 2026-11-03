@@ -27,8 +27,17 @@ PLAIN = "#383835"  # profile fill without zones
 
 RAMP = LinearSegmentedColormap.from_list("loom_ramp", ZONES)
 
-# The image ships only matplotlib's bundled DejaVu Sans; naming another font
-# would print a findfont warning into every job's output.
+# Series colours for hand-written charts, in this order: the dataviz dark slots,
+# led by THIS, BEST, MEDIAN so a plain chart opens like the Strava ones. Adjacent
+# pairs validated on BG (CVD ΔE >= 8.4, normal vision >= 19.3); the chart
+# functions pass their colours explicitly and never read the cycle.
+SERIES = (THIS, BEST, MEDIAN, "#c98500", "#d55181", "#008300", "#9085e9", "#e66767")
+
+# The UI's sans, converted to static TTFs in the image build (sandbox/fonts.py).
+# The self-test fails the build when it does not resolve: a missing family would
+# print a findfont warning into every job's output.
+FONT = "Anthropic Sans"
+
 STYLE = {
     "figure.facecolor": BG,
     "axes.facecolor": BG,
@@ -43,15 +52,17 @@ STYLE = {
     "xtick.labelcolor": MUTED,
     "ytick.labelcolor": MUTED,
     "text.color": INK,
-    "font.family": "DejaVu Sans",
+    "font.family": FONT,
     "font.size": 9.5,
     "axes.grid": True,
+    "axes.grid.axis": "y",  # value lines only, as every chart function draws them
+    "axes.axisbelow": True,  # grid behind bars and fills
     "grid.color": GRID,
     "grid.linewidth": 1,
     "axes.spines.top": False,
     "axes.spines.right": False,
     "axes.spines.left": False,
-    "axes.prop_cycle": mpl.cycler(color=[THIS, BEST, MEDIAN, *ZONES[2:], CONTEXT]),
+    "axes.prop_cycle": mpl.cycler(color=list(SERIES)),
     "lines.linewidth": 2,
     "lines.solid_capstyle": "round",
     "lines.solid_joinstyle": "round",
@@ -66,6 +77,27 @@ STYLE = {
 }
 
 WIDTH = 8.6  # inches; 1,720 px at dpi 200
+
+# Left out of the image's matplotlibrc: loom_ramp exists only once this module
+# registered it, after the rc file is read.
+RC_SKIP = frozenset({"image.cmap"})
+
+
+def _rc_value(value):
+    # A "#" starts a comment in matplotlibrc; matplotlib reads hex colours without it.
+    if hasattr(value, "by_key"):
+        parts = ", ".join(f"{k}={[str(c).lstrip('#') for c in v]!r}" for k, v in value.by_key().items())
+        return f"cycler({parts})"
+    if isinstance(value, str):
+        return value.lstrip("#")
+    return str(value)
+
+
+def matplotlibrc():
+    """STYLE as matplotlibrc text: the image installs it as every job's default."""
+    lines = ["# Written by loomcharts.rc from loomcharts/_style.py STYLE; edit that, not this."]
+    lines += [f"{k}: {_rc_value(v)}" for k, v in STYLE.items() if k not in RC_SKIP]
+    return "\n".join(lines) + "\n"
 
 
 def apply_style():

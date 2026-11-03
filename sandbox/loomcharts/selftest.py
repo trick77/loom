@@ -2,11 +2,15 @@
 
     python -m loomcharts.selftest            # temp dir, removed afterwards
     python loomcharts/selftest.py --out DIR  # keep the CSVs and PNGs in DIR
+    python -m loomcharts.selftest --rc PATH  # also check PATH is the active, complete style
 
 Fails (exit 1) when a chart raises, writes no PNG, writes a near-empty one, takes too long
-or leaves matplotlib's global settings changed.
+or leaves matplotlib's global settings changed; with --rc also when the image's matplotlibrc
+is not the one matplotlib read, differs from STYLE, loom's font does not resolve, or
+matplotlib logs a warning (a job would see it in its output).
 """
 
+import logging
 import math
 import os
 import struct
@@ -377,16 +381,72 @@ def run(d):
     return failures
 
 
+def check_rc(path):
+    """The image default: matplotlib read path at import, it holds STYLE, the font resolves.
+
+    Runs before any chart touches rcParams. A bad key in matplotlibrc only logs a warning
+    and a missing font silently falls back, so neither would fail the build otherwise.
+    """
+    from matplotlib import font_manager
+    from loomcharts import _style
+
+    failures = []
+    if os.path.realpath(mpl.matplotlib_fname()) != os.path.realpath(path):
+        failures.append("rc")
+        print(f"FAIL matplotlib read {mpl.matplotlib_fname()}, not {path}")
+        return failures
+    want = mpl.RcParams({k: v for k, v in _style.STYLE.items() if k not in _style.RC_SKIP})
+    wrong = [k for k in want if str(mpl.rcParams[k]) != str(want[k])]
+    if wrong:
+        failures.append("rc")
+        print(f"FAIL matplotlibrc differs from STYLE: {wrong[:5]}")
+    files = set()
+    for weight in ("normal", "semibold", "bold"):
+        try:
+            prop = font_manager.FontProperties(family=_style.FONT, weight=weight)
+            files.add(font_manager.findfont(prop, fallback_to_default=False))
+        except ValueError as e:
+            failures.append("font")
+            print(f"FAIL font {_style.FONT!r} ({weight}): {e}")
+    if "font" not in failures and len(files) != 3:
+        failures.append("font")
+        print(f"FAIL font {_style.FONT!r}: weights share a file {files}")
+    if not failures:
+        print(f"ok   rc {path}, font {_style.FONT!r}: {', '.join(sorted(os.path.basename(f) for f in files))}")
+    return failures
+
+
+class _Warnings(logging.Handler):
+    """Collects matplotlib's log warnings: in a job they land in the model's tool output."""
+
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.messages = []
+
+    def emit(self, record):
+        self.messages.append(record.getMessage())
+
+
 def main(argv):
     keep = None
+    failures = []
+    warned = _Warnings()
+    logging.getLogger("matplotlib").addHandler(warned)
+    if "--rc" in argv:
+        failures += check_rc(argv[argv.index("--rc") + 1])
     if "--out" in argv:
         keep = argv[argv.index("--out") + 1]
         os.makedirs(keep, exist_ok=True)
     if keep:
-        failures = run(keep)
+        failures += run(keep)
     else:
         with tempfile.TemporaryDirectory(prefix="loomcharts-") as d:
-            failures = run(d)
+            failures += run(d)
+    # Only in the image: elsewhere the font is missing and every chart warns about it.
+    if "--rc" in argv and warned.messages:
+        failures.append("warnings")
+        for m in dict.fromkeys(warned.messages):
+            print(f"FAIL matplotlib warned: {m}")
     if failures:
         print(f"loomcharts selftest: {len(failures)} failed: {', '.join(failures)}")
         return 1
