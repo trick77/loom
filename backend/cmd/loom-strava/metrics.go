@@ -199,6 +199,13 @@ type rideMetrics struct {
 	HasWatts, HasHR            bool
 	AvgW, MaxW, NP, KJ         float64
 	AvgHR, MaxHR               float64
+	// HRMax10 and HR20m are the best 10 s and 20 min mean heart rate: the
+	// inputs of hr_zones' max and threshold heart rate. 10 s, not the
+	// single highest sample, so one strap spike does not count.
+	HRMax10, HR20m float64
+	// HR20mW is the mean power over those same 20 min: whether the best-HR
+	// stretch was a threshold effort.
+	HR20mW float64
 	// EF is NP per bpm with power, else moving speed (m/min) per bpm.
 	EF, Decoupling            float64
 	AvgCad, MaxCad            float64
@@ -214,7 +221,7 @@ type rideMetrics struct {
 var nan = math.NaN()
 
 func computeMetrics(s series, a, b int, pEdges, hEdges []float64) rideMetrics {
-	m := rideMetrics{AvgW: nan, MaxW: nan, NP: nan, KJ: nan, AvgHR: nan, MaxHR: nan, EF: nan, Decoupling: nan,
+	m := rideMetrics{AvgW: nan, MaxW: nan, NP: nan, KJ: nan, AvgHR: nan, MaxHR: nan, HRMax10: nan, HR20m: nan, HR20mW: nan, EF: nan, Decoupling: nan,
 		AvgCad: nan, MaxCad: nan, AvgTemp: nan, MinTemp: nan, MaxTemp: nan, MaxGrade: nan, MinGrade: nan,
 		GainM: nan, AvgSpeed: nan, MaxSpeed: nan, MeanMax: make([]float64, len(curveDurations))}
 	for i := range m.MeanMax {
@@ -257,11 +264,14 @@ func computeMetrics(s series, a, b int, pEdges, hEdges []float64) rideMetrics {
 		m.HasHR = true
 		m.AvgHR = meanAt(s.hr, movIdx)
 		m.MaxHR = maxOf(s.hr[a:b])
+		m.HRMax10 = meanMax(s.hr[a:b], 10)
+		var at int
+		m.HR20m, at = bestWindow(s.hr[a:b], 1200)
+		if s.watts != nil && !math.IsNaN(m.HR20m) {
+			m.HR20mW = mean(s.watts[a+at : a+at+1200])
+		}
 		if hEdges != nil {
-			m.HasHRZones = true
-			for _, i := range movIdx {
-				m.HRZoneS[zoneOf(s.hr[i], hEdges)-1]++
-			}
+			m.HasHRZones, m.HRZoneS = true, hrZoneTimes(s, a, b, hEdges)
 		}
 	}
 	if s.speed != nil {
@@ -368,16 +378,25 @@ func normalizedPower(w []float64) float64 {
 // meanMax is the best average over any d consecutive samples; NaN when the
 // stretch is shorter.
 func meanMax(w []float64, d int) float64 {
+	best, _ := bestWindow(w, d)
+	return best
+}
+
+// bestWindow is the highest mean of d consecutive samples and where that
+// window starts; NaN when w is shorter than d.
+func bestWindow(w []float64, d int) (float64, int) {
 	if d <= 0 || d > len(w) {
-		return nan
+		return nan, 0
 	}
 	acc := sum(w[:d])
-	best := acc
+	best, at := acc, 0
 	for i := d; i < len(w); i++ {
 		acc += w[i] - w[i-d]
-		best = max(best, acc)
+		if acc > best {
+			best, at = acc, i-d+1
+		}
 	}
-	return best / float64(d)
+	return best / float64(d), at
 }
 
 // intensity and tss use the FTP of the moment; NaN without one.
@@ -393,6 +412,18 @@ func tss(movingS int, np, ftp float64) float64 {
 		return nan
 	}
 	return float64(movingS) * np * (np / ftp) / (ftp * 3600) * 100
+}
+
+// hrZoneTimes is the moving seconds of a..b in each HR zone of hEdges; s
+// has an HR stream.
+func hrZoneTimes(s series, a, b int, hEdges []float64) [5]int {
+	var z [5]int
+	for i := a; i < b; i++ {
+		if s.moving[i] {
+			z[zoneOf(s.hr[i], hEdges)-1]++
+		}
+	}
+	return z
 }
 
 // zoneOf is the 1..5 zone of v given the lower bounds of zones 2..5.

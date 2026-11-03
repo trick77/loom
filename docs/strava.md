@@ -28,6 +28,7 @@ comment text, segment explore or leaderboards, and no write scope.
 | `get_activity` | one activity in full: laps, splits, best efforts, segment efforts, gear, device; `refresh` reads it from Strava again |
 | `activity_analysis` | metrics from the streams (NP, IF, TSS, power curve, zones, decoupling, climbs, intervals, per-km rows), always compared with the user's same-sport activities of the last `weeks` (default 6); attaches the CSVs below |
 | `compare_activities` | 2-5 activities side by side |
+| `hr_zones` | max HR, threshold HR (LTHR) and Friel zones per sport (cycling, running) from the user's own streams of the last 365 days, next to Strava's zones |
 | `gear`, `routes`, `segments` | gear details, own routes, starred segments and own efforts (efforts need a Strava subscription) |
 
 Each activity named comes with a link to it on Strava (citation and attribution).
@@ -68,6 +69,32 @@ Activities barely change after upload, so every activity read is kept per user i
 Stream-derived metrics are kept per user in `/data/metrics/<loom id>.json`; IF and TSS are derived from them with the
 current FTP. A first comparison stops at half the 15-minute budget and says what is still missing. Profile, zones,
 gear, routes and segments are cached in memory only (1 h).
+
+### Heart-rate zones
+
+Strava's default zones (`custom_zones: false`) are mostly 220 minus age: about a zone off for trained athletes, whose
+threshold sits higher relative to max. `hr_zones` derives them instead from two stored values per activity, `hr_max10`
+(best 10 s mean HR) and `hr_20m` (best 20 min): max HR is the highest `hr_max10` a second activity comes within 5 bpm
+of (a strap spike or cadence lock is one activity's), LTHR is 95 % of the best `hr_20m` (Friel's 20-minute test), on
+rides checked against FTP via `hr_20m_w`, the power over those same 20 minutes (a ride's best 20-min power can be a
+different stretch). Families are explicit: cycling = Ride, GravelRide,
+MountainBikeRide, VirtualRide; running = Run, TrailRun, VirtualRun (5-10 bpm higher); e-bike, walk, hike are out. It
+reads streams only for the hardest activities not read yet (top max HR and top 20-min-plus average HR, in turns),
+within the same budget; a later call reads more.
+
+The result is stored per family in the user's metrics file (`hr_zones`, with `calculated_at` and the activities it
+rests on) and recalculated from the stored entries alone, no Strava call: on every `hr_zones` call, and on any write
+touching that family's entries once `hr_zones` has created it (an analysis that reads a harder effort moves the
+zones; one easy ride before anyone asked makes none). Entries carry sport and name, set under the file lock from any
+list at hand (older entries lack them, a sport can be corrected); an activity deleted on Strava leaves the index with
+its entry, and the zones of its sport are recalculated right there. A `hr_zones` call for one sport never creates the
+other's zones. While Strava's zones are its defaults, `activity_analysis` buckets time
+in zones (and the streams CSV) with the stored zones of the activity's sport and says so; custom Strava zones always
+win, a sport without stored zones keeps Strava's, labelled as defaults. `profile` shows them with their date.
+
+New stored keys bump the per-entry `entryRev`, never `metricsVersion`: a `metricsVersion` bump drops every user's
+whole metrics file and re-reads every stream against the rate budget. Key presence alone can't tell "stored before
+the key" from "activity has no HR"; it re-read every HR-less activity on every call.
 
 Tokens live in `/data/state.json` (0600), one entry per loom user. Access tokens last 6 h; refresh rotates the refresh
 token and the sidecar stores the new one before using it. Disconnect revokes the token at Strava and deletes the

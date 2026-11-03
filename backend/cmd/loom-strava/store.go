@@ -85,8 +85,17 @@ func (s fileStore) save(st state) error {
 }
 
 // metricsVersion changes when a stored metric's formula does: older entries
-// are recomputed, never compared against new ones.
+// are recomputed, never compared against new ones. A bump drops every
+// user's whole file, so every stream is read again against the rate budget:
+// a new key bumps entryRev instead.
 const metricsVersion = 1
+
+// entryRev is the key set a fresh entry carries. An older entry still serves
+// what it has; a reader needing a newer key reads that activity's streams
+// again (hr_zones). Absent keys alone cannot tell "stored before the key"
+// from "no heart rate in this activity": that re-read every activity
+// without heart rate on every call. 1: hr_max10, hr_20m, hr_20m_w.
+const entryRev = 1
 
 // maxStoredActivities bounds one user's metric file (a few hundred bytes
 // each); the oldest go first.
@@ -99,18 +108,29 @@ type metricFile struct {
 	// to another athlete must not inherit them.
 	Athlete    int64                    `json:"athlete,omitempty"`
 	Activities map[string]storedMetrics `json:"activities"`
+	// HRZones are the heart-rate zones per sport family (hrzones.go), as last
+	// calculated from Activities. hr_zones creates a family's; afterwards
+	// every write touching that family's entries recalculates it. Derived,
+	// so a metricsVersion bump may drop them.
+	HRZones map[string]storedHRZones `json:"hr_zones,omitempty"`
 }
 
 // storedMetrics are the stream metrics of one activity that do not depend on
 // FTP or zones; IF and TSS are derived from NP and MovingS with the current
 // FTP whenever they are read, so an FTP change never serves stale values.
-// Vals holds only known values (JSON has no NaN): np, avg_hr, ef,
-// decoupling, avg_w, and mm_<seconds> for the mean-max curve.
+// Vals holds only known values (JSON has no NaN): np, avg_hr, hr_max10,
+// hr_20m, hr_20m_w, ef, decoupling, avg_w, and mm_<seconds> for the
+// mean-max curve.
 type storedMetrics struct {
 	V       int                `json:"v"`
-	Start   string             `json:"start"` // start_date_local, for pruning
+	Rev     int                `json:"rev,omitempty"` // entryRev when stored
+	Start   string             `json:"start"`         // start_date_local, for pruning
 	MovingS int                `json:"moving_s"`
 	Vals    map[string]float64 `json:"vals,omitempty"`
+	// Sport and Name let the zones be calculated and cited from this file
+	// alone. Entries from before them get both from hr_zones' list, free.
+	Sport string `json:"sport,omitempty"`
+	Name  string `json:"name,omitempty"`
 }
 
 func (s fileStore) metricsPath(user string) (string, error) {

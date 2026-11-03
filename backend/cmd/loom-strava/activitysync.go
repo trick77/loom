@@ -213,6 +213,7 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 	var m metricFile
 	var mErr error
 	loaded, metrics := false, false
+	touched := map[string]bool{} // sports of dropped entries: their zones move
 	for _, id := range ids {
 		key := strconv.FormatInt(id, 10)
 		uc.detail.remove(kindDetail + "/" + key)
@@ -232,12 +233,15 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 			m, mErr = s.store.loadMetrics(user)
 			loaded = true
 		}
-		if _, ok := m.Activities[key]; ok && mErr == nil {
+		if sm, ok := m.Activities[key]; ok && mErr == nil {
+			touched[sm.Sport] = true
 			delete(m.Activities, key)
 			metrics = true
 		}
 	}
 	if metrics {
+		// A deleted ride may have set the max or the LTHR.
+		recalcHRZones(&m, touched, nil, nil, s.now())
 		if err := s.store.saveMetrics(user, m); err != nil {
 			slog.Error("strava: saving metrics failed", "err", err)
 		}

@@ -66,6 +66,12 @@ type entry struct {
 	hidden bool
 }
 
+// hrZoneRule closes the training and health blocks: both turns see the
+// Strava tools, and "what is my zone 2?" lands in either. Strava's default
+// zones mostly come from 220 minus age, about a zone off for trained
+// athletes; custom_zones only says the user edited them, so "usually".
+const hrZoneRule = " Heart-rate zones: custom zones a tool reports win; otherwise a tested maximum or threshold heart rate in the user's personal context beats zones a tool marks as Strava's defaults, which are usually age-based estimates and often a zone off for trained athletes, so say so when time in zones matters. A tool's time in zones uses the tool's zones: when a tested value disagrees, say so instead of recomputing the times. Without zones from a tool or a tested value, give an age-based estimate only as a rough guide and say so, and offer to remember a tested maximum heart rate."
+
 // catalog is the ordered taxonomy. Order is the order categories are presented to
 // the classifying model and must stay stable.
 var catalog = []struct {
@@ -134,11 +140,11 @@ var catalog = []struct {
 	}},
 	{Health, entry{
 		gloss: "medical, health, fitness, or nutrition questions",
-		block: "Answer in careful flowing prose. State how strong the evidence is behind each claim and distinguish established consensus from emerging findings; never diagnose. Close with when seeing a professional is warranted, if it is.",
+		block: "Answer in careful flowing prose. State how strong the evidence is behind each claim and distinguish established consensus from emerging findings; never diagnose. Close with when seeing a professional is warranted, if it is." + hrZoneRule,
 	}},
 	{Training, entry{
 		gloss: "the user's own workouts, rides, runs, training load, or fitness progress (their activities, not general health advice)",
-		block: "When training tools are available, read the user's activities with them instead of guessing; never estimate a number a tool can give. Lead with the numbers, with units, and compare with the user's recent activities when it helps; use a compact table for several activities and add one useful observation. Cite each activity you mention. Offer a chart when a ride profile or a comparison would read better as one, and draw it when asked; a tool's chart files last one turn, so in a later turn call the tool again before drawing. No medical diagnosis.",
+		block: "When training tools are available, read the user's activities with them instead of guessing; never estimate a number a tool can give. Lead with the numbers, with units, and compare with the user's recent activities when it helps; use a compact table for several activities and add one useful observation. Cite each activity you mention. Offer a chart when a ride profile or a comparison would read better as one, and draw it when asked; a tool's chart files last one turn, so in a later turn call the tool again before drawing. No medical diagnosis." + hrZoneRule,
 	}},
 	{EntertainmentRecs, entry{
 		gloss: "recommendations for movies, series, books, music, or games",

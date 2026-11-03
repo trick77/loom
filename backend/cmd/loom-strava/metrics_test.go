@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func near(t *testing.T, name string, got, want, tol float64) {
@@ -167,6 +168,34 @@ func TestComputeMetrics_synthRide(t *testing.T) {
 		t.Errorf("hr zones = %v", m.HRZoneS)
 	}
 	near(t, "EF", m.EF, m.NP/m.AvgHR, 1e-9)
+	// 170 bpm on the climb is the best 10 s; the ride is 24 min, so it has a
+	// best 20 min, between the flat 130/135 and the climb's 170.
+	near(t, "HR max 10 s", m.HRMax10, 170, 0)
+	if m.HR20m <= 135 || m.HR20m >= 170 {
+		t.Errorf("HR best 20 min = %v", m.HR20m)
+	}
+	st := storedFrom(m, time.Time{})
+	if st.Vals["hr_max10"] != 170 || st.Vals["hr_20m"] != math.Round(m.HR20m*100)/100 || st.Rev != entryRev {
+		t.Errorf("stored HR keys: %v (rev %d)", st.Vals, st.Rev)
+	}
+	// The power of the same 20 minutes as the best HR, not the best 20 min
+	// of power: the ride's last 20 min, climb included, at 200..300 W.
+	if w := st.Vals["hr_20m_w"]; w <= 200 || w >= 300 {
+		t.Errorf("power over the best-HR 20 min = %v", w)
+	}
+	// Under 20 minutes: a best 10 s, no best 20 min; no HR stream: neither.
+	a0, b0 := s.sub(5000, 7000)
+	if st := storedFrom(computeMetrics(s, a0, b0, nil, nil), time.Time{}); st.Vals["hr_max10"] != 170 {
+		t.Errorf("section HR keys: %v", st.Vals)
+	} else if _, has := st.Vals["hr_20m"]; has {
+		t.Errorf("a 8 min section has a best 20 min: %v", st.Vals)
+	}
+	noHR := synthRide(false)
+	noHR.HR = nil
+	sn := buildSeries(noHR)
+	if st := storedFrom(computeMetrics(sn, 0, sn.n, nil, nil), time.Time{}); st.Vals["hr_max10"] != 0 || st.Vals["hr_20m"] != 0 {
+		t.Errorf("HR keys without an HR stream: %v", st.Vals)
+	}
 
 	cl := climbs(s, 0, s.n, 75)
 	if len(cl) != 1 {
