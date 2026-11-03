@@ -74,7 +74,9 @@ func newFakeStrava(t *testing.T) *fakeStrava {
 	f := &fakeStrava{
 		t: t, now: time.Date(2026, 11, 3, 10, 2, 0, 0, time.UTC),
 		codes: map[string]int64{}, access: map[string]tokenInfo{}, refresh: map[string]int64{}, dead: map[string]bool{},
-		scope: "read,read_all,profile:read_all,activity:read_all", calls: map[string]int{}, revokeOK: true,
+		// As Strava answered in production: spaces, unlike the consent
+		// redirect's commas.
+		scope: "activity:read_all profile:read_all read read_all", calls: map[string]int{}, revokeOK: true,
 		athletes: map[int64]map[string]any{}, zones: map[int64]any{}, activities: map[int64][]map[string]any{},
 		streams: map[int64]map[string]any{}, summit: map[int64]bool{}, failStreams: map[int64]bool{},
 		rateLimit15: 100, rateLimitDay: 1000,

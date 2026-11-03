@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -331,6 +332,19 @@ func TestConnection_missingScopesAndScopeFallback(t *testing.T) {
 	missing, _ := json.Marshal(st["missingScopes"])
 	if string(missing) != `["read_all","profile:read_all"]` {
 		t.Errorf("missingScopes = %s", missing)
+	}
+}
+
+// A connection stored while the token answer's spaces went unsplit reads
+// whole without reconnecting.
+func TestSplitScopesReadsEverySeparator(t *testing.T) {
+	stored := "activity:read_all profile:read_all read read_all"
+	if got := missingScopes(splitScopes(stored)); len(got) != 0 {
+		t.Errorf("stored %q: missing %v", stored, got)
+	}
+	got := splitScopes(" read,activity:read_all  read\tread_all,")
+	if !slices.Equal(got, []string{"read", "activity:read_all", "read_all"}) {
+		t.Errorf("mixed separators: %v", got)
 	}
 }
 

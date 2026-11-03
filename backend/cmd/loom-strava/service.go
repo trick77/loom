@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/trick77/loom/internal/mcpserver"
 )
@@ -263,10 +264,13 @@ func (s *service) check(ctx context.Context, user string) status {
 	return s.status(user)
 }
 
+// splitScopes reads a granted scope list. The consent redirect separates with
+// commas, the token answer with spaces; a connection stored before either was
+// handled is read the same way.
 func splitScopes(scope string) []string {
 	out := []string{}
-	for p := range strings.SplitSeq(scope, ",") {
-		if p = strings.TrimSpace(p); p != "" && !slices.Contains(out, p) {
+	for _, p := range strings.FieldsFunc(scope, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+		if !slices.Contains(out, p) {
 			out = append(out, p)
 		}
 	}
