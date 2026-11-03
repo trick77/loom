@@ -305,7 +305,7 @@ func (t *tools) updateMetrics(user string, athleteID int64, u metricsUpdate) (ma
 	for _, f := range hrFamilies {
 		prev, had := m.HRZones[f.key]
 		hit := slices.ContainsFunc(f.sports, func(s string) bool { return touched[s] })
-		if !u.recalc && !(had && hit) {
+		if !u.recalc && (!had || !hit) {
 			continue
 		}
 		w, listed := u.withHR[f.key]
