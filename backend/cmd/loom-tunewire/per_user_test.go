@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,7 +25,7 @@ func TestService_accountsArePerUser(t *testing.T) {
 	if _, err := svc.SetToken(context.Background(), "alice", "good-alice"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := svc.Playlists(ctxFor("bob")); err != errNotConnected {
+	if _, _, err := svc.Playlists(ctxFor("bob")); !errors.Is(err, errNotConnected) {
 		t.Fatalf("bob reads with alice's token: %v", err)
 	}
 	if st := svc.status("bob"); st.State != "never" {
@@ -49,7 +50,7 @@ func TestService_accountsArePerUser(t *testing.T) {
 	if svc.status("alice").State != "never" || svc.status("bob").State != "connected" {
 		t.Fatal("clearing alice touched bob")
 	}
-	if _, _, err := svc.Playlists(context.Background()); err != errNoUser {
+	if _, _, err := svc.Playlists(context.Background()); !errors.Is(err, errNoUser) {
 		t.Fatalf("a call for nobody: %v", err)
 	}
 }
