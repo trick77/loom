@@ -26,10 +26,19 @@ func NewMiddleware(sessions SessionReader, users UserLookup) *Middleware {
 // RequireAuth rejects requests without a valid Loom session, or whose user no
 // longer exists.
 func (m *Middleware) RequireAuth(next http.Handler) http.Handler {
+	return m.RequireAuthOr(next, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+	}))
+}
+
+// RequireAuthOr is RequireAuth for a browser navigation (an OAuth callback):
+// a request without a valid session goes to unauthenticated, which can send
+// the browser somewhere useful instead of a JSON 401.
+func (m *Middleware) RequireAuthOr(next, unauthenticated http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session, ok := m.sessions.Read(r)
 		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+			unauthenticated.ServeHTTP(w, r)
 			return
 		}
 		user, ok, err := m.users.FindByID(r.Context(), session.Subject)
@@ -38,7 +47,7 @@ func (m *Middleware) RequireAuth(next http.Handler) http.Handler {
 			return
 		}
 		if !ok {
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
+			unauthenticated.ServeHTTP(w, r)
 			return
 		}
 		ctx := context.WithValue(r.Context(), userContextKey, user)

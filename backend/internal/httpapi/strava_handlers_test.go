@@ -82,6 +82,12 @@ func stravaRequest(t *testing.T, h http.Handler, method, target string, cookies 
 	return rec
 }
 
+// nonce is the state Strava gets back: the cookie's value without its user.
+func nonce(c *http.Cookie) string {
+	n, _, _ := strings.Cut(c.Value, ".")
+	return n
+}
+
 func cookieNamed(rec *httptest.ResponseRecorder, name string) *http.Cookie {
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == name {
@@ -146,7 +152,7 @@ func TestStrava_connectFlow(t *testing.T) {
 		t.Errorf("redirect_uri = %q", sv.redirectURI)
 	}
 	state := cookieNamed(rec, stravaStateCookie)
-	if state == nil || state.Value != sv.state || len(state.Value) < 32 || !state.HttpOnly || !state.Secure || state.Path != stravaCallbackPath || state.SameSite != http.SameSiteLaxMode {
+	if state == nil || state.Value != sv.state+".usr_a" || len(sv.state) < 32 || !state.HttpOnly || !state.Secure || state.Path != stravaCallbackPath || state.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("state cookie: %+v (state %q)", state, sv.state)
 	}
 
@@ -160,7 +166,7 @@ func TestStrava_connectFlow(t *testing.T) {
 			t.Errorf("%s: %s", target, loc)
 		}
 	}
-	if rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c1&state="+state.Value); rec.Header().Get("Location") != "/?strava=state" {
+	if rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c1&state="+nonce(state)); rec.Header().Get("Location") != "/?strava=state" {
 		t.Errorf("no cookie: %s", rec.Header().Get("Location"))
 	}
 	if len(sv.conns) != 0 {
@@ -172,12 +178,12 @@ func TestStrava_connectFlow(t *testing.T) {
 	if rec.Header().Get("Location") != "/?strava=state" || cookieNamed(rec, stravaStateCookie) != nil {
 		t.Errorf("forged refusal: %s, cookie %+v", rec.Header().Get("Location"), cookieNamed(rec, stravaStateCookie))
 	}
-	rec = stravaRequest(t, h, "GET", "/api/strava/callback?error=access_denied&state="+state.Value, state)
+	rec = stravaRequest(t, h, "GET", "/api/strava/callback?error=access_denied&state="+nonce(state), state)
 	if rec.Header().Get("Location") != "/?strava=denied" {
 		t.Errorf("denied: %s", rec.Header().Get("Location"))
 	}
 
-	rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c1&scope=read_all&state="+state.Value, state)
+	rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c1&scope=read_all&state="+nonce(state), state)
 	if rec.Header().Get("Location") != "/?strava=connected" || sv.conns["usr_a"] != "c1" {
 		t.Fatalf("callback: %s, conns %v", rec.Header().Get("Location"), sv.conns)
 	}
@@ -186,15 +192,15 @@ func TestStrava_connectFlow(t *testing.T) {
 	}
 
 	sv.connectErr = &strava.Error{Code: strava.CodeRejected, Reason: "used code"}
-	if rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c2&state="+state.Value, state); rec.Header().Get("Location") != "/?strava=rejected" {
+	if rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c2&state="+nonce(state), state); rec.Header().Get("Location") != "/?strava=rejected" {
 		t.Errorf("rejected: %s", rec.Header().Get("Location"))
 	}
 	sv.connectErr = &strava.Error{Code: strava.CodeMalformed, Reason: "no usable code"}
-	if rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c2&state="+state.Value, state); rec.Header().Get("Location") != "/?strava=rejected" {
+	if rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c2&state="+nonce(state), state); rec.Header().Get("Location") != "/?strava=rejected" {
 		t.Errorf("malformed: %s", rec.Header().Get("Location"))
 	}
 	sv.connectErr = errors.New("dial tcp: refused")
-	if rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c2&state="+state.Value, state); rec.Header().Get("Location") != "/?strava=unavailable" {
+	if rec = stravaRequest(t, h, "GET", "/api/strava/callback?code=c2&state="+nonce(state), state); rec.Header().Get("Location") != "/?strava=unavailable" {
 		t.Errorf("down: %s", rec.Header().Get("Location"))
 	}
 
@@ -230,12 +236,31 @@ func TestStrava_eachListedUserHasTheirOwn(t *testing.T) {
 	a := stravaServer(auth.User{ID: "usr_a"}, sv, "usr_a", "usr_b")
 	b := stravaServer(auth.User{ID: "usr_b"}, sv, "usr_a", "usr_b")
 	state := cookieNamed(stravaRequest(t, a, "GET", "/api/me/strava/connect"), stravaStateCookie)
-	stravaRequest(t, a, "GET", "/api/strava/callback?code=code-a&state="+state.Value, state)
+	stravaRequest(t, a, "GET", "/api/strava/callback?code=code-a&state="+nonce(state), state)
 	if rec := stravaRequest(t, b, "GET", "/api/me/strava"); !strings.Contains(rec.Body.String(), `"state":"never"`) {
 		t.Errorf("b sees a's connection: %s", rec.Body.String())
 	}
 	stravaRequest(t, b, "DELETE", "/api/me/strava")
 	if sv.conns["usr_a"] != "code-a" {
 		t.Errorf("b's disconnect touched a: %v", sv.conns)
+	}
+	// A shared browser: a starts, b is signed in when Strava answers. a's
+	// code must never become b's connection.
+	state = cookieNamed(stravaRequest(t, a, "GET", "/api/me/strava/connect"), stravaStateCookie)
+	rec := stravaRequest(t, b, "GET", "/api/strava/callback?code=code-a2&state="+nonce(state), state)
+	if rec.Header().Get("Location") != "/?strava=state" || sv.conns["usr_b"] != "" {
+		t.Errorf("a's code landed on b: %s, %v", rec.Header().Get("Location"), sv.conns)
+	}
+}
+
+// A callback whose loom session ended meanwhile lands back in the app, not on
+// a JSON 401.
+func TestStrava_callbackWithoutSession(t *testing.T) {
+	h := stravaServer(auth.User{ID: "usr_a"}, &fakeStrava{}, "usr_a")
+	req := httptest.NewRequest("GET", "/api/strava/callback?code=c&state=s", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/?strava=signin" {
+		t.Errorf("no session: %d %s", rec.Code, rec.Header().Get("Location"))
 	}
 }

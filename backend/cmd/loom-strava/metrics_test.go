@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -199,6 +200,29 @@ func TestComputeMetrics_synthRide(t *testing.T) {
 	sm := computeMetrics(s, a, b, nil, nil)
 	near(t, "section W", sm.AvgW, 300, 1)
 	near(t, "section distance", sm.DistanceM, 2000, 20)
+}
+
+// A GPS dropout that jumps past a whole bucket (3.3 → 5.6 km) skips that
+// bucket's row and keeps the rows after it.
+func TestKmRows_dropout(t *testing.T) {
+	var tm, dist floats
+	for i := range 1000 {
+		d := float64(i) * 10
+		if d > 3300 {
+			d += 2300
+		}
+		tm, dist = append(tm, float64(i)), append(dist, d)
+	}
+	s := buildSeries(streamSet{Time: &struct{ Data floats }{tm}, Distance: &struct{ Data floats }{dist}})
+	rows, _ := kmRows(s, 0, s.n, 1000)
+	var ends []string
+	for _, r := range rows {
+		ends = append(ends, num(r.ToM/1000, 2))
+	}
+	// km 4–5 has no sample: no row; km 3–4 ends where the signal went.
+	if got := strings.Join(ends, " "); got != "0.99 1.99 2.99 3.30 5.99 6.99 7.99 8.99 9.99 10.99 11.99 12.29" {
+		t.Errorf("row ends = %s", got)
+	}
 }
 
 func TestDecoupling(t *testing.T) {

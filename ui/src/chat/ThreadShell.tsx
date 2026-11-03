@@ -284,6 +284,7 @@ export function ThreadShell({
     toggleUserMenu,
     closeUserMenu,
     settingsOpen,
+    stravaOutcome,
     openSettings,
     closeSettings,
     searchOpen,
@@ -1975,6 +1976,7 @@ export function ThreadShell({
             onClose={closeSettings}
             appleMusic={user.appleMusic === true}
             strava={user.strava === true}
+            stravaOutcome={stravaOutcome}
           />
         </Suspense>
       )}

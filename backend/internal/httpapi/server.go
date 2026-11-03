@@ -419,7 +419,9 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("POST /api/me/strava/check", s.requireAuth(http.HandlerFunc(s.handleStravaCheck)))
 	mux.Handle("GET /api/me/strava/connect", s.requireAuth(http.HandlerFunc(s.handleStravaConnect)))
 	mux.Handle("DELETE /api/me/strava", s.requireAuth(http.HandlerFunc(s.handleStravaDisconnect)))
-	mux.Handle("GET "+stravaCallbackPath, s.requireAuth(http.HandlerFunc(s.handleStravaCallback)))
+	// A top-level navigation back from Strava: a session that ended meanwhile
+	// lands back in the app with the outcome, not on a JSON 401.
+	mux.Handle("GET "+stravaCallbackPath, s.requireAuthOr(http.HandlerFunc(s.handleStravaCallback), http.HandlerFunc(s.handleStravaCallbackSignedOut)))
 	mux.Handle("GET /api/mcp/servers", s.requireAuth(http.HandlerFunc(s.handleMCPServers)))
 	mux.Handle("GET /api/mcp/tools", s.requireAuth(http.HandlerFunc(s.handleMCPTools)))
 	mux.Handle("GET /api/admin/users", s.requireAuth(s.requireAdmin(http.HandlerFunc(s.handleAdminUsers))))
@@ -844,6 +846,15 @@ func (r *activeStreamRegistry) stopAndWait(userID, threadID string, cause error,
 	case <-timer.C:
 		slog.Warn("stream did not stop within the wait window", "thread_id", threadID)
 	}
+}
+
+// requireAuthOr is requireAuth for a browser navigation: no session goes to
+// unauthenticated.
+func (s *server) requireAuthOr(next, unauthenticated http.Handler) http.Handler {
+	if s.auth == nil {
+		return unauthenticated
+	}
+	return s.auth.RequireAuthOr(next, unauthenticated)
 }
 
 func (s *server) requireAuth(next http.Handler) http.Handler {

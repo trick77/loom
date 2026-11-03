@@ -173,15 +173,6 @@ func num(v float64, prec int) string {
 // day formats a local start as "Sun 2026-11-01 09:12".
 func day(t time.Time) string { return t.Format("Mon 2006-01-02 15:04") }
 
-func oneLine(s string, n int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return strings.TrimSpace(string(r[:n-1])) + "…"
-}
-
 // ordinal: 1st, 2nd, 3rd, 4th …
 func ordinal(n int) string {
 	suffix := "th"

@@ -90,8 +90,29 @@ func (s *server) handleStravaConnect(w http.ResponseWriter, r *http.Request) {
 		s.backToSettings(w, r, "unavailable")
 		return
 	}
-	http.SetCookie(w, s.stravaState(state, time.Now().Add(stravaStateTTL)))
+	// The cookie names the user who started: Strava's code is that user's
+	// alone, whoever is signed in when the browser comes back.
+	http.SetCookie(w, s.stravaState(state+"."+user.ID, time.Now().Add(stravaStateTTL)))
 	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// stravaStateFor reports whether the state cookie belongs to user and
+// carries the state Strava sent back.
+func stravaStateFor(r *http.Request, user auth.User, state string) bool {
+	sc, err := r.Cookie(stravaStateCookie)
+	if err != nil {
+		return false
+	}
+	nonce, owner, ok := strings.Cut(sc.Value, ".")
+	return ok && nonce != "" && owner == user.ID &&
+		subtle.ConstantTimeCompare([]byte(nonce), []byte(state)) == 1
+}
+
+// handleStravaCallbackSignedOut answers a callback whose loom session ended
+// during the consent: back to the app, which says to sign in and connect
+// again. The code is dropped: it cannot be tied to a user.
+func (s *server) handleStravaCallbackSignedOut(w http.ResponseWriter, r *http.Request) {
+	s.backToSettings(w, r, "signin")
 }
 
 // handleStravaCallback finishes the OAuth: the state must match this
@@ -106,8 +127,7 @@ func (s *server) handleStravaCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	sc, err := r.Cookie(stravaStateCookie)
-	if err != nil || sc.Value == "" || subtle.ConstantTimeCompare([]byte(sc.Value), []byte(q.Get("state"))) != 1 {
+	if !stravaStateFor(r, user, q.Get("state")) {
 		s.backToSettings(w, r, "state")
 		return
 	}
@@ -122,7 +142,7 @@ func (s *server) handleStravaCallback(w http.ResponseWriter, r *http.Request) {
 		s.backToSettings(w, r, "state")
 		return
 	}
-	_, err = s.strava.Connect(r.Context(), user.ID, code, scope)
+	_, err := s.strava.Connect(r.Context(), user.ID, code, scope)
 	var e *strava.Error
 	switch {
 	case err == nil:

@@ -191,6 +191,7 @@ func (t *tools) begin(ctx context.Context) (string, athlete, *mcpserver.Result) 
 		r := failure(err)
 		return "", athlete{}, &r
 	}
+	t.svc.learnAthlete(ctx, user, a)
 	return user, a, nil
 }
 
@@ -464,31 +465,14 @@ func describeActivity(d detailedActivity, u units) string {
 	}
 	fmt.Fprintf(&b, "%s · %s · %s · %s · %s\n", plural(d.KudosCount, "kudo", "kudos"), plural(d.CommentCount, "comment", "comments"),
 		plural(d.Photos.Count, "photo", "photos"), plural(d.PRCount, "PR", "PRs"), plural(d.AchievementCount, "achievement", "achievements"))
-	if s := oneLine(d.Description, 600); s != "" {
+	if s := mcpserver.OneLine(d.Description, 600); s != "" {
 		b.WriteString("description: " + s + "\n")
 	}
-	if s := oneLine(d.PrivateNote, 600); s != "" {
+	if s := mcpserver.OneLine(d.PrivateNote, 600); s != "" {
 		b.WriteString("private note: " + s + "\n")
 	}
 	if len(d.Laps) > 1 {
-		fmt.Fprintf(&b, "\nlaps (%d):\n", len(d.Laps))
-		for i, l := range d.Laps {
-			if i == maxLaps {
-				fmt.Fprintf(&b, "  … %d more laps\n", len(d.Laps)-maxLaps)
-				break
-			}
-			fmt.Fprintf(&b, "  %d. %s · %s · %s", i+1, u.dist(l.Distance), clock(float64(l.MovingTime)), u.tempo(l.AverageSpeed, d.SportType))
-			if l.AverageWatts > 0 {
-				fmt.Fprintf(&b, " · %.0f W", l.AverageWatts)
-			}
-			if l.AverageHeartrate > 0 {
-				fmt.Fprintf(&b, " · HR %.0f/%.0f", l.AverageHeartrate, l.MaxHeartrate)
-			}
-			if l.TotalElevationGain > 0 {
-				b.WriteString(" · " + u.elev(l.TotalElevationGain))
-			}
-			b.WriteByte('\n')
-		}
+		writeLaps(&b, d.Laps, d.SportType, u, 0, true)
 	}
 	splits := d.SplitsMetric
 	if u.imperial && len(d.SplitsStandard) > 0 {
@@ -551,6 +535,32 @@ func describeActivity(d detailedActivity, u units) string {
 		}
 	}
 	return b.String()
+}
+
+// writeLaps lists the laps the device wrote: with ftp above zero each lap's
+// power also as a share of FTP, with withElev its elevation gain.
+func writeLaps(b *strings.Builder, laps []lap, sport string, u units, ftp float64, withElev bool) {
+	fmt.Fprintf(b, "\nlaps (%d):\n", len(laps))
+	for i, l := range laps {
+		if i == maxLaps {
+			fmt.Fprintf(b, "  … %d more laps\n", len(laps)-maxLaps)
+			break
+		}
+		fmt.Fprintf(b, "  %d. %s · %s · %s", i+1, u.dist(l.Distance), clock(float64(l.MovingTime)), u.tempo(l.AverageSpeed, sport))
+		if l.AverageWatts > 0 {
+			fmt.Fprintf(b, " · %.0f W", l.AverageWatts)
+			if ftp > 0 {
+				fmt.Fprintf(b, " (%.0f %% FTP)", l.AverageWatts/ftp*100)
+			}
+		}
+		if l.AverageHeartrate > 0 {
+			fmt.Fprintf(b, " · HR %.0f/%.0f", l.AverageHeartrate, l.MaxHeartrate)
+		}
+		if withElev && l.TotalElevationGain > 0 {
+			b.WriteString(" · " + u.elev(l.TotalElevationGain))
+		}
+		b.WriteByte('\n')
+	}
 }
 
 func signed(m float64, u units) string {

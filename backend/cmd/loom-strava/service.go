@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/trick77/loom/internal/mcpserver"
 )
 
 // wantedScopes is what loom asks Strava for: everything the user can read,
@@ -375,12 +377,15 @@ func (s *service) connect(ctx context.Context, user, code, scope string) (status
 		AccessToken: tr.AccessToken, RefreshToken: tr.RefreshToken, ExpiresAt: tr.ExpiresAt,
 		Scope: strings.Join(splitScopes(granted), ","), ConnectedAt: s.now().UTC(), LastOKAt: s.now().UTC(),
 	}
-	if tr.Athlete != nil {
+	s.mu.Lock()
+	prev, had := s.st.Users[user]
+	// An answer without the athlete keeps the one known; the first tool
+	// call learns it from /athlete otherwise (learnAthlete).
+	next.AthleteID, next.AthleteName = prev.AthleteID, prev.AthleteName
+	if tr.Athlete != nil && tr.Athlete.ID != 0 {
 		next.AthleteID = tr.Athlete.ID
 		next.AthleteName = strings.TrimSpace(tr.Athlete.Firstname + " " + tr.Athlete.Lastname)
 	}
-	s.mu.Lock()
-	prev, had := s.st.Users[user]
 	s.st.Users[user] = next
 	snap, gen := s.snapshotLocked()
 	s.mu.Unlock()
@@ -398,16 +403,57 @@ func (s *service) connect(ctx context.Context, user, code, scope string) (status
 		slog.ErrorContext(ctx, "strava: saving the connection failed", "err", err)
 		return status{}, errStore
 	}
-	if had && prev.AthleteID != next.AthleteID {
-		sl.dataMu.Lock()
-		if err := s.store.deleteMetrics(user); err != nil {
-			slog.ErrorContext(ctx, "strava: deleting the previous athlete's metrics failed", "err", err)
-		}
-		sl.dataMu.Unlock()
+	// Only a different, known athlete wipes the metrics.
+	if had && prev.AthleteID != 0 && next.AthleteID != prev.AthleteID {
+		s.deleteMetricsOf(ctx, user)
 	}
 	s.dropCache(user)
 	slog.InfoContext(ctx, "strava connected", "athlete", next.AthleteID)
 	return s.status(user), nil
+}
+
+func (s *service) deleteMetricsOf(ctx context.Context, user string) {
+	sl := s.slot(user)
+	sl.dataMu.Lock()
+	defer sl.dataMu.Unlock()
+	if err := s.store.deleteMetrics(user); err != nil {
+		slog.ErrorContext(ctx, "strava: deleting the previous athlete's metrics failed", "err", err)
+	}
+}
+
+// learnAthlete records the athlete /athlete answered for user's token when
+// the connection does not know it (a token answer without one) or knows
+// another: /athlete over the user's own token is the authority. Another
+// athlete's metrics go.
+func (s *service) learnAthlete(ctx context.Context, user string, a athlete) {
+	if a.ID == 0 {
+		return
+	}
+	s.mu.Lock()
+	cur, ok := s.st.Users[user]
+	if !ok || cur.AthleteID == a.ID {
+		s.mu.Unlock()
+		return
+	}
+	old := cur.AthleteID
+	cur.AthleteID = a.ID
+	if cur.AthleteName == "" || old != 0 {
+		cur.AthleteName = a.name()
+	}
+	s.st.Users[user] = cur
+	snap, gen := s.snapshotLocked()
+	s.mu.Unlock()
+	if err := s.persist(snap, gen); err != nil {
+		slog.ErrorContext(ctx, "strava: saving state failed", "err", err)
+	}
+	sl := s.slot(user)
+	sl.dataMu.Lock()
+	defer sl.dataMu.Unlock()
+	if m, _ := s.store.loadMetrics(user); old != 0 || (m.Athlete != 0 && m.Athlete != a.ID) {
+		if err := s.store.deleteMetrics(user); err != nil {
+			slog.ErrorContext(ctx, "strava: deleting another athlete's metrics failed", "err", err)
+		}
+	}
 }
 
 // disconnect revokes the user's token at Strava and deletes everything kept
@@ -698,7 +744,7 @@ func stravaMessage(body []byte) string {
 	for _, x := range e.Errors {
 		msg += fmt.Sprintf(" (%s %s)", x.Field, x.Code)
 	}
-	return oneLine(msg, 200)
+	return mcpserver.OneLine(msg, 200)
 }
 
 // transient reports a failure that is the call's, not the connection's.

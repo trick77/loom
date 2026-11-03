@@ -170,7 +170,7 @@ func runListPlaylists(ctx context.Context, svc *service) mcpserver.Result {
 	sources := []mcpserver.Source{}
 	for i, p := range list {
 		fmt.Fprintf(&b, "%s %s (id %s)", marker(i), p.Name, p.ID)
-		if d := oneLine(p.Description, 160); d != "" {
+		if d := mcpserver.OneLine(p.Description, 160); d != "" {
 			b.WriteString(" — " + d)
 		}
 		if p.LastModified != "" {
@@ -185,7 +185,7 @@ func runListPlaylists(ctx context.Context, svc *service) mcpserver.Result {
 }
 
 func playlistSource(p applemusic.Playlist) mcpserver.Source {
-	return mcpserver.Source{URL: p.URL(), Title: p.Name, Label: label, Snippet: oneLine(p.Description, 200), Image: p.Artwork}
+	return mcpserver.Source{URL: p.URL(), Title: p.Name, Label: label, Snippet: mcpserver.OneLine(p.Description, 200), Image: p.Artwork}
 }
 
 func runGetPlaylist(ctx context.Context, svc *service, args json.RawMessage) mcpserver.Result {
@@ -209,7 +209,7 @@ func runGetPlaylist(ctx context.Context, svc *service, args json.RawMessage) mcp
 	} else {
 		fmt.Fprintf(&b, "[1] Playlist %q (id %s), %d tracks", p.Name, p.ID, len(tracks))
 	}
-	if d := oneLine(p.Description, 300); d != "" {
+	if d := mcpserver.OneLine(p.Description, 300); d != "" {
 		b.WriteString("\n" + d)
 	}
 	b.WriteString("\n\n")
@@ -394,15 +394,6 @@ func snippetTail(detail string) string {
 		return ""
 	}
 	return " · " + detail
-}
-
-func oneLine(s string, n int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return strings.TrimSpace(string(r[:n-1])) + "…"
 }
 
 // day shortens an RFC 3339 timestamp to its date.

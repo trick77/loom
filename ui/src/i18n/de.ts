@@ -574,6 +574,8 @@ export const de = {
         "Der Strava-Dienst von loom ist falsch eingerichtet. Bitte den Admin, die Token-Einstellung zu prüfen.",
       outcome_unavailable:
         "Der Strava-Dienst von loom läuft gerade nicht. Versuche es später noch einmal.",
+      outcome_signin:
+        "Deine loom-Sitzung ist abgelaufen, während Strava gefragt hat. Verbinde dich neu mit Strava.",
       loadFailed: "Der Strava-Status konnte nicht geladen werden.",
       checkFailed:
         "Die Verbindung konnte nicht geprüft werden. Versuche es noch einmal.",

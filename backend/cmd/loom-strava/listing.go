@@ -109,7 +109,7 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 	for _, g := range append(slices.Clone(a.Bikes), a.Shoes...) {
 		gearNames[g.ID] = g.Name
 	}
-	stored := t.loadMetrics(user)
+	stored := t.loadMetrics(user, a.ID)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Strava activities%s, newest first: %d", windowText(args.After, args.Before, args.SportType, args.TrainerOnly), len(rows))
@@ -312,12 +312,16 @@ func activityTSS(x summaryActivity, sm storedMetrics, ok bool, ftp float64) floa
 	return nan
 }
 
-// loadMetrics is the user's metric store; empty when unreadable.
-func (t *tools) loadMetrics(user string) map[string]storedMetrics {
+// loadMetrics is the user's metric store for athleteID; empty when
+// unreadable or kept for another athlete.
+func (t *tools) loadMetrics(user string, athleteID int64) map[string]storedMetrics {
 	sl := t.svc.slot(user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
 	m, _ := t.svc.store.loadMetrics(user)
+	if m.Athlete != 0 && m.Athlete != athleteID {
+		return map[string]storedMetrics{}
+	}
 	return m.Activities
 }
 
@@ -357,7 +361,7 @@ func (t *tools) gear(ctx context.Context, raw json.RawMessage) mcpserver.Result 
 				if ft := frameTypes[d.FrameType]; ft != "" {
 					line += " · " + ft
 				}
-				if s := oneLine(d.Description, 160); s != "" {
+				if s := mcpserver.OneLine(d.Description, 160); s != "" {
 					line += " · " + s
 				}
 			}
@@ -415,7 +419,7 @@ func (t *tools) routes(ctx context.Context, raw json.RawMessage) mcpserver.Resul
 			b.WriteString(" · est. " + clock(r.EstimatedMovingTime))
 		}
 		b.WriteByte('\n')
-		if s := oneLine(r.Description, 400); s != "" {
+		if s := mcpserver.OneLine(r.Description, 400); s != "" {
 			b.WriteString(s + "\n")
 		}
 		if len(r.Segments) > 0 {
@@ -539,7 +543,8 @@ func (t *tools) segment(ctx context.Context, user string, u units, id int64) mcp
 		fmt.Fprintf(&b, "the user's PR %s on %s · %s\n", clock(float64(pr.ElapsedTime)), shortDate(pr.Date), plural(pr.EffortCount, "effort", "efforts"))
 	}
 	sources := []mcpserver.Source{{URL: segmentURL(s.ID), Title: s.Name, Label: label, Snippet: "Strava segment"}}
-	efforts, err := cached[[]segmentEffort](ctx, t.svc, user, t.svc.cache(user).profile, "efforts/"+sid, "/segment_efforts",
+	uc := t.svc.cache(user)
+	efforts, err := summitOnly[[]segmentEffort](ctx, t.svc, user, uc.profile, uc.detail, "segment_efforts", "efforts/"+sid, "/segment_efforts",
 		url.Values{"segment_id": {sid}, "per_page": {strconv.Itoa(maxSegmentEfforts)}})
 	switch {
 	case summitRefused(err):

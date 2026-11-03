@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { takeStravaOutcome, type StravaOutcome } from "../api";
+import type { StravaOutcome } from "../api";
 import { Icon, type IconName } from "../chat/Icon";
 import { AppleMusicPanel } from "./AppleMusicPanel";
 import { SharedChatsPanel } from "./SharedChatsPanel";
@@ -39,23 +39,21 @@ const SECTIONS: {
 /**
  * SettingsModal — centered overlay modal with a left nav (Usage, Shared chats,
  * Apple Music and Strava when allowed). There is deliberately no search box
- * (per design). Back from Strava's consent page (?strava=…), it opens on the
- * Strava section with the outcome.
+ * (per design). Back from Strava's consent page, stravaOutcome (read by the
+ * shell before the URL changed) opens it on the Strava section.
  */
 export function SettingsModal({
   onClose,
   appleMusic = false,
   strava = false,
+  stravaOutcome = null,
 }: {
   onClose(): void;
   appleMusic?: boolean;
   strava?: boolean;
+  stravaOutcome?: StravaOutcome | null;
 }) {
   const { t } = useTranslation();
-  // Read once: the outcome leaves the address bar as it is shown.
-  const [stravaOutcome] = useState<StravaOutcome | null>(() =>
-    takeStravaOutcome(),
-  );
   const allowed: Record<Feature, boolean> = { appleMusic, strava };
   const sections = SECTIONS.filter(
     (entry) => entry.feature === undefined || allowed[entry.feature],

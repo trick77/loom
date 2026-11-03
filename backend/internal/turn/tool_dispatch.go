@@ -135,7 +135,7 @@ func (t *Run) keepToolFiles(files []mcp.File) string {
 	if len(kept) == 0 {
 		return ""
 	}
-	return "\n\n[run_python can read these files for this turn: " + strings.Join(kept, ", ") + "]"
+	return "\n\n[run_python can read these files in this turn only (in a later turn, call this tool again first): " + strings.Join(kept, ", ") + "]"
 }
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at

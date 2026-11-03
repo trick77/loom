@@ -355,8 +355,27 @@ func (s *service) activity(ctx context.Context, user string, id int64) (detailed
 		fmt.Sprintf("/activities/%d", id), url.Values{"include_all_efforts": {"true"}})
 }
 
+// activityZones is Strava's own time in zones (Summit only).
 func (s *service) activityZones(ctx context.Context, user string, id int64) ([]activityZone, error) {
-	return cached[[]activityZone](ctx, s, user, s.cache(user).detail, fmt.Sprintf("zones/%d", id), fmt.Sprintf("/activities/%d/zones", id), nil)
+	uc := s.cache(user)
+	return summitOnly[[]activityZone](ctx, s, user, uc.detail, uc.detail, "zones", fmt.Sprintf("zones/%d", id), fmt.Sprintf("/activities/%d/zones", id), nil)
+}
+
+// summitOnly reads a Summit-only path through values, and keeps a refusal
+// in refusals (the day-long detail cache), keyed by the endpoint alone: a
+// user without a subscription is refused for every activity and segment,
+// so one refused read a day is enough.
+func summitOnly[T any](ctx context.Context, s *service, user string, values, refusals *lru, endpoint, key, path string, q url.Values) (T, error) {
+	refusedKey := "summit-refused/" + endpoint
+	if v, ok := refusals.get(refusedKey, s.now()); ok {
+		var zero T
+		return zero, v.(error)
+	}
+	out, err := cached[T](ctx, s, user, values, key, path, q)
+	if summitRefused(err) {
+		refusals.put(refusedKey, err, s.now())
+	}
+	return out, err
 }
 
 // streams reads one activity's streams; an activity without any (a manual

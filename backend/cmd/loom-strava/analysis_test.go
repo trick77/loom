@@ -203,6 +203,84 @@ func TestAnalysis_realSizedRide(t *testing.T) {
 	}
 }
 
+// A repeat analysis writes no metric file (nothing changed), and a refused
+// Summit zones read is not asked again, for any activity.
+func TestAnalysis_repeatCostsNothing(t *testing.T) {
+	f, svc, dir := analysisFixture(t)
+	h := newServer(config{token: testToken}, svc, "test")
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	path := filepath.Join(dir, metricsDir, userA+".json")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`); r.IsError || !strings.Contains(r.Text, msgSubscription) {
+		t.Fatalf("repeat: %s", r.Text)
+	}
+	after, err := os.Stat(path)
+	if err != nil || !os.SameFile(before, after) {
+		t.Error("a repeat analysis rewrote the metric file") // fsx replaces it by rename
+	}
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":1002}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	if n := f.count("/activities/1001/zones") + f.count("/activities/1002/zones"); n != 1 {
+		t.Errorf("zones calls = %d, want the one refusal", n)
+	}
+}
+
+// A token answer without the athlete keeps the one known, and the metrics
+// with it; a connection that never learnt its athlete takes it from
+// /athlete, and another athlete's metric file goes.
+func TestMetrics_athleteGuard(t *testing.T) {
+	f, svc, dir := analysisFixture(t)
+	h := newServer(config{token: testToken}, svc, "test")
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	path := filepath.Join(dir, metricsDir, userA+".json")
+	f.noAthlete = true
+	f.addAthlete(1, "Anna", "code-a2", 250)
+	connect(t, h, userA, "code-a2")
+	if c, _ := svc.conn(userA); c.AthleteID != 1 || c.AthleteName != "Anna Test" {
+		t.Errorf("athlete lost on reconnect: %+v", c)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Error("the same athlete's metrics were wiped")
+	}
+
+	// A connection without an athlete, and a metric file of athlete 2.
+	svc.mu.Lock()
+	c := svc.st.Users[userA]
+	c.AthleteID = 0
+	svc.st.Users[userA] = c
+	svc.mu.Unlock()
+	if err := svc.store.saveMetrics(userA, metricFile{Athlete: 2, Activities: map[string]storedMetrics{"9999": {V: metricsVersion}}}); err != nil {
+		t.Fatal(err)
+	}
+	tl := &tools{svc: svc}
+	tl.storeMetrics(userA, 1, map[string]storedMetrics{"1": {V: metricsVersion}}, nil)
+	if m, _ := svc.store.loadMetrics(userA); m.Athlete != 2 || len(m.Activities) != 1 {
+		t.Errorf("athlete 1's metrics went into athlete 2's file: %+v", m)
+	}
+	if got := tl.loadMetrics(userA, 1); len(got) != 0 {
+		t.Errorf("athlete 1 read athlete 2's metrics: %v", got)
+	}
+	f.advance(2 * time.Hour) // the cached /athlete expires
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	if c, _ := svc.conn(userA); c.AthleteID != 1 {
+		t.Errorf("athlete not learnt: %+v", c)
+	}
+	m, _ := svc.store.loadMetrics(userA)
+	if _, foreign := m.Activities["9999"]; foreign || m.Athlete != 1 || len(m.Activities) == 0 {
+		t.Errorf("metric file after learning: athlete %d, %d entries, foreign %v", m.Athlete, len(m.Activities), foreign)
+	}
+}
+
 func TestAnalysis_mixIndoorAndWeeks(t *testing.T) {
 	_, svc, _ := analysisFixture(t)
 	h := newServer(config{token: testToken}, svc, "test")
@@ -420,6 +498,8 @@ func TestSimpleTools(t *testing.T) {
 			"best efforts: 1k 3:20 (PR 1st)", "Albis climb · 2.0 km · 8:00 · 6.0 % · 300 W · PR 1st · KOM rank 7 · segment 77"}, 1},
 		{"compare_activities", `{"ids":[1001,1002]}`, []string{"[1] Sun 2026-11-01 09:00 · Albis loop", "[2] Thu 2026-10-01 09:00", "metric | [1] | [2]",
 			"Normalized power |", "all on the same route"}, 2},
+		// The device's laps, with power as a share of FTP (250 W).
+		{"activity_analysis", `{"id":1001}`, []string{"laps (2):\n  1. 5.0 km · 10:00 · 29.9 km/h · 200 W (80 % FTP)\n", "2. 5.0 km · 15:00 · 19.8 km/h · 260 W (104 % FTP)\n"}, 2},
 		{"gear", `{}`, []string{"Anna's bike (id b1) · 12,345 km · Canyon Ultimate CF SLX · road · primary", "Anna's shoes"}, 0},
 		{"gear", `{"gear_id":"b1"}`, []string{"Anna's bike"}, 0},
 		{"routes", `{}`, []string{"[1] Albis loop · ride · 74.3 km · 880 m · est. 2:30:00 · starred · id 3141592653589793238"}, 1},
@@ -443,9 +523,14 @@ func TestSimpleTools(t *testing.T) {
 			t.Errorf("%s %s: %d sources, want %d", c.tool, c.args, len(r.Sources), c.sources)
 		}
 	}
-	// Summit: the effort history, each effort citing its activity.
+	// Summit: the effort history, each effort citing its activity. The
+	// refusal above is remembered for a day.
 	f.summit[1] = true
 	f.advance(2 * time.Hour)
+	if r := callTool(t, h, userA, "segments", `{"segment_id":77}`); !strings.Contains(r.Text, msgSubscription) || f.count("/segment_efforts") != 1 {
+		t.Errorf("a remembered refusal (%d calls): %s", f.count("/segment_efforts"), r.Text)
+	}
+	f.advance(23 * time.Hour)
 	r := callTool(t, h, userA, "segments", `{"segment_id":77}`)
 	if !strings.Contains(r.Text, "[2] 2026-11-01 · 22:35 · 259 W · PR 1st · activity 2001") || len(r.Sources) != 3 ||
 		r.Sources[1]["url"] != "https://www.strava.com/activities/2001" {

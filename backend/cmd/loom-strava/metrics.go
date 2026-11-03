@@ -583,14 +583,16 @@ func kmRows(s series, a, b int, unitM float64) ([]kmRow, float64) {
 	}
 	var out []kmRow
 	start := a
-	for start < b {
-		edge := s.dist[a] + float64(len(out)+1)*width
+	for k := 1; start < b; k++ {
+		edge := s.dist[a] + float64(k)*width
 		end := start
 		for end < b && s.dist[end] < edge {
 			end++
 		}
 		if end == start {
-			break
+			// A GPS dropout jumped past this whole bucket: no row for it,
+			// the rows after it still come.
+			continue
 		}
 		var mov []int
 		for i := start; i < end; i++ {

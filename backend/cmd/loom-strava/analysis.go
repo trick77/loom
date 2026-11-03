@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -202,8 +203,10 @@ type comparison struct {
 
 // storeMetrics merges add into the user's metric file, unless the user
 // disconnected meanwhile (checked under the lock disconnect holds).
-func (t *tools) storeMetrics(user string, athleteID int64, add map[string]storedMetrics) {
-	if len(add) == 0 {
+// known is what the caller loaded before: when add holds nothing new the
+// file is neither read again nor rewritten.
+func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string]storedMetrics) {
+	if !changes(add, known) {
 		return
 	}
 	sl := t.svc.slot(user)
@@ -211,17 +214,38 @@ func (t *tools) storeMetrics(user string, athleteID int64, add map[string]stored
 	defer sl.dataMu.Unlock()
 	// Another athlete than the one the metrics were read for (a reconnect
 	// to a different Strava account meanwhile) must not inherit them.
-	if c, ok := t.svc.conn(user); !ok || (c.AthleteID != 0 && c.AthleteID != athleteID) {
+	c, ok := t.svc.conn(user)
+	if !ok || (c.AthleteID != 0 && c.AthleteID != athleteID) {
 		return
 	}
 	m, _ := t.svc.store.loadMetrics(user)
+	// The connection's athlete unknown: the file's own says whose it is.
+	if m.Athlete != 0 && m.Athlete != athleteID {
+		return
+	}
+	if !changes(add, m.Activities) {
+		return
+	}
 	for k, v := range add {
 		m.Activities[k] = v
 	}
+	m.Athlete = athleteID
 	if err := t.svc.store.saveMetrics(user, m); err != nil {
 		// Only a cost: the streams are fetched again next time.
 		slog.Error("strava: saving metrics failed", "err", err)
 	}
+}
+
+// changes reports whether add holds an entry that have does not, or holds
+// differently.
+func changes(add, have map[string]storedMetrics) bool {
+	for k, v := range add {
+		h, ok := have[k]
+		if !ok || h.V != v.V || h.Start != v.Start || h.MovingS != v.MovingS || !maps.Equal(h.Vals, v.Vals) {
+			return true
+		}
+	}
+	return false
 }
 
 // compare builds the window: one list call for the summaries, streams for
@@ -235,7 +259,7 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 	if err != nil {
 		return nil, err
 	}
-	stored := t.loadMetrics(user)
+	stored := t.loadMetrics(user, a.ID)
 	all := []summaryActivity{}
 	for _, x := range list {
 		ls := x.localStart()
@@ -278,7 +302,7 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 		e.sm, e.known = storedFrom(m, e.act.localStart()), true
 		added[strconv.FormatInt(e.act.ID, 10)] = e.sm
 	}
-	t.storeMetrics(user, a.ID, added)
+	t.storeMetrics(user, a.ID, added, stored)
 	for _, e := range c.entries {
 		switch {
 		case e.known:
@@ -671,24 +695,7 @@ func zoneText(z [5]int) string {
 // writeIntervals lists the laps the device wrote, or else the hard efforts.
 func writeIntervals(b *strings.Builder, d detailedActivity, s series, ia, ib int, ftp float64, u units, section bool) {
 	if len(d.Laps) > 1 && !section {
-		fmt.Fprintf(b, "\nlaps (%d):\n", len(d.Laps))
-		for i, l := range d.Laps {
-			if i == maxLaps {
-				fmt.Fprintf(b, "  … %d more laps\n", len(d.Laps)-maxLaps)
-				break
-			}
-			fmt.Fprintf(b, "  %d. %s · %s · %s", i+1, u.dist(l.Distance), clock(float64(l.MovingTime)), u.tempo(l.AverageSpeed, d.SportType))
-			if l.AverageWatts > 0 {
-				fmt.Fprintf(b, " · %.0f W", l.AverageWatts)
-				if ftp > 0 {
-					fmt.Fprintf(b, " (%.0f %% FTP)", l.AverageWatts/ftp*100)
-				}
-			}
-			if l.AverageHeartrate > 0 {
-				fmt.Fprintf(b, " · HR %.0f/%.0f", l.AverageHeartrate, l.MaxHeartrate)
-			}
-			b.WriteByte('\n')
-		}
+		writeLaps(b, d.Laps, d.SportType, u, ftp, false)
 		return
 	}
 	ef := efforts(s, ia, ib, ftp)
@@ -1024,7 +1031,7 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 		return *fail
 	}
 	u := unitsOf(a)
-	stored := t.loadMetrics(user)
+	stored := t.loadMetrics(user, a.ID)
 	added := map[string]storedMetrics{}
 	entries := make([]baseEntry, 0, len(ids))
 	for _, id := range ids {
@@ -1044,7 +1051,7 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 		}
 		entries = append(entries, baseEntry{act: d.summaryActivity, sm: sm, known: known})
 	}
-	t.storeMetrics(user, a.ID, added)
+	t.storeMetrics(user, a.ID, added, stored)
 
 	var b strings.Builder
 	sources := make([]mcpserver.Source, 0, len(entries))

@@ -119,21 +119,21 @@ describe("StravaPanel", () => {
   });
 });
 
-describe("takeStravaOutcome", () => {
+describe("readStravaOutcome / clearStravaOutcome", () => {
   afterEach(() => window.history.replaceState(null, "", "/"));
 
-  it("reads ?strava= once and removes it from the address bar", () => {
+  it("reads ?strava= without touching the URL; clear removes only it", () => {
     window.history.replaceState(null, "", "/?strava=connected&x=1#h");
-    expect(api.hasStravaOutcome()).toBe(true);
-    expect(api.takeStravaOutcome()).toBe("connected");
+    expect(api.readStravaOutcome()).toBe("connected");
+    expect(api.readStravaOutcome()).toBe("connected");
+    api.clearStravaOutcome();
     expect(window.location.search).toBe("?x=1");
     expect(window.location.hash).toBe("#h");
-    expect(api.takeStravaOutcome()).toBeNull();
+    expect(api.readStravaOutcome()).toBeNull();
   });
 
   it("treats an unknown outcome as unavailable", () => {
     window.history.replaceState(null, "", "/?strava=<script>");
-    expect(api.takeStravaOutcome()).toBe("unavailable");
-    expect(window.location.search).toBe("");
+    expect(api.readStravaOutcome()).toBe("unavailable");
   });
 });

@@ -94,7 +94,10 @@ const maxStoredActivities = 3000
 
 // metricFile is one user's computed per-activity metrics: never raw streams.
 type metricFile struct {
-	V          int                      `json:"v"`
+	V int `json:"v"`
+	// Athlete is the Strava athlete the metrics were read for: a reconnect
+	// to another athlete must not inherit them.
+	Athlete    int64                    `json:"athlete,omitempty"`
 	Activities map[string]storedMetrics `json:"activities"`
 }
 

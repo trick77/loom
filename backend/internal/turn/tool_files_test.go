@@ -44,7 +44,7 @@ func TestTurnHandsToolFilesToPython(t *testing.T) {
 		t.Fatalf("sandbox got %+v", box.Got)
 	}
 	toolMsg := llmClient.Histories[1][len(llmClient.Histories[1])-1].Content
-	if !strings.Contains(toolMsg, "[run_python can read these files for this turn: strava_1_streams.csv]") || strings.Contains(toolMsg, "elapsed_s") {
+	if !strings.Contains(toolMsg, "in this turn only (in a later turn, call this tool again first): strava_1_streams.csv]") || strings.Contains(toolMsg, "elapsed_s") {
 		t.Errorf("tool result the model saw: %q", toolMsg)
 	}
 	last := llmClient.Histories[3][len(llmClient.Histories[3])-1].Content

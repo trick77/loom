@@ -559,6 +559,8 @@ export const en = {
         "loom’s Strava service is misconfigured. Ask the admin to check its token setting.",
       outcome_unavailable:
         "loom’s Strava service isn’t running right now. Try again later.",
+      outcome_signin:
+        "Your loom session ended while Strava was asking. Connect with Strava again.",
       loadFailed: "Failed to load the Strava status.",
       checkFailed: "Couldn’t check the connection. Try again.",
       disconnectFailed: "Couldn’t disconnect. Try again.",

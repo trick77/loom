@@ -45,6 +45,7 @@ export const STRAVA_OUTCOMES = [
   "storage",
   "config",
   "unavailable",
+  "signin",
 ] as const;
 export type StravaOutcome = (typeof STRAVA_OUTCOMES)[number];
 
@@ -91,12 +92,20 @@ export function disconnectStrava(): Promise<StravaStatus> {
   return call(BASE, { method: "DELETE" });
 }
 
-// takeStravaOutcome reads ?strava=… once and removes it from the address bar,
-// so a reload does not show the outcome again.
-export function takeStravaOutcome(): StravaOutcome | null {
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get("strava");
+// readStravaOutcome reads ?strava=… without touching the address bar: safe
+// in a render (a useState initializer may run twice).
+export function readStravaOutcome(): StravaOutcome | null {
+  const raw = new URLSearchParams(window.location.search).get("strava");
   if (raw === null) return null;
+  return (STRAVA_OUTCOMES as readonly string[]).includes(raw)
+    ? (raw as StravaOutcome)
+    : "unavailable";
+}
+
+// clearStravaOutcome removes ?strava=… from the address bar.
+export function clearStravaOutcome(): void {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("strava")) return;
   params.delete("strava");
   const query = params.toString();
   window.history.replaceState(
@@ -104,12 +113,4 @@ export function takeStravaOutcome(): StravaOutcome | null {
     "",
     `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
   );
-  return (STRAVA_OUTCOMES as readonly string[]).includes(raw)
-    ? (raw as StravaOutcome)
-    : "unavailable";
-}
-
-// hasStravaOutcome says whether the page was opened by the OAuth callback.
-export function hasStravaOutcome(): boolean {
-  return new URLSearchParams(window.location.search).has("strava");
 }

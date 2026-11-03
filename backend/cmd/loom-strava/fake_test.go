@@ -46,6 +46,8 @@ type fakeStrava struct {
 	// /oauth/deauthorize must take over.
 	revokeMissing bool
 	deauthorized  []string
+	// noAthlete: the code exchange answers without the athlete.
+	noAthlete bool
 
 	athletes   map[int64]map[string]any
 	zones      map[int64]any
@@ -183,8 +185,10 @@ func (f *fakeStrava) token(w http.ResponseWriter, r *http.Request) {
 		delete(f.codes, r.PostForm.Get("code"))
 		acc, ref, exp := f.issue(athlete)
 		a := f.athletes[athlete]
-		resp := map[string]any{"token_type": "Bearer", "access_token": acc, "refresh_token": ref, "expires_at": exp,
-			"athlete": map[string]any{"id": athlete, "firstname": a["firstname"], "lastname": a["lastname"]}}
+		resp := map[string]any{"token_type": "Bearer", "access_token": acc, "refresh_token": ref, "expires_at": exp}
+		if !f.noAthlete {
+			resp["athlete"] = map[string]any{"id": athlete, "firstname": a["firstname"], "lastname": a["lastname"]}
+		}
 		if f.scope != "" {
 			resp["scope"] = f.scope
 		}
