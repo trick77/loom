@@ -193,7 +193,17 @@ func TestRequiredServiceRetriesDiscoveryUntilStartupContextDeadline(t *testing.T
 // and one that refuses connections ("zeta").
 func newStatusTestService(t *testing.T) *Service {
 	t.Helper()
+	service, _ := newCountingStatusTestService(t)
+	return service
+}
+
+// newCountingStatusTestService is newStatusTestService plus a count of the
+// requests alpha received.
+func newCountingStatusTestService(t *testing.T) (*Service, *atomic.Int32) {
+	t.Helper()
+	requests := new(atomic.Int32)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
 		if r.Method == http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
@@ -224,7 +234,7 @@ func newStatusTestService(t *testing.T) *Service {
 	if err != nil {
 		t.Fatalf("NewServiceFromConfigs() error: %v", err)
 	}
-	return service
+	return service, requests
 }
 
 func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
@@ -650,5 +660,28 @@ func TestServiceServerStatusSurvivesCancelledCaller(t *testing.T) {
 		if st.Name == "alpha" && !st.Active {
 			t.Fatalf("alpha reported inactive after a cancelled caller: %#v", statuses)
 		}
+	}
+}
+
+// A caller already gone gets nothing and starts no probe, cache fresh or not.
+// It once started one: a probe landing before its wait made select pick data
+// or nil at random (CI flake).
+func TestServiceServerStatusCancelledCallerProbesNothing(t *testing.T) {
+	service, requests := newCountingStatusTestService(t)
+	baseline := requests.Load()
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if got := service.ServerStatus(cancelled); got != nil {
+		t.Fatalf("ServerStatus(cancelled) = %#v, want nil", got)
+	}
+	if got := requests.Load(); got != baseline {
+		t.Fatalf("a cancelled caller probed (%d -> %d requests)", baseline, got)
+	}
+	if service.ServerStatus(context.Background()) == nil {
+		t.Fatal("ServerStatus() = nil, want statuses")
+	}
+	if got := service.ServerStatus(cancelled); got != nil {
+		t.Fatalf("ServerStatus(cancelled) on a fresh cache = %#v, want nil", got)
 	}
 }

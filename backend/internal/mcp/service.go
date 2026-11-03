@@ -98,8 +98,14 @@ type ServerStatus struct {
 // routing clients cache their first init result and never recover). ToolCount is
 // the number of tools currently exposed to the model, so a server that recovered
 // post-startup can read active with a zero count until the next restart.
+// A caller whose ctx is already done gets nil and starts no probe.
 func (s *Service) ServerStatus(ctx context.Context) []ServerStatus {
 	if s == nil || len(s.cfg.Servers) == 0 {
+		return nil
+	}
+	// Checked first: a started probe could land before the wait below, and
+	// select picks a ready case at random (data or nil, a CI flake).
+	if ctx.Err() != nil {
 		return nil
 	}
 	s.statusMu.Lock()
