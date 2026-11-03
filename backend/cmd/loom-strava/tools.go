@@ -32,7 +32,8 @@ const (
 const instructions = "The user's own Strava data: profile, totals, activities, laps, streams, gear, routes and " +
 	"starred segments. Read the numbers with these tools instead of estimating or guessing. Cite every activity " +
 	"you mention with its [n]. For one ride or run use activity_analysis: it compares the activity with the " +
-	"user's recent ones of the same sport. Give numbers with their units, as returned. When a chart would read " +
+	"user's recent ones of the same sport. For heart-rate zones, max or threshold heart rate use hr_zones; " +
+	"a tested value the user stated beats its estimate. Give numbers with their units, as returned. When a chart would read " +
 	"better (ride profile, power curve, weekly load, same-route gap), offer one and draw it with run_python from " +
 	"the attached CSV files."
 
@@ -71,6 +72,17 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Description: "The user's Strava profile: name, FTP, weight, bikes and shoes with their distance, heart-rate and power zones.",
 				Schema:      mcpserver.ObjectSchema(map[string]any{}),
 				Run:         t.profile,
+			},
+			{
+				Name: "hr_zones", Title: "My heart-rate zones",
+				Description: "The user's heart-rate zones estimated from their own streams of the last 365 days, per sport " +
+					"(cycling, running): max heart rate (best 10 s, confirmed by a second activity), threshold heart rate " +
+					"(95 % of the best 20 min) and Friel's zones from it, next to Strava's own zones. Reads the streams of " +
+					"the hardest activities not read yet, within the rate budget; a later call reads more.",
+				Schema: mcpserver.ObjectSchema(map[string]any{
+					"sport": map[string]any{"type": "string", "enum": []string{"cycling", "running"}, "description": "Only this sport. Default: both."},
+				}),
+				Run: t.hrZones,
 			},
 			{
 				Name: "totals", Title: "My Strava totals",
@@ -270,16 +282,37 @@ func (t *tools) profile(ctx context.Context, _ json.RawMessage) mcpserver.Result
 	}
 	gearLine("bikes", a.Bikes)
 	gearLine("shoes", a.Shoes)
+	// The user's own, stored: what activity_analysis uses while Strava's
+	// are its defaults. Local, so shown when Strava's are unavailable too.
+	ownLines := func() string {
+		var s strings.Builder
+		own := t.loadHRZones(user, a.ID)
+		for _, f := range hrFamilies {
+			if oz, ok := own[f.key]; ok && oz.edges() != nil {
+				s.WriteString(ownZonesLine(f.key, oz))
+			}
+		}
+		return s.String()
+	}
 	switch {
 	case zerr != nil:
 		fmt.Fprintf(&b, "zones: unavailable (%s)\n", failure(zerr).Text)
+		// Whether custom Strava zones exist is unknown now, so analyses do
+		// not use these until Strava's zones answer again.
+		if lines := ownLines(); lines != "" {
+			b.WriteString("(stored below, but not used while Strava's zones are unavailable: custom ones may exist)\n" + lines)
+		}
 	default:
 		if z.HeartRate != nil && len(z.HeartRate.Zones) > 0 {
-			kind := "Strava's defaults"
+			kind := "Strava's defaults, usually age-based; the user's own from their streams replace them where a sport " +
+				"has them, custom zones set in Strava replace both"
 			if z.HeartRate.CustomZones {
 				kind = "custom"
 			}
 			fmt.Fprintf(&b, "heart-rate zones (%s): %s\n", kind, zoneList(z.HeartRate.Zones, " bpm"))
+		}
+		if z.HeartRate == nil || !z.HeartRate.CustomZones {
+			b.WriteString(ownLines())
 		}
 		if z.Power != nil && len(z.Power.Zones) > 0 {
 			fmt.Fprintf(&b, "power zones: %s\n", zoneList(z.Power.Zones, " W"))

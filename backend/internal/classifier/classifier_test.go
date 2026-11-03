@@ -1,6 +1,9 @@
 package classifier
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Values returns every category value in catalog order, including General.
 func Values() []Category {
@@ -59,6 +62,12 @@ func TestBlock(t *testing.T) {
 	for _, c := range []Category{KnowledgeDiscovery, Coding, CookingRecipes, Weather, Translation, Health, Training, EntertainmentRecs, Music, LocalInfo, FinanceInvesting, URLLookup, General} {
 		if Block(string(c)) == "" {
 			t.Errorf("Block(%q) is empty, want a directive", c)
+		}
+	}
+	// Both turns that see the training tools carry the heart-rate zone rule.
+	for _, c := range []Category{Training, Health} {
+		if !strings.HasSuffix(Block(string(c)), hrZoneRule) || !strings.Contains(hrZoneRule, "marks as defaults") {
+			t.Errorf("Block(%q) lacks the heart-rate zone rule", c)
 		}
 	}
 }
