@@ -2593,7 +2593,9 @@ test("renders artifact card from historical assistant message", async () => {
   ).toBeInTheDocument();
 });
 
-test("renders a generated image artifact from its thumbnail without downloading it", () => {
+// The 144px thumbnail stretched to the card blurred charts: the card shows
+// the original, a lazy plain image load (cached, never a blob fetch).
+test("renders a generated image artifact from the original, not its thumbnail", () => {
   const fetchMock = vi.fn(async () => {
     throw new Error("unexpected fetch");
   });
@@ -2612,33 +2614,58 @@ test("renders a generated image artifact from its thumbnail without downloading 
     />,
   );
 
-  expect(screen.getByRole("img", { name: "robot.png" })).toHaveAttribute(
-    "src",
-    "/api/artifacts/art_1/thumbnail",
-  );
+  const img = screen.getByRole("img", { name: "robot.png" });
+  expect(img).toHaveAttribute("src", "/api/artifacts/art_1/download");
+  expect(img).toHaveAttribute("loading", "lazy");
   expect(fetchMock).not.toHaveBeenCalled();
   expect(
     screen.getByRole("button", { name: "Download robot.png" }),
   ).toBeInTheDocument();
 });
 
-test("an image artifact without a thumbnail previews the full image", () => {
-  render(
+test("a sized image card shows the original; a giant one keeps its thumbnail", () => {
+  const chart = {
+    id: "art_1",
+    displayFilename: "chart.png",
+    mimeType: "image/png",
+    sizeBytes: 12,
+    downloadUrl: "/api/artifacts/art_1/download",
+    thumbnailUrl: "/api/artifacts/art_1/thumbnail",
+  };
+  const { rerender } = render(
+    <GeneratedArtifactCard artifact={{ ...chart, width: 1200, height: 630 }} />,
+  );
+  const img = screen.getByRole("img", { name: "chart.png" });
+  expect(img).toHaveAttribute("src", "/api/artifacts/art_1/download");
+  expect(img).toHaveAttribute("loading", "lazy");
+
+  // 12000 x 12000 would stall the tab if decoded inline on scroll.
+  rerender(
+    <GeneratedArtifactCard
+      artifact={{ ...chart, width: 12000, height: 12000 }}
+    />,
+  );
+  expect(screen.getByRole("img", { name: "chart.png" })).toHaveAttribute(
+    "src",
+    "/api/artifacts/art_1/thumbnail",
+  );
+
+  // Past the server's own limit there is no thumbnail: no inline image, the
+  // card still opens the lightbox.
+  rerender(
     <GeneratedArtifactCard
       artifact={{
-        id: "art_1",
-        displayFilename: "robot.png",
-        mimeType: "image/png",
-        sizeBytes: 12,
-        downloadUrl: "/api/artifacts/art_1/download",
+        ...chart,
+        width: 12000,
+        height: 12000,
+        thumbnailUrl: undefined,
       }}
     />,
   );
-
-  expect(screen.getByRole("img", { name: "robot.png" })).toHaveAttribute(
-    "src",
-    "/api/artifacts/art_1/download",
-  );
+  expect(screen.queryByRole("img", { name: "chart.png" })).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Preview chart.png" }),
+  ).toBeInTheDocument();
 });
 
 test("clicking an image artifact opens a lightbox preview in the browser", async () => {
