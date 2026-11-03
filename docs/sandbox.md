@@ -81,3 +81,8 @@ same without the model choosing colours (heatmaps: `Blues_r`, `loom_ramp` exists
 glyph), turned into static TTFs by `sandbox/fonts.py` in a build stage. The self-test (`--rc`)
 fails the build when the rc is not the one matplotlib read, differs from `STYLE`, the font does not
 resolve, or matplotlib warns. The font family is "Loom Sans" in the image.
+
+The y grid stays on by default (user's choice) except on `imshow` heatmaps, where it draws across
+the cells: an image sits below the grid at any `axes.axisbelow`, and no rc key hides the grid per
+artist, so the prompt tells the model to call `ax.grid(False)` there. A `sitecustomize` patch of
+`imshow` was rejected: it would change matplotlib silently for every job.
