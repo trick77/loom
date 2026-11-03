@@ -73,3 +73,17 @@ Nothing is installed at run time.
 `loomcharts` (`sandbox/loomcharts/`, in site-packages) draws the Strava charts from the attached
 CSVs in loom's dark style, one function per chart (`help(loomcharts)`); its self-test runs in the
 image build.
+
+That style (`STYLE` in `loomcharts/_style.py`) is also every chart's default: the build writes it
+as `/opt/mplconfig/matplotlibrc`, which each job copies, so hand-written matplotlib charts look the
+same without the model choosing colours (heatmaps: `Blues_r`, `loom_ramp` exists only after
+`import loomcharts`). Text is the UI's sans (`ui/src/fonts/`, Latin only, DejaVu Sans fills in per
+glyph), turned into static TTFs by `sandbox/fonts.py` in a build stage. The self-test (`--rc`)
+fails the build when the rc is not the one matplotlib read, differs from `STYLE`, the font does not
+resolve, or matplotlib warns. The font family is "Loom Sans" in the image.
+
+The y grid stays on by default (user's choice) except on `imshow`/`matshow` images, where it draws
+across the cells: an image (zorder 0) sits below the grid at any `axes.axisbelow`, and no rc key
+hides the grid per artist, so the prompt tells the model to turn it off there. `pcolormesh`,
+`hist2d` and `contourf` (zorder 1) stay clean only while `axes.axisbelow` is `True` (grid at 0.5).
+A `sitecustomize` patch of `imshow` was rejected: it would change matplotlib silently for every job.

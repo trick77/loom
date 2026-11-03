@@ -179,14 +179,12 @@ def ride_profile(streams, out, climbs=None, title=None):
             pts += list(zip(xa[inside], aa[inside]))
             pts += [(c, float(np.interp(c, xa, aa))), (c, base)]
             polys.append(pts)
-        a1.set_axisbelow(True)
         # Edges in the face colour close the hairline gaps antialiasing leaves between bins.
         a1.add_collection(PolyCollection(polys, facecolors=cols, edgecolors=cols, linewidths=0.4, zorder=2))
         a1.plot(xa, aa, color=INK2, lw=1.2, zorder=3)
         a1.set_xlim(x0, x1)
         a1.set_ylim(base, top)
         a1.set_ylabel("m")
-        a1.grid(axis="x", visible=False)
         a1.tick_params(axis="x", labelbottom=a2 is None)
         if a2 is None:
             a1.set_xlabel(xlabel)
@@ -238,7 +236,6 @@ def ride_profile(streams, out, climbs=None, title=None):
         a2.set_xlim(x0, x1)
         a2.set_ylabel("bpm")
         a2.set_xlabel(xlabel)
-        a2.grid(axis="x", visible=False)
         hm = hr[moving & ok] if (moving & ok).any() else hr[ok]
         _quiet_corner(a2, f"HR · avg {np.mean(hm):.0f}, max {np.max(hr[ok]):.0f}", x[ok], line[ok],
                       fontsize=8.5, color=INK2)

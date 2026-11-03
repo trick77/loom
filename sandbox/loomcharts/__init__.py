@@ -31,8 +31,10 @@ Charts
     leave it out when the window is not known.
 
 Own charts
-    apply_style() sets the same dark style for plain matplotlib (pyplot) code; the
-    colours are loomcharts.THIS, BEST, MEDIAN, ZONES (Z1..Z5+), CONTEXT, INK, INK2, MUTED.
+    Plain matplotlib (pyplot) code already draws in the same dark style: it is the
+    image's matplotlibrc. Series take the colour cycle (loomcharts.SERIES) in order;
+    the named colours are THIS, BEST, MEDIAN, ZONES (Z1..Z5+), CONTEXT, INK, INK2, MUTED.
+    apply_style() restores the style after code changed rcParams; colormap loom_ramp.
     The chart functions above do not change global matplotlib settings.
 
 CSV contract (5 s resample in streams; empty cell = no value)
@@ -54,12 +56,13 @@ CSV contract (5 s resample in streams; empty cell = no value)
                                 suffer_score
 """
 
-from ._style import BEST, BG, CONTEXT, INK, INK2, MEDIAN, MUTED, THIS, ZONES, apply_style
+from ._style import BEST, BG, CONTEXT, INK, INK2, MEDIAN, MUTED, SERIES, THIS, ZONES, apply_style
 from .compare import power_curve, rank_strip, same_route_gap
 from .ride import ride_profile, route_track
 from .volume import activities_summary, weekly_load
 
 __all__ = [
     "activities_summary", "apply_style", "power_curve", "rank_strip", "ride_profile", "route_track",
-    "same_route_gap", "weekly_load", "BEST", "BG", "CONTEXT", "INK", "INK2", "MEDIAN", "MUTED", "THIS", "ZONES",
+    "same_route_gap", "weekly_load", "BEST", "BG", "CONTEXT", "INK", "INK2", "MEDIAN", "MUTED", "SERIES", "THIS",
+    "ZONES",
 ]
