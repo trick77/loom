@@ -66,7 +66,9 @@ rests on) and recalculated from the stored entries alone, no Strava call: on eve
 touching that family's entries once `hr_zones` has created it (an analysis that reads a harder effort moves the
 zones; one easy ride before anyone asked makes none). Entries carry sport and name, set under the file lock from any
 list at hand (older entries lack them, a sport can be corrected); a complete list of the window marks missing
-entries `gone` (deleted on Strava), and any later list or read that has them clears it. While Strava's zones are its defaults, `activity_analysis` buckets time
+entries `gone` (deleted on Strava), except ones written within the list cache's 5 min (newer than the list, not
+deleted), and any later list or read that has them clears it. A `hr_zones` call for one sport never creates the
+other's zones. While Strava's zones are its defaults, `activity_analysis` buckets time
 in zones (and the streams CSV) with the stored zones of the activity's sport and says so; custom Strava zones always
 win, a sport without stored zones keeps Strava's, labelled as defaults. `profile` shows them with their date.
 
