@@ -157,6 +157,8 @@ func storedFrom(m rideMetrics, start time.Time) storedMetrics {
 		}
 	}
 	put("avg_hr", m.AvgHR)
+	put("hr_max10", m.HRMax10)
+	put("hr_20m", m.HR20m)
 	put("ef", m.EF)
 	put("decoupling", m.Decoupling)
 	return sm
@@ -586,8 +588,17 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	}
 	if m.HasHRZones && m.MovingS > 0 {
 		line := "time in HR zones Z1..Z5: " + zoneText(m.HRZoneS)
+		notes := []string{}
 		if zoneNote != "" {
-			line += " (" + zoneNote + ")"
+			notes = append(notes, zoneNote)
+		}
+		// hE is set, so z.HeartRate is: the model must know the zones are
+		// Strava's age-based defaults, not the user's own.
+		if !z.HeartRate.CustomZones {
+			notes = append(notes, "Strava's default zones, usually age-based; hr_zones estimates the user's own")
+		}
+		if len(notes) > 0 {
+			line += " (" + strings.Join(notes, "; ") + ")"
 		}
 		b.WriteString(line + "\n")
 	}

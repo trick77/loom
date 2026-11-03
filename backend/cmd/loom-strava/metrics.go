@@ -199,6 +199,10 @@ type rideMetrics struct {
 	HasWatts, HasHR            bool
 	AvgW, MaxW, NP, KJ         float64
 	AvgHR, MaxHR               float64
+	// HRMax10 and HR20m are the best 10 s and 20 min mean heart rate: the
+	// inputs of hr_zones' max and threshold heart rate. 10 s, not the
+	// single highest sample, so one strap spike does not count.
+	HRMax10, HR20m float64
 	// EF is NP per bpm with power, else moving speed (m/min) per bpm.
 	EF, Decoupling            float64
 	AvgCad, MaxCad            float64
@@ -214,7 +218,7 @@ type rideMetrics struct {
 var nan = math.NaN()
 
 func computeMetrics(s series, a, b int, pEdges, hEdges []float64) rideMetrics {
-	m := rideMetrics{AvgW: nan, MaxW: nan, NP: nan, KJ: nan, AvgHR: nan, MaxHR: nan, EF: nan, Decoupling: nan,
+	m := rideMetrics{AvgW: nan, MaxW: nan, NP: nan, KJ: nan, AvgHR: nan, MaxHR: nan, HRMax10: nan, HR20m: nan, EF: nan, Decoupling: nan,
 		AvgCad: nan, MaxCad: nan, AvgTemp: nan, MinTemp: nan, MaxTemp: nan, MaxGrade: nan, MinGrade: nan,
 		GainM: nan, AvgSpeed: nan, MaxSpeed: nan, MeanMax: make([]float64, len(curveDurations))}
 	for i := range m.MeanMax {
@@ -257,6 +261,7 @@ func computeMetrics(s series, a, b int, pEdges, hEdges []float64) rideMetrics {
 		m.HasHR = true
 		m.AvgHR = meanAt(s.hr, movIdx)
 		m.MaxHR = maxOf(s.hr[a:b])
+		m.HRMax10, m.HR20m = meanMax(s.hr[a:b], 10), meanMax(s.hr[a:b], 1200)
 		if hEdges != nil {
 			m.HasHRZones = true
 			for _, i := range movIdx {

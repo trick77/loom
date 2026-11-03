@@ -85,7 +85,10 @@ func (s fileStore) save(st state) error {
 }
 
 // metricsVersion changes when a stored metric's formula does: older entries
-// are recomputed, never compared against new ones.
+// are recomputed, never compared against new ones. A bump drops every
+// user's whole file, so every stream is read again against the rate budget;
+// a new key needs none: entries without it read as unknown (hr_zones reads
+// such entries again by itself).
 const metricsVersion = 1
 
 // maxStoredActivities bounds one user's metric file (a few hundred bytes
@@ -104,8 +107,8 @@ type metricFile struct {
 // storedMetrics are the stream metrics of one activity that do not depend on
 // FTP or zones; IF and TSS are derived from NP and MovingS with the current
 // FTP whenever they are read, so an FTP change never serves stale values.
-// Vals holds only known values (JSON has no NaN): np, avg_hr, ef,
-// decoupling, avg_w, and mm_<seconds> for the mean-max curve.
+// Vals holds only known values (JSON has no NaN): np, avg_hr, hr_max10,
+// hr_20m, ef, decoupling, avg_w, and mm_<seconds> for the mean-max curve.
 type storedMetrics struct {
 	V       int                `json:"v"`
 	Start   string             `json:"start"` // start_date_local, for pruning

@@ -32,7 +32,8 @@ const (
 const instructions = "The user's own Strava data: profile, totals, activities, laps, streams, gear, routes and " +
 	"starred segments. Read the numbers with these tools instead of estimating or guessing. Cite every activity " +
 	"you mention with its [n]. For one ride or run use activity_analysis: it compares the activity with the " +
-	"user's recent ones of the same sport. Give numbers with their units, as returned. When a chart would read " +
+	"user's recent ones of the same sport. For heart-rate zones, max or threshold heart rate use hr_zones; " +
+	"a tested value the user stated beats its estimate. Give numbers with their units, as returned. When a chart would read " +
 	"better (ride profile, power curve, weekly load, same-route gap), offer one and draw it with run_python from " +
 	"the attached CSV files."
 
@@ -69,6 +70,17 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Description: "The user's Strava profile: name, FTP, weight, bikes and shoes with their distance, heart-rate and power zones.",
 				Schema:      mcpserver.ObjectSchema(map[string]any{}),
 				Run:         t.profile,
+			},
+			{
+				Name: "hr_zones", Title: "My heart-rate zones",
+				Description: "The user's heart-rate zones estimated from their own streams of the last 365 days, per sport " +
+					"(cycling, running): max heart rate (best 10 s, confirmed by a second activity), threshold heart rate " +
+					"(95 % of the best 20 min) and Friel's zones from it, next to Strava's own zones. Reads the streams of " +
+					"the hardest activities not read yet, within the rate budget; a later call reads more.",
+				Schema: mcpserver.ObjectSchema(map[string]any{
+					"sport": map[string]any{"type": "string", "enum": []string{"cycling", "running"}, "description": "Only this sport. Default: both."},
+				}),
+				Run: t.hrZones,
 			},
 			{
 				Name: "totals", Title: "My Strava totals",
@@ -272,7 +284,7 @@ func (t *tools) profile(ctx context.Context, _ json.RawMessage) mcpserver.Result
 		fmt.Fprintf(&b, "zones: unavailable (%s)\n", failure(zerr).Text)
 	default:
 		if z.HeartRate != nil && len(z.HeartRate.Zones) > 0 {
-			kind := "Strava's defaults"
+			kind := "Strava's defaults, usually age-based; hr_zones estimates the user's own, and custom zones set in Strava replace these"
 			if z.HeartRate.CustomZones {
 				kind = "custom"
 			}
