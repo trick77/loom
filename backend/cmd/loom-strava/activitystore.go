@@ -48,27 +48,18 @@ const (
 	refreshDebounce = 10 * time.Minute
 )
 
-// Variables, not constants, for the tests.
-var (
-	// maxStreamBytes bounds one user's stored streams (gzipped, ~200-400 KB
-	// a 3 h ride): the least recently read go first. Details and summaries
-	// are small and stay.
-	maxStreamBytes int64 = 1 << 30
-	// activityRetention bounds how long anything stored is used: 0 keeps it
-	// for good. Strava's API agreement is read by some as 7 days for cached
-	// data; loom shows each user only their own data, the case it exempts.
-	// Past it a body is read again, and the whole store starts over once the
-	// index is that old.
-	activityRetention time.Duration
-)
+// maxStreamBytes bounds one user's stored streams (gzipped, ~200-400 KB a
+// 3 h ride): the least recently read go first. Details and summaries are
+// small and stay. Nothing stored expires, by design: activities do not
+// change, and every reread costs the rate budget all users share. A
+// variable for the tests.
+var maxStreamBytes int64 = 1 << 30
 
 // activityIndex is one user's list of activities, as far as it was read.
 type activityIndex struct {
 	V int `json:"v"`
 	// Athlete is whose activities these are: another athlete's never count.
 	Athlete int64 `json:"athlete,omitempty"`
-	// Created is when the backfill started, for activityRetention.
-	Created time.Time `json:"created"`
 	// Complete: the backfill reached the user's first activity.
 	Complete bool `json:"complete,omitempty"`
 	// Cursor is the start (unix) of the oldest activity read so far; the
@@ -90,8 +81,8 @@ type streamMeta struct {
 	ReadAt time.Time `json:"read_at"`
 }
 
-func newIndex(athlete int64, now time.Time) *activityIndex {
-	return &activityIndex{V: indexVersion, Athlete: athlete, Created: now.UTC(),
+func newIndex(athlete int64) *activityIndex {
+	return &activityIndex{V: indexVersion, Athlete: athlete,
 		Activities: map[string]summaryActivity{}, Streams: map[string]streamMeta{}, Seen: map[string]time.Time{}}
 }
 
@@ -152,18 +143,12 @@ func (s fileStore) bodyPath(user string, id int64, kind string) (string, error) 
 	return filepath.Join(d, strconv.FormatInt(id, 10)+"."+kind+".json.gz"), nil
 }
 
-// readBody is a stored Strava answer; false when there is none, or it is
-// older than activityRetention, or unreadable.
-func (s fileStore) readBody(user string, id int64, kind string, now time.Time) ([]byte, bool) {
+// readBody is a stored Strava answer; false when there is none or it is
+// unreadable.
+func (s fileStore) readBody(user string, id int64, kind string) ([]byte, bool) {
 	p, err := s.bodyPath(user, id, kind)
 	if err != nil {
 		return nil, false
-	}
-	if activityRetention > 0 {
-		fi, err := os.Stat(p)
-		if err != nil || now.Sub(fi.ModTime()) > activityRetention {
-			return nil, false
-		}
 	}
 	b, err := readGzip(p)
 	if err != nil {

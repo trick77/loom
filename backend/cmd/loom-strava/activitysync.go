@@ -29,16 +29,15 @@ func (s *service) keepsLocked(user string, athlete int64) bool {
 	return ok && (athlete == 0 || c.AthleteID == 0 || c.AthleteID == athlete)
 }
 
-// indexLocked is the user's index, loaded on first use. Another athlete's,
-// or one past activityRetention, starts over. Caller holds dataMu.
+// indexLocked is the user's index, loaded on first use. Another athlete's
+// starts over. Caller holds dataMu.
 func (s *service) indexLocked(user string, sl *slot) *activityIndex {
 	if sl.index != nil {
 		return sl.index
 	}
 	athlete := s.athleteOf(user)
 	x := s.store.loadIndex(user)
-	if x != nil && ((x.Athlete != 0 && athlete != 0 && x.Athlete != athlete) ||
-		(activityRetention > 0 && s.now().Sub(x.Created) > activityRetention)) {
+	if x != nil && x.Athlete != 0 && athlete != 0 && x.Athlete != athlete {
 		// The bodies go with the index: none would be counted or found.
 		if err := s.store.deleteActivities(user); err != nil {
 			slog.Error("strava: deleting the stored activities failed", "err", err)
@@ -46,7 +45,7 @@ func (s *service) indexLocked(user string, sl *slot) *activityIndex {
 		x = nil
 	}
 	if x == nil {
-		x = newIndex(athlete, s.now())
+		x = newIndex(athlete)
 	}
 	sl.index = x
 	return x
@@ -90,7 +89,7 @@ func (s *service) deleteStoreLocked(user string, sl *slot) error {
 // change, not worth a rewrite of its own); a stream the index lost is
 // counted again, one gone from disk leaves the count.
 func (s *service) loadBody(user string, id int64, kind string) ([]byte, bool) {
-	b, ok := s.store.readBody(user, id, kind, s.now())
+	b, ok := s.store.readBody(user, id, kind)
 	if kind != kindStreams {
 		return b, ok
 	}
