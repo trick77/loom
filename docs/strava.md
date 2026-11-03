@@ -119,9 +119,12 @@ user's entry, metrics and activities; a reconnect to another Strava athlete star
    ```
 
 3. The sidecar's `/data` is the host dir `./strava-data` (backed up with `./data`, never inside it: loom mounts
-   `./data` and must not read the tokens). Create it for uid 65532 before the first start, or Docker creates it
-   root-owned: `sudo mkdir -p strava-data && sudo chown 65532:65532 strava-data`. Coming from the former named
-   volume `strava-data`: stop the sidecar, `cp -a` the volume's content into `./strava-data`, chown it.
+   `./data` and must not read the tokens). Create it for uid 65532 before the first start: Docker would create it
+   root-owned, and the sidecar then refuses to start. `sudo mkdir -p strava-data && sudo chown 65532:65532 strava-data`.
+   Coming from the former named volume (`<project>_strava-data`, see `docker volume ls`; it now holds the only
+   copy of every token and stored activity): stop the sidecar, copy the volume's content into `./strava-data`
+   (`docker run --rm -v <project>_strava-data:/from:ro -v "$PWD/strava-data":/to alpine cp -a /from/. /to/`), chown
+   it, start, check users are still connected, and only then remove the old volume; never prune volumes before.
 4. Each listed user signs in to loom, opens Settings → Strava and clicks Connect with Strava, leaving every permission
    ticked (unticked ones show up in Settings: private activities or details then stay hidden).
 

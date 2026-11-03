@@ -381,6 +381,9 @@ func TestProductionComposeHostDirsOnly(t *testing.T) {
 			t.Errorf("%s must mount %q, outside ./data", svc, want)
 		}
 	}
+	if loom := composeService(t, compose, "loom"); strings.Contains(loom, "tunewire-data") || strings.Contains(loom, "strava-data") {
+		t.Error("loom mounts a sidecar's dir: it would read every user's tokens")
+	}
 }
 
 // tunewire holds one person's Apple Music token: it is opt-in, reachable from
@@ -401,7 +404,6 @@ func TestProductionComposeTunewire(t *testing.T) {
 		"cap_drop: [ALL]",
 		"- no-new-privileges:true",
 		`TUNEWIRE_TOKEN: "${BACKEND_TUNEWIRE_TOKEN:-}"`,
-		"- ./tunewire-data:/data",
 		`test: ["CMD", "/loom-tunewire", "healthcheck"]`,
 		"\n      interval: 60s",
 		`traefik.enable: "false"`,

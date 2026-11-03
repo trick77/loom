@@ -226,9 +226,8 @@ services:
     environment:
       TUNEWIRE_TOKEN: "${BACKEND_TUNEWIRE_TOKEN:-}"
       TUNEWIRE_STOREFRONT: "${TUNEWIRE_STOREFRONT:-ch}"
-    # A host dir, not a named volume: backed up with the rest. Not under
-    # ./data, which loom mounts: loom must never read the sidecar's tokens.
-    # Must belong to 65532: sudo mkdir -p tunewire-data && sudo chown 65532:65532 tunewire-data
+    # Host dir for backups, outside ./data (loom must never read these tokens);
+    # owned by 65532 or the sidecar refuses to start: docs/tunewire.md, Setup.
     volumes:
       - ./tunewire-data:/data
     healthcheck:
@@ -261,9 +260,8 @@ services:
       STRAVA_TOKEN: "${BACKEND_STRAVA_TOKEN:-}"
       STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID:-}"
       STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET:-}"
-    # A host dir, not a named volume: backed up with the rest. Not under
-    # ./data, which loom mounts: loom must never read the sidecar's tokens.
-    # Must belong to 65532: sudo mkdir -p strava-data && sudo chown 65532:65532 strava-data
+    # Host dir for backups, outside ./data (loom must never read these tokens);
+    # owned by 65532 or the sidecar refuses to start: docs/strava.md, Setup.
     volumes:
       - ./strava-data:/data
     healthcheck:

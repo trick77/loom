@@ -13,9 +13,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/trick77/ship/kit/env"
+	"github.com/trick77/ship/kit/fsx"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/version"
 )
@@ -45,6 +47,9 @@ func serve() error {
 	if err != nil {
 		return err
 	}
+	if err := writable(cfg.data); err != nil {
+		return err
+	}
 	svc, err := newService(cfg, &http.Client{Timeout: httpTimeout}, fileStore{dir: cfg.data})
 	if err != nil {
 		return err
@@ -52,6 +57,17 @@ func serve() error {
 	srv := httpx.NewServer(cfg.addr, newServer(cfg, svc, version.Version))
 	slog.Info("strava listening", "addr", cfg.addr, "connections", svc.connections())
 	return httpx.Serve(context.Background(), srv, shutdownTimeout)
+}
+
+// writable fails the start when dir cannot be written: a host dir Docker
+// created for a bind mount is root-owned, and the sidecar would run healthy
+// with no state and fail only on the first save.
+func writable(dir string) error {
+	p := filepath.Join(dir, ".write-check")
+	if err := fsx.WriteFileAtomic(p, nil, 0o600); err != nil {
+		return fmt.Errorf("data dir %s is not writable: on the host, chown 65532:65532 it: %w", dir, err)
+	}
+	return os.Remove(p)
 }
 
 // httpTimeout bounds one Strava request, under mcpserver's 25 s tool
