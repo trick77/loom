@@ -26,6 +26,8 @@ CONTEXT = "#55544f"  # de-emphasised context marks, not a series
 PLAIN = "#383835"  # profile fill without zones
 
 RAMP = LinearSegmentedColormap.from_list("loom_ramp", ZONES)
+if "loom_ramp" not in mpl.colormaps:  # cmap="loom_ramp" works once loomcharts is imported
+    mpl.colormaps.register(RAMP)
 
 # Series colours for hand-written charts, in this order: the dataviz dark slots,
 # led by THIS, BEST, MEDIAN so a plain chart opens like the Strava ones. Adjacent
@@ -37,7 +39,7 @@ SERIES = (THIS, BEST, MEDIAN, "#c98500", "#d55181", "#008300", "#9085e9", "#e667
 # The self-test fails the build when it does not resolve: a missing family would
 # print a findfont warning into every job's output. It has Latin only (580
 # glyphs): DejaVu Sans fills in per glyph (μ, Δ, ✓, Cyrillic) instead of tofu.
-FONT = "Anthropic Sans"
+FONT = "Loom Sans"
 FALLBACK = "DejaVu Sans"
 
 STYLE = {
@@ -116,8 +118,6 @@ def apply_style():
     The chart functions do not need it: they apply the same style only while they draw.
     Save with plt.savefig("out/x.png") (dpi 200 and a tight box are already set).
     """
-    if "loom_ramp" not in mpl.colormaps:
-        mpl.colormaps.register(RAMP)
     mpl.rcParams.update(STYLE)
 
 
@@ -126,8 +126,6 @@ def styled(fn):
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        if "loom_ramp" not in mpl.colormaps:
-            mpl.colormaps.register(RAMP)
         with mpl.rc_context(STYLE):
             return fn(*args, **kwargs)
 

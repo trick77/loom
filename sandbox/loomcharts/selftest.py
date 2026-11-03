@@ -352,10 +352,7 @@ def png_size(path):
 
 
 def run(d):
-    original = dict(mpl.rcParams)
-    # Start from matplotlib's built-in defaults: in the image the rc already holds
-    # STYLE, and the leak and apply_style checks below would compare STYLE with STYLE.
-    mpl.rcdefaults()
+    # The charts draw from the state a job starts in (the image rc, if any).
     before = dict(mpl.rcParams)
     paths = build(d)
     failures = []
@@ -379,11 +376,14 @@ def run(d):
     if changed:
         failures.append("rcParams")
         print(f"FAIL chart functions changed rcParams: {changed[:5]}")
+    # From matplotlib's built-in defaults: in the image the rc already holds STYLE,
+    # so a no-op apply_style would pass from there.
+    mpl.rcdefaults()
     loomcharts.apply_style()
     if mpl.rcParams["axes.facecolor"] != loomcharts.BG:
         failures.append("apply_style")
         print("FAIL apply_style did not set the dark style")
-    mpl.rcParams.update(original)
+    mpl.rcParams.update(before)
     return failures
 
 
@@ -454,7 +454,14 @@ def main(argv):
         else:
             with tempfile.TemporaryDirectory(prefix="loomcharts-") as d:
                 failures += run(d)
-    messages = logged.messages + [str(w.message) for w in raised or []]
+    # A UserWarning (missing glyph) reaches a job's output; deprecations stay hidden
+    # there by Python's default filters, so they are shown here but fail nothing.
+    messages = list(logged.messages)
+    for w in raised or []:
+        if issubclass(w.category, UserWarning):
+            messages.append(str(w.message))
+        else:
+            print(f"note {w.category.__name__}: {w.message}")
     if messages:
         failures.append("warnings")
         for m in dict.fromkeys(messages):

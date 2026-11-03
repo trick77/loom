@@ -80,4 +80,4 @@ same without the model choosing colours (heatmaps: `Blues_r`, `loom_ramp` exists
 `import loomcharts`). Text is the UI's sans (`ui/src/fonts/`, Latin only, DejaVu Sans fills in per
 glyph), turned into static TTFs by `sandbox/fonts.py` in a build stage. The self-test (`--rc`)
 fails the build when the rc is not the one matplotlib read, differs from `STYLE`, the font does not
-resolve, or matplotlib warns.
+resolve, or matplotlib warns. The font family is "Loom Sans" in the image.
