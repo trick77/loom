@@ -284,6 +284,42 @@ func TestHRZones_noneBeforeAsked(t *testing.T) {
 	if z := loadZones(t, svc); len(z) != 0 {
 		t.Errorf("zones made without hr_zones: %+v", z)
 	}
+	// A run is stored by its analysis; asking for cycling makes no running
+	// zones out of it.
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":3005}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	if r := callTool(t, h, userA, "hr_zones", `{"sport":"cycling"}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	if z := loadZones(t, svc); len(z["cycling"].Zones) != 5 || len(z) != 1 {
+		t.Errorf("zones after a cycling-only call: %+v", z)
+	}
+}
+
+// An activity read after the list was cached is not gone, only newer.
+func TestHRZones_newerThanTheList(t *testing.T) {
+	f, svc, _ := hrFixture(t)
+	h := newServer(config{token: testToken}, svc, "test")
+	if r := callTool(t, h, userA, "hr_zones", `{"sport":"cycling"}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	fresh := synthRideWith(1, 1, 3, false)
+	f.addActivity(1, 3012, "Just uploaded", "Ride", local(2026, 11, 3, 8), &fresh, nil)
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":3012}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	f.advance(time.Minute) // the list is still cached, without 3012
+	if r := callTool(t, h, userA, "hr_zones", `{"sport":"cycling"}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	m, _ := svc.store.loadMetrics(userA)
+	if e := m.Activities["3012"]; e.Gone || e.At == 0 {
+		t.Errorf("a fresh entry marked gone: %+v", e)
+	}
+	if z := m.HRZones["cycling"]; z.Used != 5 {
+		t.Errorf("the fresh ride does not count: %+v", z)
+	}
 }
 
 // Deleted on Strava, or its sport corrected: the activity stops counting.

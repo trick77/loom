@@ -248,30 +248,36 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 	if err != nil {
 		return failure(err)
 	}
+	// One comparison for the window everywhere: wall-clock strings, as
+	// stored entries and calcHRZones have them.
+	fromS := from.Format("2006-01-02T15:04:05")
+	inWindow := func(x summaryActivity) bool { return x.localStart().Format("2006-01-02T15:04:05") >= fromS }
 	var list []summaryActivity
 	for _, x := range all {
-		if !x.localStart().Before(from) {
+		if inWindow(x) {
 			list = append(list, x)
 		}
 	}
 	// The pages ran out inside the window only when the last row is in it.
-	more = more && len(all) > 0 && !all[len(all)-1].localStart().Before(from)
+	more = more && len(all) > 0 && inWindow(all[len(all)-1])
 	stored := t.loadMetrics(user, a.ID)
 	known := func(x summaryActivity) bool {
 		sm, ok := stored[strconv.FormatInt(x.ID, 10)]
 		return ok && sm.Rev >= entryRev
 	}
 
-	// A complete list of the window lacks what was deleted on Strava.
+	// A complete list of the window lacks what was deleted on Strava. The
+	// list may be cached up to listTTL: an entry written since may simply be
+	// newer than it.
 	var gone []string
 	if !more {
 		ids := map[string]bool{}
 		for _, x := range list {
 			ids[strconv.FormatInt(x.ID, 10)] = true
 		}
-		fromS := from.Format("2006-01-02T15:04:05")
+		fresh := now.Add(-listTTL).Unix()
 		for k, sm := range stored {
-			if !ids[k] && !sm.Gone && sm.Start >= fromS {
+			if !ids[k] && !sm.Gone && sm.Start >= fromS && sm.At < fresh {
 				gone = append(gone, k)
 			}
 		}
@@ -303,25 +309,18 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 	}
 	// Sport and name of the listed entries are set under the file's lock,
 	// on the entry as it is then: never from the snapshot above.
-	zones, saved := t.updateMetrics(user, a.ID, metricsUpdate{add: added, listed: list, gone: gone, withHR: withHR, recalc: true})
+	asked := make([]string, 0, len(fams))
+	for _, f := range fams {
+		asked = append(asked, f.key)
+	}
+	u := metricsUpdate{add: added, listed: list, gone: gone, withHR: withHR, recalc: asked}
+	zones, saved := t.updateMetrics(user, a.ID, u)
 	if zones == nil {
-		// Disconnected or another athlete meanwhile: this answer still gets
-		// its zones, unsaved.
-		for k, v := range added {
-			stored[k] = v
-		}
-		for _, x := range list {
-			if sm, ok := stored[strconv.FormatInt(x.ID, 10)]; ok {
-				sm.Sport, sm.Name = x.SportType, x.Name
-				stored[strconv.FormatInt(x.ID, 10)] = sm
-			}
-		}
-		zones = map[string]storedHRZones{}
-		for _, f := range fams {
-			if z, ok := calcHRZones(f, stored, now, withHR[f.key]); ok {
-				zones[f.key] = z
-			}
-		}
+		// Disconnected or another athlete meanwhile: the same update on the
+		// snapshot, unsaved, so this answer still gets its zones.
+		m := metricFile{Activities: stored}
+		applyUpdate(&m, u, now)
+		zones = m.HRZones
 	}
 	keep := "calculated %s and stored: profile and activity_analysis use them while Strava's zones are its defaults, " +
 		"and an analysed activity that moves them recalculates them."

@@ -135,6 +135,9 @@ type storedMetrics struct {
 	// Strava): the zones leave it out. Any later list or read that has it
 	// clears it, so a list cached before an upload does no lasting harm.
 	Gone bool `json:"gone,omitempty"`
+	// At is when the entry was last written (unix): a list cached before
+	// then may lack the activity without it being gone.
+	At int64 `json:"at,omitempty"`
 }
 
 func (s fileStore) metricsPath(user string) (string, error) {
@@ -201,12 +204,14 @@ func (s fileStore) deleteMetrics(user string) error {
 	return nil
 }
 
-// pruneMetrics drops the oldest entries past max.
+// pruneMetrics drops entries past max: gone ones first, then the oldest.
 func pruneMetrics(acts map[string]storedMetrics, max int) {
 	for len(acts) > max {
+		// Gone entries first: deleted on Strava, they serve nothing.
 		oldest := ""
 		for id, m := range acts {
-			if oldest == "" || m.Start < acts[oldest].Start {
+			o := acts[oldest]
+			if oldest == "" || (m.Gone && !o.Gone) || (m.Gone == o.Gone && m.Start < o.Start) {
 				oldest = id
 			}
 		}

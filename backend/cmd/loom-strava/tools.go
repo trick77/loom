@@ -292,7 +292,12 @@ func (t *tools) profile(ctx context.Context, _ json.RawMessage) mcpserver.Result
 	switch {
 	case zerr != nil:
 		fmt.Fprintf(&b, "zones: unavailable (%s)\n", failure(zerr).Text)
-		ownLines()
+		// Whether custom Strava zones exist is unknown now, so analyses do
+		// not use these until Strava's zones answer again.
+		if own := t.loadHRZones(user, a.ID); len(own) > 0 {
+			b.WriteString("(stored below, but not used while Strava's zones are unavailable: custom ones may exist)\n")
+			ownLines()
+		}
 	default:
 		if z.HeartRate != nil && len(z.HeartRate.Zones) > 0 {
 			kind := "Strava's defaults, usually age-based; the user's own from their streams replace them where a sport " +

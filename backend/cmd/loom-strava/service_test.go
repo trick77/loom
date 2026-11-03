@@ -107,6 +107,12 @@ func TestStore_stateIsPrivateAndPerUser(t *testing.T) {
 	if _, ok := acts["b"]; ok || len(acts) != 2 {
 		t.Errorf("prune kept the oldest: %v", acts)
 	}
+	// A gone entry goes before an older live one.
+	acts["d"] = storedMetrics{Start: "2026-01-04", Gone: true}
+	pruneMetrics(acts, 2)
+	if _, ok := acts["d"]; ok || len(acts) != 2 {
+		t.Errorf("prune kept the gone entry: %v", acts)
+	}
 }
 
 func TestRateBook(t *testing.T) {

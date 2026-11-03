@@ -233,11 +233,11 @@ type metricsUpdate struct {
 	gone []string
 	// withHR, from hr_zones' list: each family's activities with heart rate.
 	withHR map[string]int
-	// recalc: hr_zones' write, every family calculated even if unchanged
-	// and created if new. Otherwise only families that already have zones
-	// and whose entries this write touched: one easy ride must not make
-	// zones nobody asked for.
-	recalc bool
+	// recalc are the families hr_zones was asked for: calculated even if
+	// unchanged, created if new. Any other family only when it already has
+	// zones and this write touched its entries: one easy ride, or an
+	// hr_zones call for another sport, must not make zones nobody asked for.
+	recalc []string
 }
 
 // metaChanges reports whether a listed activity's stored entry lacks its
@@ -270,15 +270,34 @@ func (t *tools) updateMetrics(user string, athleteID int64, u metricsUpdate) (ma
 	if m.Athlete != 0 && m.Athlete != athleteID {
 		return nil, false
 	}
+	if !applyUpdate(&m, u, t.svc.now()) {
+		return m.HRZones, false
+	}
+	m.Athlete = athleteID
+	if err := t.svc.store.saveMetrics(user, m); err != nil {
+		// Only a cost: the streams are fetched again next time.
+		slog.Error("strava: saving metrics failed", "err", err)
+		return m.HRZones, false
+	}
+	return m.HRZones, true
+}
+
+// applyUpdate applies u to m and recalculates the zones it touches; false
+// when nothing changed. Sport, name and gone are set on the entry in m,
+// never on a snapshot read before the caller's stream reads: a concurrent
+// write in between stays.
+func applyUpdate(m *metricFile, u metricsUpdate, now time.Time) bool {
+	if m.Activities == nil {
+		m.Activities = map[string]storedMetrics{}
+	}
 	touched := map[string]bool{} // sports whose entries changed
 	for k, v := range u.add {
 		if changes(map[string]storedMetrics{k: v}, m.Activities) {
 			touched[m.Activities[k].Sport], touched[v.Sport] = true, true
+			v.At = now.Unix()
 			m.Activities[k] = v
 		}
 	}
-	// Applied to the entry in the file, never to a snapshot read before the
-	// caller's stream reads: a concurrent write in between stays.
 	for _, x := range u.listed {
 		k := strconv.FormatInt(x.ID, 10)
 		if sm, ok := m.Activities[k]; ok && (sm.Sport != x.SportType || sm.Name != x.Name || sm.Gone) {
@@ -294,18 +313,16 @@ func (t *tools) updateMetrics(user string, athleteID int64, u metricsUpdate) (ma
 			m.Activities[k] = sm
 		}
 	}
-	if len(touched) == 0 && !u.recalc {
-		return m.HRZones, false
+	if len(touched) == 0 && len(u.recalc) == 0 {
+		return false
 	}
-	m.Athlete = athleteID
 	if m.HRZones == nil {
 		m.HRZones = map[string]storedHRZones{}
 	}
-	now := t.svc.now()
 	for _, f := range hrFamilies {
 		prev, had := m.HRZones[f.key]
 		hit := slices.ContainsFunc(f.sports, func(s string) bool { return touched[s] })
-		if !u.recalc && (!had || !hit) {
+		if !slices.Contains(u.recalc, f.key) && (!had || !hit) {
 			continue
 		}
 		w, listed := u.withHR[f.key]
@@ -318,12 +335,7 @@ func (t *tools) updateMetrics(user string, athleteID int64, u metricsUpdate) (ma
 			delete(m.HRZones, f.key)
 		}
 	}
-	if err := t.svc.store.saveMetrics(user, m); err != nil {
-		// Only a cost: the streams are fetched again next time.
-		slog.Error("strava: saving metrics failed", "err", err)
-		return m.HRZones, false
-	}
-	return m.HRZones, true
+	return true
 }
 
 // loadHRZones is the user's stored heart-rate zones for athleteID.
@@ -354,7 +366,7 @@ func changes(add, have map[string]storedMetrics) bool {
 // compare builds the window: one list call for the summaries, streams for
 // the activities whose stream metrics are not stored yet, newest first,
 // within the rate and time budget.
-func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedActivity, weeks int, mixIndoor bool, this storedMetrics) (*comparison, error) {
+func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedActivity, weeks int, mixIndoor bool, this storedMetrics, stored map[string]storedMetrics) (*comparison, error) {
 	local, utc := d.localStart(), d.utcStart()
 	offset := local.Sub(utc)
 	c := &comparison{weeks: weeks, mixIndoor: mixIndoor, from: weekStart(local).AddDate(0, 0, -7*weeks)}
@@ -362,7 +374,6 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 	if err != nil {
 		return nil, err
 	}
-	stored := t.loadMetrics(user, a.ID)
 	all := []summaryActivity{}
 	for _, x := range list {
 		ls := x.localStart()
@@ -606,11 +617,15 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		return failure(err)
 	}
 	u := unitsOf(a)
+	pE, hE := powerEdges(z, a.FTP), hrEdges(z)
+	whole := computeMetrics(s, 0, s.n, pE, hE)
 	// The stored entry is zone-free, and stored first: a new best moves the
 	// user's zones before they bucket this very activity.
-	this := entryOf(computeMetrics(s, 0, s.n, nil, nil), d.summaryActivity)
-	t.storeMetrics(user, a.ID, map[string]storedMetrics{strconv.FormatInt(d.ID, 10): this}, nil, nil)
-	pE, hE := powerEdges(z, a.FTP), hrEdges(z)
+	stored := t.loadMetrics(user, a.ID)
+	this := entryOf(whole, d.summaryActivity)
+	thisKey := strconv.FormatInt(d.ID, 10)
+	t.storeMetrics(user, a.ID, map[string]storedMetrics{thisKey: this}, stored, nil)
+	stored[thisKey] = this
 	// Strava's default zones are age-based: the user's own, stored for this
 	// sport, count instead. Custom zones always win, and without Strava's
 	// answer they may exist: then Strava's own fallback stays.
@@ -620,10 +635,12 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		if f, ok := familyOf(d.SportType); ok {
 			if oz, ok := t.loadHRZones(user, a.ID)[f.key]; ok && oz.edges() != nil {
 				own, ownFam, hE = &oz, f.key, oz.edges()
+				if s.hr != nil {
+					whole.HasHRZones, whole.HRZoneS = true, hrZoneTimes(s, 0, s.n, hE)
+				}
 			}
 		}
 	}
-	whole := computeMetrics(s, 0, s.n, pE, hE)
 	ia, ib := 0, s.n
 	if section {
 		if s.dist == nil {
@@ -660,7 +677,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		}
 	}
 
-	cmp, cmpErr := t.compare(ctx, user, a, d, args.Weeks, args.MixIndoor, this)
+	cmp, cmpErr := t.compare(ctx, user, a, d, args.Weeks, args.MixIndoor, this, stored)
 
 	var b strings.Builder
 	sources := []mcpserver.Source{activitySource(d.summaryActivity)}

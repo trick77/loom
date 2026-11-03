@@ -271,10 +271,7 @@ func computeMetrics(s series, a, b int, pEdges, hEdges []float64) rideMetrics {
 			m.HR20mW = mean(s.watts[a+at : a+at+1200])
 		}
 		if hEdges != nil {
-			m.HasHRZones = true
-			for _, i := range movIdx {
-				m.HRZoneS[zoneOf(s.hr[i], hEdges)-1]++
-			}
+			m.HasHRZones, m.HRZoneS = true, hrZoneTimes(s, a, b, hEdges)
 		}
 	}
 	if s.speed != nil {
@@ -415,6 +412,18 @@ func tss(movingS int, np, ftp float64) float64 {
 		return nan
 	}
 	return float64(movingS) * np * (np / ftp) / (ftp * 3600) * 100
+}
+
+// hrZoneTimes is the moving seconds of a..b in each HR zone of hEdges; s
+// has an HR stream.
+func hrZoneTimes(s series, a, b int, hEdges []float64) [5]int {
+	var z [5]int
+	for i := a; i < b; i++ {
+		if s.moving[i] {
+			z[zoneOf(s.hr[i], hEdges)-1]++
+		}
+	}
+	return z
 }
 
 // zoneOf is the 1..5 zone of v given the lower bounds of zones 2..5.
