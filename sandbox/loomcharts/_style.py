@@ -26,9 +26,22 @@ CONTEXT = "#55544f"  # de-emphasised context marks, not a series
 PLAIN = "#383835"  # profile fill without zones
 
 RAMP = LinearSegmentedColormap.from_list("loom_ramp", ZONES)
+if "loom_ramp" not in mpl.colormaps:  # cmap="loom_ramp" works once loomcharts is imported
+    mpl.colormaps.register(RAMP)
 
-# The image ships only matplotlib's bundled DejaVu Sans; naming another font
-# would print a findfont warning into every job's output.
+# Series colours for hand-written charts, in this order: the dataviz dark slots,
+# led by THIS, BEST, MEDIAN so a plain chart opens like the Strava ones. Adjacent
+# pairs validated on BG (CVD ΔE >= 8.4, normal vision >= 19.3); the chart
+# functions pass their colours explicitly and never read the cycle.
+SERIES = (THIS, BEST, MEDIAN, "#c98500", "#d55181", "#008300", "#9085e9", "#e66767")
+
+# The UI's sans, converted to static TTFs in the image build (sandbox/fonts.py).
+# The self-test fails the build when it does not resolve: a missing family would
+# print a findfont warning into every job's output. It has Latin only (580
+# glyphs): DejaVu Sans fills in per glyph (μ, Δ, ✓, Cyrillic) instead of tofu.
+FONT = "Loom Sans"
+FALLBACK = "DejaVu Sans"
+
 STYLE = {
     "figure.facecolor": BG,
     "axes.facecolor": BG,
@@ -43,15 +56,17 @@ STYLE = {
     "xtick.labelcolor": MUTED,
     "ytick.labelcolor": MUTED,
     "text.color": INK,
-    "font.family": "DejaVu Sans",
+    "font.family": [FONT, FALLBACK],
     "font.size": 9.5,
     "axes.grid": True,
+    "axes.grid.axis": "y",  # value lines only, as every chart function draws them
+    "axes.axisbelow": True,  # grid behind bars and fills
     "grid.color": GRID,
     "grid.linewidth": 1,
     "axes.spines.top": False,
     "axes.spines.right": False,
     "axes.spines.left": False,
-    "axes.prop_cycle": mpl.cycler(color=[THIS, BEST, MEDIAN, *ZONES[2:], CONTEXT]),
+    "axes.prop_cycle": mpl.cycler(color=list(SERIES)),
     "lines.linewidth": 2,
     "lines.solid_capstyle": "round",
     "lines.solid_joinstyle": "round",
@@ -67,6 +82,35 @@ STYLE = {
 
 WIDTH = 8.6  # inches; 1,720 px at dpi 200
 
+# Where the image's matplotlibrc differs from STYLE: loom_ramp exists only once
+# this module registered it, after the rc file is read, so plain heatmaps get
+# the nearest built-in (dark navy to pale blue, like ZONES).
+RC_OVERRIDES = {"image.cmap": "Blues_r"}
+
+
+def rc_style():
+    """STYLE as the image's matplotlibrc holds it."""
+    return {**STYLE, **RC_OVERRIDES}
+
+
+def _rc_value(value):
+    # A "#" starts a comment in matplotlibrc; matplotlib reads hex colours without it.
+    if hasattr(value, "by_key"):
+        parts = ", ".join(f"{k}={[str(c).lstrip('#') for c in v]!r}" for k, v in value.by_key().items())
+        return f"cycler({parts})"
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_rc_value(v) for v in value)
+    if isinstance(value, str):
+        return value.lstrip("#")
+    return str(value)
+
+
+def matplotlibrc():
+    """rc_style() as matplotlibrc text: the image installs it as every job's default."""
+    lines = ["# Written by loomcharts.rc from loomcharts/_style.py STYLE; edit that, not this."]
+    lines += [f"{k}: {_rc_value(v)}" for k, v in rc_style().items()]
+    return "\n".join(lines) + "\n"
+
 
 def apply_style():
     """Set loom's dark chart style globally (rcParams) for hand-written matplotlib charts.
@@ -74,8 +118,6 @@ def apply_style():
     The chart functions do not need it: they apply the same style only while they draw.
     Save with plt.savefig("out/x.png") (dpi 200 and a tight box are already set).
     """
-    if "loom_ramp" not in mpl.colormaps:
-        mpl.colormaps.register(RAMP)
     mpl.rcParams.update(STYLE)
 
 
@@ -84,8 +126,6 @@ def styled(fn):
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        if "loom_ramp" not in mpl.colormaps:
-            mpl.colormaps.register(RAMP)
         with mpl.rc_context(STYLE):
             return fn(*args, **kwargs)
 
