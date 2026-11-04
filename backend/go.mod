@@ -9,7 +9,7 @@ require (
 	github.com/trick77/ship/kit v0.18.0
 	github.com/trick77/ship/kit/auth v0.3.2
 	github.com/trick77/toolkit v0.3.0
-	github.com/yuin/goldmark v1.8.6
+	github.com/yuin/goldmark v1.8.7
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	golang.org/x/image v0.47.0
 	golang.org/x/net v0.62.0
