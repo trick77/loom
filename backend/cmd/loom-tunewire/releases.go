@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
+	"github.com/trick77/toolkit/applemusic"
 	"github.com/trick77/toolkit/mcpserver"
 )
 

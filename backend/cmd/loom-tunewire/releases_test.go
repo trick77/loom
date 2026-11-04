@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
+	"github.com/trick77/toolkit/applemusic"
 )
 
 func TestArtistNames(t *testing.T) {

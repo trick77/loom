@@ -10,8 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
+	"github.com/trick77/toolkit/applemusic"
 	"github.com/trick77/toolkit/mcpserver"
 )
 
@@ -252,8 +251,8 @@ func transient(err error) bool {
 }
 
 func errorKind(err error) string {
-	if errors.Is(err, applemusic.ErrDevTokenRefused) || errors.Is(err, webtoken.ErrNoBundle) ||
-		errors.Is(err, webtoken.ErrNoToken) || errors.Is(err, webtoken.ErrStillRefused) {
+	if errors.Is(err, applemusic.ErrDevTokenRefused) || errors.Is(err, applemusic.ErrNoBundle) ||
+		errors.Is(err, applemusic.ErrNoToken) || errors.Is(err, applemusic.ErrStillRefused) {
 		return errorKindBridge
 	}
 	return errorKindUpstream
@@ -435,14 +434,14 @@ func (s *service) lockTokens(user string) func() {
 }
 
 // devToken is the developer token kept from an earlier run.
-func (s *service) devToken() webtoken.Token {
+func (s *service) devToken() applemusic.Token {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return webtoken.Token{Value: s.st.DevToken, Expires: s.st.DevTokenExp}
+	return applemusic.Token{Value: s.st.DevToken, Expires: s.st.DevTokenExp}
 }
 
 // keepDevToken stores a freshly fetched developer token across restarts.
-func (s *service) keepDevToken(t webtoken.Token) {
+func (s *service) keepDevToken(t applemusic.Token) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.st.DevToken, s.st.DevTokenExp = t.Value, t.Expires

@@ -15,10 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
 	"github.com/trick77/loom/internal/loomuser"
 	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/toolkit/applemusic"
 	"github.com/trick77/toolkit/mcpserver"
 )
 
@@ -412,7 +411,7 @@ func TestService_tokenLifecycle(t *testing.T) {
 		t.Errorf("recovered: %+v", st)
 	}
 
-	svc.keepDevToken(webtoken.Token{Value: "dev", Expires: time.Unix(2e9, 0)})
+	svc.keepDevToken(applemusic.Token{Value: "dev", Expires: time.Unix(2e9, 0)})
 	if st, err := svc.ClearToken(testUser); err != nil || st.State != "never" {
 		t.Errorf("cleared: %+v", st)
 	}
@@ -659,7 +658,7 @@ func TestServer_routes(t *testing.T) {
 		t.Errorf("down: %d %v", code, e)
 	}
 	// The bridge broke: said so, not "Apple is down".
-	api.down = webtoken.ErrNoBundle
+	api.down = applemusic.ErrNoBundle
 	if code, e := do(t, h, "PUT", "/token", testToken, `{"token":"good"}`); code != http.StatusBadGateway || e["code"] != errorKindBridge {
 		t.Errorf("bridge: %d %v", code, e)
 	}
