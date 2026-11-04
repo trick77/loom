@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
+	"github.com/trick77/ship/kit/mcpserver"
 )
 
 const (
@@ -31,23 +32,26 @@ const (
 
 func libraryServer(svc *service, version string) mcpserver.Server {
 	return mcpserver.Server{
-		Name:    "tunewire",
-		Version: version,
+		Name:       "tunewire",
+		Version:    version,
+		UserHeader: loomuser.Header,
 		Instructions: "The user's own Apple Music library and listening. list_playlists lists their playlists; " +
 			"get_playlist reads one playlist's tracks by id or name; recently_played answers \"what have I been " +
 			"listening to\"; new_music answers \"what's new for me\" (recently added, Apple's picks, New Music Mix); " +
 			"new_releases answers \"anything new from my bands\". Cite the Apple Music links they return.",
 		Tools: []mcpserver.Tool{
 			{
-				Name:        "list_playlists",
-				Title:       "List my Apple Music playlists",
+				Name:     "list_playlists",
+				Title:    "List my Apple Music playlists",
+				ReadOnly: true, OpenWorld: true,
 				Description: "List the user's own Apple Music library playlists: name, id, description, last change.",
 				Schema:      mcpserver.ObjectSchema(map[string]any{}),
 				Run:         func(ctx context.Context, _ json.RawMessage) mcpserver.Result { return runListPlaylists(ctx, svc) },
 			},
 			{
-				Name:  "get_playlist",
-				Title: "Read an Apple Music playlist",
+				Name:     "get_playlist",
+				Title:    "Read an Apple Music playlist",
+				ReadOnly: true, OpenWorld: true,
 				Description: "Read one of the user's Apple Music library playlists: every track with artist, album " +
 					"and length, in playlist order.",
 				Schema: mcpserver.ObjectSchema(map[string]any{
@@ -59,8 +63,9 @@ func libraryServer(svc *service, version string) mcpserver.Server {
 				},
 			},
 			{
-				Name:  "recently_played",
-				Title: "What I played lately on Apple Music",
+				Name:     "recently_played",
+				Title:    "What I played lately on Apple Music",
+				ReadOnly: true, OpenWorld: true,
 				Description: "The user's recently played Apple Music tracks, newest first (title, artist, album), or " +
 					"with kind heavy_rotation the albums and playlists they played most lately. Use it for \"what have " +
 					"I been listening to\".",
@@ -73,8 +78,9 @@ func libraryServer(svc *service, version string) mcpserver.Server {
 				},
 			},
 			{
-				Name:  "new_music",
-				Title: "What's new for me on Apple Music",
+				Name:     "new_music",
+				Title:    "What's new for me on Apple Music",
+				ReadOnly: true, OpenWorld: true,
 				Description: "What is new for the user on Apple Music: what they added to their library lately, and " +
 					"Apple's personal picks for them with the tracks of their New Music Mix. Use it for \"anything new " +
 					"for me\" or \"what should I listen to\".",
@@ -87,8 +93,9 @@ func libraryServer(svc *service, version string) mcpserver.Server {
 				},
 			},
 			{
-				Name:  "new_releases",
-				Title: "New releases from my artists",
+				Name:     "new_releases",
+				Title:    "New releases from my artists",
+				ReadOnly: true, OpenWorld: true,
 				Description: "New albums and singles from the user's favourite artists: the artists they listen to " +
 					"most and their library's artists, newest first. Use it for \"anything new from my bands\".",
 				Schema: mcpserver.ObjectSchema(map[string]any{
@@ -105,14 +112,16 @@ func libraryServer(svc *service, version string) mcpserver.Server {
 
 func catalogServer(svc *service, version string) mcpserver.Server {
 	return mcpserver.Server{
-		Name:    "applemusic",
-		Version: version,
+		Name:       "applemusic",
+		Version:    version,
+		UserHeader: loomuser.Header,
 		Instructions: "Search the Apple Music catalog for songs, albums and artists. Every song, album or artist you " +
 			"name in an answer gets looked up here and cited with its Apple Music link: never a bare name. One search " +
 			"per item (\"title artist\"), several at once.",
 		Tools: []mcpserver.Tool{{
-			Name:  "search_catalog",
-			Title: "Search Apple Music",
+			Name:     "search_catalog",
+			Title:    "Search Apple Music",
+			ReadOnly: true, OpenWorld: true,
 			Description: "Search the Apple Music catalog. Returns songs, albums and/or artists with their Apple Music " +
 				"links and cover art; cite the links.",
 			Schema: mcpserver.ObjectSchema(map[string]any{

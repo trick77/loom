@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/ship/kit/mcpserver"
 )
 
 func ctxFor(user string) context.Context { return mcpserver.WithUser(context.Background(), user) }

@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 )
 
 func TestClientDo(t *testing.T) {
 	var lastUser, lastAuth, lastType string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
-		lastUser, lastAuth, lastType = r.Header.Get(mcpserver.UserHeader), r.Header.Get("Authorization"), r.Header.Get("Content-Type")
+		lastUser, lastAuth, lastType = r.Header.Get(loomuser.Header), r.Header.Get("Authorization"), r.Header.Get("Content-Type")
 		switch r.URL.Path {
 		case "/ok":
 			_, _ = fmt.Fprintf(w, `{"echo":%q}`, string(b))

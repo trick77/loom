@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/mcpserver"
 	"github.com/trick77/ship/kit/secret"
 )
 
@@ -24,7 +25,7 @@ const (
 )
 
 // codeNoUser: a per-user route was called without the loom user
-// (mcpserver.UserHeader); loom always sends one.
+// (loomuser.Header); loom always sends one.
 const codeNoUser = "no_user"
 
 // newServer mounts kit's health probes (loopback only, the container's own
@@ -39,7 +40,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 	api.Handle("/mcp/library", mcpserver.New(libraryServer(svc, version)))
 	api.Handle("/mcp/catalog", mcpserver.New(catalogServer(svc, version)))
 	api.Handle("GET /status", requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user := mcpserver.UserFromRequest(r)
+		user := loomuser.FromRequest(r)
 		if r.URL.Query().Get("check") == "1" {
 			httpx.WriteJSON(w, http.StatusOK, svc.check(r.Context(), user))
 			return
@@ -53,7 +54,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		if !httpx.DecodeJSON(w, r, &body, maxTokenBody) {
 			return
 		}
-		st, err := svc.SetToken(r.Context(), mcpserver.UserFromRequest(r), body.Token)
+		st, err := svc.SetToken(r.Context(), loomuser.FromRequest(r), body.Token)
 		switch {
 		case err == nil:
 			httpx.WriteJSON(w, http.StatusOK, st)
@@ -74,7 +75,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		}
 	})))
 	api.Handle("DELETE /token", requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		st, err := svc.ClearToken(mcpserver.UserFromRequest(r))
+		st, err := svc.ClearToken(loomuser.FromRequest(r))
 		if err != nil {
 			httpx.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": codeStorage})
 			return
@@ -99,7 +100,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 // account is one person's, and a request for nobody must not reach any.
 func requireUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if checkUser(mcpserver.UserFromRequest(r)) != nil {
+		if checkUser(loomuser.FromRequest(r)) != nil {
 			httpx.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "the loom user is missing", "code": codeNoUser})
 			return
 		}

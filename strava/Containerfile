@@ -7,8 +7,9 @@ FROM golang:1.27-alpine AS build
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 COPY backend/cmd/loom-strava/ ./cmd/loom-strava/
-# The MCP server every loom sidecar shares; it imports nothing else of loom.
-COPY backend/internal/mcpserver/ ./internal/mcpserver/
+# The loom user header every sidecar reads; it imports nothing else of loom.
+# The MCP server is kit's.
+COPY backend/internal/loomuser/ ./internal/loomuser/
 # ship release passes the release version. go build fetches only the modules
 # this binary imports (kit), not all of loom's.
 ARG VERSION=dev

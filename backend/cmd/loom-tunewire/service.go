@@ -12,7 +12,7 @@ import (
 
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/ship/kit/mcpserver"
 )
 
 // maxUserTokenBytes bounds a pasted media-user-token; real ones are a few
@@ -24,7 +24,7 @@ const maxUserIDBytes = 128
 
 var (
 	errNotConnected = errors.New("no Apple Music token set")
-	// errNoUser: loom sent no user (mcpserver.UserHeader). Every account is one
+	// errNoUser: loom sent no user (loomuser.Header). Every account is one
 	// person's, so a call that names nobody reads nothing.
 	errNoUser = errors.New("no loom user given")
 	// errRejected: Apple refused a pasted token; the old one stays.

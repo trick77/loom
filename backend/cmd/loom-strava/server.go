@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/mcpserver"
 	"github.com/trick77/ship/kit/secret"
 )
 
@@ -32,7 +33,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 	api := http.NewServeMux()
 	api.Handle("/mcp", mcpserver.New(toolServer(svc, version)))
 	api.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
-		user := mcpserver.UserFromRequest(r)
+		user := loomuser.FromRequest(r)
 		if r.URL.Query().Get("check") == "1" {
 			httpx.WriteJSON(w, http.StatusOK, svc.check(r.Context(), user))
 			return
@@ -55,7 +56,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		if !httpx.DecodeJSON(w, r, &body, maxConnectionBody) {
 			return
 		}
-		st, err := svc.connect(r.Context(), mcpserver.UserFromRequest(r), body.Code, body.Scope)
+		st, err := svc.connect(r.Context(), loomuser.FromRequest(r), body.Code, body.Scope)
 		switch {
 		case err == nil:
 			httpx.WriteJSON(w, http.StatusOK, st)
@@ -71,7 +72,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		}
 	})
 	api.HandleFunc("DELETE /connection", func(w http.ResponseWriter, r *http.Request) {
-		st, err := svc.disconnect(r.Context(), mcpserver.UserFromRequest(r))
+		st, err := svc.disconnect(r.Context(), loomuser.FromRequest(r))
 		if err != nil {
 			writeCode(w, http.StatusInternalServerError, err.Error(), codeStorage)
 			return
@@ -91,9 +92,9 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		// id as a map key and a file name. /mcp alone may come without one:
 		// loom discovers the tools for nobody in particular, and a tool call
 		// without a user answers an error result (tools.begin).
-		user := mcpserver.UserFromRequest(r)
+		user := loomuser.FromRequest(r)
 		if !validUserID(user) && (r.URL.Path != "/mcp" || user != "") {
-			writeCode(w, http.StatusBadRequest, "missing or invalid "+mcpserver.UserHeader, codeMalformed)
+			writeCode(w, http.StatusBadRequest, "missing or invalid "+loomuser.Header, codeMalformed)
 			return
 		}
 		api.ServeHTTP(w, r)

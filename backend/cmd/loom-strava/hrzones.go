@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/ship/kit/mcpserver"
 )
 
 // hrFamily is the sports that share one threshold heart rate. Running sits

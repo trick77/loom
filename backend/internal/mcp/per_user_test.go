@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 )
 
 // perUserServer answers a modern MCP server and records the user header of
@@ -27,13 +27,13 @@ func perUserServer(t *testing.T) (*httptest.Server, func() []string) {
 		case "server/discover":
 			writeRPCResult(t, w, req.ID, map[string]any{})
 		case "tools/list":
-			if r.Header.Get(mcpserver.UserHeader) != "" {
-				t.Errorf("tools/list carries a user: %q", r.Header.Get(mcpserver.UserHeader))
+			if r.Header.Get(loomuser.Header) != "" {
+				t.Errorf("tools/list carries a user: %q", r.Header.Get(loomuser.Header))
 			}
 			writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{{"name": "mine", "inputSchema": map[string]any{"type": "object"}}}})
 		case "tools/call":
 			mu.Lock()
-			users = append(users, r.Header.Get(mcpserver.UserHeader))
+			users = append(users, r.Header.Get(loomuser.Header))
 			mu.Unlock()
 			writeRPCResult(t, w, req.ID, map[string]any{"content": []map[string]any{{"type": "text", "text": "ok"}}})
 		default:
@@ -53,7 +53,7 @@ func TestRemoteClientPerUserSendsOnlyTheCaller(t *testing.T) {
 	client := NewRemoteClient("lib", ServerConfig{
 		Transport: TransportStreamableHTTP, URL: server.URL, PerUser: true,
 		// A configured header can never name the user.
-		Headers: map[string]string{mcpserver.UserHeader: "spoofed"},
+		Headers: map[string]string{loomuser.Header: "spoofed"},
 	}, server.Client())
 	if _, err := client.ListTools(context.Background()); err != nil {
 		t.Fatalf("ListTools: %v", err)
@@ -86,7 +86,7 @@ func TestRemoteClientSharedServerNeverGetsUser(t *testing.T) {
 	server, seen := perUserServer(t)
 	client := NewRemoteClient("search", ServerConfig{
 		Transport: TransportStreamableHTTP, URL: server.URL,
-		Headers: map[string]string{mcpserver.UserHeader: "spoofed"},
+		Headers: map[string]string{loomuser.Header: "spoofed"},
 	}, server.Client())
 	if _, err := client.CallTool(WithPrincipal(context.Background(), Principal{ID: "alice"}), "mine", nil); err != nil {
 		t.Fatalf("CallTool: %v", err)
