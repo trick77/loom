@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/webfetch"
+	"github.com/trick77/toolkit/webfetch"
 )
 
 // faviconServer builds a server whose fetch client has no SSRF guard, so tests can

@@ -18,7 +18,7 @@ import (
 
 	"github.com/trick77/ship/kit/fsx"
 	"github.com/trick77/ship/kit/httpx"
-	"github.com/trick77/webfetch"
+	"github.com/trick77/toolkit/webfetch"
 )
 
 const (

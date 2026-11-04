@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // After the vector table is rebuilt, re-embedding reads the stored chunk text,

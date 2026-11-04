@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/loom/internal/inference"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // inferenceLogCapture records the inference log lines emitted during a test.

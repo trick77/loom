@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // Roles names the llmwire model for each kind of call loom makes. Which model

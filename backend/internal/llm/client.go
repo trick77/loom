@@ -8,8 +8,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/inference"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 const defaultMaxCompletionTokens = 2048

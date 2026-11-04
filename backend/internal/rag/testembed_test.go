@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // mustEmbedClient builds an EmbedClient against a test endpoint; with BaseURL

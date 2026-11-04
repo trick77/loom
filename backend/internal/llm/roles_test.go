@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 func TestResolveRoles_GateAndVisionDefaultToChat(t *testing.T) {

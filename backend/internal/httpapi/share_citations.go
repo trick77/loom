@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/webfetch"
+	"github.com/trick77/toolkit/webfetch"
 	"golang.org/x/net/idna"
 )
 

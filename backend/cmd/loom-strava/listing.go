@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/common/mcpserver"
+	"github.com/trick77/toolkit/mcpserver"
 )
 
 const (

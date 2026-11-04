@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // The width and key variable are the profile's, never restated in loom.

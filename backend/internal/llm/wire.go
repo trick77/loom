@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/inference"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // The seam between loom's chat types and llmwire's.

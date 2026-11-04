@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/inference"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // reembedPageSize is how many missing chunks one pass loads; each owner's share

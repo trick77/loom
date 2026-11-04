@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // captureReasoning runs one StreamChatWithTools turn against a stub endpoint

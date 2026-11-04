@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/store"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // TestEval_UserMemoryReplay replays a real message history day by day through

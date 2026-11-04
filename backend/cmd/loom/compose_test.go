@@ -69,7 +69,7 @@ func TestProductionComposeUsesPrebuiltImages(t *testing.T) {
 	if !strings.Contains(compose, `image: ghcr.io/trick77/loom:latest`) {
 		t.Fatal("compose.yaml missing production image reference ghcr.io/trick77/loom:latest")
 	}
-	// Fetch runs in-process (github.com/trick77/webfetch), so there is no fetch
+	// Fetch runs in-process (github.com/trick77/toolkit/webfetch), so there is no fetch
 	// sidecar image, service, or isolated network anymore.
 	if strings.Contains(compose, "loom-fetch") {
 		t.Fatal("compose.yaml must not reference the removed loom-fetch image")

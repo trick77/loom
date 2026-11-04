@@ -166,7 +166,7 @@ func TavilyServerConfig(baseURL, apiKey string) ServerConfig {
 }
 
 // FetchServerConfig builds the config for the built-in fetch tool. Fetch runs
-// in-process (via the shared github.com/trick77/webfetch module) rather than as
+// in-process (via the shared github.com/trick77/toolkit/webfetch package) rather than as
 // an external MCP sidecar, so there is no URL; the exposed tool name and surface
 // ("fetch__fetch") are unchanged. pdf may be nil.
 func FetchServerConfig(pdf PDFExtractor) ServerConfig {

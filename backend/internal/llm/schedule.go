@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // scheduleParseMaxCompletionTokens fits the one-line JSON reply with room.
