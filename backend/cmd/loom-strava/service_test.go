@@ -238,6 +238,23 @@ func TestToolList(t *testing.T) {
 	}
 }
 
+// The instructions travel with the tools into every turn that offers them
+// (training, health, or a drifted turn in any thread), so a symptom the user
+// ties to their sport is read against their activities there, whatever the
+// thread's category block says.
+func TestInstructions_symptomTiedToSport(t *testing.T) {
+	for _, want := range []string{"symptom", "list_activities", "possible contributors", "doctor"} {
+		if !strings.Contains(instructions, want) {
+			t.Errorf("instructions lack %q", want)
+		}
+	}
+	// loom caps one server's instructions at 3 KiB (maxServerInstructionsBytes):
+	// past it the tail, this rule included, is cut.
+	if len(instructions) > 3<<10 {
+		t.Errorf("instructions are %d bytes, loom keeps 3072", len(instructions))
+	}
+}
+
 func TestConnection_lifecycle(t *testing.T) {
 	f := newFakeStrava(t)
 	f.addAthlete(1, "Anna", "code-a", 265)
