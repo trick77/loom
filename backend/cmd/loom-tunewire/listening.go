@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/trick77/common/mcpserver"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/ship/kit/mcpserver"
 )
 
 const (

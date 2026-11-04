@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/ship/kit/mcpserver"
+	"github.com/trick77/common/mcpserver"
 )
 
 // The CSV files the tools attach for run_python. Their columns are a

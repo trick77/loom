@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/common/mcpserver"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
 	"github.com/trick77/loom/internal/loomuser"
 	"github.com/trick77/ship/kit/httpx"
-	"github.com/trick77/ship/kit/mcpserver"
 )
 
 const testToken = "0123456789abcdef0123456789abcdef"

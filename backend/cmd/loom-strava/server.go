@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/trick77/common/mcpserver"
 	"github.com/trick77/loom/internal/loomuser"
 	"github.com/trick77/ship/kit/httpx"
-	"github.com/trick77/ship/kit/mcpserver"
 	"github.com/trick77/ship/kit/secret"
 )
 

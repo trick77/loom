@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/trick77/common/mcpserver"
 	"github.com/trick77/loom/internal/loomuser"
-	"github.com/trick77/ship/kit/mcpserver"
 )
 
 const (
