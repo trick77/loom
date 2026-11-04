@@ -17,12 +17,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
 	"github.com/trick77/ship/kit/env"
 	"github.com/trick77/ship/kit/fsx"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/version"
+	"github.com/trick77/toolkit/applemusic"
 )
 
 func main() {
@@ -51,8 +50,9 @@ func serve() error {
 		return err
 	}
 	httpClient := &http.Client{Timeout: 30 * time.Second}
-	dev := &webtoken.Source{HTTP: httpClient}
-	client := &applemusic.Client{HTTP: httpClient, Dev: dev}
+	dev := &applemusic.Source{HTTP: httpClient}
+	// A tool call waits on it: one try, and a 429 waits at most 5 s once.
+	client := &applemusic.Client{HTTP: httpClient, Dev: dev, RateLimitWait: 5 * time.Second}
 	if err := writable(cfg.data); err != nil {
 		return err
 	}

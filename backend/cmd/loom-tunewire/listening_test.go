@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
+	"github.com/trick77/toolkit/applemusic"
 )
 
 // connected is a test service with the token set; the sidecar's configured
