@@ -70,6 +70,11 @@ func TestBlock(t *testing.T) {
 			t.Errorf("Block(%q) lacks the heart-rate zone rule", c)
 		}
 	}
+	// A health turn sees the training tools too: a symptom the user ties to
+	// their sport is read against their recent activities, not answered blind.
+	if !strings.Contains(Block(string(Health)), "read their recent activities") {
+		t.Errorf("Block(health) does not send a symptom tied to sport to the training tools")
+	}
 }
 
 func TestValuesAndPromptGuideCoverEveryCategory(t *testing.T) {

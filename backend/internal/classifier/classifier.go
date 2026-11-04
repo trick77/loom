@@ -140,7 +140,7 @@ var catalog = []struct {
 	}},
 	{Health, entry{
 		gloss: "medical, health, fitness, or nutrition questions",
-		block: "Answer in careful flowing prose. State how strong the evidence is behind each claim and distinguish established consensus from emerging findings; never diagnose. Close with when seeing a professional is warranted, if it is." + hrZoneRule,
+		block: "Answer in careful flowing prose. State how strong the evidence is behind each claim and distinguish established consensus from emerging findings; never diagnose. When training tools are available and the user ties a symptom, pain, or injury to their sport, read their recent activities with them before answering: look for a jump in load or intensity, a long or hard session just before it started, or a new activity type, and name the activities that fit. Close with when seeing a professional is warranted, if it is." + hrZoneRule,
 	}},
 	{Training, entry{
 		gloss: "the user's own workouts, rides, runs, training load, or fitness progress (their activities, not general health advice)",
