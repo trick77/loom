@@ -36,7 +36,13 @@ const instructions = "The user's own Strava data: profile, totals, activities, l
 	"user's recent ones of the same sport. For heart-rate zones, max or threshold heart rate use hr_zones; " +
 	"a tested value the user stated beats its estimate. Give numbers with their units, as returned. When a chart would read " +
 	"better (ride profile, power curve, weekly load, same-route gap), offer one and draw it with run_python from " +
-	"the attached CSV files."
+	"the attached CSV files. When the user ties a pain, injury or other symptom to their sport, read their " +
+	"activities before answering: list_activities over the four weeks before it started (the last four weeks " +
+	"when they say no date), looking for a jump in weekly distance, time or climbing, a long or hard session " +
+	"just before it, or a new sport. Analyse only the one or two sessions that stand out: Strava's rate budget " +
+	"is shared by every user. Name them with their [n] as possible contributors, never as the cause: no " +
+	"diagnosis. Chest pain, fainting, dizziness, numbness or a sudden severe pain: lead with seeing a doctor " +
+	"now, the activities after."
 
 func activityURL(id int64) string { return fmt.Sprintf("https://www.strava.com/activities/%d", id) }
 
