@@ -474,7 +474,7 @@ func (s *Service) CallToolResult(ctx context.Context, name string, arguments map
 
 // perUserReady fails closed for a per-user server: without the caller it
 // cannot pick the account and must never fall back to someone else's, and
-// only the HTTP transport carries the caller (mcpserver.UserHeader). It holds
+// only the HTTP transport carries the caller (loomuser.Header). It holds
 // whatever client serves the route, an mcp.json override included.
 func perUserReady(ctx context.Context, sc ServerConfig, name string) error {
 	if !sc.PerUser {

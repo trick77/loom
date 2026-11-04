@@ -50,6 +50,8 @@ github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81P
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/tetratelabs/wazero v1.12.0 h1:DuWcpNu/FzgEXgGBDp8J1Spc+CWOvvtvVyjKlaZopYU=
 github.com/tetratelabs/wazero v1.12.0/go.mod h1:LvKtzl2RqO4gyF27BiXU+nKAjcV8f38U+kP/q2vgxh0=
+github.com/trick77/common v0.1.0 h1:byxF80HqCVQuUExQNs+KsGvD5PYU6a3nDdOR9TYIYhw=
+github.com/trick77/common v0.1.0/go.mod h1:WLm7MIjM0sF1H3M7OyOf+YhuNO8THzaNr2crMFrclzM=
 github.com/trick77/llmwire v0.2.2 h1:ZHiukfCP00362IP+9zFLEPEbazgLL2W127u/1nVFcQo=
 github.com/trick77/llmwire v0.2.2/go.mod h1:ARXCARjcwgoiySK9pIFCT7/51cW2QZH+pflLtIDDtxA=
 github.com/trick77/ship/kit v0.18.0 h1:lrn7wvL+/ErzgHRIs0FoQSnA1hfN2/6zt3+k08O6Z/0=

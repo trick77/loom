@@ -9,7 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/common/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 )
 
 const (
@@ -66,15 +67,16 @@ func toolServer(svc *service, version string) mcpserver.Server {
 		Name:         "strava",
 		Version:      version,
 		Instructions: instructions,
+		UserHeader:   loomuser.Header,
 		Tools: []mcpserver.Tool{
 			{
-				Name: "profile", Title: "My Strava profile",
+				Name: "profile", Title: "My Strava profile", ReadOnly: true, OpenWorld: true,
 				Description: "The user's Strava profile: name, FTP, weight, bikes and shoes with their distance, heart-rate and power zones.",
 				Schema:      mcpserver.ObjectSchema(map[string]any{}),
 				Run:         t.profile,
 			},
 			{
-				Name: "hr_zones", Title: "My heart-rate zones",
+				Name: "hr_zones", Title: "My heart-rate zones", ReadOnly: true, OpenWorld: true,
 				Description: "The user's heart-rate zones estimated from their own streams of the last 365 days, per sport " +
 					"(cycling, running): max heart rate (best 10 s, confirmed by a second activity), threshold heart rate " +
 					"(95 % of the best 20 min) and Friel's zones from it, next to Strava's own zones. Reads the streams of " +
@@ -85,14 +87,14 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Run: t.hrZones,
 			},
 			{
-				Name: "totals", Title: "My Strava totals",
+				Name: "totals", Title: "My Strava totals", ReadOnly: true, OpenWorld: true,
 				Description: "Ride, run and swim totals: the last 4 weeks, this year and all time (count, distance, time, " +
 					"elevation), plus the longest ride and biggest climb. Strava counts only activities visible to Everyone here.",
 				Schema: mcpserver.ObjectSchema(map[string]any{}),
 				Run:    t.totals,
 			},
 			{
-				Name: "list_activities", Title: "List my Strava activities",
+				Name: "list_activities", Title: "List my Strava activities", ReadOnly: true, OpenWorld: true,
 				Description: "The user's activities, newest first, one compact row each (date, name, sport, distance, " +
 					"time, elevation, speed or pace, heart rate, power, kJ, relative effort, gear), with totals per sport " +
 					"and per week or month. Attaches strava_activities.csv and strava_weeks.csv for run_python.",
@@ -106,14 +108,14 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Run: t.listActivities,
 			},
 			{
-				Name: "get_activity", Title: "Read a Strava activity",
+				Name: "get_activity", Title: "Read a Strava activity", ReadOnly: true, OpenWorld: true,
 				Description: "Everything Strava has on one of the user's activities: description, private note, device, " +
 					"calories, perceived exertion, gear, laps, splits, best efforts, segment efforts with PR and KOM rank.",
 				Schema: mcpserver.ObjectSchema(map[string]any{"id": idArg("The activity id, from list_activities."), "refresh": refreshArg}, "id"),
 				Run:    t.getActivity,
 			},
 			{
-				Name: "activity_analysis", Title: "Analyse a Strava activity",
+				Name: "activity_analysis", Title: "Analyse a Strava activity", ReadOnly: true, OpenWorld: true,
 				Description: "Analyse one activity from its streams: power (NP, IF, TSS, VI, mean-max curve, zones), " +
 					"heart rate (zones, EF, decoupling), climbs, intervals, per-km rows, always compared with the user's " +
 					"activities of the same sport in the weeks before (median, rank, best/worst in window, same route, " +
@@ -129,7 +131,7 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Run: t.activityAnalysis,
 			},
 			{
-				Name: "compare_activities", Title: "Compare Strava activities",
+				Name: "compare_activities", Title: "Compare Strava activities", ReadOnly: true, OpenWorld: true,
 				Description: "Side-by-side table of 2 to 5 of the user's activities: distance, time, speed, elevation, " +
 					"heart rate, NP, IF, TSS, EF, decoupling, power bests. For progress on the same route or over time.",
 				Schema: mcpserver.ObjectSchema(map[string]any{
@@ -139,19 +141,19 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Run: t.compareActivities,
 			},
 			{
-				Name: "gear", Title: "My Strava gear",
+				Name: "gear", Title: "My Strava gear", ReadOnly: true, OpenWorld: true,
 				Description: "The user's bikes and shoes: brand, model, frame type, total distance, retired or not. Without an id, all of them.",
 				Schema:      mcpserver.ObjectSchema(map[string]any{"gear_id": map[string]any{"type": "string", "description": "One gear id (b… or g…), from profile."}}),
 				Run:         t.gear,
 			},
 			{
-				Name: "routes", Title: "My Strava routes",
+				Name: "routes", Title: "My Strava routes", ReadOnly: true, OpenWorld: true,
 				Description: "The user's own routes: distance, elevation, estimated moving time. With a route id, that route with the segments on it.",
 				Schema:      mcpserver.ObjectSchema(map[string]any{"route_id": idArg("One route id, from the list.")}),
 				Run:         t.routes,
 			},
 			{
-				Name: "segments", Title: "My starred Strava segments",
+				Name: "segments", Title: "My starred Strava segments", ReadOnly: true, OpenWorld: true,
 				Description: "The user's starred segments with their PR and effort count. With a segment id, that segment " +
 					"and the user's own effort history on it (the history needs a Strava subscription).",
 				Schema: mcpserver.ObjectSchema(map[string]any{"segment_id": idArg("One segment id, from the list.")}),

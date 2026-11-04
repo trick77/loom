@@ -65,7 +65,7 @@ type ServerConfig struct {
 	Users []string `json:"users"`
 	// PerUser marks one of loom's own sidecars that keeps a separate account
 	// per loom user: every tool call carries the caller's id
-	// (mcpserver.UserHeader) and a call without one is refused, never sent.
+	// (loomuser.Header) and a call without one is refused, never sent.
 	// Personal data is never shared across users; the Users list only says who
 	// may connect. Built-ins only: a third-party server never learns a loom id.
 	PerUser bool `json:"-"`

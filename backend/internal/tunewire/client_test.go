@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 )
 
 func TestClient(t *testing.T) {
@@ -18,7 +18,7 @@ func TestClient(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		lastBody, lastAuth, lastPath = string(b), r.Header.Get("Authorization"), r.Method+" "+r.URL.RequestURI()
-		lastUser = r.Header.Get(mcpserver.UserHeader)
+		lastUser = r.Header.Get(loomuser.Header)
 		switch {
 		case r.Method == http.MethodPut && strings.Contains(lastBody, "bad"):
 			w.WriteHeader(http.StatusUnprocessableEntity)

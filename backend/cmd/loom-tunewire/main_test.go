@@ -15,9 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trick77/common/mcpserver"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 	"github.com/trick77/ship/kit/httpx"
 )
 
@@ -447,7 +448,7 @@ func callTool(t *testing.T, h http.Handler, path, name, args string) (string, ma
 	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, name, args)
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+testToken)
-	req.Header.Set(mcpserver.UserHeader, testUser)
+	req.Header.Set(loomuser.Header, testUser)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	var r struct {
@@ -610,7 +611,7 @@ func do(t *testing.T, h http.Handler, method, path, auth, body string) (int, map
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if auth != "" {
 		req.Header.Set("Authorization", "Bearer "+auth)
-		req.Header.Set(mcpserver.UserHeader, testUser)
+		req.Header.Set(loomuser.Header, testUser)
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

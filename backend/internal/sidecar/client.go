@@ -1,6 +1,6 @@
 // Package sidecar is loom's client plumbing for its per-user sidecars'
 // connection routes (tunewire, strava): every request names the signed-in
-// loom user (mcpserver.UserHeader) and carries loom's bearer token; failures
+// loom user (loomuser.Header) and carries loom's bearer token; failures
 // come back as *Error with the sidecar's code, so the settings page can word
 // them without the sidecar's own text.
 package sidecar
@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 )
 
 // ErrUnavailable means a sidecar could not be reached or failed.
@@ -88,7 +88,7 @@ func (c *Client) Do(ctx context.Context, user, method, path string, body []byte,
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set(mcpserver.UserHeader, user)
+	req.Header.Set(loomuser.Header, user)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

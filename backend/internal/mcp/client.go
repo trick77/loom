@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/loom/internal/loomuser"
 )
 
 const (
@@ -390,9 +390,9 @@ func (c *remoteClient) call(ctx context.Context, method string, params map[strin
 		req.Header.Set(key, value)
 	}
 	// After the configured headers: no header map can name the user.
-	req.Header.Del(mcpserver.UserHeader)
+	req.Header.Del(loomuser.Header)
 	if p, ok := PrincipalFrom(ctx); ok && c.cfg.PerUser {
-		req.Header.Set(mcpserver.UserHeader, p.ID)
+		req.Header.Set(loomuser.Header, p.ID)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

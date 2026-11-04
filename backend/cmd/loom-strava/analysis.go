@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/loom/internal/mcpserver"
+	"github.com/trick77/common/mcpserver"
 )
 
 const (
