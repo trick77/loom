@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 func int64p(v int64) *int64 { return &v }

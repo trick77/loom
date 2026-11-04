@@ -3,9 +3,9 @@ package main
 import (
 	"testing"
 
-	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/loom/internal/config"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 func TestChatModelInfo_EmptyWhenChatIsOff(t *testing.T) {

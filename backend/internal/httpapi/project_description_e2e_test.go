@@ -9,9 +9,9 @@ import (
 
 	"context"
 
-	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // TestRefreshProjectDescription_GeneratedThroughRealClient is an end-to-end guard for

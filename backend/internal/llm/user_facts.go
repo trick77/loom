@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // User memory is one row per fact; these helpers ask the model for changes to

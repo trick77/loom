@@ -16,7 +16,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/trick77/common/mcpserver"
+	"github.com/trick77/toolkit/mcpserver"
 )
 
 // wantedScopes is what loom asks Strava for: everything the user can read,

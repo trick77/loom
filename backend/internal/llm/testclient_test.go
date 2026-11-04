@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // testModel is the synthetic chat model every test client runs on, so no test

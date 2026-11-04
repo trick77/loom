@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 func TestClient_StreamChatSendsOpenAICompatibleRequest(t *testing.T) {

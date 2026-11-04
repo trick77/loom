@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/trick77/common/mcpserver"
 	"github.com/trick77/loom/internal/loomuser"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/secret"
+	"github.com/trick77/toolkit/mcpserver"
 )
 
 // maxConnectionBody bounds PUT /connection: a code and a scope string.

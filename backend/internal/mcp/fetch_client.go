@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/trick77/webfetch"
+	"github.com/trick77/toolkit/webfetch"
 )
 
 // fetchClientToolName is the server-side (original) name of the single tool the
@@ -43,7 +43,7 @@ func IsPDFExtractionError(err error) bool {
 
 // fetchClient is an in-process Client that replaces the external fetch MCP
 // sidecar. It performs the fetch directly in the backend via the shared
-// github.com/trick77/webfetch module (a faithful Go port of mcp-server-fetch),
+// github.com/trick77/toolkit/webfetch package (a faithful Go port of mcp-server-fetch),
 // so no separate container, Python runtime, or stdio bridge is required. It
 // advertises exactly one tool, "fetch", with the same schema and behaviour the
 // sidecar did, so dispatch, citation, obscura fallback, and usage counting are

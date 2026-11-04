@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 func TestLoad_defaults(t *testing.T) {

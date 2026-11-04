@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire/llmwiretest"
 	"github.com/trick77/loom/internal/config"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // testChatModels resolves the roles onto llmwiretest's synthetic model, so no

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/imagescale"
 	"github.com/trick77/loom/internal/inference"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // imageDescribeMaxCompletionTokens caps the vision description. At the helper

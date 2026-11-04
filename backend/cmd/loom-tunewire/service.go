@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/common/mcpserver"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/applemusic"
 	"github.com/trick77/loom/cmd/loom-tunewire/internal/webtoken"
+	"github.com/trick77/toolkit/mcpserver"
 )
 
 // maxUserTokenBytes bounds a pasted media-user-token; real ones are a few

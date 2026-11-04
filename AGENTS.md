@@ -20,7 +20,7 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
   **v0.1.7-alpha.2**, bumped together by hand (v0.24+ breaks the binding ABI). `CGO_ENABLED=0`; never
   `mattn/go-sqlite3`. One SQLite file, `sqlite-vec` for vectors.
 - stdlib `net/http`, no framework. Streaming: SSE (kit `sse`).
-- LLMs only via `github.com/trick77/llmwire` (wire + every model fact); loom owns routing, budgets,
+- LLMs only via `github.com/trick77/toolkit/llmwire` (wire + every model fact); loom owns routing, budgets,
   prompts, accounting. **Never name a model, vendor or model behaviour in loom**: intents
   (`ReasoningMinimal`/`ReasoningBalanced`, `MaxAnswerTokens`), profile fields; a missing fact goes into
   llmwire. Tests use `llmwiretest`. Extraction: Tika sidecar.

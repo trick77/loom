@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // ErrStreamStalled marks a stream that was aborted by the idle bound because

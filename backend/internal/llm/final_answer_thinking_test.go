@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/llmwire/llmwiretest"
+	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
 // The forced-final answer turn sets MaxCompletionTokens on the metadata; the

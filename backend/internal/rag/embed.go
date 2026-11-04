@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trick77/llmwire"
 	"github.com/trick77/loom/internal/inference"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 const defaultEmbedTimeout = 1 * time.Minute

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/trick77/llmwire"
+	"github.com/trick77/toolkit/llmwire"
 )
 
 // The phrasing must not cost callers llmwire's classification.
