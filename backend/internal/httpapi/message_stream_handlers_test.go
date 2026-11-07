@@ -726,7 +726,7 @@ func TestStreamMessageExecutesBuiltInImageTool(t *testing.T) {
 					ID:   "call_1",
 					Type: "function",
 					Function: llm.ToolCallFunction{
-						Name:      "generate_image",
+						Name:      imageToolName,
 						Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
 					},
 				}},
@@ -735,11 +735,11 @@ func TestStreamMessageExecutesBuiltInImageTool(t *testing.T) {
 		Plain: "Created robot.png.",
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     threadStore,
-		Artifacts:  artifactStore,
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
+		Thread:    threadStore,
+		Artifacts: artifactStore,
+		MCP:       imageTools(fakeImageProvider{}),
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make an image"}`)
@@ -788,18 +788,18 @@ func TestStreamMessageUsesFallbackTextWhenImageFinalResponseIsEmpty(t *testing.T
 				ID:   "call_1",
 				Type: "function",
 				Function: llm.ToolCallFunction{
-					Name:      "generate_image",
+					Name:      imageToolName,
 					Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
 				},
 			}},
 		}},
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     threadStore,
-		Artifacts:  artifactStore,
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
+		Thread:    threadStore,
+		Artifacts: artifactStore,
+		MCP:       imageTools(fakeImageProvider{}),
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make an image"}`)
@@ -847,7 +847,7 @@ func TestStreamMessagePersistsImageWhenFinalResponseIsCanceled(t *testing.T) {
 				ID:   "call_1",
 				Type: "function",
 				Function: llm.ToolCallFunction{
-					Name:      "generate_image",
+					Name:      imageToolName,
 					Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
 				},
 			}},
@@ -855,11 +855,11 @@ func TestStreamMessagePersistsImageWhenFinalResponseIsCanceled(t *testing.T) {
 		PlainErr: context.Canceled,
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     threadStore,
-		Artifacts:  artifact.NewStore(db),
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
+		Thread:    threadStore,
+		Artifacts: artifact.NewStore(db),
+		MCP:       imageTools(fakeImageProvider{}),
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make an image"}`)
@@ -896,11 +896,11 @@ func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
 		Results: []llm.StreamResult{
 			{ToolCalls: []llm.ToolCall{
 				{ID: "call_1", Type: "function", Function: llm.ToolCallFunction{
-					Name:      "generate_image",
+					Name:      imageToolName,
 					Arguments: `{"prompt":"a robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
 				}},
 				{ID: "call_2", Type: "function", Function: llm.ToolCallFunction{
-					Name:      "generate_image",
+					Name:      imageToolName,
 					Arguments: `{"prompt":"a cat","filename":"cat","width":512,"height":512,"output_format":"jpeg"}`,
 				}},
 			}},
@@ -908,11 +908,11 @@ func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
 		},
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     threadStore,
-		Artifacts:  artifactStore,
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
+		Thread:    threadStore,
+		Artifacts: artifactStore,
+		MCP:       imageTools(fakeImageProvider{}),
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
 	})
 
 	// The prompt avoids image-creation keywords so the request takes the default
@@ -963,15 +963,12 @@ func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 	}
 	provider := &recordingImageProvider{}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     store,
-		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(provider)},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
-		MCP: fakeMCPService{ToolList: []llm.Tool{{
-			Type:     "function",
-			Function: llm.ToolFunction{Name: "search__web", Description: "Search the web"},
-		}}},
+		Thread:    store,
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
+		// fetch rides along, so the compiler round shows it narrows to the image tool.
+		MCP: imageToolsWithFetch(t, provider),
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"generate an image of a glass city at sunrise"}`)
@@ -1001,8 +998,8 @@ func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 		t.Fatal("no tool round was run")
 	}
 	offeredTools := llmClient.Tools[0]
-	if len(offeredTools) != 1 || offeredTools[0].Function.Name != "generate_image" {
-		t.Fatalf("offered tools = %#v, want only generate_image", offeredTools)
+	if len(offeredTools) != 1 || offeredTools[0].Function.Name != imageToolName {
+		t.Fatalf("offered tools = %#v, want only %s", offeredTools, imageToolName)
 	}
 	if len(llmClient.Histories) == 0 {
 		t.Fatal("LLM history was not captured")
@@ -1010,7 +1007,7 @@ func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 	foundDirective := false
 	for _, message := range llmClient.Histories[0] {
 		if message.Role == "system" &&
-			strings.Contains(message.Content, "Your only job is to call `generate_image` exactly once") &&
+			strings.Contains(message.Content, "Your only job is to call the image generation tool you are given exactly once") &&
 			strings.Contains(message.Content, "Do not refuse based on being text-based") {
 			foundDirective = true
 		}
@@ -1028,7 +1025,7 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 				ID:   "call_1",
 				Type: "function",
 				Function: llm.ToolCallFunction{
-					Name:      "generate_image",
+					Name:      imageToolName,
 					Arguments: `{"prompt":"a small robot","filename":"robot"}`,
 				},
 			}},
@@ -1038,11 +1035,11 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     store,
-		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(errorImageProvider{err: errors.New("fal generation timed out: context deadline exceeded")})},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
+		Thread:    store,
+		Artifacts: fakeArtifactStore{},
+		MCP:       imageTools(errorImageProvider{err: errors.New("fal generation timed out: context deadline exceeded")}),
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"make an image"}`)
@@ -1068,7 +1065,7 @@ func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T)
 					ID:   "call_1",
 					Type: "function",
 					Function: llm.ToolCallFunction{
-						Name:      "generate_image",
+						Name:      imageToolName,
 						Arguments: `{"prompt":"a small robot","filename":"robot","width":512,"height":512,"output_format":"png"}`,
 					},
 				}},
@@ -1080,11 +1077,11 @@ func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T)
 		Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Images"},
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     store,
-		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
+		Thread:    store,
+		Artifacts: fakeArtifactStore{},
+		MCP:       imageTools(fakeImageProvider{}),
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"make an image"}`)
@@ -1122,11 +1119,11 @@ func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testin
 	}
 	provider := &recordingImageProvider{}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     store,
-		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(provider)},
-		UsersDir:   t.TempDir(),
-		LLM:        capturingLLM,
+		Thread:    store,
+		Artifacts: fakeArtifactStore{},
+		MCP:       imageTools(provider),
+		UsersDir:  t.TempDir(),
+		LLM:       capturingLLM,
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"make it cyberpunk"}`)
@@ -1151,7 +1148,7 @@ func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testin
 	history = capturingLLM.Histories[0]
 	foundDirective := false
 	for _, message := range history {
-		if message.Role == "system" && strings.Contains(message.Content, "Your only job is to call `generate_image` exactly once") {
+		if message.Role == "system" && strings.Contains(message.Content, "Your only job is to call the image generation tool you are given exactly once") {
 			foundDirective = true
 		}
 	}
@@ -2212,7 +2209,7 @@ func TestStreamMessageStampsImageGenerationCategory(t *testing.T) {
 				ID:   "call_1",
 				Type: "function",
 				Function: llm.ToolCallFunction{
-					Name:      "generate_image",
+					Name:      imageToolName,
 					Arguments: `{"prompt":"a cat astronaut","filename":"cat","width":512,"height":512,"output_format":"png"}`,
 				},
 			}},
@@ -2220,11 +2217,11 @@ func TestStreamMessageStampsImageGenerationCategory(t *testing.T) {
 		Plain: "Created cat.png.",
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     threadStore,
-		Artifacts:  artifactStore,
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
+		Thread:    threadStore,
+		Artifacts: artifactStore,
+		MCP:       imageTools(fakeImageProvider{}),
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"create an image of a cat astronaut"}`)
@@ -2465,11 +2462,11 @@ func TestPrepareTurnRunsImageGateAndClassifierConcurrently(t *testing.T) {
 	classifyEntered := make(chan struct{}, 1)
 	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Hi"}}
 	srv := newAuthenticatedServer(t, Deps{
-		Thread:     store,
-		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		UsersDir:   t.TempDir(),
-		LLM:        fakeChatClient{Category: "coding", ImageIntentGate: imageGate, ClassifyEntered: classifyEntered},
+		Thread:    store,
+		Artifacts: fakeArtifactStore{},
+		MCP:       imageTools(fakeImageProvider{}),
+		UsersDir:  t.TempDir(),
+		LLM:       fakeChatClient{Category: "coding", ImageIntentGate: imageGate, ClassifyEntered: classifyEntered},
 	})
 	rec := httptest.NewRecorder()
 	req := authenticatedRequest(http.MethodPost, "/api/threads/thr_1/messages:stream", `{"content":"Hi"}`)
@@ -2501,10 +2498,10 @@ func TestPrepareTurnRunsImageGateAndClassifierConcurrently(t *testing.T) {
 func TestPrepareTurnImageTurnKeepsImageCategoryOverClassifier(t *testing.T) {
 	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Draw"}}
 	srv := newAuthenticatedServer(t, Deps{
-		Thread:     store,
-		Artifacts:  fakeArtifactStore{},
-		ImageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		UsersDir:   t.TempDir(),
+		Thread:    store,
+		Artifacts: fakeArtifactStore{},
+		MCP:       imageTools(fakeImageProvider{}),
+		UsersDir:  t.TempDir(),
 		LLM: fakeChatClient{
 			Category:    "coding",
 			ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},

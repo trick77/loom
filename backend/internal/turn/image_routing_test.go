@@ -10,8 +10,8 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn/turntest"
 )
 
 // TestImageRoutingFor covers the pure mapping from a semantic ImageIntent plus
@@ -72,10 +72,10 @@ func TestClassifyImageTurnPreconditions(t *testing.T) {
 
 	// Image tooling configured + a non-empty message: the gate's intent is mapped.
 	configured := &Engine{
-		artifacts:  fakeArtifactStore{},
-		usersDir:   t.TempDir(),
-		imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
-		llm:        fakeChatClient{ImageIntent: create},
+		artifacts: fakeArtifactStore{},
+		usersDir:  t.TempDir(),
+		mcp:       turntest.ImageService(fakeImageProvider{}, "", ""),
+		llm:       fakeChatClient{ImageIntent: create},
 	}
 	if got := configured.classifyImageTurn(context.Background(), llm.InferenceMetadata{UserID: "user_1", Username: "jan", ThreadID: "thr_1"}, "zeichne mir einen Fuchs", false, nil); !got.generate {
 		t.Fatalf("classifyImageTurn(create intent) = %+v, want generate=true", got)

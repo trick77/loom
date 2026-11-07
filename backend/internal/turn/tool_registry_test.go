@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/docgen"
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
@@ -73,12 +73,12 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 		{
 			name: "no project, docgen off, sandbox off, image", artifacts: true, images: true,
 			gate: docgenOff,
-			want: concat(core, []string{"generate_image"}, mcpNames, []string{"create_text_file"}),
+			want: concat(core, mcpNames, []string{"create_text_file", imageToolName}),
 		},
 		{
 			name: "project, docgen on, sandbox on, image", artifacts: true, images: true,
 			thread: chat.Thread{ProjectID: &project}, gate: withSandbox(docgenOn),
-			want: concat([]string{"read_project_threads"}, core, docs, []string{"run_python", "generate_image"}, mcpNames),
+			want: concat([]string{"read_project_threads"}, core, docs, []string{"run_python"}, mcpNames, []string{imageToolName}),
 		},
 		{
 			name: "no project, docgen on, sandbox off, no image", artifacts: true,
@@ -98,16 +98,17 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			offered := mcpTools
+			if tc.images {
+				offered = append(slices.Clone(mcpTools), llm.Tool{Type: "function", Function: llm.ToolFunction{Name: imageToolName}})
+			}
 			e := &Engine{
 				usersDir: t.TempDir(),
 				docTools: allDocTools(),
-				mcp:      fakeMCPService{ToolList: mcpTools},
+				mcp:      fakeMCPService{ToolList: offered},
 			}
 			if tc.artifacts {
 				e.artifacts = fakeArtifactStore{}
-			}
-			if tc.images {
-				e.imageTools = []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})}
 			}
 			got := orderedToolNames(e.availableTools(tc.thread, tc.gate))
 			if !reflect.DeepEqual(got, tc.want) {
@@ -196,7 +197,7 @@ func TestToolPolicyPerName(t *testing.T) {
 		{"obscura__browser_navigate", 12, false, "obscura_fetch"},
 		{"obscura__browser_snapshot", 12, false, ""},
 		{"run_python", 3, false, ""},
-		{"generate_image", 8, false, ""},
+		{imageToolName, 1, false, ""},
 		{"create_pdf_file", 8, false, ""},
 		{"conversation_search", 8, false, ""},
 		{"context7__query-docs", 8, false, ""},
@@ -204,7 +205,7 @@ func TestToolPolicyPerName(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			u := &countingUsage{counts: map[string]int{}}
-			e := &Engine{usage: u, docTools: allDocTools(), imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})}}
+			e := &Engine{usage: u, docTools: allDocTools()}
 			if got := e.toolCallCapPerRound(tc.name); got != tc.cap {
 				t.Errorf("cap = %d, want %d", got, tc.cap)
 			}
@@ -224,15 +225,14 @@ func TestToolPolicyPerName(t *testing.T) {
 }
 
 // The round policy comes from the engine's registry, so one set on a docgen
-// or image spec takes effect like one on a core tool.
+// spec takes effect like one on a core tool.
 func TestToolPolicyFollowsGeneratorSpecs(t *testing.T) {
 	u := &countingUsage{counts: map[string]int{}}
-	e := &Engine{usage: u, docTools: allDocTools(), imageTools: []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})}}
+	e := &Engine{usage: u, docTools: allDocTools()}
 	_, byName := e.registry()
 	byName["create_pdf_file"].capPerRound = 2
 	byName["create_pdf_file"].concurrent = true
-	byName[imagegen.ToolName].capPerRound = 1
-	byName[imagegen.ToolName].counts = &usageCounter{"image_gen", UsageStore.IncImageGen}
+	byName["create_pdf_file"].counts = &usageCounter{"image_gen", UsageStore.IncImageGen}
 
 	if got := e.toolCallCapPerRound("create_pdf_file"); got != 2 {
 		t.Errorf("create_pdf_file cap = %d, want 2", got)
@@ -240,10 +240,7 @@ func TestToolPolicyFollowsGeneratorSpecs(t *testing.T) {
 	if !e.runsConcurrently("create_pdf_file") {
 		t.Error("create_pdf_file not concurrent")
 	}
-	if got := e.toolCallCapPerRound(imagegen.ToolName); got != 1 {
-		t.Errorf("%s cap = %d, want 1", imagegen.ToolName, got)
-	}
-	e.countToolCall(context.Background(), testUser, imagegen.ToolName)
+	e.countToolCall(context.Background(), testUser, "create_pdf_file")
 	if want := map[string]int{"image_gen": 1}; !reflect.DeepEqual(u.counts, want) {
 		t.Errorf("counters = %v, want %v", u.counts, want)
 	}

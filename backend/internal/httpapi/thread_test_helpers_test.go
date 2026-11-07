@@ -11,7 +11,9 @@ import (
 	"testing"
 
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/store"
 	"github.com/trick77/loom/internal/turn/turntest"
 )
@@ -31,6 +33,28 @@ type (
 )
 
 var testUser = auth.User{ID: "user_1", Username: "jan", Role: auth.RoleUser, ResponseLanguage: "en"}
+
+// imageToolName is the image tool as loom addresses it (docs/imagegen.md).
+const imageToolName = "imagegen__generate"
+
+// imageTools serves provider as the image tool, in-process behind its MCP
+// contract, as cmd/loom wires the built-in.
+func imageTools(provider imagegen.Provider) ToolService {
+	return turntest.ImageService(provider, "", "")
+}
+
+// imageToolsWithFetch is imageTools plus the in-process fetch tool.
+func imageToolsWithFetch(t *testing.T, provider imagegen.Provider) ToolService {
+	t.Helper()
+	svc, err := mcp.NewServiceFromConfigs(context.Background(), mcp.Config{Servers: map[string]mcp.ServerConfig{
+		imagegen.ServerName: mcp.ImagegenServerConfig(imagegen.NewService(provider, "", "")),
+		"fetch":             mcp.FetchServerConfig(nil),
+	}}, mcp.Config{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc
+}
 
 func strPtr(value string) *string {
 	return &value

@@ -67,6 +67,19 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	assertCapability(t, items, "Python sandbox", "disabled", "BACKEND_SANDBOX_URL")
 }
 
+// An mcp.json server named imagegen serves images, with or without a fal key.
+func TestStartupCapabilitiesImageServerFromFile(t *testing.T) {
+	items := startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
+		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp", Artifacts: true},
+	}}, startupRuntime{})
+	assertCapability(t, items, "Image generation", "enabled", "mcp.json server imagegen")
+	// Without artifacts its images are dropped: say so, not "enabled".
+	items = startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
+		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp"},
+	}}, startupRuntime{})
+	assertCapability(t, items, "Image generation", "disabled", `lacks "artifacts": true`)
+}
+
 func TestStartupCapabilitiesSandboxConfigured(t *testing.T) {
 	items := startupCapabilities(config.Config{SandboxURL: "http://sandbox:8070", SandboxTimeout: time.Minute}, mcp.Config{}, startupRuntime{})
 	assertCapability(t, items, "Python sandbox", "configured", "url=http://sandbox:8070 timeout=1m0s")
@@ -90,14 +103,14 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 		ChatLogDir:     "logs/llm-responses",
 	}, mcp.Config{Servers: map[string]mcp.ServerConfig{
 		"fetch": {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
-	}}, startupRuntime{DocToolCount: 5, ImageToolCount: 1, DiscoveredToolCount: 3})
+	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
 	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)
 	assertCapability(t, items, "embeddings", "enabled", "model="+llmwiretest.EmbedModel)
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")
-	assertCapability(t, items, "Image generation", "enabled", "model=fal-ai/flux-2-pro tools=1")
+	assertCapability(t, items, "Image generation", "enabled", "model=fal-ai/flux-2-pro built-in")
 	assertCapability(t, items, "LLM response logging", "enabled", "logs/llm-responses")
 }
 

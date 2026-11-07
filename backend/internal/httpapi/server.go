@@ -14,7 +14,6 @@ import (
 	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/docgen"
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/schedule"
@@ -35,18 +34,17 @@ type Deps struct {
 	// chat is off.
 	Model llm.ModelInfo
 
-	OIDC       OIDCService
-	Auth       *auth.Middleware
-	Sessions   SessionService
-	Users      UserService
-	Thread     ThreadStore
-	Usage      UsageStore
-	Artifacts  ArtifactStore
-	Documents  DocumentService
-	LLM        ChatClient
-	MCP        ToolService
-	DocTools   []docgen.Generator
-	ImageTools []imagegen.Tool
+	OIDC      OIDCService
+	Auth      *auth.Middleware
+	Sessions  SessionService
+	Users     UserService
+	Thread    ThreadStore
+	Usage     UsageStore
+	Artifacts ArtifactStore
+	Documents DocumentService
+	LLM       ChatClient
+	MCP       ToolService
+	DocTools  []docgen.Generator
 	// Sandbox runs run_python; nil keeps the tool off.
 	Sandbox SandboxRunner
 	// AppleMusic is the loom-tunewire sidecar's token routes; nil hides the
@@ -56,18 +54,12 @@ type Deps struct {
 	// Strava is the loom-strava sidecar's connection routes; nil hides the
 	// settings section. StravaUsers are the loom user ids who may connect
 	// their own Strava account.
-	Strava      StravaService
-	StravaUsers []string
-	// ImageDefaultModel is the configured baseline image model (e.g.
-	// "flux-2-klein-4b"); ImageGenTypographyModel (e.g. "flux-2-flex") is used instead
-	// for the first image of a thread when it reads as typography/logo/text work.
-	// Empty ImageGenTypographyModel (config: "off") disables typography routing.
-	ImageDefaultModel       string
-	ImageGenTypographyModel string
-	UsersDir                string
-	OIDCAdminGroup          string
-	DevAuthClaims           auth.Claims
-	PostLogoutRedirectURL   string
+	Strava                StravaService
+	StravaUsers           []string
+	UsersDir              string
+	OIDCAdminGroup        string
+	DevAuthClaims         auth.Claims
+	PostLogoutRedirectURL string
 	// PublicURL is the externally reachable base URL (https://<PUBLIC_FQDN>), used
 	// to build absolute share links. Empty without PUBLIC_FQDN → callers fall back
 	// to a relative /share/<id> path.
@@ -373,9 +365,6 @@ func newServer(d Deps) *server {
 		LLM:                        d.LLM,
 		MCP:                        d.MCP,
 		DocTools:                   d.DocTools,
-		ImageTools:                 d.ImageTools,
-		ImageDefaultModel:          d.ImageDefaultModel,
-		ImageTypographyModel:       d.ImageGenTypographyModel,
 		Sandbox:                    d.Sandbox,
 		UsersDir:                   d.UsersDir,
 		KnowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,

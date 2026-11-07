@@ -33,7 +33,7 @@ func TestStreamMessageAppliesAspectRatioFromToolCall(t *testing.T) {
 				ID:   "call_1",
 				Type: "function",
 				Function: llm.ToolCallFunction{
-					Name:      "generate_image",
+					Name:      imageToolName,
 					Arguments: `{"prompt":"a wide desert canyon at dusk","filename":"desert-canyon","aspect_ratio":"16:9"}`,
 				},
 			}},
@@ -41,11 +41,11 @@ func TestStreamMessageAppliesAspectRatioFromToolCall(t *testing.T) {
 		Plain: "Created desert-canyon.png.",
 	}
 	server := newAuthenticatedServer(t, Deps{
-		Thread:     threadStore,
-		Artifacts:  artifactStore,
-		ImageTools: []imagegen.Tool{imagegen.NewTool(normalizingImageProvider{})},
-		UsersDir:   t.TempDir(),
-		LLM:        llmClient,
+		Thread:    threadStore,
+		Artifacts: artifactStore,
+		MCP:       imageTools(normalizingImageProvider{}),
+		UsersDir:  t.TempDir(),
+		LLM:       llmClient,
 	})
 
 	req := authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"a wide shot of a desert canyon"}`)

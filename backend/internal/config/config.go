@@ -20,6 +20,11 @@ import (
 // Keep in sync with imagegen's direct-client fallback default.
 const defaultImageGenPollTimeout = 1 * time.Minute
 
+// maxImageGenPollTimeout keeps fal's polling inside the image tool call's
+// 3 min limit (mcp.ArtifactCallTimeout), with room to upload and store: a
+// longer poll would be cut off by the call, not reported as fal's timeout.
+const maxImageGenPollTimeout = 2*time.Minute + 30*time.Second
+
 // defaultChatMaxCompletionTokens covers reasoning plus answer: the cap counts
 // both, and a reasoning model can think past a few thousand tokens on its own,
 // so a tight cap leaves no room for the answer.
@@ -329,8 +334,8 @@ func Load() (Config, error) {
 	// An unparsable value is r's fault and comes back as the default, so each
 	// range check below fires only on a parsed value.
 	cfg.ImageGenPollTimeout = r.Duration("BACKEND_IMAGE_GEN_POLL_TIMEOUT", defaultImageGenPollTimeout)
-	if cfg.ImageGenPollTimeout <= 0 {
-		r.Fail("BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration greater than 0")
+	if cfg.ImageGenPollTimeout <= 0 || cfg.ImageGenPollTimeout > maxImageGenPollTimeout {
+		r.Fail("BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration greater than 0 and at most %s (the image tool call's limit)", maxImageGenPollTimeout)
 	}
 	cfg.ChatMaxCompletionTokens = r.Int("BACKEND_CHAT_MAX_COMPLETION_TOKENS", defaultChatMaxCompletionTokens)
 	if cfg.ChatMaxCompletionTokens <= 0 {

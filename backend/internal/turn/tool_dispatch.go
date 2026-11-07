@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"strings"
 	"time"
 
@@ -13,8 +14,6 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/docgen"
-	"github.com/trick77/loom/internal/imagegen"
-	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/usage"
@@ -38,6 +37,13 @@ type toolRun struct {
 // runToolCall performs the MCP call itself. It touches no per-turn state, so a
 // round's independent web reads can run it concurrently (see startToolRuns).
 func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
+	return s.runToolCallWith(ctx, call, nil)
+}
+
+// runToolCallWith is runToolCall with arguments loom fills itself (loomArgs)
+// added to the call. They go to the server only: the run's arguments, the
+// stored call and every log keep the model's own.
+func (s *Engine) runToolCallWith(ctx context.Context, call llm.ToolCall, extra map[string]any) toolRun {
 	arguments, err := parseToolArguments(call.Function.Arguments)
 	if err != nil {
 		return toolRun{argsErr: err}
@@ -53,8 +59,18 @@ func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	}
 	callCtx, cancel := context.WithTimeout(ctx, s.toolCallDuration(call.Function.Name))
 	defer cancel()
+	sent := arguments
+	if isImage := s.toolPolicy(call.Function.Name).imageGenerator; isImage || len(extra) > 0 {
+		sent = maps.Clone(arguments)
+		if isImage {
+			// Only loom sets these: a model (or a page it read) naming a
+			// model or slipping in an image would pick the endpoint and lock it.
+			dropLoomArgs(sent)
+		}
+		maps.Copy(sent, extra)
+	}
 	start := time.Now()
-	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, arguments)
+	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, sent)
 	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files, images: result.Images, droppedImages: result.DroppedImages, err: err, durationMS: time.Since(start).Milliseconds()}
 }
 
@@ -78,6 +94,9 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 		return output, nil
 	}
 	note, created := t.keepToolImages(ctx, call.Function.Name, run.images, run.droppedImages)
+	if t.e.toolPolicy(call.Function.Name).imageGenerator {
+		t.lockImageModel(ctx, created)
+	}
 	if strings.TrimSpace(output) == "" {
 		// An image-only result: the note is the whole result, so a failed
 		// store reads as a failure (toolFailedPrefix), not a blank success.
@@ -408,9 +427,18 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 	}
 	out := make([]llm.Tool, 0, len(candidates))
 	for _, tool := range candidates {
-		if s.mcp.ToolAllowed(MCPPrincipal(user), tool.Function.Name) {
-			out = append(out, tool)
+		if !s.mcp.ToolAllowed(MCPPrincipal(user), tool.Function.Name) {
+			continue
 		}
+		if s.toolPolicy(tool.Function.Name).imageGenerator {
+			// Its image needs somewhere to go; its loom-filled arguments are
+			// not the model's to set.
+			if !s.canStoreArtifacts() {
+				continue
+			}
+			tool = withoutLoomArgs(tool)
+		}
+		out = append(out, tool)
 	}
 	return out
 }
@@ -450,9 +478,11 @@ func (s *Engine) mcpServerGuidance(user auth.User, gate toolGate) string {
 	return strings.Join(append(blocks, mcpCitationOverride), "\n\n")
 }
 
-func findGenerateImageTool(tools []llm.Tool) *llm.Tool {
+// findImageTool returns the offered tool an image turn forces (a policy
+// flagged imageGenerator), nil when none is offered.
+func (s *Engine) findImageTool(tools []llm.Tool) *llm.Tool {
 	for _, tool := range tools {
-		if tool.Function.Name == imagegen.ToolName {
+		if s.toolPolicy(tool.Function.Name).imageGenerator {
 			selected := tool
 			return &selected
 		}
@@ -548,153 +578,6 @@ func (t *Run) runDocGenerator(ctx context.Context, call llm.ToolCall, generator 
 	response := created.Response()
 	_ = t.stream.SendJSON("artifact", response)
 	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
-}
-
-// maxTypographyImageSide caps typography-model (FLUX.2 [max]) output to the same
-// ~1024 px ceiling as the [pro] default; max otherwise supports up to 4 MP.
-const maxTypographyImageSide = 1024
-
-// resolveThreadImageModel returns the image model to use for this thread, locking
-// the choice on the first image generated in it. If the thread has no locked
-// model yet it picks the typography model when typography routing is configured
-// and the turn is legible-text/logo work, otherwise the default model, then
-// persists the choice via the atomic set-if-empty. Every later image in the thread
-// reuses the locked value, so the model never flip-flops mid-conversation. If
-// persistence fails it falls back to the in-memory decision so generation still
-// proceeds (an empty result defers to the provider's configured default).
-//
-// Typography is signalled two ways, OR'd: the semantic gate's language-agnostic
-// NeedsText flag (authoritative on the required-image path), and a lexical scan of
-// the model-authored compiled prompt (which covers a self-initiated generate_image
-// in the normal tool loop, where no gate flag flows).
-func (s *Engine) resolveThreadImageModel(ctx context.Context, userID string, thread chat.Thread, typography bool, compiledPrompt string) string {
-	if locked := strings.TrimSpace(thread.ImageModel); locked != "" {
-		return locked
-	}
-	candidate := s.imageDefaultModel
-	if tm := strings.TrimSpace(s.imageTypographyModel); tm != "" && (typography || isTypographyImageRequest(compiledPrompt)) {
-		candidate = tm
-	}
-	if updated, _, err := s.thread.SetThreadImageModelIfEmpty(ctx, userID, thread.ID, candidate); err == nil {
-		if locked := strings.TrimSpace(updated.ImageModel); locked != "" {
-			return locked
-		}
-	}
-	return candidate
-}
-
-// executeImageTool runs an image tool call with the turn's edit source and
-// typography routing. It returns the model-facing output and the artifact
-// response, nil on failure.
-func (t *Run) executeImageTool(ctx context.Context, call llm.ToolCall, generator imagegen.Tool) (string, *artifact.Response) {
-	args, err := parseToolArguments(call.Function.Arguments)
-	if err != nil {
-		return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil
-	}
-	req := imagegen.ToolRequest{}
-	if prompt, _ := args["prompt"].(string); prompt != "" {
-		req.Prompt = prompt
-	}
-	if filename, _ := args["filename"].(string); filename != "" {
-		req.Filename = filename
-	}
-	if format, _ := args["output_format"].(string); format != "" {
-		req.OutputFormat = format
-	}
-	if aspect, _ := args["aspect_ratio"].(string); aspect != "" {
-		req.AspectRatio = aspect
-	}
-	if width, ok := numberArg(args["width"]); ok {
-		req.Width = width
-	}
-	if height, ok := numberArg(args["height"]); ok {
-		req.Height = height
-	}
-	if safety, ok := numberArg(args["safety_tolerance"]); ok {
-		req.SafetyTolerance = &safety
-	}
-	if seed, ok := int64Arg(args["seed"]); ok {
-		req.Seed = &seed
-	}
-	// Forward the user's uploaded/prior image so the model edits the actual pixels
-	// instead of a lossy text re-description. Injected here (never from LLM args).
-	if editSource := t.plan.editSource; editSource != nil && len(editSource.Data) > 0 {
-		req.InputImages = [][]byte{editSource.Data}
-		// An edit keeps the source image's proportions unless the turn asked for
-		// something else: restyling a 16:9 photo must not hand back a square that
-		// crops or squashes the composition. The source's own shape is known here,
-		// so nothing has to be guessed from the prompt.
-		if req.AspectRatio == "" && req.Width == 0 && req.Height == 0 && editSource.Width > 0 && editSource.Height > 0 {
-			req.AspectRatio = imagegen.AspectRatioForSize(editSource.Width, editSource.Height)
-		}
-	}
-	// Pick (and lock, once per thread) the image model. When it is the typography
-	// model, clamp output to ≤1024 px/side so flex matches the klein default's size.
-	req.Model = t.e.resolveThreadImageModel(ctx, t.user.ID, t.thread, t.plan.imageRoute.typography, req.Prompt)
-	if tm := strings.TrimSpace(t.e.imageTypographyModel); tm != "" && req.Model == tm {
-		req.Width, req.Height = imagegen.ClampMaxSide(req.Width, req.Height, maxTypographyImageSide)
-	}
-	var buffer bytes.Buffer
-	// A chat turn attributes its stream context up front (httpapi's handleStreamMessage), so
-	// this usually finds the attribution already in place and leaves it alone. It
-	// stays as a backstop for any dispatch path that reaches here on a context
-	// without metadata — otherwise the image model would be the one call in a turn
-	// whose log line cannot be tied back to a user or thread.
-	meta, err := generator.Generate(inference.WithAttribution(ctx, t.user.ID, t.user.Username, t.thread.ID), req, &buffer)
-	if err != nil {
-		output := capToolOutput("tool failed: " + err.Error())
-		slog.Warn("image tool failed",
-			"tool", call.Function.Name,
-			"thread_id", t.thread.ID,
-			"provider_error", err)
-		return output, nil
-	}
-	if buffer.Len() > artifact.MaxArtifactSizeBytes {
-		return "tool failed: generated image is too large", nil
-	}
-	created, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
-		DisplayFilename: meta.DisplayFilename,
-		Extension:       meta.Extension,
-		MIMEType:        meta.MIMEType,
-		Data:            buffer.Bytes(),
-		Thumbnail:       true,
-	})
-	if err != nil {
-		return capToolOutput("tool failed: " + err.Error()), nil
-	}
-	response := created.Response()
-	response.Model = meta.Model
-	response.Provider = meta.Provider
-	response.Width = meta.Width
-	response.Height = meta.Height
-	response.DurationMs = meta.DurationMs
-	usage.Record(t.e.usage, "image_gen", func() error { return t.e.usage.IncImageGen(ctx, t.user.ID) })
-	_ = t.stream.SendJSON("artifact", response)
-	return fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
-}
-
-func numberArg(value any) (int, bool) {
-	switch v := value.(type) {
-	case float64:
-		return int(v), true
-	case int:
-		return v, true
-	default:
-		return 0, false
-	}
-}
-
-func int64Arg(value any) (int64, bool) {
-	switch v := value.(type) {
-	case float64:
-		return int64(v), true
-	case int64:
-		return v, true
-	case int:
-		return int64(v), true
-	default:
-		return 0, false
-	}
 }
 
 func capToolOutput(output string) string {

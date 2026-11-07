@@ -8,24 +8,20 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/docgen"
-	"github.com/trick77/loom/internal/imagegen"
 )
 
 // Engine runs chat turns: it holds what a turn reads and writes, and nothing
 // about HTTP. One Engine serves every turn; per-turn state lives in a Run.
 type Engine struct {
-	thread               ThreadStore
-	usage                UsageStore
-	artifacts            ArtifactStore
-	documents            DocumentService
-	llm                  ChatClient
-	mcp                  ToolService
-	docTools             []docgen.Generator
-	imageTools           []imagegen.Tool
-	sandbox              SandboxRunner
-	imageDefaultModel    string
-	imageTypographyModel string
-	usersDir             string
+	thread    ThreadStore
+	usage     UsageStore
+	artifacts ArtifactStore
+	documents DocumentService
+	llm       ChatClient
+	mcp       ToolService
+	docTools  []docgen.Generator
+	sandbox   SandboxRunner
+	usersDir  string
 	// knowledgeInlineTokenBudget bounds the full-document knowledge injected
 	// per turn (0 disables it, falling back to pure RAG retrieval).
 	knowledgeInlineTokenBudget int
@@ -59,12 +55,6 @@ type Config struct {
 	LLM       ChatClient
 	MCP       ToolService
 	DocTools  []docgen.Generator
-	// ImageTools generate images; ImageDefaultModel is the baseline image
-	// model and ImageTypographyModel the one for typography work (empty turns
-	// typography routing off).
-	ImageTools           []imagegen.Tool
-	ImageDefaultModel    string
-	ImageTypographyModel string
 	// Sandbox runs run_python; nil keeps the tool off.
 	Sandbox  SandboxRunner
 	UsersDir string
@@ -104,10 +94,7 @@ func New(c Config) *Engine {
 		llm:                        c.LLM,
 		mcp:                        c.MCP,
 		docTools:                   c.DocTools,
-		imageTools:                 c.ImageTools,
 		sandbox:                    c.Sandbox,
-		imageDefaultModel:          c.ImageDefaultModel,
-		imageTypographyModel:       c.ImageTypographyModel,
 		usersDir:                   c.UsersDir,
 		knowledgeInlineTokenBudget: c.KnowledgeInlineTokenBudget,
 		projectSummaryTokenBudget:  c.ProjectSummaryTokenBudget,

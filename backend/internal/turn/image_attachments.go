@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/artifact"
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/imagescale"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 )
 
 const maxImageAttachmentsPerMessage = 5
@@ -95,16 +95,15 @@ func (s *Engine) ResolveImageAttachments(ctx context.Context, userID, text strin
 	return parts, items, nil
 }
 
-// editImageSource carries the original bytes of an uploaded/prior image that is
-// forwarded to the image model for direct editing or transformation. The provider encodes
-// the raw bytes as base64 with no MIME prefix, so only the bytes are needed.
+// maxEditSourceBytes is the largest source image loom forwards to the image
+// tool (input_images): the size the contract (docs/imagegen.md) accepts.
+const maxEditSourceBytes = mcp.ImagegenMaxInputBytes
+
+// editImageSource is the original bytes of an uploaded or earlier image that
+// an edit turn hands the image tool. The tool keeps its proportions (it reads
+// them from the bytes, EXIF orientation too).
 type editImageSource struct {
 	Data []byte
-	// Width and Height are the source image's pixel dimensions, used to give the
-	// edit the same proportions as its source. Zero when the bytes could not be
-	// decoded, in which case the caller falls back to its usual default shape.
-	Width  int
-	Height int
 }
 
 // loadEditSourceImage reads the original full-resolution bytes of an image
@@ -142,12 +141,8 @@ func (s *Engine) loadEditSourceImage(ctx context.Context, userID, artifactID str
 	// returned unshrunk and could still exceed the image model's input cap, which Normalized()
 	// would later reject as a hard tool error. Skip it here so the turn degrades to
 	// prompt-only generation instead of failing outright.
-	if len(data) > imagegen.MaxInputImageBytes {
+	if len(data) > maxEditSourceBytes {
 		return editImageSource{}, false, nil
 	}
-	// imagescale.Dimensions, not image.DecodeConfig: it registers every allowed
-	// upload format (WebP included) and corrects for EXIF orientation, which a
-	// phone photo forwarded here untouched still carries.
-	width, height := imagescale.Dimensions(data)
-	return editImageSource{Data: data, Width: width, Height: height}, true, nil
+	return editImageSource{Data: data}, true, nil
 }

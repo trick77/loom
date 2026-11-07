@@ -305,13 +305,23 @@ func TestLoadImageGenConfiguredByAPIKey(t *testing.T) {
 
 func TestLoadImageGenPollTimeoutOverride(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "7m")
+	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "2m")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.ImageGenPollTimeout != 7*time.Minute {
-		t.Fatalf("ImageGenPollTimeout = %s, want 7m0s", cfg.ImageGenPollTimeout)
+	if cfg.ImageGenPollTimeout != 2*time.Minute {
+		t.Fatalf("ImageGenPollTimeout = %s, want 2m0s", cfg.ImageGenPollTimeout)
+	}
+}
+
+// A poll longer than the image tool call's limit would be cut off by the
+// call: refused at boot instead of failing every slow image.
+func TestLoadImageGenRejectsPollPastCallLimit(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "7m")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "the image tool call's limit") {
+		t.Fatalf("Load() error = %v, want the call limit named", err)
 	}
 }
 
