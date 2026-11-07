@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,6 +122,12 @@ func (s *Service) Call(ctx context.Context, raw json.RawMessage) (Output, error)
 			return Output{}, fmt.Errorf("invalid arguments: %w", err)
 		}
 	}
+	return s.Generate(ctx, ArgsFromMap(m))
+}
+
+// ArgsFromMap reads decoded tool arguments. input_images may come as decoded
+// JSON ([]any) or as the client built them ([]map[string]any).
+func ArgsFromMap(m map[string]any) CallArgs {
 	args := CallArgs{
 		Prompt:       stringArg(m, "prompt"),
 		Filename:     stringArg(m, "filename"),
@@ -128,23 +135,34 @@ func (s *Service) Call(ctx context.Context, raw json.RawMessage) (Output, error)
 		OutputFormat: stringArg(m, "output_format"),
 		Model:        stringArg(m, ArgModel),
 	}
-	args.Width, _ = intArg(m, "width")
-	args.Height, _ = intArg(m, "height")
-	if seed, ok := intArg(m, "seed"); ok {
-		s := int64(seed)
-		args.Seed = &s
+	if w, ok := intArg(m, "width", math.MaxInt32); ok {
+		args.Width = int(w)
 	}
-	if tol, ok := intArg(m, "safety_tolerance"); ok {
-		args.SafetyTolerance = &tol
+	if h, ok := intArg(m, "height", math.MaxInt32); ok {
+		args.Height = int(h)
+	}
+	if seed, ok := intArg(m, "seed", math.MaxInt64); ok {
+		args.Seed = &seed
+	}
+	if tol, ok := intArg(m, "safety_tolerance", math.MaxInt32); ok {
+		t := int(tol)
+		args.SafetyTolerance = &t
 	}
 	args.TextHeavy, _ = m[ArgTextHeavy].(bool)
-	if list, ok := m[ArgInputImages].([]any); ok {
+	var entries []map[string]any
+	switch list := m[ArgInputImages].(type) {
+	case []any:
 		for _, item := range list {
 			entry, _ := item.(map[string]any)
-			args.InputImages = append(args.InputImages, InputImage{Data: stringArg(entry, "data"), MimeType: stringArg(entry, "mime_type")})
+			entries = append(entries, entry)
 		}
+	case []map[string]any:
+		entries = list
 	}
-	return s.Generate(ctx, args)
+	for _, entry := range entries {
+		args.InputImages = append(args.InputImages, InputImage{Data: stringArg(entry, "data"), MimeType: stringArg(entry, "mime_type")})
+	}
+	return args
 }
 
 func stringArg(m map[string]any, key string) string {
@@ -152,17 +170,17 @@ func stringArg(m map[string]any, key string) string {
 	return v
 }
 
-// intArg reads a whole number a JSON argument carries (as float64), or one
-// sent as a numeric string; anything else is absent.
-func intArg(m map[string]any, key string) (int, bool) {
+// intArg reads a whole number of at most limit that a JSON argument carries
+// (as float64), or one sent as a plain integer string ("512", not "512px");
+// anything else is absent.
+func intArg(m map[string]any, key string, limit int64) (int64, bool) {
 	switch v := m[key].(type) {
 	case float64:
-		if v == math.Trunc(v) && math.Abs(v) <= math.MaxInt32 {
-			return int(v), true
+		if v == math.Trunc(v) && math.Abs(v) <= float64(limit) {
+			return int64(v), true
 		}
 	case string:
-		var n int
-		if _, err := fmt.Sscanf(strings.TrimSpace(v), "%d", &n); err == nil {
+		if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && n <= limit && n >= -limit {
 			return n, true
 		}
 	}
@@ -181,10 +199,10 @@ func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 		Width: args.Width, Height: args.Height, Seed: args.Seed,
 		OutputFormat: args.OutputFormat, SafetyTolerance: args.SafetyTolerance,
 	}
+	if len(args.InputImages) > MaxInputImages {
+		return Output{}, fmt.Errorf("at most %d input images are supported", MaxInputImages)
+	}
 	for i, in := range args.InputImages {
-		if i == MaxInputImages {
-			break
-		}
 		data, err := base64.StdEncoding.DecodeString(in.Data)
 		if err != nil || len(data) == 0 {
 			return Output{}, fmt.Errorf("input_images[%d] is not base64 image data", i)

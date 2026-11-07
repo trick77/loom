@@ -60,16 +60,13 @@ func (s *Engine) runToolCallWith(ctx context.Context, call llm.ToolCall, extra m
 	callCtx, cancel := context.WithTimeout(ctx, s.toolCallDuration(call.Function.Name))
 	defer cancel()
 	sent := arguments
-	if s.toolPolicy(call.Function.Name).imageGenerator {
-		// Only loom sets these: a model (or a page it read) naming a model
-		// or slipping in an image would pick the endpoint and lock it.
+	if isImage := s.toolPolicy(call.Function.Name).imageGenerator; isImage || len(extra) > 0 {
 		sent = maps.Clone(arguments)
-		for _, name := range imageLoomArgs {
-			delete(sent, name)
+		if isImage {
+			// Only loom sets these: a model (or a page it read) naming a
+			// model or slipping in an image would pick the endpoint and lock it.
+			dropLoomArgs(sent)
 		}
-	}
-	if len(extra) > 0 {
-		sent = maps.Clone(sent)
 		maps.Copy(sent, extra)
 	}
 	start := time.Now()

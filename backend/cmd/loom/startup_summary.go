@@ -121,6 +121,8 @@ func tavilyCapability(cfg config.Config) startupCapability {
 func imageGenCapability(cfg config.Config, mcpConfig mcp.Config) startupCapability {
 	server, ok := mcpConfig.Servers[mcp.ImagegenServer]
 	switch {
+	case ok && server.Transport != mcp.TransportInProcess && !server.Artifacts:
+		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "mcp.json server " + mcp.ImagegenServer + " lacks \"artifacts\": true"}
 	case ok && server.Transport != mcp.TransportInProcess:
 		return startupCapability{Name: "Image generation", Status: "enabled", Detail: "mcp.json server " + mcp.ImagegenServer}
 	case imageGenConfigured(cfg):

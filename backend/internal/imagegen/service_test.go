@@ -118,12 +118,24 @@ func TestServiceSchemaDeclaresLoomArgs(t *testing.T) {
 func TestServiceCallIsLenientWithModelArgs(t *testing.T) {
 	p := &recordingProvider{}
 	svc := NewService(p, "", "")
-	_, err := svc.Call(context.Background(), json.RawMessage(`{"prompt":"x","width":"512","height":512,"seed":3.5,"safety_tolerance":0,"text_heavy":"yes"}`))
+	_, err := svc.Call(context.Background(), json.RawMessage(`{"prompt":"x","width":"512","height":"600px","seed":3.5,"safety_tolerance":0,"text_heavy":"yes"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.got.Width != 512 || p.got.Height != 512 || p.got.Seed != nil || p.got.SafetyTolerance == nil || *p.got.SafetyTolerance != 0 {
+	if p.got.Width != 512 || p.got.Height != 0 || p.got.Seed != nil || p.got.SafetyTolerance == nil || *p.got.SafetyTolerance != 0 {
 		t.Fatalf("request %+v", p.got)
+	}
+	// A seed past 32 bits still reproduces.
+	if _, err := svc.Call(context.Background(), json.RawMessage(`{"prompt":"x","seed":3000000000}`)); err != nil || p.got.Seed == nil || *p.got.Seed != 3000000000 {
+		t.Fatalf("seed %v, %v", p.got.Seed, err)
+	}
+	// More input images than the provider takes fail, never silently shrink.
+	five := make([]InputImage, MaxInputImages+1)
+	for i := range five {
+		five[i] = InputImage{Data: pngOfSize(t, 4, 4), MimeType: "image/png"}
+	}
+	if _, err := svc.Generate(context.Background(), CallArgs{Prompt: "x", InputImages: five}); err == nil {
+		t.Fatal("too many input images accepted")
 	}
 	_, err = svc.Call(context.Background(), json.RawMessage(`{"prompt":"x","seed":7,"input_images":[{"data":"`+pngOfSize(t, 8, 8)+`","mime_type":"image/png"}]}`))
 	if err != nil || p.got.Seed == nil || *p.got.Seed != 7 || len(p.got.InputImages) != 1 {

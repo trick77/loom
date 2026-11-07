@@ -70,9 +70,14 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 // An mcp.json server named imagegen serves images, with or without a fal key.
 func TestStartupCapabilitiesImageServerFromFile(t *testing.T) {
 	items := startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
-		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp"},
+		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp", Artifacts: true},
 	}}, startupRuntime{})
 	assertCapability(t, items, "Image generation", "enabled", "mcp.json server imagegen")
+	// Without artifacts its images are dropped: say so, not "enabled".
+	items = startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
+		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp"},
+	}}, startupRuntime{})
+	assertCapability(t, items, "Image generation", "disabled", `lacks "artifacts": true`)
 }
 
 func TestStartupCapabilitiesSandboxConfigured(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
@@ -43,13 +44,15 @@ func (s *Engine) imageToolAvailable(userID string) bool {
 	if s.mcp == nil || !s.canStoreArtifacts() {
 		return false
 	}
-	_, byName := s.registry()
-	for name, spec := range byName {
-		if spec.imageGenerator && s.mcp.HasTool(name) && s.mcp.MakesArtifacts(name) && s.mcp.ToolAllowed(mcp.Principal{ID: userID}, name) {
-			return true
-		}
+	return s.mcp.HasTool(imageToolName) && s.mcp.MakesArtifacts(imageToolName) &&
+		s.mcp.ToolAllowed(MCPPrincipal(auth.User{ID: userID}), imageToolName)
+}
+
+// dropLoomArgs removes the arguments only loom fills from args, in place.
+func dropLoomArgs(args map[string]any) {
+	for _, name := range imageLoomArgs {
+		delete(args, name)
 	}
-	return false
 }
 
 // toolCallContext is the context a round's MCP calls run on: it names the
@@ -70,9 +73,7 @@ func withoutLoomArgs(tool llm.Tool) llm.Tool {
 		return tool
 	}
 	trimmed := maps.Clone(props)
-	for _, name := range imageLoomArgs {
-		delete(trimmed, name)
-	}
+	dropLoomArgs(trimmed)
 	params := maps.Clone(tool.Function.Parameters)
 	params["properties"] = trimmed
 	switch required := params["required"].(type) {
@@ -126,7 +127,12 @@ func (t *Run) lockImageModel(ctx context.Context, created []artifact.Response) {
 	if model == "" {
 		return
 	}
-	updated, _, err := t.e.thread.SetThreadImageModelIfEmpty(ctx, t.user.ID, t.thread.ID, model)
+	// Like the image itself (keepToolImages), the lock outlives a round cut
+	// short or a client gone: an image kept without its model lets the next
+	// one change the look.
+	lockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), artifactPersistTimeout)
+	defer cancel()
+	updated, _, err := t.e.thread.SetThreadImageModelIfEmpty(lockCtx, t.user.ID, t.thread.ID, model)
 	if err != nil {
 		slog.Warn("image model not locked", "thread_id", t.thread.ID, "err", err)
 		return

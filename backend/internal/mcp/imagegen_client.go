@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/trick77/loom/internal/artifact"
@@ -56,11 +55,9 @@ func (c *imagegenClient) CallTool(ctx context.Context, name string, arguments ma
 	if name != imagegen.GenerateToolName {
 		return CallResult{}, fmt.Errorf("unknown imagegen tool %q", name)
 	}
-	raw, err := json.Marshal(arguments)
-	if err != nil {
-		return CallResult{}, err
-	}
-	out, err := c.svc.Call(ctx, raw)
+	// The arguments as loom built them, no JSON round-trip: an edit source is
+	// tens of MiB, every copy counts.
+	out, err := c.svc.Generate(ctx, imagegen.ArgsFromMap(arguments))
 	if err != nil {
 		return CallResult{}, err
 	}
