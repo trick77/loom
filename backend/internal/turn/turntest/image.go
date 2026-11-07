@@ -2,9 +2,12 @@ package turntest
 
 import (
 	"context"
+	"net/http/httptest"
+	"testing"
 
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/toolkit/mcpserver"
 )
 
 // ImageProvider is an image provider that returns a tiny fake PNG.
@@ -30,15 +33,26 @@ func (ImageProvider) Generate(_ context.Context, req imagegen.GenerateRequest) (
 	}, nil
 }
 
-// ImageService is the image tool served in-process behind its MCP contract,
-// as loom wires the built-in: provider renders, defaultModel and
-// typographyModel are the service's models ("" for none).
-func ImageService(provider imagegen.Provider, defaultModel, typographyModel string) *mcp.Service {
-	svc, err := mcp.NewServiceFromConfigs(context.Background(), mcp.Config{Servers: map[string]mcp.ServerConfig{
-		imagegen.ServerName: mcp.ImagegenServerConfig(imagegen.NewService(provider, defaultModel, typographyModel)),
-	}}, mcp.Config{}, nil, nil)
+// ImageService is the image tool as loom reaches it in production: the
+// loom-imagegen MCP server (imagegen.MCPServer) over HTTP, registered as the
+// built-in sidecar. provider renders; defaultModel and typographyModel are the
+// server's models ("" for none). extra servers ride along (e.g. fetch).
+func ImageService(t testing.TB, provider imagegen.Provider, defaultModel, typographyModel string, extra ...map[string]mcp.ServerConfig) *mcp.Service {
+	t.Helper()
+	srv := httptest.NewServer(mcpserver.New(imagegen.MCPServer(imagegen.NewService(provider, defaultModel, typographyModel), "test")))
+	t.Cleanup(srv.Close)
+	required := mcp.Config{Servers: map[string]mcp.ServerConfig{}}
+	for _, servers := range extra {
+		for name, sc := range servers {
+			required.Servers[name] = sc
+		}
+	}
+	sidecar := mcp.Config{Servers: map[string]mcp.ServerConfig{
+		mcp.ImagegenServer: mcp.ImagegenServerConfig(srv.URL, "test-token"),
+	}}
+	svc, err := mcp.NewServiceFromConfigs(context.Background(), required, sidecar, srv.Client(), nil)
 	if err != nil {
-		panic(err) // in-process discovery cannot fail
+		t.Fatal(err)
 	}
 	return svc
 }

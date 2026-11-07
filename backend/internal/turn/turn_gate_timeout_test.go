@@ -31,7 +31,7 @@ func serverWithHangingIntentGate(t *testing.T, gateTimeout time.Duration) (*Engi
 	chat := &hangingIntentChatClient{entered: make(chan struct{})}
 	return New(Config{
 		LLM:             chat,
-		MCP:             turntest.ImageService(fakeImageProvider{}, "", ""),
+		MCP:             turntest.ImageService(t, fakeImageProvider{}, "", ""),
 		Artifacts:       fakeArtifactStore{},
 		UsersDir:        t.TempDir(),
 		TurnGateTimeout: gateTimeout,

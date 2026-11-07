@@ -1,21 +1,41 @@
 # imagegen: the image tool contract
 
 loom generates images through one MCP tool, `generate` on the server `imagegen` (`imagegen__generate`). The
-built-in serves it (fal, `BACKEND_IMAGE_GEN_*`); an `mcp.json` entry named `imagegen` replaces it with any server
-that answers this contract. loom keeps the policy around the tool, never the provider:
+`loom-imagegen` sidecar (`backend/cmd/loom-imagegen`, image `loom-imagegen`) serves it with fal; an `mcp.json`
+entry named `imagegen` replaces the sidecar with any server that answers this contract. loom keeps the policy
+around the tool, never the provider:
 
 - an image turn (the intent gate) forces the tool, one image per turn, scheduled runs never get it;
 - it fills three arguments itself, hidden from the model;
 - it stores the image as an artifact and keeps the thread's model.
 
-## Server entry
+The sidecar holds the fal key and every model fact (which model renders text, the 1024 px cap for it, an edit keeping
+its source's shape). It is stateless (no volume) and best-effort: loom boots without it and offers images while it
+answers.
+
+## Setup (sidecar)
+
+`.env`:
+
+```sh
+COMPOSE_PROFILES=imagegen            # plus any other profiles, comma-separated
+BACKEND_IMAGEGEN_URL=http://imagegen:8040
+BACKEND_IMAGEGEN_TOKEN=              # openssl rand -hex 32; loom and the sidecar share it
+BACKEND_IMAGE_GEN_API_KEY=           # fal key; compose hands it and the other BACKEND_IMAGE_GEN_* to the sidecar
+```
+
+`BACKEND_IMAGE_GEN_MODEL`, `_TYPOGRAPHY_MODEL` (`off`: every image on the model), `_BASE_URL` and `_POLL_TIMEOUT`
+(at most 2m30s) keep their meaning; they now configure the sidecar, loom does not read them.
+
+## Replacing it
 
 ```json
-"imagegen": { "type": "http", "url": "http://imagegen:8080/mcp", "artifacts": true }
+"imagegen": { "type": "http", "url": "http://my-images:8080/mcp", "artifacts": true,
+  "headers": { "Authorization": "Bearer ${MY_IMAGES_TOKEN}" } }
 ```
 
 `artifacts: true` is required: without it loom drops the image, offers no image turn, and holds the reply to 4 MiB.
-With it a call may run 3 min and reply up to ~35 MiB.
+With it a call may run 3 min and reply up to ~35 MiB; up to 4 images per reply, 25 MiB together.
 
 ## Input
 

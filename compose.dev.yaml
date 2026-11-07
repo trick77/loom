@@ -67,11 +67,11 @@ services:
       PEEQ_MCP_URL: "${PEEQ_MCP_URL:-}"
       PEEQ_MCP_TOKEN: "${PEEQ_MCP_TOKEN:-}"
       BACKEND_PEEQ_USERS: "${BACKEND_PEEQ_USERS:-}"
-      BACKEND_IMAGE_GEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-https://queue.fal.run}"
-      BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"
-      BACKEND_IMAGE_GEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-fal-ai/flux-2-pro}"
-      BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-fal-ai/flux-2-max}"
-      BACKEND_IMAGE_GEN_POLL_TIMEOUT: "${BACKEND_IMAGE_GEN_POLL_TIMEOUT:-1m}"
+      # Image sidecar, opt-in: COMPOSE_PROFILES=imagegen,
+      # BACKEND_IMAGEGEN_URL=http://localhost:8040 and the fal key
+      # BACKEND_IMAGE_GEN_API_KEY in .env.
+      BACKEND_IMAGEGEN_URL: "${BACKEND_IMAGEGEN_URL:-}"
+      BACKEND_IMAGEGEN_TOKEN: dev-imagegen-token-please-change-0123456789
     volumes:
       - loom-dev-data:/data
       - ./conf:/conf:ro
@@ -180,6 +180,33 @@ services:
       - "127.0.0.1:8060:8060"
     healthcheck:
       test: ["CMD", "/loom-tunewire", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+
+  imagegen:
+    # Image sidecar, built from source, published on a localhost port.
+    build:
+      context: .
+      dockerfile: imagegen/Containerfile
+    profiles: ["imagegen"]
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Same value as loom's BACKEND_IMAGEGEN_TOKEN above.
+      IMAGEGEN_TOKEN: dev-imagegen-token-please-change-0123456789
+      IMAGEGEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"
+      IMAGEGEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-}"
+      IMAGEGEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-}"
+    ports:
+      - "127.0.0.1:8040:8040"
+    healthcheck:
+      test: ["CMD", "/loom-imagegen", "healthcheck"]
       interval: 60s
       timeout: 5s
       start_period: 30s

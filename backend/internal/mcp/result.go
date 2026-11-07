@@ -199,12 +199,18 @@ func structuredImageMeta(raw json.RawMessage) []imageMeta {
 		return nil
 	}
 	var payload struct {
-		Images []imageMeta `json:"images"`
+		Images []json.RawMessage `json:"images"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil
 	}
-	return payload.Images
+	// Entry by entry: one mistyped field (a width sent as a string) costs
+	// that image its details, not every image in the reply.
+	out := make([]imageMeta, len(payload.Images))
+	for i, entry := range payload.Images {
+		_ = json.Unmarshal(entry, &out[i])
+	}
+	return out
 }
 
 // toolFiles keeps the text resources run_python can use: CSV or JSON, under

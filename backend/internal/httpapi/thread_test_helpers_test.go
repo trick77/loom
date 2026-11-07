@@ -39,21 +39,15 @@ const imageToolName = "imagegen__generate"
 
 // imageTools serves provider as the image tool, in-process behind its MCP
 // contract, as cmd/loom wires the built-in.
-func imageTools(provider imagegen.Provider) ToolService {
-	return turntest.ImageService(provider, "", "")
+func imageTools(t *testing.T, provider imagegen.Provider) ToolService {
+	t.Helper()
+	return turntest.ImageService(t, provider, "", "")
 }
 
 // imageToolsWithFetch is imageTools plus the in-process fetch tool.
 func imageToolsWithFetch(t *testing.T, provider imagegen.Provider) ToolService {
 	t.Helper()
-	svc, err := mcp.NewServiceFromConfigs(context.Background(), mcp.Config{Servers: map[string]mcp.ServerConfig{
-		imagegen.ServerName: mcp.ImagegenServerConfig(imagegen.NewService(provider, "", "")),
-		"fetch":             mcp.FetchServerConfig(nil),
-	}}, mcp.Config{}, nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return svc
+	return turntest.ImageService(t, provider, "", "", map[string]mcp.ServerConfig{"fetch": mcp.FetchServerConfig(nil)})
 }
 
 func strPtr(value string) *string {

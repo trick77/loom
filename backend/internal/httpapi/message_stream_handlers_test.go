@@ -737,7 +737,7 @@ func TestStreamMessageExecutesBuiltInImageTool(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
 		Artifacts: artifactStore,
-		MCP:       imageTools(fakeImageProvider{}),
+		MCP:       imageTools(t, fakeImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -797,7 +797,7 @@ func TestStreamMessageUsesFallbackTextWhenImageFinalResponseIsEmpty(t *testing.T
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
 		Artifacts: artifactStore,
-		MCP:       imageTools(fakeImageProvider{}),
+		MCP:       imageTools(t, fakeImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -857,7 +857,7 @@ func TestStreamMessagePersistsImageWhenFinalResponseIsCanceled(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
 		Artifacts: artifact.NewStore(db),
-		MCP:       imageTools(fakeImageProvider{}),
+		MCP:       imageTools(t, fakeImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -910,7 +910,7 @@ func TestStreamMessageGeneratesAtMostOneImagePerTurn(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
 		Artifacts: artifactStore,
-		MCP:       imageTools(fakeImageProvider{}),
+		MCP:       imageTools(t, fakeImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -1037,7 +1037,7 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    store,
 		Artifacts: fakeArtifactStore{},
-		MCP:       imageTools(errorImageProvider{err: errors.New("fal generation timed out: context deadline exceeded")}),
+		MCP:       imageTools(t, errorImageProvider{err: errors.New("fal generation timed out: context deadline exceeded")}),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -1047,7 +1047,8 @@ func TestStreamMessageReturnsImageToolFailureAsStreamError(t *testing.T) {
 	server.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `"error":"tool failed: fal generation timed out: context deadline exceeded"`) {
+	// The sidecar's error comes back through MCP, the provider's reason kept.
+	if !strings.Contains(body, `"error":"tool failed: `) || !strings.Contains(body, `fal generation timed out: context deadline exceeded`) {
 		t.Fatalf("SSE body missing provider failure error:\n%s", body)
 	}
 	if store.AssistantContent != "" {
@@ -1079,7 +1080,7 @@ func TestStreamMessageDoesNotStreamTextBeforeRequiredImageToolCall(t *testing.T)
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    store,
 		Artifacts: fakeArtifactStore{},
-		MCP:       imageTools(fakeImageProvider{}),
+		MCP:       imageTools(t, fakeImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -1121,7 +1122,7 @@ func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testin
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    store,
 		Artifacts: fakeArtifactStore{},
-		MCP:       imageTools(provider),
+		MCP:       imageTools(t, provider),
 		UsersDir:  t.TempDir(),
 		LLM:       capturingLLM,
 	})
@@ -2219,7 +2220,7 @@ func TestStreamMessageStampsImageGenerationCategory(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
 		Artifacts: artifactStore,
-		MCP:       imageTools(fakeImageProvider{}),
+		MCP:       imageTools(t, fakeImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -2464,7 +2465,7 @@ func TestPrepareTurnRunsImageGateAndClassifierConcurrently(t *testing.T) {
 	srv := newAuthenticatedServer(t, Deps{
 		Thread:    store,
 		Artifacts: fakeArtifactStore{},
-		MCP:       imageTools(fakeImageProvider{}),
+		MCP:       imageTools(t, fakeImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM:       fakeChatClient{Category: "coding", ImageIntentGate: imageGate, ClassifyEntered: classifyEntered},
 	})
@@ -2500,7 +2501,7 @@ func TestPrepareTurnImageTurnKeepsImageCategoryOverClassifier(t *testing.T) {
 	srv := newAuthenticatedServer(t, Deps{
 		Thread:    store,
 		Artifacts: fakeArtifactStore{},
-		MCP:       imageTools(fakeImageProvider{}),
+		MCP:       imageTools(t, fakeImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM: fakeChatClient{
 			Category:    "coding",

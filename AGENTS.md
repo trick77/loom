@@ -24,10 +24,12 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
   prompts, accounting. **Never name a model, vendor or model behaviour in loom**: intents
   (`ReasoningMinimal`/`ReasoningBalanced`, `MaxAnswerTokens`), profile fields; a missing fact goes into
   llmwire. Tests use `llmwiretest`. Extraction: Tika sidecar.
-- Tools are MCP-backed. `fetch__fetch` in-process (`webfetch`); Tavily, Obscura, Apple Music
-  (`docs/tunewire.md`), Strava (`docs/strava.md`) built in; extras in `BACKEND_MCP_SERVERS_FILE` (default `/conf/mcp.json`, overrides
-  built-ins by name, secrets only as `${VAR}`). Sources → `structuredContent.sources`, no tool-name case.
-  `users` = loom user id.
+- Tools are MCP-backed: `fetch__fetch` in-process; Tavily, Obscura, tunewire, strava, imagegen built in;
+  extras in `BACKEND_MCP_SERVERS_FILE` (`/conf/mcp.json`, overrides built-ins by name, secrets only `${VAR}`).
+  Outside service behind a tool → own MCP sidecar (`loom-<name>`), contract in `docs/<name>.md`, swappable by
+  an `mcp.json` entry of that name. loom keeps policy (gates, budgets, artifacts) via `toolSpec` flags, never
+  a tool-name check, vendor import or vendor arg. Results only via text, `structuredContent.sources`, files,
+  images (`artifacts: true`). `users` = loom user id.
 - `run_python` → `loom-sandbox` (`docs/sandbox.md`): a job never gets `/data`, a user id or a socket.
 
 ## Config
