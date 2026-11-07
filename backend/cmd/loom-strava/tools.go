@@ -426,15 +426,20 @@ func (t *tools) getActivity(ctx context.Context, raw json.RawMessage) mcpserver.
 
 // recentStreamsAge: get_activity attaches the streams file of an activity
 // this recent unasked, so a follow-up question about a recent ride has its
-// raw data at hand. Older ones only through activity_analysis: the streams
-// read costs the shared rate budget once (stored for good after).
+// raw data at hand. Older ones only through activity_analysis.
 const recentStreamsAge = 14 * 24 * time.Hour
 
 // recentStreams is d's streams file when d started within recentStreamsAge.
-// ok false when it is older, has no streams, or the read failed: the
-// activity itself is answered either way.
+// ok false when it is older, a manual entry (no streams), the read failed or
+// was not worth the budget: the activity itself is answered either way.
+// Unasked, so a read that costs Strava stops at half the 15-minute budget,
+// like every other cold read: a look over many recent activities must not
+// starve the other users.
 func (t *tools) recentStreams(ctx context.Context, user string, a athlete, d detailedActivity) (mcpserver.File, bool) {
-	if t.svc.now().Sub(d.utcStart()) > recentStreamsAge {
+	if d.Manual || t.svc.now().Sub(d.utcStart()) > recentStreamsAge {
+		return mcpserver.File{}, false
+	}
+	if !t.svc.streamsKept(user, d.ID) && t.svc.spent(ctx) != "" {
 		return mcpserver.File{}, false
 	}
 	s, err := t.svc.streams(ctx, user, d.ID, false)
@@ -445,27 +450,13 @@ func (t *tools) recentStreams(ctx context.Context, user string, a athlete, d det
 	if s.n == 0 {
 		return mcpserver.File{}, false
 	}
-	pE, hE := t.zoneEdges(ctx, user, a, d.SportType)
+	var pE, hE []float64
+	// Neither zone column fills without power or heart rate: no zones read.
+	if s.watts != nil || s.hr != nil {
+		zp := t.pickZones(ctx, user, a, d, s)
+		pE, hE = zp.pE, zp.hE
+	}
 	return streamsCSV(d.ID, s, pE, hE, maxFilesBytes)
-}
-
-// zoneEdges are the zones the streams file buckets by, as activity_analysis
-// picks them: Strava's power zones (else Coggan's from FTP), the user's own
-// stored heart-rate zones of the sport unless Strava's are custom.
-func (t *tools) zoneEdges(ctx context.Context, user string, a athlete, sport string) (pE, hE []float64) {
-	z, zerr := t.svc.zones(ctx, user)
-	if zerr != nil {
-		z = athleteZones{}
-	}
-	pE, hE = powerEdges(z, a.FTP), hrEdges(z)
-	if zerr == nil && (z.HeartRate == nil || !z.HeartRate.CustomZones) {
-		if f, ok := familyOf(sport); ok {
-			if oz, ok := t.loadHRZones(user, a.ID)[f.key]; ok && oz.edges() != nil {
-				hE = oz.edges()
-			}
-		}
-	}
-	return pE, hE
 }
 
 // ownActivity reads an activity and makes sure it is the user's own: the

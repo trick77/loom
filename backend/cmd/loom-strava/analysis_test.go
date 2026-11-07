@@ -606,4 +606,26 @@ func TestGetActivity_recentStreams(t *testing.T) {
 			t.Errorf("activity %s: error %v, %d files:\n%s", id, r.IsError, len(r.Files), r.Text)
 		}
 	}
+	// A manual entry has no streams: none asked for.
+	f.addActivity(1, 1006, "Gym", "Workout", local(2026, 11, 2, 18), &ride, map[string]any{"manual": true})
+	if r := callTool(t, h, userA, "get_activity", `{"id":1006}`); len(r.Files) != 0 || f.count("/activities/1006/streams") != 0 {
+		t.Errorf("manual entry: %d files, %d streams reads", len(r.Files), f.count("/activities/1006/streams"))
+	}
+	// The same zones as activity_analysis: two files of one name agree.
+	if a := callTool(t, h, userA, "activity_analysis", `{"id":1001}`); a.file("strava_1001_streams.csv") != csv {
+		t.Error("get_activity and activity_analysis attach different streams files")
+	}
+	// Past half the 15-minute budget an unasked read stops; kept streams
+	// still come at no cost.
+	f.addActivity(1, 1007, "Late", "Ride", local(2026, 11, 3, 8), &ride, nil)
+	f.mu.Lock()
+	f.rateUsed15 = 60
+	f.mu.Unlock()
+	// 1007's own detail read reports the usage before its streams would go.
+	if r := callTool(t, h, userA, "get_activity", `{"id":1007}`); r.IsError || len(r.Files) != 0 || f.count("/activities/1007/streams") != 0 {
+		t.Errorf("past the cold budget: error %v, %d files, %d streams reads", r.IsError, len(r.Files), f.count("/activities/1007/streams"))
+	}
+	if r := callTool(t, h, userA, "get_activity", `{"id":1001}`); r.file("strava_1001_streams.csv") == "" {
+		t.Error("kept streams withheld past the cold budget")
+	}
 }

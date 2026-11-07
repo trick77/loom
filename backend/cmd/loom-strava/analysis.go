@@ -613,6 +613,57 @@ type analysisArgs struct {
 	Refresh   bool            `json:"refresh"`
 }
 
+// zonePick is what pickZones settled for one activity's streams.
+type zonePick struct {
+	z      athleteZones
+	zerr   error
+	pE, hE []float64
+	whole  rideMetrics
+	this   storedMetrics            // the activity's own entry, zone-free
+	stored map[string]storedMetrics // the user's entries, this one included
+	own    *storedHRZones           // the user's own HR zones in use, nil for Strava's
+	ownFam string
+}
+
+// pickZones stores d's metrics entry and picks the zones its streams are
+// bucketed by: activity_analysis and get_activity's streams file alike, so
+// two files of the same name agree.
+func (t *tools) pickZones(ctx context.Context, user string, a athlete, d detailedActivity, s series) zonePick {
+	p := zonePick{}
+	p.z, p.zerr = t.svc.zones(ctx, user)
+	if p.zerr != nil {
+		p.z = athleteZones{}
+	}
+	p.pE, p.hE = powerEdges(p.z, a.FTP), hrEdges(p.z)
+	p.whole = computeMetrics(s, 0, s.n, p.pE, p.hE)
+	// The stored entry is zone-free, and stored first: a new best moves the
+	// user's zones before they bucket this very activity.
+	p.stored = t.loadMetrics(user, a.ID)
+	p.this = entryOf(p.whole, d.summaryActivity)
+	thisKey := strconv.FormatInt(d.ID, 10)
+	zones := t.storeMetrics(user, a.ID, map[string]storedMetrics{thisKey: p.this}, p.stored, nil)
+	p.stored[thisKey] = p.this
+	// Strava's default zones are age-based: the user's own, stored for this
+	// sport, count instead. Custom zones always win, and without Strava's
+	// answer they may exist: then Strava's own fallback stays.
+	if p.zerr == nil && (p.z.HeartRate == nil || !p.z.HeartRate.CustomZones) {
+		if f, ok := familyOf(d.SportType); ok {
+			if zones == nil {
+				zones = t.loadHRZones(user, a.ID)
+			} else {
+				zones = t.freshHRZones(user, a.ID, zones)
+			}
+			if oz, ok := zones[f.key]; ok && oz.edges() != nil {
+				p.own, p.ownFam, p.hE = &oz, f.key, oz.edges()
+				if s.hr != nil {
+					p.whole.HasHRZones, p.whole.HRZoneS = true, hrZoneTimes(s, 0, s.n, p.hE)
+				}
+			}
+		}
+	}
+	return p
+}
+
 func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpserver.Result {
 	var args analysisArgs
 	if err := mcpserver.DecodeArgs(raw, &args); err != nil {
@@ -651,10 +702,6 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if !ok {
 		return res
 	}
-	z, zerr := t.svc.zones(ctx, user)
-	if zerr != nil {
-		z = athleteZones{}
-	}
 	s, err := t.svc.streams(ctx, user, id, fresh)
 	if err != nil {
 		return failure(err)
@@ -663,35 +710,8 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		t.svc.markRefreshed(user, id)
 	}
 	u := unitsOf(a)
-	pE, hE := powerEdges(z, a.FTP), hrEdges(z)
-	whole := computeMetrics(s, 0, s.n, pE, hE)
-	// The stored entry is zone-free, and stored first: a new best moves the
-	// user's zones before they bucket this very activity.
-	stored := t.loadMetrics(user, a.ID)
-	this := entryOf(whole, d.summaryActivity)
-	thisKey := strconv.FormatInt(d.ID, 10)
-	zones := t.storeMetrics(user, a.ID, map[string]storedMetrics{thisKey: this}, stored, nil)
-	stored[thisKey] = this
-	// Strava's default zones are age-based: the user's own, stored for this
-	// sport, count instead. Custom zones always win, and without Strava's
-	// answer they may exist: then Strava's own fallback stays.
-	var own *storedHRZones
-	ownFam := ""
-	if zerr == nil && (z.HeartRate == nil || !z.HeartRate.CustomZones) {
-		if f, ok := familyOf(d.SportType); ok {
-			if zones == nil {
-				zones = t.loadHRZones(user, a.ID)
-			} else {
-				zones = t.freshHRZones(user, a.ID, zones)
-			}
-			if oz, ok := zones[f.key]; ok && oz.edges() != nil {
-				own, ownFam, hE = &oz, f.key, oz.edges()
-				if s.hr != nil {
-					whole.HasHRZones, whole.HRZoneS = true, hrZoneTimes(s, 0, s.n, hE)
-				}
-			}
-		}
-	}
+	zp := t.pickZones(ctx, user, a, d, s)
+	z, pE, hE, whole, this, stored, own, ownFam := zp.z, zp.pE, zp.hE, zp.whole, zp.this, zp.stored, zp.own, zp.ownFam
 	ia, ib := 0, s.n
 	if section {
 		if s.dist == nil {

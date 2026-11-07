@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -40,6 +41,16 @@ func (f *fakeStrava) setField(id int64, key string, v any) {
 			a[key] = v
 		}
 	}
+}
+
+// setStreams replaces one activity's streams on Strava.
+func (f *fakeStrava) setStreams(id int64, s streamSet) {
+	b, _ := json.Marshal(streamJSON(s))
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.streams[id] = m
 }
 
 // deleteActivity deletes one of athlete 1's activities on Strava.
@@ -132,6 +143,9 @@ func TestStore_refresh(t *testing.T) {
 		t.Fatal(r.Text)
 	}
 	f.setField(1001, "name", "Albis loop (cropped)")
+	f.setStreams(1001, synthRideWith(0.8, 1.03, 0, false))
+	m0, _ := svc.store.loadMetrics(userA)
+	oldNP := m0.Activities["1001"].Vals["np"]
 	details := f.count("/activities/1001")
 	if r := callTool(t, h, userA, "get_activity", `{"id":1001}`); strings.Contains(r.Text, "cropped") || f.count("/activities/1001") != details {
 		t.Fatalf("a plain read went to Strava: %s", r.Text)
@@ -141,12 +155,13 @@ func TestStore_refresh(t *testing.T) {
 	if !strings.Contains(r.Text, "Albis loop (cropped)") || f.count("/activities/1001") != details+1 {
 		t.Fatalf("refresh: %s", r.Text)
 	}
-	// A recent activity: its streams file is read again, not the old one.
+	// A recent activity: its streams are read again right away, and the
+	// metrics stored from them are the new ones.
 	if f.count("/activities/1001/streams") != streams+1 || r.file("strava_1001_streams.csv") == "" {
 		t.Error("the old streams survived a refresh")
 	}
-	if m, _ := svc.store.loadMetrics(userA); m.Activities["1001"].V != 0 {
-		t.Error("the old metrics survived a refresh")
+	if m, _ := svc.store.loadMetrics(userA); oldNP == 0 || m.Activities["1001"].Vals["np"] == oldNP {
+		t.Errorf("the old metrics survived a refresh: np %v → %v", oldNP, m.Activities["1001"].Vals["np"])
 	}
 	if r := callTool(t, h, userA, "list_activities", `{}`); !strings.Contains(r.Text, "Albis loop (cropped)") {
 		t.Errorf("list keeps the old name:\n%s", r.Text)

@@ -42,9 +42,11 @@ into the prompt. `loomcharts` in the sandbox image draws them in loom's style. A
 the sidecar answers from its store.
 
 `get_activity` attaches the streams file unasked for an activity started in the last 14 days: a question about a
-recent ride often turns into a closer look, and the raw data is then already there. One streams read the first time,
-none after (stored). Older activities get it only through `activity_analysis`: a look back over many old activities
-would spend the shared budget on streams nobody asked for. A failed or missing streams read never fails the activity.
+recent ride often turns into a closer look, and the raw data is then already there. Cost: one streams read the first
+time, none after (stored), plus the athlete's zones (cached 1 h, shared with every tool; skipped without HR or
+power). Unasked, so an unstored read stops at half the 15-minute budget like every other cold read; manual entries
+are skipped (no streams). Older activities get it only through `activity_analysis`. Both bucket zones the same way
+and store the activity's metrics, so the two files agree. A failed or missing streams read never fails the activity.
 
 ## Limits and storage
 
