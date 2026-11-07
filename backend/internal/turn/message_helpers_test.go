@@ -1,6 +1,8 @@
 package turn
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -149,6 +151,36 @@ func TestBuildHistoryDropsToolMessages(t *testing.T) {
 	}, chat.Message{Content: "next"})
 	if len(history) != 4 || history[0].Role != "system" || history[1].Content != "q" || history[2].Content != "a" || history[3].Content != "next" {
 		t.Fatalf("buildHistory() = %+v, want system, q, a, next", history)
+	}
+}
+
+// An answer's web sources go along with its prose in later turns: without
+// them the model, needing the activity behind "[1]", made up its id.
+func TestBuildHistoryReplaysSources(t *testing.T) {
+	var many []Citation
+	for i := 1; i <= maxReplayedSources+2; i++ {
+		many = append(many, Citation{Index: i, URL: fmt.Sprintf("https://example.com/%d", i), Title: fmt.Sprintf("Page %d", i)})
+	}
+	manyJSON, _ := json.Marshal(many)
+	history := buildHistory("sys", []chat.Message{
+		{Role: chat.RoleUser, Content: "q"},
+		{Role: chat.RoleAssistant, Content: "Your run [1].", Citations: json.RawMessage(
+			`[{"index":1,"url":"https://www.strava.com/activities/20897368757","title":"Seckle\nloop","filename":"Strava"},` +
+				`{"documentId":"d1","filename":"plan.pdf","snippet":"x"}]`)},
+		{Role: chat.RoleUser, Content: "q2"},
+		{Role: chat.RoleAssistant, Content: "Lots.", Citations: manyJSON},
+		{Role: chat.RoleAssistant, Content: "None.", Citations: json.RawMessage(`[]`)},
+	}, chat.Message{Content: "next"})
+	first := history[2].Content
+	if first != "Your run [1].\n\n(sources of this answer: [1] Seckle loop https://www.strava.com/activities/20897368757)" {
+		t.Errorf("replayed answer: %q", first)
+	}
+	if got := history[4].Content; !strings.Contains(got, fmt.Sprintf("[%d] Page %d", maxReplayedSources, maxReplayedSources)) ||
+		strings.Contains(got, fmt.Sprintf("Page %d", maxReplayedSources+1)) {
+		t.Errorf("cap: %q", got)
+	}
+	if history[5].Content != "None." {
+		t.Errorf("no sources, no line: %q", history[5].Content)
 	}
 }
 

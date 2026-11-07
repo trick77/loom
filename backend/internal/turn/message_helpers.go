@@ -2,6 +2,8 @@ package turn
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -186,10 +188,56 @@ func buildHistory(systemContent string, messages []chat.Message, newUserMessage 
 			if strings.TrimSpace(message.Content) == "" {
 				continue
 			}
-			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
+			content := message.Content
+			if message.Role == chat.RoleAssistant {
+				content += replayedSources(message.Citations)
+			}
+			history = append(history, llm.Message{Role: string(message.Role), Content: content})
 		}
 	}
 	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
+}
+
+// maxReplayedSources bounds the sources one earlier answer carries into later
+// turns: every turn of the thread pays for them.
+const maxReplayedSources = 10
+
+// replayedSources is the line an earlier answer's web sources add to it in
+// the history: tool rows are not replayed, so without it the model only sees
+// "[1]" and, needing what stood behind it (an activity id in a source URL),
+// made one up. A row's citations never change, so the line keeps the cached
+// prompt prefix stable. Document citations stay out (no URL, no id).
+func replayedSources(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var cites []Citation
+	if err := json.Unmarshal(raw, &cites); err != nil {
+		return ""
+	}
+	var parts []string
+	for _, c := range cites {
+		if c.URL == "" {
+			continue
+		}
+		if len(parts) == maxReplayedSources {
+			break
+		}
+		title := c.Title
+		if title == "" {
+			title = c.Filename
+		}
+		title = strings.Join(strings.Fields(title), " ")
+		part := fmt.Sprintf("[%d] ", c.Index)
+		if title != "" {
+			part += title + " "
+		}
+		parts = append(parts, part+c.URL)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "\n\n(sources of this answer: " + strings.Join(parts, " · ") + ")"
 }
 
 // incognitoSystemPrompt is the system prompt for a tool-free incognito turn. Unlike
