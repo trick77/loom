@@ -165,6 +165,7 @@ func runServer() error {
 	if err != nil {
 		return err
 	}
+	warnOrphanedImageKey(cfg, os.Getenv)
 	mcpConfig := toolCfg.union()
 	if len(mcpConfig.Servers) > 0 {
 		// Give discovery room for cold MCP sidecars: the fetch bridge boots a
@@ -516,7 +517,7 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// loom-imagegen likewise (docs/imagegen.md): a dead sidecar costs the
 	// image tool. An mcp.json server named imagegen replaces it.
 	if imageGenConfigured(cfg) {
-		out.FileServers.Servers[mcp.ImagegenServer] = mcp.ImagegenServerConfig(cfg.ImagegenURL, cfg.ImagegenToken)
+		out.FileServers.Servers[mcp.ImagegenServer] = mcp.ImagegenServerConfig(cfg.ImageGenURL, cfg.ImageGenToken)
 	}
 	for name, server := range fileServers {
 		if _, exists := required.Servers[name]; exists {
@@ -547,5 +548,16 @@ func tavilyConfigured(cfg config.Config) bool {
 }
 
 func imageGenConfigured(cfg config.Config) bool {
-	return strings.TrimSpace(cfg.ImagegenURL) != ""
+	return strings.TrimSpace(cfg.ImageGenURL) != ""
+}
+
+// warnOrphanedImageKey points an install upgraded past the move to the
+// sidecar at it: loom no longer reads the fal key it still sets, and image
+// requests would quietly become text. It reports whether it warned.
+func warnOrphanedImageKey(cfg config.Config, getenv func(string) string) bool {
+	if imageGenConfigured(cfg) || strings.TrimSpace(getenv("BACKEND_IMAGE_GEN_API_KEY")) == "" {
+		return false
+	}
+	slog.Warn("BACKEND_IMAGE_GEN_API_KEY is set, but image generation now runs in the loom-imagegen sidecar: set COMPOSE_PROFILES=imagegen, BACKEND_IMAGE_GEN_URL and BACKEND_IMAGE_GEN_TOKEN (docs/imagegen.md)")
+	return true
 }

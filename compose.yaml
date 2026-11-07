@@ -56,9 +56,11 @@ services:
       PEEQ_MCP_TOKEN: "${PEEQ_MCP_TOKEN:-}"
       BACKEND_PEEQ_USERS: "${BACKEND_PEEQ_USERS:-}"
       # Image sidecar (docs/imagegen.md), opt-in: COMPOSE_PROFILES=imagegen plus
-      # BACKEND_IMAGEGEN_URL=http://imagegen:8040 in .env.
-      # BACKEND_IMAGEGEN_TOKEN comes in through env_file.
-      BACKEND_IMAGEGEN_URL: "${BACKEND_IMAGEGEN_URL:-}"
+      # BACKEND_IMAGE_GEN_URL=http://imagegen:8040 in .env.
+      # BACKEND_IMAGE_GEN_TOKEN comes in through env_file.
+      BACKEND_IMAGE_GEN_URL: "${BACKEND_IMAGE_GEN_URL:-}"
+      # The fal key is the sidecar's alone: blanked over what env_file loads.
+      BACKEND_IMAGE_GEN_API_KEY: ""
       BACKEND_SESSION_SECRET: "${BACKEND_SESSION_SECRET}"
     healthcheck:
       test: ["CMD", "/loom", "healthcheck"]
@@ -85,6 +87,11 @@ services:
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
         condition: service_healthy
+      imagegen:
+        # Discovered at boot like the rest: waiting keeps the image tool from
+        # missing until the next refresh. Opt-in profile, so not required.
+        condition: service_healthy
+        required: false
     labels:
       # The single loom image serves both the API and the embedded SPA on :8080,
       # so it is the public service; Traefik terminates TLS in front of it.
@@ -283,13 +290,15 @@ services:
     image: ghcr.io/trick77/loom-imagegen:latest
     profiles: ["imagegen"]
     restart: unless-stopped
+    # A render in flight finishes on SIGTERM (it is paid for either way).
+    stop_grace_period: 3m
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
     environment:
-      IMAGEGEN_TOKEN: "${BACKEND_IMAGEGEN_TOKEN:-}"
+      IMAGEGEN_TOKEN: "${BACKEND_IMAGE_GEN_TOKEN:-}"
       IMAGEGEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"
       # Empty takes the sidecar's default.
       IMAGEGEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-}"

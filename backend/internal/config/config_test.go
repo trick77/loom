@@ -257,13 +257,13 @@ func TestLoad_obscuraTokenNotNeededWithoutURL(t *testing.T) {
 func TestLoadImagegenSidecar(t *testing.T) {
 	requiredEnv(t)
 	cfg, err := Load()
-	if err != nil || cfg.ImagegenURL != "" {
-		t.Fatalf("default: url %q, %v; want off", cfg.ImagegenURL, err)
+	if err != nil || cfg.ImageGenURL != "" {
+		t.Fatalf("default: url %q, %v; want off", cfg.ImageGenURL, err)
 	}
-	t.Setenv("BACKEND_IMAGEGEN_URL", "http://imagegen:8040")
-	t.Setenv("BACKEND_IMAGEGEN_TOKEN", strings.Repeat("a", 32))
+	t.Setenv("BACKEND_IMAGE_GEN_URL", "http://imagegen:8040")
+	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", strings.Repeat("a", 32))
 	cfg, err = Load()
-	if err != nil || cfg.ImagegenURL != "http://imagegen:8040" || cfg.ImagegenToken != strings.Repeat("a", 32) {
+	if err != nil || cfg.ImageGenURL != "http://imagegen:8040" || cfg.ImageGenToken != strings.Repeat("a", 32) {
 		t.Fatalf("configured: %+v, %v", cfg, err)
 	}
 }
@@ -272,14 +272,18 @@ func TestLoadImagegenSidecar(t *testing.T) {
 // refuse every call and the image tool would just vanish.
 func TestLoadImagegenSidecarProblems(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("BACKEND_IMAGEGEN_URL", "http://imagegen:8040")
-	t.Setenv("BACKEND_IMAGEGEN_TOKEN", "short")
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGEGEN_TOKEN must be at least 32") {
+	t.Setenv("BACKEND_IMAGE_GEN_URL", "http://imagegen:8040")
+	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", "short")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_TOKEN must be at least 32") {
 		t.Fatalf("short token: %v", err)
 	}
-	t.Setenv("BACKEND_IMAGEGEN_URL", "imagegen:8040")
-	t.Setenv("BACKEND_IMAGEGEN_TOKEN", strings.Repeat("a", 32))
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGEGEN_URL must be an absolute") {
+	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", strings.Repeat("a", 32)+" b")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must not contain whitespace") {
+		t.Fatalf("token with a space: %v", err)
+	}
+	t.Setenv("BACKEND_IMAGE_GEN_URL", "imagegen:8040")
+	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", strings.Repeat("a", 32))
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_URL must be an absolute") {
 		t.Fatalf("relative url: %v", err)
 	}
 }
@@ -626,7 +630,7 @@ func TestLoad_validatesURLsAndDirs(t *testing.T) {
 		{"fqdn with query", "PUBLIC_FQDN", "loom.example.com?x", "PUBLIC_FQDN", nil},
 		{"fqdn with trailing space", "PUBLIC_FQDN", "loom.example.com ", "PUBLIC_FQDN", nil},
 		{"relative users dir", "BACKEND_USERS_DIR", "data/users", "BACKEND_USERS_DIR", nil},
-		{"imagegen url without scheme", "BACKEND_IMAGEGEN_URL", "imagegen:8040", "BACKEND_IMAGEGEN_URL", map[string]string{"BACKEND_IMAGEGEN_TOKEN": strings.Repeat("t", 32)}},
+		{"imagegen url without scheme", "BACKEND_IMAGE_GEN_URL", "imagegen:8040", "BACKEND_IMAGE_GEN_URL", map[string]string{"BACKEND_IMAGE_GEN_TOKEN": strings.Repeat("t", 32)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requiredEnv(t)

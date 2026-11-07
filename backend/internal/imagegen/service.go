@@ -116,75 +116,94 @@ type Output struct {
 // width sent as "1024", a fractional seed) is dropped, not fatal: the image
 // is still made, as with any model argument the provider would round.
 func (s *Service) Call(ctx context.Context, raw json.RawMessage) (Output, error) {
-	var m map[string]any
+	var w wireArgs
 	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &m); err != nil {
+		if err := json.Unmarshal(raw, &w); err != nil {
 			return Output{}, fmt.Errorf("invalid arguments: %w", err)
 		}
 	}
-	return s.Generate(ctx, ArgsFromMap(m))
+	return s.Generate(ctx, w.args())
 }
 
-// ArgsFromMap reads decoded tool arguments. input_images may come as decoded
-// JSON ([]any) or as the client built them ([]map[string]any).
-func ArgsFromMap(m map[string]any) CallArgs {
+// wireArgs decodes the arguments straight into their fields (an edit source
+// is tens of MiB: no map in between). Every field forgives a wrong type: it
+// is then absent, never an error.
+type wireArgs struct {
+	Prompt          looseString     `json:"prompt"`
+	Filename        looseString     `json:"filename"`
+	AspectRatio     looseString     `json:"aspect_ratio"`
+	OutputFormat    looseString     `json:"output_format"`
+	Model           looseString     `json:"model"`
+	Width           looseInt        `json:"width"`
+	Height          looseInt        `json:"height"`
+	Seed            looseInt        `json:"seed"`
+	SafetyTolerance looseInt        `json:"safety_tolerance"`
+	TextHeavy       looseBool       `json:"text_heavy"`
+	InputImages     looseInputImage `json:"input_images"`
+}
+
+func (w wireArgs) args() CallArgs {
 	args := CallArgs{
-		Prompt:       stringArg(m, "prompt"),
-		Filename:     stringArg(m, "filename"),
-		AspectRatio:  stringArg(m, "aspect_ratio"),
-		OutputFormat: stringArg(m, "output_format"),
-		Model:        stringArg(m, ArgModel),
+		Prompt: w.Prompt.v, Filename: w.Filename.v, AspectRatio: w.AspectRatio.v, OutputFormat: w.OutputFormat.v,
+		Model: w.Model.v, TextHeavy: w.TextHeavy.v, InputImages: w.InputImages.v,
 	}
-	if w, ok := intArg(m, "width", math.MaxInt32); ok {
-		args.Width = int(w)
+	if w.Width.ok && w.Width.v <= math.MaxInt32 {
+		args.Width = int(w.Width.v)
 	}
-	if h, ok := intArg(m, "height", math.MaxInt32); ok {
-		args.Height = int(h)
+	if w.Height.ok && w.Height.v <= math.MaxInt32 {
+		args.Height = int(w.Height.v)
 	}
-	if seed, ok := intArg(m, "seed", math.MaxInt64); ok {
+	if w.Seed.ok {
+		seed := w.Seed.v
 		args.Seed = &seed
 	}
-	if tol, ok := intArg(m, "safety_tolerance", math.MaxInt32); ok {
-		t := int(tol)
-		args.SafetyTolerance = &t
-	}
-	args.TextHeavy, _ = m[ArgTextHeavy].(bool)
-	var entries []map[string]any
-	switch list := m[ArgInputImages].(type) {
-	case []any:
-		for _, item := range list {
-			entry, _ := item.(map[string]any)
-			entries = append(entries, entry)
-		}
-	case []map[string]any:
-		entries = list
-	}
-	for _, entry := range entries {
-		args.InputImages = append(args.InputImages, InputImage{Data: stringArg(entry, "data"), MimeType: stringArg(entry, "mime_type")})
+	if w.SafetyTolerance.ok && w.SafetyTolerance.v <= math.MaxInt32 {
+		tol := int(w.SafetyTolerance.v)
+		args.SafetyTolerance = &tol
 	}
 	return args
 }
 
-func stringArg(m map[string]any, key string) string {
-	v, _ := m[key].(string)
-	return v
+type looseString struct{ v string }
+
+func (l *looseString) UnmarshalJSON(b []byte) error {
+	_ = json.Unmarshal(b, &l.v)
+	return nil
 }
 
-// intArg reads a whole number of at most limit that a JSON argument carries
-// (as float64), or one sent as a plain integer string ("512", not "512px");
-// anything else is absent.
-func intArg(m map[string]any, key string, limit int64) (int64, bool) {
-	switch v := m[key].(type) {
-	case float64:
-		if v == math.Trunc(v) && math.Abs(v) <= float64(limit) {
-			return int64(v), true
-		}
-	case string:
-		if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && n <= limit && n >= -limit {
-			return n, true
-		}
+type looseBool struct{ v bool }
+
+func (l *looseBool) UnmarshalJSON(b []byte) error {
+	_ = json.Unmarshal(b, &l.v)
+	return nil
+}
+
+// looseInt is a whole number sent as a JSON number or a plain integer
+// string ("512", not "512px", not 3.5).
+type looseInt struct {
+	v  int64
+	ok bool
+}
+
+func (l *looseInt) UnmarshalJSON(b []byte) error {
+	// A wrong type is absent, never an error: the text is read as a number
+	// or as a string holding one, and kept only when it is a whole number.
+	text := strings.TrimSpace(string(b))
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		text = strings.TrimSpace(s)
 	}
-	return 0, false
+	if v, err := strconv.ParseInt(text, 10, 64); err == nil {
+		l.v, l.ok = v, true
+	}
+	return nil
+}
+
+type looseInputImage struct{ v []InputImage }
+
+func (l *looseInputImage) UnmarshalJSON(b []byte) error {
+	_ = json.Unmarshal(b, &l.v)
+	return nil
 }
 
 // Generate renders one image. An edit keeps its source's proportions unless

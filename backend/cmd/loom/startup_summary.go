@@ -122,7 +122,7 @@ func imageGenCapability(mcpConfig mcp.Config) startupCapability {
 	server, ok := mcpConfig.Servers[mcp.ImagegenServer]
 	switch {
 	case !ok:
-		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "set BACKEND_IMAGEGEN_URL (loom-imagegen sidecar)"}
+		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "set BACKEND_IMAGE_GEN_URL (loom-imagegen sidecar)"}
 	case !server.Artifacts:
 		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "mcp.json server " + mcp.ImagegenServer + " lacks \"artifacts\": true"}
 	case server.BuiltIn:

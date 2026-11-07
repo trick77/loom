@@ -61,7 +61,7 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	assertCapability(t, items, "embeddings", "disabled", "BACKEND_EMBED_MODEL")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
-	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGEGEN_URL")
+	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_URL")
 	assertCapability(t, items, "document generation", "enabled", "tools=5")
 	assertCapability(t, items, "artifacts", "enabled", "users_dir=/data/users")
 	assertCapability(t, items, "Python sandbox", "disabled", "BACKEND_SANDBOX_URL")

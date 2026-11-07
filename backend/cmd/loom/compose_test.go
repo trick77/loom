@@ -23,17 +23,24 @@ func TestComposePassesImageGenerationEnv(t *testing.T) {
 			// loom gets the sidecar's address; the fal key and the models go to
 			// the sidecar only (loom names no image vendor or model).
 			for _, want := range []string{
-				`BACKEND_IMAGEGEN_URL: "${BACKEND_IMAGEGEN_URL:-}"`,
+				`BACKEND_IMAGE_GEN_URL: "${BACKEND_IMAGE_GEN_URL:-}"`,
+				// env_file hands loom every .env key: the fal key is blanked over it.
+				`BACKEND_IMAGE_GEN_API_KEY: ""`,
 				`IMAGEGEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"`,
 				`IMAGEGEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-}"`,
 				`IMAGEGEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-}"`,
+				`IMAGEGEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-}"`,
+				`IMAGEGEN_POLL_TIMEOUT: "${BACKEND_IMAGE_GEN_POLL_TIMEOUT:-}"`,
+				`stop_grace_period: 3m`,
 			} {
 				if !strings.Contains(compose, want) {
-					t.Fatalf("%s does not pass %s", path, strings.Split(want, ":")[0])
+					t.Fatalf("%s lacks %s", path, want)
 				}
 			}
-			if strings.Contains(compose, "      BACKEND_IMAGE_GEN_") {
-				t.Fatalf("%s still hands BACKEND_IMAGE_GEN_* to loom; the sidecar reads them", path)
+			for _, notLoom := range []string{"      BACKEND_IMAGE_GEN_MODEL:", "      BACKEND_IMAGE_GEN_BASE_URL:", "      BACKEND_IMAGE_GEN_API_KEY: \"${"} {
+				if strings.Contains(compose, notLoom) {
+					t.Fatalf("%s hands %s to loom; the sidecar reads it", path, strings.TrimSpace(notLoom))
+				}
 			}
 		})
 	}
@@ -42,12 +49,12 @@ func TestComposePassesImageGenerationEnv(t *testing.T) {
 // readsImageRefFromEnv reports whether a file reads a container-image ref from
 // the environment, which production must not do. It is a substring scan over
 // "BACKEND_IMAGE" and friends, so it also catches names not invented yet — but
-// BACKEND_IMAGE_GEN_* and BACKEND_IMAGEGEN_* are the image *generation* config,
-// unrelated to image refs, so those prefixes are removed before scanning rather
-// than exempted by pattern (an exemption written into the pattern would let a
-// real BACKEND_IMAGE_TAG override through as well).
+// BACKEND_IMAGE_GEN_* is the image *generation* config, unrelated to image refs,
+// so that prefix is removed before scanning rather than exempted by pattern
+// (an exemption written into the pattern would let a real BACKEND_IMAGE_TAG
+// override through as well).
 func readsImageRefFromEnv(content []byte) bool {
-	scan := strings.ReplaceAll(strings.ReplaceAll(string(content), "BACKEND_IMAGE_GEN_", ""), "BACKEND_IMAGEGEN_", "")
+	scan := strings.ReplaceAll(string(content), "BACKEND_IMAGE_GEN_", "")
 	for _, name := range []string{"BACKEND_IMAGE", "BACKEND_UI_IMAGE", "BACKEND_FETCH_IMAGE", "BACKEND_OBSCURA_IMAGE"} {
 		if strings.Contains(scan, name) {
 			return true

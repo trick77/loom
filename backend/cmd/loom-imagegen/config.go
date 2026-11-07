@@ -19,7 +19,7 @@ const (
 	// maxPollTimeout keeps fal's polling inside the tool's 170 s and loom's
 	// 3 min call limit, with room to fetch and send the picture.
 	maxPollTimeout = 2*time.Minute + 30*time.Second
-	// minTokenLen matches loom's BACKEND_IMAGEGEN_TOKEN floor.
+	// minTokenLen matches loom's BACKEND_IMAGE_GEN_TOKEN floor.
 	minTokenLen = 32
 )
 

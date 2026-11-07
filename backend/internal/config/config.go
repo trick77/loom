@@ -17,8 +17,6 @@ import (
 	"github.com/trick77/ship/kit/env"
 )
 
-// Keep in sync with imagegen's direct-client fallback default.
-
 // defaultChatMaxCompletionTokens covers reasoning plus answer: the cap counts
 // both, and a reasoning model can think past a few thousand tokens on its own,
 // so a tight cap leaves no room for the answer.
@@ -109,12 +107,12 @@ type Config struct {
 	// ProjectSummaryTokenBudget bounds the cross-thread digest the
 	// read_project_threads tool returns when summarizing a project's threads.
 	ProjectSummaryTokenBudget int
-	// ImagegenURL is the loom-imagegen sidecar (docs/imagegen.md); empty keeps
+	// ImageGenURL is the loom-imagegen sidecar (docs/imagegen.md); empty keeps
 	// image generation off unless an mcp.json server named imagegen serves it.
-	// ImagegenToken is its IMAGEGEN_TOKEN (minImagegenToken), required with
+	// ImageGenToken is its IMAGEGEN_TOKEN (minImageGenToken), required with
 	// the URL.
-	ImagegenURL   string
-	ImagegenToken string
+	ImageGenURL   string
+	ImageGenToken string
 
 	TikaURL       string
 	GotenbergURL  string // Gotenberg (Chromium) sidecar for HTML→PDF rendering
@@ -279,8 +277,8 @@ func Load() (Config, error) {
 		UsersDir:                r.String("BACKEND_USERS_DIR", "/data/users"),
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              optional(r, "BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
-		ImagegenURL:             r.String("BACKEND_IMAGEGEN_URL", ""),
-		ImagegenToken:           r.String("BACKEND_IMAGEGEN_TOKEN", ""),
+		ImageGenURL:             r.String("BACKEND_IMAGE_GEN_URL", ""),
+		ImageGenToken:           r.String("BACKEND_IMAGE_GEN_TOKEN", ""),
 		TikaURL:                 r.String("BACKEND_TIKA_URL", "http://tika:9998"),
 		GotenbergURL:            r.String("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
 		TavilyURL:               r.String("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
@@ -514,21 +512,25 @@ func tunewireProblem(cfg Config) string {
 	return ""
 }
 
-// minImagegenToken is the sidecar's own floor for IMAGEGEN_TOKEN.
-const minImagegenToken = 32
+// minImageGenToken is the sidecar's own floor for IMAGEGEN_TOKEN.
+const minImageGenToken = 32
 
 // imagegenProblem says what is wrong with a configured imagegen sidecar: one
 // that refuses to start without its token would only cost the image tool,
 // silently.
 func imagegenProblem(cfg Config) string {
-	if strings.TrimSpace(cfg.ImagegenURL) == "" {
+	if strings.TrimSpace(cfg.ImageGenURL) == "" {
 		return ""
 	}
 	switch {
-	case !isAbsoluteHTTPURL(cfg.ImagegenURL):
-		return "BACKEND_IMAGEGEN_URL must be an absolute http(s) URL"
-	case len(cfg.ImagegenToken) < minImagegenToken:
-		return fmt.Sprintf("BACKEND_IMAGEGEN_TOKEN must be at least %d characters when BACKEND_IMAGEGEN_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minImagegenToken)
+	case !isAbsoluteHTTPURL(cfg.ImageGenURL):
+		return "BACKEND_IMAGE_GEN_URL must be an absolute http(s) URL"
+	case len(cfg.ImageGenToken) < minImageGenToken:
+		return fmt.Sprintf("BACKEND_IMAGE_GEN_TOKEN must be at least %d characters when BACKEND_IMAGE_GEN_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minImageGenToken)
+	case strings.ContainsFunc(cfg.ImageGenToken, func(c rune) bool { return c <= ' ' || c == 0x7f }):
+		// The sidecar refuses such a token too; say so here, not as a
+		// silently missing tool.
+		return "BACKEND_IMAGE_GEN_TOKEN must not contain whitespace or control characters"
 	}
 	return ""
 }

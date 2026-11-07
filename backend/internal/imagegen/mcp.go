@@ -12,8 +12,9 @@ const (
 	// toolTimeout bounds one generation: the provider's queue and render,
 	// inside the client's 3 min call limit (loom's mcp.ArtifactCallTimeout).
 	toolTimeout = 170 * time.Second
-	// maxArgBytes fits arguments carrying the largest input images as base64.
-	maxArgBytes = MaxInputImages*MaxInputImageBytes/3*4 + 1<<20
+	// maxArgBytes fits arguments carrying one largest input image as base64:
+	// loom sends one (the edit source), and every byte here is read whole.
+	maxArgBytes = MaxInputImageBytes/3*4 + 1<<20
 	// maxImageBytes is one artifact's size (loom's artifact.MaxArtifactSizeBytes):
 	// the most a client that makes artifacts takes in one reply.
 	maxImageBytes = 25 << 20

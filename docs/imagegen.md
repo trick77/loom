@@ -19,8 +19,8 @@ answers.
 
 ```sh
 COMPOSE_PROFILES=imagegen            # plus any other profiles, comma-separated
-BACKEND_IMAGEGEN_URL=http://imagegen:8040
-BACKEND_IMAGEGEN_TOKEN=              # openssl rand -hex 32; loom and the sidecar share it
+BACKEND_IMAGE_GEN_URL=http://imagegen:8040
+BACKEND_IMAGE_GEN_TOKEN=              # openssl rand -hex 32; loom and the sidecar share it
 BACKEND_IMAGE_GEN_API_KEY=           # fal key; compose hands it and the other BACKEND_IMAGE_GEN_* to the sidecar
 ```
 
