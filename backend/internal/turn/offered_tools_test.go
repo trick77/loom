@@ -5,7 +5,10 @@ import (
 	"testing"
 
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/turn/turntest"
 )
 
 // countingTools counts how often a turn reads the MCP tool list.
@@ -24,8 +27,40 @@ func (c countingTools) ToolsFor(active map[string]bool) []llm.Tool {
 	return c.fakeMCPService.ToolsFor(active)
 }
 
-// A turn builds its MCP tool set once: the prompt's tool guidance and the
-// tools the loop offers come from the same list.
+// The tool guidance speaks only of servers the turn finally offers: a
+// scheduled run drops the document tools (allowTools), so their server's
+// guidance and the file-tool guidance stay out of its prompt too.
+func TestGuidanceFollowsTheFinalOffer(t *testing.T) {
+	svc := fakeMCPService{
+		ToolList:     append([]llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "peeq__search"}}}, docToolDefs()...),
+		Artifacts:    turntest.DocgenArtifacts(),
+		Instructions: map[string]string{"peeq": "Search peeq.", mcp.DocgenServer: "Make files."},
+	}
+	e := &Engine{mcp: svc, artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
+	gate := newToolGate(string(classifier.Coding), "", "")
+	for _, c := range []struct {
+		name      string
+		scheduled *ScheduledRun
+		docs      bool
+	}{
+		{"interactive", nil, true},
+		{"scheduled", &ScheduledRun{}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			run := &Run{e: e, user: testUser, scheduled: c.scheduled}
+			guidance := e.mcpServerGuidance(run.offer(gate), run.offered)
+			if !strings.Contains(guidance, "Search peeq.") {
+				t.Error("offered server's guidance missing")
+			}
+			if strings.Contains(guidance, "Make files.") != c.docs || (len(run.offeredDocTools) > 0) != c.docs {
+				t.Errorf("document guidance %v, document tools %v, want both %v", strings.Contains(guidance, "Make files."), run.offeredDocTools, c.docs)
+			}
+		})
+	}
+}
+
+// A turn reads the MCP tool list once: Prepare builds the offer, the prompt's
+// tool guidance and every round read it (it was read 6 times per turn).
 func TestTurnBuildsMCPToolsOnce(t *testing.T) {
 	lists := 0
 	tool := llm.Tool{Type: "function", Function: llm.ToolFunction{Name: "peeq__search"}}

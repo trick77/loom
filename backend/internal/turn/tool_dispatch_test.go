@@ -36,17 +36,16 @@ func TestExecuteBuiltInToolReportsInvalidArgumentsForEveryArgTool(t *testing.T) 
 	}
 }
 
-// availableTools is the tool set offerTools offers, for tests that check only
-// the offer.
+// availableTools is the tool set testUser's turn in thread is offered (offer,
+// as Prepare calls it), for tests that check only the offer.
 func (s *Engine) availableTools(thread chat.Thread, gate toolGate) []llm.Tool {
-	tools, _ := s.offerTools(thread, gate, s.offeredMCPTools(testUser, gate))
-	return tools
+	return offeredRun(s, thread, gate).plan.tools
 }
 
 // offeredRun is testUser's turn in thread, offered the tools gate lets through.
 func offeredRun(e *Engine, thread chat.Thread, gate toolGate) *Run {
 	run := &Run{e: e, user: testUser, thread: thread}
-	_, run.offered = e.offerTools(thread, gate, e.offeredMCPTools(testUser, gate))
+	run.plan.tools = run.offer(gate)
 	return run
 }
 

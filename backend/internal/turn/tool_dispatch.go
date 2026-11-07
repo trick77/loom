@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"slices"
 	"strings"
 	"time"
 
@@ -327,17 +326,31 @@ func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName str
 	usage.Record(s.usage, counter.label, func() error { return counter.inc(s.usage, ctx, user.ID) })
 }
 
-// offerTools assembles the tool set injected into the prompt for this turn:
-// the built-ins the registry offers, then the MCP tools. The always-on core
-// (cross-thread memory, directives, web search) is offered unconditionally; the
-// heavier optional groups are gated by the turn's toolGate so a simple turn no
-// longer ships file-generation schemas or coding-doc MCP tools it will never
-// use. gate is a widen-only signal, so gating can only omit tools the turn is
-// unlikely to need — never one the model has already been told to use. Called
-// once per turn (not per round); the trimmed set is reused across all tool
-// rounds. mcpTools is the turn's offeredMCPTools, built once in Prepare. It
-// also returns the offered built-ins by name, the only way dispatch runs a
-// built-in (see executeBuiltInTool). A name both claim stays the built-in's.
+// offer assembles the tool set injected into the prompt for this turn: the
+// built-ins the registry offers, then the MCP tools, then what a scheduled
+// run may not use taken out (allowTools). The always-on core (cross-thread
+// memory, directives, web search) is offered unconditionally; the heavier
+// optional groups are gated by the turn's toolGate so a simple turn no longer
+// ships file-generation schemas or coding-doc MCP tools it will never use.
+// gate is a widen-only signal, so gating can only omit tools the turn is
+// unlikely to need — never one the model has already been told to use.
+// Prepare calls it once (turnPlan.tools): the prompt's tool guidance and
+// every round read this one set. It records the offered built-ins by name,
+// the only way dispatch runs a built-in (see executeBuiltInTool), and the
+// offered document tools. A name both claim stays the built-in's.
+func (t *Run) offer(gate toolGate) []llm.Tool {
+	tools, builtIns := t.e.offerTools(t.thread, gate, t.e.offeredMCPTools(t.user, gate))
+	tools, t.offered = t.allowTools(tools, builtIns)
+	t.offeredDocTools = map[string]bool{}
+	for _, tool := range tools {
+		if t.e.toolPolicy(tool.Function.Name).documentGenerator {
+			t.offeredDocTools[tool.Function.Name] = true
+		}
+	}
+	return tools
+}
+
+// offerTools is offer's built-ins and MCP tools, before allowTools.
 func (s *Engine) offerTools(thread chat.Thread, gate toolGate, mcpTools []llm.Tool) ([]llm.Tool, map[string]*toolSpec) {
 	tools := []llm.Tool(nil)
 	builtIns := map[string]*toolSpec{}
@@ -375,9 +388,7 @@ func (s *Engine) offerTools(thread chat.Thread, gate toolGate, mcpTools []llm.To
 // -> "coding") is offered only when its category is active for this turn.
 // With no category signal at all (widenAll) every server is offered, so a
 // legacy empty-category thread never loses tools it had before gating. A
-// server limited to some accounts is left out for everyone else. A turn
-// builds it once (turnPlan.mcpTools): the prompt's tool guidance and the
-// offer read the same list.
+// server limited to some accounts is left out for everyone else.
 func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 	if s.mcp == nil {
 		return nil
@@ -395,9 +406,10 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 		}
 		policy := s.toolPolicy(tool.Function.Name)
 		if policy.imageGenerator {
-			// Its image needs somewhere to go; its loom-filled arguments are
-			// not the model's to set.
-			if !s.canStoreArtifacts() {
+			// Its image needs somewhere to go (a server without artifacts
+			// would have it dropped); its loom-filled arguments are not the
+			// model's to set.
+			if !s.canStoreArtifacts() || !s.mcp.MakesArtifacts(tool.Function.Name) {
 				continue
 			}
 			tool = withoutLoomArgs(tool)
@@ -415,14 +427,6 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 	return out
 }
 
-// offersDocumentTools reports whether the turn's MCP tools hold a document
-// tool: the file-tool guidance may name them only then.
-func (s *Engine) offersDocumentTools(mcpTools []llm.Tool) bool {
-	return slices.ContainsFunc(mcpTools, func(tool llm.Tool) bool {
-		return s.toolPolicy(tool.Function.Name).documentGenerator
-	})
-}
-
 // MCPPrincipal is the account an MCP users allowlist checks: its user id,
 // never the username or OIDC subject (see mcp.ServerConfig.Users).
 func MCPPrincipal(user auth.User) mcp.Principal {
@@ -436,13 +440,17 @@ func MCPPrincipal(user auth.User) mcp.Principal {
 const mcpCitationOverride = "When one of these tools' results carries Source lines, cite it by their bracketed numbers like any other source; never cite any of these tools' results by URL. This overrides any citation wording in the guidance above."
 
 // mcpServerGuidance collects the instructions of every server whose tools
-// the turn offers, so a server can say when its tools apply (peeq: which
-// channels to search unprompted). It travels with the tools like the other
-// tool guidance and is empty when no offered server gave instructions.
-func (s *Engine) mcpServerGuidance(mcpTools []llm.Tool) string {
+// the turn offers (tools, from offer; builtIns, the built-ins among them), so
+// a server can say when its tools apply (peeq: which channels to search
+// unprompted). It travels with the tools like the other tool guidance and is
+// empty when no offered server gave instructions.
+func (s *Engine) mcpServerGuidance(tools []llm.Tool, builtIns map[string]*toolSpec) string {
 	seen := map[string]bool{}
 	var blocks []string
-	for _, tool := range mcpTools {
+	for _, tool := range tools {
+		if builtIns[tool.Function.Name] != nil {
+			continue
+		}
 		server, _, ok := mcp.SplitExposedToolName(tool.Function.Name)
 		if !ok || seen[server] {
 			continue

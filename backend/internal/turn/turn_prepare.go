@@ -35,10 +35,10 @@ type Run struct {
 	userMessage chat.Message
 	// plan is what Prepare assembled for the assistant loop.
 	plan turnPlan
-	// offered is the built-ins the assistant loop offered, by name; dispatch
-	// runs a built-in only through it (see offerTools).
+	// offered is the built-ins the turn offered, by name; dispatch runs a
+	// built-in only through it (see offer).
 	offered map[string]*toolSpec
-	// offeredDocTools are the document tools the loop offered, by name: a
+	// offeredDocTools are the document tools the turn offered, by name: a
 	// call to one the gate left out never runs (documentGenerator).
 	offeredDocTools map[string]bool
 	// acc sums every model call of the turn; start times its wall clock.
@@ -117,9 +117,9 @@ type turnPlan struct {
 	history    []llm.Message
 	imageRoute imageRouting
 	gate       toolGate
-	// mcpTools is the turn's offeredMCPTools: the tool guidance and the
-	// loop's offer read this one list.
-	mcpTools         []llm.Tool
+	// tools is the turn's tool set (offer): the tool guidance and every
+	// round read this one set.
+	tools            []llm.Tool
 	editSource       *editImageSource
 	knowledgeSources []Citation
 	// sourceCount is how many [n] markers the attached and knowledge documents
@@ -303,11 +303,11 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 
 	gate := newToolGate(category, turnCategory, t.userMessage.Content)
 	gate.sandbox = sandboxOn
-	mcpTools := t.e.offeredMCPTools(t.user, gate)
+	tools := t.offer(gate)
 	fileToolGuidance := ""
 	// A scheduled run has no file tools to guide, nor has a turn the gate or
 	// a sidecar that is down leaves without them.
-	if !scheduled && t.e.offersDocumentTools(mcpTools) {
+	if len(t.offeredDocTools) > 0 {
 		fileToolGuidance = fileToolGuardrailPrompt
 	}
 	if len(knowledgeSources) > 0 {
@@ -323,7 +323,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		finalContext, userContext = userContext, ""
 	}
 	history := buildLLMHistory(t.user, t.now(), promptBlocks{
-		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(mcpTools)),
+		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(tools, t.offered)),
 		schedule:     scheduleBlock,
 		classifier:   classifier.Block(category),
 		user:         userContext,
@@ -377,7 +377,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		history:          history,
 		imageRoute:       imageRoute,
 		gate:             gate,
-		mcpTools:         mcpTools,
+		tools:            tools,
 		editSource:       editSource,
 		knowledgeSources: knowledgeSources,
 		sourceCount:      docIdx.count(),

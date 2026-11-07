@@ -21,7 +21,8 @@ func TestMCPServerGuidanceEndsWithLoomCitationRule(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			e := &Engine{mcp: fakeMCPService{ToolList: []llm.Tool{tool}, Instructions: c.instructions}}
-			got := e.mcpServerGuidance(e.offeredMCPTools(testUser, toolGate{}))
+			run := &Run{e: e, user: testUser}
+			got := e.mcpServerGuidance(run.offer(toolGate{}), run.offered)
 			if strings.Contains(got, mcpCitationOverride) != c.want || (c.want && !strings.HasSuffix(got, mcpCitationOverride)) {
 				t.Fatalf("want the override closing the guidance = %v:\n%s", c.want, got)
 			}

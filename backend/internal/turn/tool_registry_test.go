@@ -13,6 +13,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/turn/turntest"
 	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
@@ -103,7 +104,9 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 			if tc.images {
 				offered = append(slices.Clone(mcpTools), llm.Tool{Type: "function", Function: llm.ToolFunction{Name: imageToolName}})
 			}
-			e := &Engine{usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: offered, Artifacts: turntest.DocgenArtifacts()}}
+			artifacts := turntest.DocgenArtifacts()
+			artifacts[mcp.ImagegenServer] = true
+			e := &Engine{usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: offered, Artifacts: artifacts}}
 			if tc.artifacts {
 				e.artifacts = fakeArtifactStore{}
 			}

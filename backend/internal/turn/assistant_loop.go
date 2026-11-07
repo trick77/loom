@@ -81,14 +81,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		defer func() { out = dropAnswerImages(out) }()
 	}
 	history := t.plan.history
-	tools, offered := t.e.offerTools(t.thread, t.plan.gate, t.plan.mcpTools)
-	tools, t.offered = t.allowTools(tools, offered)
-	t.offeredDocTools = map[string]bool{}
-	for _, tool := range tools {
-		if t.e.toolPolicy(tool.Function.Name).documentGenerator {
-			t.offeredDocTools[tool.Function.Name] = true
-		}
-	}
+	tools := t.plan.tools
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(history), inferenceWithPurpose(t.inference, "chat", 1), nil)
