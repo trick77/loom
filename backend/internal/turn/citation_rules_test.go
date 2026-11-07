@@ -45,4 +45,27 @@ func TestCitationRulesForbidSourceURLs(t *testing.T) {
 	if !ok || !strings.Contains(synth[len(synth)-1].Content, sourceURLRule) {
 		t.Error("final synthesis instruction lacks the no-URL citation rule")
 	}
+	if !strings.Contains(synth[len(synth)-1].Content, citationMarkerRule) {
+		t.Error("final synthesis instruction lacks the marker rule")
+	}
+}
+
+// The shared rules reach every prompt that relies on them: a generated image
+// embedded as ![]() once duplicated the attachment.
+func TestSharedPromptRulesInEveryPrompt(t *testing.T) {
+	for _, c := range []struct {
+		name, prompt string
+		rules        []string
+	}{
+		{"chat", loomSystemPrompt, []string{proseStyle, imageShownRule, citationMarkerRule, sourceURLRule}},
+		{"incognito", incognitoSystemPrompt, []string{proseStyle}},
+		{"image compiler", imagePromptCompilerSystemPrompt, []string{imageShownRule}},
+		{"image edit compiler", imageEditPromptCompilerSystemPrompt, []string{imageShownRule}},
+	} {
+		for _, rule := range c.rules {
+			if !strings.Contains(c.prompt, rule) {
+				t.Errorf("%s prompt lacks %q", c.name, rule)
+			}
+		}
+	}
 }
