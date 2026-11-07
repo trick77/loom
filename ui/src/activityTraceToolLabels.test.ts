@@ -10,9 +10,19 @@ import {
 
 describe("tool call descriptions and labels", () => {
   test("a titled call without arguments yet never shows the tool's name", () => {
-    // A call streams in before its arguments: the server's title ("Tavily
-    // Search") would name the vendor, so the row says which source is in use
-    // and hides the tag that would repeat it.
+    // A call streams in before its arguments: the server's title would only
+    // name the tool, so the row says which source is in use and hides the
+    // tag that would repeat it.
+    expect(
+      summarizeToolCall("search__web", "{}", "Web search", {
+        running: true,
+      }),
+    ).toEqual({
+      kind: "generic",
+      title: "Using web search",
+      placeholder: true,
+    });
+    // A trace stored before web search moved to the search server.
     expect(
       summarizeToolCall("tavily__tavily_search", "{}", "Tavily Search", {
         running: true,
@@ -37,16 +47,16 @@ describe("tool call descriptions and labels", () => {
   test("the placeholder gives way to the query or, at the result, the title", () => {
     let events = upsertTraceToolCall([], {
       id: "c1",
-      name: "tavily__tavily_search",
+      name: "search__web",
       arguments: "",
-      title: "Tavily Search",
+      title: "Web search",
     });
     expect(events[0]).toMatchObject({ summary: { title: "Using web search" } });
     events = upsertTraceToolCall(events, {
       id: "c1",
-      name: "tavily__tavily_search",
+      name: "search__web",
       arguments: '{"query":"swiss rail"}',
-      title: "Tavily Search",
+      title: "Web search",
     });
     expect(events[0]).toMatchObject({ summary: { title: "Swiss rail" } });
 
@@ -97,7 +107,7 @@ describe("tool call descriptions and labels", () => {
 
   test("a query stands alone; the title only speaks when there is none", () => {
     // The step's tag already names the tool ("Web search", the server), so a
-    // title in front of the query ("Tavily Search: …") only repeats it.
+    // title in front of the query ("Web search: …") only repeats it.
     expect(
       summarizeToolCall(
         "peeq__search",
@@ -107,9 +117,9 @@ describe("tool call descriptions and labels", () => {
     ).toEqual({ kind: "lookup", title: "Bike stability" });
     expect(
       summarizeToolCall(
-        "tavily__tavily_search",
+        "search__web",
         '{"query":"UBS move headquarters"}',
-        "Tavily Search",
+        "Web search",
       ).title,
     ).toBe("UBS move headquarters");
     // No query: an id or other argument is not worth showing.
@@ -201,6 +211,7 @@ describe("tool call descriptions and labels", () => {
   test("every tool names its source", () => {
     expect(toolSourceLabel("peeq__search")).toBe("peeq");
     expect(toolSourceLabel("context7__query-docs")).toBe("context7");
+    expect(toolSourceLabel("search__web")).toBe("Web search");
     expect(toolSourceLabel("tavily__tavily_search")).toBe("Web search");
     expect(toolSourceLabel("fetch__fetch")).toBe("Web fetch");
     expect(toolSourceLabel("obscura__browser_navigate")).toBe("Browser");

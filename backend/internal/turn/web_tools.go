@@ -18,15 +18,12 @@ const (
 	fetchToolName           = "fetch__fetch"
 	obscuraNavigateToolName = "obscura__browser_navigate"
 	obscuraSnapshotToolName = "obscura__browser_snapshot"
-	// tavilyServerName is the map key under which the built-in Tavily web-search
-	// server is registered (see cmd/loom/main.go).
-	tavilyServerName = "tavily"
 )
 
-// tavilySearchExposedName is the namespaced web-search tool as dispatched. It is
-// derived from the mcp package's source-of-truth names so a rename there fails
-// the build / shifts here instead of silently zeroing the counter.
-var tavilySearchExposedName = mcp.ExposedToolName(tavilyServerName, mcp.TavilySearchToolName)
+// searchToolName is the web search tool as dispatched (docs/search.md),
+// derived from the contract's names so a rename there shifts here instead of
+// silently zeroing the counter.
+var searchToolName = mcp.ExposedToolName(mcp.SearchServer, mcp.SearchTool)
 
 // webToolPolicies are the web tools' policies. fetch and obscura are very
 // inexpensive (an HTTP read, a headless page load), so they get a higher cap
@@ -53,26 +50,16 @@ var webToolPolicies = []toolSpec{
 		},
 	},
 	{
-		name:       tavilySearchExposedName,
-		concurrent: true,
-		counts:     &usageCounter{"web_search", UsageStore.IncWebSearch},
-		// Each result's favicon, for the sources sidebar, whatever the model asked.
-		fixedArgs: map[string]any{"include_favicon": true},
-		// Tavily's hosted server sends text; a server that sends structured
-		// sources is cited by them.
-		relabel: func(_ map[string]any, output string, sources []mcp.Source, reg *webSourceRegistry) string {
-			if len(sources) > 0 {
-				return relabelStructuredSources(output, sources, reg)
-			}
-			return relabelTavilyResult(output, reg)
-		},
+		// Cited by its structured sources, the generic way.
+		name:             searchToolName,
+		concurrent:       true,
+		counts:           &usageCounter{"web_search", UsageStore.IncWebSearch},
 		scheduledLimited: true,
 		scheduledClamp: func(args map[string]any) {
 			if n, ok := args["max_results"].(float64); ok && n > scheduledSearchMaxResults {
 				args["max_results"] = scheduledSearchMaxResults
 			}
-			args["search_depth"] = "basic"
-			delete(args, "include_raw_content")
+			args["depth"] = "basic"
 		},
 		observe: func(args map[string]any, sources []mcp.Source) ToolObservation {
 			o := ToolObservation{Tool: "search", Query: stringArg(args, "query")}
@@ -95,10 +82,10 @@ var webToolPolicies = []toolSpec{
 }
 
 // serverPolicies hold what applies to every tool of a server that has no
-// policy of its own. Tavily's other tools (an mcp.json "tavily" may expose
-// extract, crawl, map) cost like its search: a scheduled run counts them too.
+// policy of its own. A search server's other tools (an mcp.json "search" may
+// add extract or crawl) cost like its search: a scheduled run counts them too.
 var serverPolicies = map[string]*toolSpec{
-	tavilyServerName: {scheduledLimited: true},
+	mcp.SearchServer: {scheduledLimited: true},
 }
 
 // The browser (obscura, a third-party server) sends no sources: navigate

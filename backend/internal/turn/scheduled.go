@@ -59,16 +59,16 @@ const (
 
 // Bounds on a scheduled run's tools. Every tool result is re-read by each
 // later round (a run once re-sent 131k of its 135k tokens), so a run keeps
-// them small. Tavily is the one tool with a cost per call.
+// them small. Web search is the one tool with a cost per call.
 const (
 	scheduledFetchMaxLength   = 8000
 	scheduledSearchMaxResults = 5
-	scheduledTavilyCalls      = 10
+	scheduledSearchCalls      = 10
 	scheduledToolResultBytes  = 12 << 10
 )
 
-// tavilyLimitReached is the tool result of a Tavily call past the run's limit.
-var tavilyLimitReached = fmt.Sprintf("The search limit of this run (%d) is reached; answer from what you have.", scheduledTavilyCalls)
+// searchLimitReached is the tool result of a search call past the run's limit.
+var searchLimitReached = fmt.Sprintf("The search limit of this run (%d) is reached; answer from what you have.", scheduledSearchCalls)
 
 // toolRoundInference is a tool round's metadata. A scheduled run's rounds
 // only pick tools, so they ask for the least reasoning (a run once spent 48s
@@ -121,19 +121,19 @@ func (t *Run) clampScheduledCall(call *llm.ToolCall) {
 	}
 }
 
-// tavilyCapped counts a scheduled run's Tavily call and reports whether it is
-// past the run's limit; such a call never starts.
-func (t *Run) tavilyCapped(name string) bool {
+// searchCapped counts a scheduled run's paid search call and reports whether
+// it is past the run's limit; such a call never starts.
+func (t *Run) searchCapped(name string) bool {
 	if t.scheduled == nil {
 		return false
 	}
 	if !t.e.toolPolicy(name).scheduledLimited {
 		return false
 	}
-	if t.tavilyCalls >= scheduledTavilyCalls {
+	if t.searchCalls >= scheduledSearchCalls {
 		return true
 	}
-	t.tavilyCalls++
+	t.searchCalls++
 	return false
 }
 

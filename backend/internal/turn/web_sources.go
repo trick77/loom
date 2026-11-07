@@ -1,11 +1,9 @@
 package turn
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
-	"regexp"
 	"strings"
 	"unicode"
 
@@ -74,7 +72,7 @@ func (r *webSourceRegistry) add(rawURL string) (index int, ok bool) {
 // URL cannot be normalized (non-http(s) or unparseable). A URL seen again keeps
 // its first index, but empty detail fields (title/snippet/favicon) are backfilled
 // if this call supplies them — so a page first seen as a bare fetch URL gains its
-// title/snippet when Tavily later returns it (or vice versa).
+// title/snippet when a search later returns it (or vice versa).
 func (r *webSourceRegistry) addDetailed(rawURL, title, snippet, favicon string) (index int, ok bool) {
 	key, host, ok := normalizeURL(rawURL)
 	if !ok {
@@ -199,11 +197,6 @@ func capitalizeFirst(s string) string {
 	return string(runes)
 }
 
-// urlPattern extracts absolute http(s) URLs, stopping at whitespace and common
-// trailing delimiters so a URL at the end of a sentence isn't captured with its
-// punctuation.
-var urlPattern = regexp.MustCompile(`https?://[^\s<>"'` + "`" + `)\]}]+`)
-
 // relabelWebToolOutput annotates a tool's result with [n] citation markers and
 // registers each source URL, so the model can cite them inline: the tool's
 // own relabel when it has one (toolSpec.relabel, which sees the structured
@@ -254,119 +247,6 @@ func prependURLSource(rawURL, output string, reg *webSourceRegistry) string {
 		return output
 	}
 	return fmt.Sprintf("Source [%d]: %s\n\n%s", idx, strings.TrimSpace(rawURL), output)
-}
-
-// tavilyJSON mirrors the subset of Tavily's response we need if a deployment
-// returns raw JSON instead of the MCP server's formatted text.
-type tavilyJSON struct {
-	Results []struct {
-		Title   string `json:"title"`
-		URL     string `json:"url"`
-		Content string `json:"content"`
-		Favicon string `json:"favicon"`
-	} `json:"results"`
-}
-
-// relabelTavilyResult rewrites a tavily_search result so each result carries a
-// [n] marker and registers every result URL. The Tavily MCP server returns
-// human-readable text ("Title:/URL:/Content:" blocks); this also handles a raw
-// JSON payload and, failing both, a plain URL sweep — so no source is ever lost
-// to an unexpected format.
-func relabelTavilyResult(raw string, reg *webSourceRegistry) string {
-	if strings.TrimSpace(raw) == "" {
-		return raw
-	}
-	// 1) Formatted text: prefix each "Title:" line with its [n] once we find the
-	//    block's "URL:" line. This is the shape the Tavily MCP server emits.
-	if out, n := relabelTavilyText(raw, reg); n > 0 {
-		return out
-	}
-	// 2) Raw JSON fallback.
-	var parsed tavilyJSON
-	if err := json.Unmarshal([]byte(raw), &parsed); err == nil && len(parsed.Results) > 0 {
-		var b strings.Builder
-		for _, res := range parsed.Results {
-			idx, ok := reg.addDetailed(res.URL, res.Title, res.Content, res.Favicon)
-			if !ok {
-				continue
-			}
-			title := strings.TrimSpace(res.Title)
-			if title == "" {
-				title = strings.TrimSpace(res.URL)
-			}
-			fmt.Fprintf(&b, "[%d] %s — %s\n", idx, title, strings.TrimSpace(res.URL))
-		}
-		if b.Len() > 0 {
-			return "Web sources (cite with [n]):\n" + b.String() + "\n" + raw
-		}
-	}
-	// 3) Last resort: sweep any URLs out of the text and prepend a numbered index.
-	// Prepended, not appended: capToolOutput trims this result to 32 KB *after*
-	// relabeling, so an index at the end is exactly what an oversized sweep loses.
-	var b strings.Builder
-	for _, u := range urlPattern.FindAllString(raw, -1) {
-		if idx, ok := reg.add(u); ok {
-			fmt.Fprintf(&b, "[%d] %s\n", idx, strings.TrimSpace(u))
-		}
-	}
-	if b.Len() == 0 {
-		return raw
-	}
-	return "Web sources (cite with [n]):\n" + b.String() + "\n" + raw
-}
-
-// relabelTavilyText handles the Tavily MCP server's formatted-text output. It
-// walks the lines, and for each result block (started by a "Title:" line)
-// registers the block's "URL:" and rewrites the Title line to lead with [n].
-// Returns the rewritten text and the number of sources registered.
-func relabelTavilyText(raw string, reg *webSourceRegistry) (string, int) {
-	lines := strings.Split(raw, "\n")
-	// First pass: for each result block (started by a "Title:" line) collect the
-	// title, url, content and favicon fields.
-	type block struct {
-		titleLine int
-		title     string
-		url       string
-		content   string
-		favicon   string
-	}
-	var blocks []block
-	current := -1
-	field := func(line, prefix string) string {
-		return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), prefix))
-	}
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(trimmed, "Title:"):
-			blocks = append(blocks, block{titleLine: i, title: field(line, "Title:")})
-			current = len(blocks) - 1
-		case current < 0:
-			// preamble (e.g. the "Answer:" section) before the first result
-		case strings.HasPrefix(trimmed, "URL:") && blocks[current].url == "":
-			blocks[current].url = field(line, "URL:")
-		case strings.HasPrefix(trimmed, "Content:") && blocks[current].content == "":
-			blocks[current].content = field(line, "Content:")
-		case strings.HasPrefix(trimmed, "Favicon:") && blocks[current].favicon == "":
-			blocks[current].favicon = field(line, "Favicon:")
-		}
-	}
-	registered := 0
-	for _, blk := range blocks {
-		if blk.url == "" {
-			continue
-		}
-		idx, ok := reg.addDetailed(blk.url, blk.title, blk.content, blk.favicon)
-		if !ok {
-			continue
-		}
-		registered++
-		lines[blk.titleLine] = fmt.Sprintf("[%d] %s", idx, strings.TrimLeft(lines[blk.titleLine], " \t"))
-	}
-	if registered == 0 {
-		return raw, 0
-	}
-	return strings.Join(lines, "\n"), registered
 }
 
 // webSourceCitations converts gathered web sources into citation records for

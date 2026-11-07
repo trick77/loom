@@ -166,6 +166,7 @@ func runServer() error {
 		return err
 	}
 	warnOrphanedImageKey(cfg, os.Getenv)
+	warnOrphanedSearchKey(cfg, os.Getenv)
 	mcpConfig := toolCfg.union()
 	if len(mcpConfig.Servers) > 0 {
 		// Give discovery room for cold MCP sidecars: the fetch bridge boots a
@@ -185,10 +186,11 @@ func runServer() error {
 		mcpRefresh = func(ctx context.Context) { discovered.RunRefresh(ctx, slog.Default()) }
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
-	discoveredTools, imageToolUp := 0, false
+	discoveredTools, imageToolUp, searchToolUp := 0, false, false
 	if toolService != nil {
 		discoveredTools = len(toolService.Tools())
 		imageToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool))
+		searchToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.SearchServer, mcp.SearchTool))
 	}
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
@@ -226,6 +228,8 @@ func runServer() error {
 		DocToolCount:        len(docTools),
 		DiscoveredToolCount: discoveredTools,
 		ImageToolUp:         imageToolUp,
+		SearchToolUp:        searchToolUp,
+		SearchKeySet:        searchKeySet(os.Getenv),
 	})
 
 	// Post-turn refreshes outlive their request; serve() drains this group before
@@ -495,9 +499,6 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
 		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL, cfg.ObscuraMCPToken)
 	}
-	if strings.TrimSpace(cfg.TavilyAPIKey) != "" {
-		required.Servers["tavily"] = mcp.TavilyServerConfig(cfg.TavilyURL, cfg.TavilyAPIKey)
-	}
 	// Servers from the optional JSON file are best-effort and override a built-in
 	// of the same name (the built-in is dropped from the required set so user
 	// configuration always wins, and a flaky override can't fail boot).
@@ -520,6 +521,11 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// image tool. An mcp.json server named imagegen replaces it.
 	if imageGenConfigured(cfg) {
 		out.FileServers.Servers[mcp.ImagegenServer] = mcp.ImagegenServerConfig(cfg.ImageGenURL, cfg.ImageGenToken)
+	}
+	// loom-search likewise (docs/search.md): a dead sidecar costs web search.
+	// An mcp.json server named search replaces it.
+	if searchConfigured(cfg) {
+		out.FileServers.Servers[mcp.SearchServer] = mcp.SearchServerConfig(cfg.SearchURL, cfg.SearchToken)
 	}
 	for name, server := range fileServers {
 		if _, exists := required.Servers[name]; exists {
@@ -545,8 +551,26 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	return out, nil
 }
 
-func tavilyConfigured(cfg config.Config) bool {
-	return strings.TrimSpace(cfg.TavilyAPIKey) != ""
+func searchConfigured(cfg config.Config) bool {
+	return strings.TrimSpace(cfg.SearchURL) != ""
+}
+
+// searchKeySet reports whether the install has a Tavily key: compose hands
+// loom only "set" for it (the key is the sidecar's), so loom can say why
+// web search is off without ever holding the key.
+func searchKeySet(getenv func(string) string) bool {
+	return strings.TrimSpace(getenv("BACKEND_TAVILY_API_KEY")) != ""
+}
+
+// warnOrphanedSearchKey points an install upgraded past the move to the
+// sidecar at it: loom no longer calls Tavily with the key it still sets, and
+// web search would quietly be gone. It reports whether it warned.
+func warnOrphanedSearchKey(cfg config.Config, getenv func(string) string) bool {
+	if searchConfigured(cfg) || !searchKeySet(getenv) {
+		return false
+	}
+	slog.Warn("BACKEND_TAVILY_API_KEY is set, but web search now runs in the loom-search sidecar: set BACKEND_SEARCH_URL and BACKEND_SEARCH_TOKEN (docs/search.md)")
+	return true
 }
 
 func imageGenConfigured(cfg config.Config) bool {

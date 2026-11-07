@@ -232,7 +232,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		// A call to an MCP tool this user may not use (a server limited to other
 		// accounts) never runs, even when the model names it unprompted.
 		denied := make([]bool, len(result.ToolCalls))
-		// A scheduled run's Tavily calls past its limit never start either.
+		// A scheduled run's search calls past its limit never start either.
 		capped := make([]bool, len(result.ToolCalls))
 		skipped := make([]bool, len(result.ToolCalls))
 		for i, call := range result.ToolCalls {
@@ -242,7 +242,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			if t.scheduledDenies(call.Function.Name) {
 				denied[i] = true
 			}
-			capped[i] = !deferred[i] && !denied[i] && t.tavilyCapped(call.Function.Name)
+			capped[i] = !deferred[i] && !denied[i] && t.searchCapped(call.Function.Name)
 			skipped[i] = deferred[i] || denied[i] || capped[i]
 		}
 		// The round's independent web reads start now and overlap; everything
@@ -267,7 +267,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			} else if denied[i] {
 				output = fmt.Sprintf("tool failed: unknown tool %q", call.Function.Name)
 			} else if capped[i] {
-				output = tavilyLimitReached
+				output = searchLimitReached
 			} else if deferred[i] {
 				cap := t.e.toolCallCapPerRound(call.Function.Name)
 				// The instruction rides with the deferral in history so the model sees
@@ -322,7 +322,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		//
 		// Emitted every round rather than only when reg.len() grows — addDetailed
 		// backfills an already-registered URL's title/snippet/favicon without changing
-		// the length, so a page first seen bare via fetch and later enriched by Tavily
+		// the length, so a page first seen bare via fetch and later enriched by a search
 		// would otherwise keep showing degraded sidebar data.
 		//
 		// Ordering is what makes this correct: the model can only cite [n] after

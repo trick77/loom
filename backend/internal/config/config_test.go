@@ -39,11 +39,8 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ChatIdleTimeout != 120*time.Second {
 		t.Errorf("ChatIdleTimeout default = %s, want 2m0s", cfg.ChatIdleTimeout)
 	}
-	if cfg.TavilyURL != "https://mcp.tavily.com/mcp/" {
-		t.Errorf("TavilyURL default = %q, want https://mcp.tavily.com/mcp/", cfg.TavilyURL)
-	}
-	if cfg.TavilyAPIKey != "" {
-		t.Errorf("TavilyAPIKey default = %q, want empty opt-in value", cfg.TavilyAPIKey)
+	if cfg.SearchURL != "" {
+		t.Errorf("SearchURL default = %q, want empty opt-in value", cfg.SearchURL)
 	}
 	if cfg.ObscuraMCPURL != "" {
 		t.Errorf("ObscuraMCPURL default = %q, want empty opt-in value", cfg.ObscuraMCPURL)
@@ -284,6 +281,31 @@ func TestLoadImagegenSidecarProblems(t *testing.T) {
 	t.Setenv("BACKEND_IMAGE_GEN_URL", "imagegen:8040")
 	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", strings.Repeat("a", 32))
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_URL must be an absolute") {
+		t.Fatalf("relative url: %v", err)
+	}
+}
+
+func TestLoadSearchSidecar(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_SEARCH_URL", "http://search:8030")
+	t.Setenv("BACKEND_SEARCH_TOKEN", strings.Repeat("a", 32))
+	cfg, err := Load()
+	if err != nil || cfg.SearchURL != "http://search:8030" || cfg.SearchToken != strings.Repeat("a", 32) {
+		t.Fatalf("configured: %+v, %v", cfg, err)
+	}
+}
+
+// Like imagegen's: a sidecar without a token it accepts would only lose web
+// search, silently.
+func TestLoadSearchSidecarProblems(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_SEARCH_URL", "http://search:8030")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_SEARCH_TOKEN must be at least 32") {
+		t.Fatalf("no token: %v", err)
+	}
+	t.Setenv("BACKEND_SEARCH_URL", "search:8030")
+	t.Setenv("BACKEND_SEARCH_TOKEN", strings.Repeat("a", 32))
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_SEARCH_URL must be an absolute") {
 		t.Fatalf("relative url: %v", err)
 	}
 }

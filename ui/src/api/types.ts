@@ -219,7 +219,7 @@ export type Citation = {
   // index is the [n] marker the model cites inline, carried by both kinds of
   // source: uploaded documents take [1]..[k] and web sources continue after them,
   // one sequence. url is the source link and is set only for web-search citations
-  // (Tavily/fetch/obscura) — the UI treats a citation with a url as a web source
+  // (search/fetch/obscura) — the UI treats a citation with a url as a web source
   // and (for those) uses filename as the display label (the site name). Documents
   // persisted before they were numbered leave index undefined.
   url?: string;

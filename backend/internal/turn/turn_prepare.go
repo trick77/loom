@@ -52,8 +52,8 @@ type Run struct {
 	// scheduledTools are the tools a scheduled run was offered, by name; it
 	// runs no other.
 	scheduledTools map[string]bool
-	// tavilyCalls counts the Tavily calls a scheduled run started.
-	tavilyCalls int
+	// searchCalls counts the paid search calls a scheduled run started.
+	searchCalls int
 	// readOutside is set once any tool but the schedule tools returned
 	// content into the turn: from then on its text may carry instructions
 	// the user never gave.

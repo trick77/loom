@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"net/url"
 	"reflect"
 	"testing"
 )
@@ -18,31 +17,13 @@ func TestExposedToolNamePrefixesServerName(t *testing.T) {
 	}
 }
 
-func TestTavilyServerConfigEmbedsKeyAndAllowlist(t *testing.T) {
-	cfg := TavilyServerConfig("https://mcp.tavily.com/mcp/", "tvly-secret")
-	if cfg.Transport != TransportStreamableHTTP {
-		t.Fatalf("Transport = %q, want streamable-http", cfg.Transport)
-	}
-	u, err := url.Parse(cfg.URL)
-	if err != nil {
-		t.Fatalf("parse URL: %v", err)
-	}
-	if got := u.Query().Get("tavilyApiKey"); got != "tvly-secret" {
-		t.Fatalf("tavilyApiKey = %q, want tvly-secret", got)
-	}
-	if !reflect.DeepEqual(cfg.Tools, []string{"tavily_search"}) {
-		t.Fatalf("Tools = %#v, want [tavily_search]", cfg.Tools)
-	}
-}
-
-func TestTavilyServerConfigDefaultsURLWhenEmpty(t *testing.T) {
-	cfg := TavilyServerConfig("", "k")
-	u, err := url.Parse(cfg.URL)
-	if err != nil {
-		t.Fatalf("parse URL: %v", err)
-	}
-	if u.Host != "mcp.tavily.com" {
-		t.Fatalf("host = %q, want mcp.tavily.com", u.Host)
+// The search sidecar is loom's own: bearer token, best-effort, and like any
+// server its instructions stay out of the prompt.
+func TestSearchServerConfig(t *testing.T) {
+	cfg := SearchServerConfig("http://search:8030/", "tok")
+	if cfg.Transport != TransportStreamableHTTP || cfg.URL != "http://search:8030/mcp" ||
+		cfg.Headers["Authorization"] != "Bearer tok" || !cfg.BuiltIn || cfg.TrustInstructions || cfg.Artifacts {
+		t.Fatalf("SearchServerConfig = %+v", cfg)
 	}
 }
 

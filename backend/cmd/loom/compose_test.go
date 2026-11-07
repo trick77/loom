@@ -47,6 +47,51 @@ func TestComposePassesImageGenerationEnv(t *testing.T) {
 	}
 }
 
+// The search sidecar is always on: loom waits for it and gets its address;
+// the Tavily key goes to the sidecar only.
+func TestComposePassesSearchEnv(t *testing.T) {
+	for path, url := range map[string]string{
+		"../../../compose.yaml":     "http://search:8030",
+		"../../../compose.dev.yaml": "http://localhost:8030",
+	} {
+		t.Run(path, func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			compose := string(data)
+			for _, want := range []string{
+				`BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-` + url + `}"`,
+				// env_file hands loom every .env key: over it, loom sees only
+				// whether a Tavily key is set, never the key.
+				`BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"`,
+				`SEARCH_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:-}"`,
+			} {
+				if !strings.Contains(compose, want) {
+					t.Fatalf("%s lacks %s", path, want)
+				}
+			}
+			// loom waits for it, and not optionally.
+			dependsOn := regexp.MustCompile(`(?m)^      search:\n(?:\s*#.*\n)*        condition: service_healthy\n(        required: false\n)?`).FindStringSubmatch(compose)
+			if dependsOn == nil || dependsOn[1] != "" {
+				t.Fatalf("%s: loom must depend on a healthy search service", path)
+			}
+			service := composeService(t, compose, "search")
+			for _, want := range []string{`user: "65532:65532"`, "read_only: true", "cap_drop: [ALL]", "no-new-privileges:true", `"/loom-search", "healthcheck"`} {
+				if !strings.Contains(service, want) {
+					t.Fatalf("%s search service lacks %s", path, want)
+				}
+			}
+			if strings.Contains(service, "profiles:") {
+				t.Fatalf("%s: the search service must not sit behind a profile", path)
+			}
+			if strings.Contains(compose, "BACKEND_TAVILY_URL") {
+				t.Fatalf("%s still sets BACKEND_TAVILY_URL", path)
+			}
+		})
+	}
+}
+
 // readsImageRefFromEnv reports whether a file reads a container-image ref from
 // the environment, which production must not do. It is a substring scan over
 // "BACKEND_IMAGE" and friends, so it also catches names not invented yet — but

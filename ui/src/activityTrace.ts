@@ -292,11 +292,11 @@ export function summarizeToolCall(
     // The tool's own server said what it does; that beats guessing from the
     // name (a library search is not a web search, so no globe either). A
     // query stands alone: the step's tag already names the tool, so the title
-    // in front of it ("Tavily Search: …") only repeated it. The title speaks
+    // in front of it ("Web search: …") only repeated it. The title speaks
     // when there is no query; other arguments (ids and the like) never show.
     // A page fetch keeps its own row below: domain, favicon and link.
     // Before any argument has arrived the server's title would only name the
-    // vendor ("Tavily Search"); say which source is in use instead.
+    // tool ("Web search"); say which source is in use instead.
     if (running && /^\s*(?:\{\s*\})?\s*$/.test(rawArguments)) {
       return {
         kind: "generic",
@@ -545,6 +545,8 @@ function memoryToolLabel(name: string): string | undefined {
 
 // Built-in MCP servers and loom's own tools, by the name their label uses.
 const KNOWN_TOOL_SOURCES: Record<string, string> = {
+  search: "sources.tavily",
+  // Traces stored before web search moved to the search server.
   tavily: "sources.tavily",
   fetch: "sources.fetch",
   obscura: "sources.browser",
@@ -573,7 +575,8 @@ export function toolSourceLabel(name: string): string {
 
 // usingToolTitle says which source a call is using, by its label.
 function usingToolTitle(name: string): string {
-  if (splitExposedName(name).server === "tavily") {
+  const { server } = splitExposedName(name);
+  if (server === "search" || server === "tavily") {
     return i18n.t("activityTrace.trace.usingWebSearch");
   }
   return i18n.t("activityTrace.trace.usingTool", {

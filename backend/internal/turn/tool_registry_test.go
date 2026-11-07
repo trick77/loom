@@ -43,11 +43,11 @@ func orderedToolNames(tools []llm.Tool) []string {
 func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 	mcpTools := []llm.Tool{
 		{Type: "function", Function: llm.ToolFunction{Name: "fetch__fetch"}},
-		{Type: "function", Function: llm.ToolFunction{Name: tavilySearchExposedName}},
+		{Type: "function", Function: llm.ToolFunction{Name: searchToolName}},
 		{Type: "function", Function: llm.ToolFunction{Name: "obscura__browser_navigate"}},
 		{Type: "function", Function: llm.ToolFunction{Name: "create_text_file"}},
 	}
-	mcpNames := []string{"fetch__fetch", tavilySearchExposedName, "obscura__browser_navigate"}
+	mcpNames := []string{"fetch__fetch", searchToolName, "obscura__browser_navigate"}
 	core := []string{"conversation_search", "read_thread", "remember_user_directive", "forget_user_directive", "update_user_directive", "remember_user_fact", "update_user_fact", "forget_user_fact"}
 	docs := []string{"create_text_file", "create_pdf_file", "create_xlsx_file", "create_docx_file", "create_pptx_presentation"}
 	project := "p1"
@@ -193,7 +193,7 @@ func TestToolPolicyPerName(t *testing.T) {
 		counter    string
 	}{
 		{"fetch__fetch", 12, true, "web_fetch"},
-		{tavilySearchExposedName, 8, true, "web_search"},
+		{searchToolName, 8, true, "web_search"},
 		{"obscura__browser_navigate", 12, false, "obscura_fetch"},
 		{"obscura__browser_snapshot", 12, false, ""},
 		{"run_python", 3, false, ""},

@@ -7,8 +7,7 @@
 # BACKEND_ADDR, which is why this uses network_mode: host instead of published ports
 # (a 127.0.0.1 bind inside a bridge-network container is unreachable via -p).
 #
-# Built-in Tavily web search: set BACKEND_TAVILY_API_KEY to enable it (the adapter talks to
-# Tavily's hosted MCP server).
+# Web search: set BACKEND_TAVILY_API_KEY to enable it (the search sidecar holds the key).
 services:
   # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
   loom-init:
@@ -39,8 +38,12 @@ services:
       BACKEND_SESSION_SECRET: dev-secret-please-change-0123456789
       BACKEND_DB_PATH: /data/loom.db
       BACKEND_USERS_DIR: /data/users
-      BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
-      BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:-}"
+      # Web search sidecar, published on a localhost port.
+      BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-http://localhost:8030}"
+      BACKEND_SEARCH_TOKEN: dev-search-token-please-change-0123456789
+      # The Tavily key is the sidecar's alone: over what env_file loads, loom
+      # sees only whether one is set (it says why web search is off).
+      BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
       # Same value as the obscura service's OBSCURA_MCP_TOKEN.
       BACKEND_OBSCURA_MCP_TOKEN: dev-obscura-token-please-change-0123456789
@@ -85,6 +88,8 @@ services:
         condition: service_healthy
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
+        condition: service_healthy
+      search:
         condition: service_healthy
       imagegen:
         # Opt-in profile, so not required; discovered at boot once healthy.
@@ -187,6 +192,30 @@ services:
       - "127.0.0.1:8060:8060"
     healthcheck:
       test: ["CMD", "/loom-tunewire", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+
+  search:
+    # Web search sidecar, built from source, published on a localhost port.
+    build:
+      context: .
+      dockerfile: search/Containerfile
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Same value as loom's BACKEND_SEARCH_TOKEN above.
+      SEARCH_TOKEN: dev-search-token-please-change-0123456789
+      SEARCH_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:-}"
+    ports:
+      - "127.0.0.1:8030:8030"
+    healthcheck:
+      test: ["CMD", "/loom-search", "healthcheck"]
       interval: 60s
       timeout: 5s
       start_period: 30s

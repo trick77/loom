@@ -131,7 +131,7 @@ func TestAvailableToolsGatesCategoryTaggedMCP(t *testing.T) {
 	srv := &Engine{
 		mcp: fakeMCPService{
 			ToolList: []llm.Tool{
-				{Type: "function", Function: llm.ToolFunction{Name: "tavily__search"}},
+				{Type: "function", Function: llm.ToolFunction{Name: "search__web"}},
 				{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs"}},
 			},
 			ToolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
@@ -148,7 +148,7 @@ func TestAvailableToolsGatesCategoryTaggedMCP(t *testing.T) {
 	}
 
 	generalGate := newToolGate(string(classifier.General), string(classifier.General), "hello there")
-	if !has(generalGate, "tavily__search") {
+	if !has(generalGate, "search__web") {
 		t.Fatal("category-neutral web search should always be offered")
 	}
 	if has(generalGate, "context7__query-docs") {

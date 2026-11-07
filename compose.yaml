@@ -22,8 +22,12 @@ services:
       BACKEND_AUTH_MODE: "${BACKEND_AUTH_MODE:-oidc}"
       BACKEND_TIKA_URL: "http://tika:9998"
       BACKEND_GOTENBERG_URL: "http://gotenberg:3000"
-      BACKEND_TAVILY_URL: "${BACKEND_TAVILY_URL:-https://mcp.tavily.com/mcp/}"
-      BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY}"
+      # Web search sidecar (docs/search.md), always on. BACKEND_SEARCH_TOKEN
+      # comes in through env_file.
+      BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-http://search:8030}"
+      # The Tavily key is the sidecar's alone: over what env_file loads, loom
+      # sees only whether one is set (it says why web search is off).
+      BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"
       # BACKEND_OBSCURA_MCP_TOKEN comes in through env_file, like the other secrets.
       BACKEND_OBSCURA_MCP_URL: "http://obscura:8090/mcp"
       # run_python sidecar; the tool is offered while it answers. The token is
@@ -87,6 +91,10 @@ services:
         condition: service_healthy
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
+        condition: service_healthy
+      search:
+        # Discovered at boot: waiting keeps web search from missing until the
+        # next refresh.
         condition: service_healthy
       imagegen:
         # Discovered at boot like the rest: waiting keeps the image tool from
@@ -279,6 +287,33 @@ services:
       start_interval: 5s
       retries: 3
     # The loom network: reachable from loom only, with egress to Strava.
+    networks:
+      - loom
+    labels:
+      traefik.enable: "false"
+
+  search:
+    # loom's web search over MCP (docs/search.md): Tavily answers. Holds the
+    # Tavily key, so every route needs SEARCH_TOKEN. Stateless: no volume.
+    # Without a key it serves no tool and web search is off.
+    image: ghcr.io/trick77/loom-search:latest
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SEARCH_TOKEN: "${BACKEND_SEARCH_TOKEN:-}"
+      SEARCH_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:-}"
+    healthcheck:
+      test: ["CMD", "/loom-search", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+    # The loom network: reachable from loom only, with egress to Tavily.
     networks:
       - loom
     labels:

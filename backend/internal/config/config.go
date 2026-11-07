@@ -114,11 +114,15 @@ type Config struct {
 	// the URL.
 	ImageGenURL   string
 	ImageGenToken string
+	// SearchURL is the loom-search sidecar (docs/search.md); empty keeps web
+	// search off unless an mcp.json server named search serves it.
+	// SearchToken is its SEARCH_TOKEN (sidecar.TokenProblem), required with
+	// the URL.
+	SearchURL   string
+	SearchToken string
 
 	TikaURL       string
 	GotenbergURL  string // Gotenberg (Chromium) sidecar for HTML→PDF rendering
-	TavilyURL     string // hosted Tavily MCP endpoint for built-in web search
-	TavilyAPIKey  string // enables built-in Tavily web search when set
 	ObscuraMCPURL string
 	// ObscuraMCPToken is the sidecar's OBSCURA_MCP_TOKEN, sent as a bearer
 	// token; required with ObscuraMCPURL (minObscuraMCPToken).
@@ -282,8 +286,8 @@ func Load() (Config, error) {
 		ImageGenToken:           r.String("BACKEND_IMAGE_GEN_TOKEN", ""),
 		TikaURL:                 r.String("BACKEND_TIKA_URL", "http://tika:9998"),
 		GotenbergURL:            r.String("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
-		TavilyURL:               r.String("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
-		TavilyAPIKey:            r.String("BACKEND_TAVILY_API_KEY", ""),
+		SearchURL:               r.String("BACKEND_SEARCH_URL", ""),
+		SearchToken:             r.String("BACKEND_SEARCH_TOKEN", ""),
 		ObscuraMCPURL:           r.String("BACKEND_OBSCURA_MCP_URL", ""),
 		ObscuraMCPToken:         r.String("BACKEND_OBSCURA_MCP_TOKEN", ""),
 		TunewireURL:             r.String("BACKEND_TUNEWIRE_URL", ""),
@@ -359,6 +363,9 @@ func Load() (Config, error) {
 		r.Fail("%s", msg)
 	}
 	if msg := imagegenProblem(cfg); msg != "" {
+		r.Fail("%s", msg)
+	}
+	if msg := searchProblem(cfg); msg != "" {
 		r.Fail("%s", msg)
 	}
 	if msg := stravaProblem(cfg); msg != "" {
@@ -528,6 +535,21 @@ func imagegenProblem(cfg Config) string {
 	// silently missing tool.
 	if msg := sidecar.TokenProblem("BACKEND_IMAGE_GEN_TOKEN", cfg.ImageGenToken); msg != "" {
 		return msg + " when BACKEND_IMAGE_GEN_URL is set: the sidecar refuses to start without a valid one"
+	}
+	return ""
+}
+
+// searchProblem says what is wrong with a configured search sidecar, by the
+// rule imagegenProblem follows.
+func searchProblem(cfg Config) string {
+	if strings.TrimSpace(cfg.SearchURL) == "" {
+		return ""
+	}
+	if !isAbsoluteHTTPURL(cfg.SearchURL) {
+		return "BACKEND_SEARCH_URL must be an absolute http(s) URL"
+	}
+	if msg := sidecar.TokenProblem("BACKEND_SEARCH_TOKEN", cfg.SearchToken); msg != "" {
+		return msg + " when BACKEND_SEARCH_URL is set: the sidecar refuses to start without a valid one"
 	}
 	return ""
 }

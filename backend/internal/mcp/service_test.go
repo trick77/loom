@@ -259,10 +259,9 @@ func TestServiceServerStatusReportsReachableAndUnreachable(t *testing.T) {
 	}
 }
 
-// tavilyMockServer mimics Tavily's hosted MCP endpoint: it answers the MCP
-// JSON-RPC handshake and advertises several tools, of which only tavily_search
-// must survive the ServerConfig.Tools allowlist.
-func tavilyMockServer(t *testing.T) *httptest.Server {
+// multiToolMockServer answers the MCP JSON-RPC handshake and advertises
+// several tools, of which an allowlist (ServerConfig.Tools) may keep one.
+func multiToolMockServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
@@ -291,7 +290,7 @@ func tavilyMockServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-func TestBestEffortServiceIncludesSyntheticTavilyAndExternalTools(t *testing.T) {
+func TestBestEffortServiceIncludesAllowlistedAndExternalTools(t *testing.T) {
 	external := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req rpcRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -315,12 +314,12 @@ func TestBestEffortServiceIncludesSyntheticTavilyAndExternalTools(t *testing.T) 
 	}))
 	t.Cleanup(external.Close)
 
-	tavily := tavilyMockServer(t)
+	tavily := multiToolMockServer(t)
 	t.Cleanup(tavily.Close)
 
 	cfg := Config{Servers: map[string]ServerConfig{
 		"fetch":  {Transport: TransportStreamableHTTP, URL: external.URL},
-		"tavily": TavilyServerConfig(tavily.URL, "test-key"),
+		"tavily": {Transport: TransportStreamableHTTP, URL: tavily.URL, Tools: []string{"tavily_search"}},
 	}}
 	service, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, external.Client(), nil)
 	if err != nil {
@@ -462,21 +461,21 @@ func TestNewServiceFromConfigsRequiredFailureIsFatal(t *testing.T) {
 	}
 }
 
-func TestServiceServerStatusProbesSyntheticTavilyConfig(t *testing.T) {
-	tavily := tavilyMockServer(t)
-	t.Cleanup(tavily.Close)
+func TestServiceServerStatusProbesSearchSidecar(t *testing.T) {
+	mock := multiToolMockServer(t)
+	t.Cleanup(mock.Close)
 
 	cfg := Config{Servers: map[string]ServerConfig{
-		"tavily": TavilyServerConfig(tavily.URL, "test-key"),
+		SearchServer: SearchServerConfig(mock.URL, "test-token"),
 	}}
-	service, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, tavily.Client(), nil)
+	service, err := NewServiceFromConfigs(context.Background(), Config{}, cfg, mock.Client(), nil)
 	if err != nil {
 		t.Fatalf("NewServiceFromConfigs() error: %v", err)
 	}
 
 	statuses := service.ServerStatus(context.Background())
-	if len(statuses) != 1 || statuses[0].Name != "tavily" || !statuses[0].Active {
-		t.Fatalf("ServerStatus() = %#v, want active tavily", statuses)
+	if len(statuses) != 1 || statuses[0].Name != SearchServer || !statuses[0].Active || statuses[0].Origin != OriginBuiltIn {
+		t.Fatalf("ServerStatus() = %#v, want active built-in search", statuses)
 	}
 }
 
