@@ -10,7 +10,11 @@ node_modules
 # Go
 /loom
 /backend/loom
+/backend/loom-*
 /bin/
+
+# Python bytecode (a local py_compile of sandbox/loomcharts)
+__pycache__/
 *.test
 
 # Coverage reports

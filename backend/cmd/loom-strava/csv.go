@@ -18,9 +18,11 @@ const (
 	hdrStreams    = "elapsed_s,distance_km,lat,lng,altitude_m,speed_kmh,hr,cadence,watts,grade_pct,temp_c,moving,power_zone,hr_zone"
 	hdrClimbs     = "n,from_km,to_km,len_km,gain_m,grade_pct,secs,vam,avg_w,wkg,avg_hr"
 	hdrPowerCurve = "duration_s,this_w,window_best_w,window_median_w"
-	hdrBaseline   = "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr"
+	// elapsed_time_s, not elapsed_s: the streams' elapsed_s is a clock
+	// reading per row, this a total; one name for both was misread.
+	hdrBaseline   = "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_time_s,not_recorded_s"
 	hdrWeeks      = "week_start,iso_week,sport_type,count,distance_km,moving_s,gain_m,tss"
-	hdrActivities = "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score"
+	hdrActivities = "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score,elapsed_time_s"
 	// hdrSameRoutePrefix is followed by one gap_s_<YYYY-MM-DD> column per
 	// earlier ride.
 	hdrSameRoutePrefix = "distance_km"
@@ -229,14 +231,54 @@ func (w *weekTable) file() mcpserver.File {
 	return t.file("strava_weeks.csv")
 }
 
-// fileNames is the one line naming the attached files.
+// fileNames is the line naming the attached files, then what their time
+// columns mean: a model read elapsed_s as a per-row duration, summed it per
+// zone and then took it for milliseconds.
 func fileNames(files []mcpserver.File) string {
 	if len(files) == 0 {
 		return ""
 	}
 	names := make([]string, 0, len(files))
+	var notes []string
 	for _, f := range files {
 		names = append(names, fmt.Sprintf("%s (%d rows)", f.Name, max(0, strings.Count(f.Text, "\n")-1)))
+		switch {
+		case strings.HasSuffix(f.Name, "_streams.csv"):
+			step := streamsStep(f.Text)
+			notes = append(notes, fmt.Sprintf("%s: one row per %d s of recording; elapsed_s is seconds since the start, "+
+				"a jump larger than the step is a gap with the recording off (pause), no rows in it; moving is 0/1; "+
+				"time in a zone or moving ≈ its rows × %d s, never a sum of elapsed_s", f.Name, step, step))
+		case strings.HasSuffix(f.Name, "_baseline.csv"):
+			notes = append(notes, f.Name+": moving_s and elapsed_time_s are Strava's totals; not_recorded_s is the clock the recording skipped "+
+				"(pause, auto-pause, dropout), empty for an activity analysed before that was kept")
+		case f.Name == "strava_activities.csv":
+			notes = append(notes, f.Name+": moving_s and elapsed_time_s are Strava's totals; elapsed minus moving is time paused or stopped")
+		}
 	}
-	return "attached for run_python: " + strings.Join(names, ", ") + "\n"
+	out := "attached for run_python: " + strings.Join(names, ", ") + "\n"
+	for _, n := range notes {
+		out += "  " + n + "\n"
+	}
+	return out
+}
+
+// streamsStep is a streams file's resample step: the smallest step between
+// its rows (streamsCSV coarsens a long activity past streamStepS).
+func streamsStep(text string) int {
+	step, prev := 0, -1
+	for i, line := range strings.Split(text, "\n") {
+		first, _, _ := strings.Cut(line, ",")
+		v, err := strconv.Atoi(first)
+		if i == 0 || err != nil {
+			continue
+		}
+		if prev >= 0 && v > prev && (step == 0 || v-prev < step) {
+			step = v - prev
+		}
+		prev = v
+	}
+	if step == 0 {
+		return streamStepS
+	}
+	return step
 }

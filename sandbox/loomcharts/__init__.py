@@ -40,20 +40,23 @@ Own charts
 CSV contract (5 s resample in streams; empty cell = no value)
     strava_<id>_streams.csv     elapsed_s, distance_km, lat, lng, altitude_m, speed_kmh, hr,
                                 cadence, watts, grade_pct, temp_c, moving (0/1),
-                                power_zone, hr_zone (1-5)
+                                power_zone, hr_zone (1-5); elapsed_s = seconds since the
+                                start (a pause is a jump, no rows), time in a zone =
+                                rows x the step
     strava_<id>_climbs.csv      n, from_km, to_km, len_km, gain_m, grade_pct, secs, vam,
-                                avg_w, wkg, avg_hr
+                                avg_w, wkg, avg_hr (secs and vam: recorded part only)
     strava_<id>_power_curve.csv duration_s, this_w, window_best_w, window_median_w
     strava_<id>_baseline.csv    activity_id, date, name, sport_type, is_this (1 = analysed),
                                 same_route, distance_km, moving_s, avg_kmh, gain_m, np_w,
-                                tss, ef, decoupling_pct, best_20m_w, avg_hr
+                                tss, ef, decoupling_pct, best_20m_w, avg_hr, elapsed_time_s,
+                                not_recorded_s (clock the recording skipped)
     strava_<id>_same_route.csv  distance_km, gap_s_<YYYY-MM-DD> per earlier ride
                                 (seconds behind; negative = ahead)
     strava_weeks.csv            week_start, iso_week, sport_type, count, distance_km,
                                 moving_s, gain_m, tss (one row per week and sport)
     strava_activities.csv       activity_id, date, name, sport_type, trainer, distance_km,
                                 moving_s, gain_m, avg_kmh, avg_hr, avg_w, weighted_w, kj,
-                                suffer_score
+                                suffer_score, elapsed_time_s
 """
 
 from ._style import BEST, BG, CONTEXT, INK, INK2, MEDIAN, MUTED, SERIES, THIS, ZONES, apply_style

@@ -266,11 +266,8 @@ func computeMetrics(s series, a, b int, pEdges, hEdges []float64) rideMetrics {
 	}
 	m.MovingS = len(movIdx)
 	m.StoppedS = m.Samples - m.MovingS
-	// The gap before a's first sample is not this stretch's.
-	var skipped float64
-	for i := a + 1; i < b && i < len(s.skipped); i++ {
-		skipped += s.skipped[i]
-	}
+	// The gap before a's first sample is not this stretch's (gaps' rule).
+	skipped, _, _ := untimed(gaps(s, a, b))
 	m.UnrecordedS = int(math.Round(skipped))
 	if s.dist != nil {
 		m.DistanceM = s.dist[b-1] - s.dist[a]
@@ -497,11 +494,86 @@ func hrEdges(z athleteZones) []float64 {
 	return nil
 }
 
+// gap is a stretch the recording skipped (watch paused, auto-pause, a
+// dropout): the distance and climb across it were covered but never timed.
+// Strava's splits and a plain distance-over-time read count them as run:
+// a user who walked a 20 % ramp with the watch paused was told it was the
+// hardest km they ran.
+type gap struct {
+	AtM, DistM, GainM, Secs float64 // AtM: where it starts; NaN without that stream
+}
+
+// maxGapsShown bounds the gaps the text lists; the total stays in "not
+// recorded".
+const maxGapsShown = 20
+
+// gaps are the stretches the recording skipped within samples a..b-1 (the
+// gap before a is not this stretch's).
+func gaps(s series, a, b int) []gap {
+	var out []gap
+	for i := a + 1; i < b && i < len(s.skipped); i++ {
+		if s.skipped[i] <= 0 {
+			continue
+		}
+		g := gap{AtM: nan, DistM: nan, GainM: nan, Secs: s.skipped[i]}
+		if s.dist != nil {
+			g.AtM, g.DistM = s.dist[i-1], s.dist[i]-s.dist[i-1]
+		}
+		if s.alt != nil {
+			g.GainM = s.alt[i] - s.alt[i-1]
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+// gapsOver are the gaps whose covered stretch overlaps from..to by distance,
+// each cut to the overlap (its time stays whole: a pause is not split). By
+// distance, not sample index: a climb found on a 100 m grid can start or end
+// inside a gap's jump, where no sample is.
+func gapsOver(gs []gap, from, to float64) []gap {
+	var out []gap
+	for _, g := range gs {
+		if !finite(g.AtM) || !finite(g.DistM) {
+			continue
+		}
+		lo, hi := max(g.AtM, from), min(g.AtM+g.DistM, to)
+		switch {
+		case g.DistM <= 0 && g.AtM >= from && g.AtM < to:
+			out = append(out, g)
+		case hi > lo:
+			part := g
+			part.AtM, part.DistM = lo, hi-lo
+			if finite(g.GainM) {
+				part.GainM = g.GainM * (hi - lo) / g.DistM
+			}
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// untimed sums gaps: their time, distance and climb (a descent counts zero).
+func untimed(gs []gap) (secs, distM, gainM float64) {
+	for _, g := range gs {
+		secs += g.Secs
+		if finite(g.DistM) {
+			distM += g.DistM
+		}
+		if finite(g.GainM) && g.GainM > 0 {
+			gainM += g.GainM
+		}
+	}
+	return secs, distM, gainM
+}
+
 // climb is a stretch of at least minClimbM at minClimbGrade or more.
+// Untimed* is what of it fell in gaps: Secs and VAM are the recorded part's.
 type climb struct {
-	FromM, ToM, GainM, GradePct float64
-	Secs                        int
-	VAM, AvgW, WKg, AvgHR       float64
+	FromM, ToM, GainM, GradePct          float64
+	Secs                                 int
+	VAM, AvgW, WKg, AvgHR                float64
+	UntimedS, UntimedDistM, UntimedGainM float64
 }
 
 const (
@@ -523,6 +595,7 @@ func climbs(s series, a, b int, weight float64) []climb {
 	if s.dist == nil || s.alt == nil || b-a < 2 {
 		return nil
 	}
+	all := gaps(s, a, b)
 	d0, d1 := s.dist[a], s.dist[b-1]
 	var km, alt []float64
 	j := a
@@ -564,8 +637,11 @@ func climbs(s series, a, b int, weight float64) []climb {
 			ca, cb := s.sub(from, to)
 			c := climb{FromM: from, ToM: to, GainM: gain, GradePct: gain / (to - from) * 100, Secs: cb - ca,
 				AvgW: nan, WKg: nan, AvgHR: nan, VAM: nan}
+			c.UntimedS, c.UntimedDistM, c.UntimedGainM = untimed(gapsOver(all, from, to))
 			if c.Secs > 0 {
-				c.VAM = gain / (float64(c.Secs) / 3600)
+				// The climb done in a gap took no recorded time: it is not in
+				// the rate.
+				c.VAM = max(0, gain-c.UntimedGainM) / (float64(c.Secs) / 3600)
 				if s.watts != nil {
 					c.AvgW = mean(s.watts[ca:cb])
 					if weight > 0 {
@@ -628,9 +704,11 @@ func efforts(s series, a, b int, ftp float64) []effort {
 	return out
 }
 
-// kmRow is one distance bucket of the per-km series.
+// kmRow is one distance bucket of the per-km series. UntimedS and
+// UntimedGainM are the gaps in it: Secs leaves them out.
 type kmRow struct {
 	ToM, Secs, SpeedMS, HR, W, Cad, AltM, GradePct float64
+	UntimedS, UntimedGainM                         float64
 }
 
 // maxKmRows bounds the per-km series; longer activities get wider buckets.
@@ -666,6 +744,17 @@ func kmRows(s series, a, b int, unitM float64) ([]kmRow, float64) {
 		}
 		// Absolute distance, a section's rows too: they say where it happened.
 		row := kmRow{ToM: s.dist[end-1], Secs: float64(end - start), SpeedMS: nan, HR: nan, W: nan, Cad: nan, AltM: nan, GradePct: nan}
+		// A gap belongs to the row its resume sample is in, the one right
+		// before the row's first sample too: the distance it skipped lands
+		// here. (Climbs cut gaps by distance instead: they start on a grid,
+		// where a row starts on a sample.)
+		row.UntimedS, _, row.UntimedGainM = untimed(gaps(s, max(a, start-1), end))
+		// The row runs on from the previous row's last sample, so its grade
+		// holds a gap at its start like its note does.
+		from := start
+		if start > a {
+			from = start - 1
+		}
 		if s.speed != nil {
 			row.SpeedMS = meanAt(s.speed, mov)
 		}
@@ -680,8 +769,8 @@ func kmRows(s series, a, b int, unitM float64) ([]kmRow, float64) {
 		}
 		if s.alt != nil {
 			row.AltM = s.alt[end-1]
-			if d := s.dist[end-1] - s.dist[start]; d > 0 {
-				row.GradePct = (s.alt[end-1] - s.alt[start]) / d * 100
+			if d := s.dist[end-1] - s.dist[from]; d > 0 {
+				row.GradePct = (s.alt[end-1] - s.alt[from]) / d * 100
 			}
 		}
 		out = append(out, row)

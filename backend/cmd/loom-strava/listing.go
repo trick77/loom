@@ -216,7 +216,7 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 		acts.row(strconv.FormatInt(x.ID, 10), x.localStart().Format("2006-01-02"), x.Name, x.SportType, boolCell(x.indoor()),
 			cell(x.Distance/1000, 2), intCell(x.MovingTime), cell(x.TotalElevationGain, 0), cell(x.AverageSpeed*3.6, 1),
 			optCell(x.AverageHeartrate), optCell(x.AverageWatts), optCell(x.WeightedAverageWatts),
-			optCell(x.Kilojoules), optCell(x.SufferScore))
+			optCell(x.Kilojoules), optCell(x.SufferScore), intCell(x.ElapsedTime))
 		sm, ok := stored[strconv.FormatInt(x.ID, 10)]
 		weeks.add(x, activityTSS(x, sm, ok, a.FTP), nan)
 	}
