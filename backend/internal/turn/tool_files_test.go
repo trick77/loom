@@ -126,11 +126,18 @@ func TestCodeNamedToolFiles(t *testing.T) {
 	if codeNamedToolFiles("print(1)", tf) != nil {
 		t.Error("no path in the code, none added")
 	}
-	// A bare name as a whole string literal counts: a loomcharts call takes
-	// the name a tool printed. In a comment or a longer string it does not.
-	got = codeNamedToolFiles(`lc.ride_profile("data.csv", "out/p.png", climbs='y.csv')  # not a.csv; "x.csv.bak"`, tf)
+	// A bare name as a whole string literal counts (a loomcharts call takes
+	// the name a tool printed), ./ too; unquoted or inside a longer string it
+	// does not.
+	got = codeNamedToolFiles(`lc.ride_profile("data.csv", "out/p.png", climbs='./y.csv')  # not a.csv; "x.csv.bak"`, tf)
 	if strings.Join(got, ",") != "data.csv,y.csv" {
 		t.Errorf("bare quoted names: got %v", got)
+	}
+	// Paths before quoted names: the caps drop a quoted one (maybe an output
+	// name) first.
+	got = codeNamedToolFiles(`df.to_csv("a.csv"); pd.read_csv("in/y.csv")`, tf)
+	if strings.Join(got, ",") != "y.csv,a.csv" {
+		t.Errorf("order: got %v, want the in/ path first", got)
 	}
 }
 
@@ -158,6 +165,16 @@ func TestMissingInputHint(t *testing.T) {
 	res.ExitCode = 0
 	if missingInputHint(res, nil, tf) != "" {
 		t.Error("a run that worked gets no hint")
+	}
+	// A mounted file opened bare: the error has no in/, the hint says where
+	// it is (pd.read_csv('<name>') still misses it after the mount).
+	bare := sandbox.Result{ExitCode: 1, Stderr: "FileNotFoundError: [Errno 2] No such file or directory: 'strava_1_streams.csv'"}
+	mounted := []sandbox.File{{Name: "strava_1_streams.csv"}}
+	if got := missingInputHint(bare, mounted, tf); got != "note: input files are in in/, not the working directory: read in/strava_1_streams.csv\n" {
+		t.Errorf("bare-name hint: %q", got)
+	}
+	if got := missingInputHint(sandbox.Result{ExitCode: 1, Stderr: "No such file or directory: 'other.csv'"}, mounted, tf); got != "" {
+		t.Errorf("an unrelated missing file got a hint: %q", got)
 	}
 }
 
