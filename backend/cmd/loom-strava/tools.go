@@ -422,7 +422,10 @@ func (t *tools) getActivity(ctx context.Context, raw json.RawMessage) mcpserver.
 	// Strava's splits count a pause's distance and climb without its time:
 	// read alone, a walked ramp is the hardest km run.
 	if g := gapsText(gaps(s, 0, s.n), u); g != "" {
-		text += "\n" + g + "Strava's splits above leave each gap's time out of their pace.\n"
+		text += "\n" + g
+		if len(d.SplitsMetric) > 0 || len(d.SplitsStandard) > 0 {
+			text += "Strava's splits above leave each gap's time out of their pace.\n"
+		}
 	}
 	if why == "" {
 		files = []mcpserver.File{f}

@@ -244,9 +244,10 @@ func fileNames(files []mcpserver.File) string {
 		names = append(names, fmt.Sprintf("%s (%d rows)", f.Name, max(0, strings.Count(f.Text, "\n")-1)))
 		switch {
 		case strings.HasSuffix(f.Name, "_streams.csv"):
+			step := streamsStep(f.Text)
 			notes = append(notes, fmt.Sprintf("%s: one row per %d s of recording; elapsed_s is seconds since the start, "+
 				"a jump larger than the step is a gap with the recording off (pause), no rows in it; moving is 0/1; "+
-				"time in a zone or moving ≈ its rows × %d s, never a sum of elapsed_s", f.Name, streamsStep(f.Text), streamsStep(f.Text)))
+				"time in a zone or moving ≈ its rows × %d s, never a sum of elapsed_s", f.Name, step, step))
 		case strings.HasSuffix(f.Name, "_baseline.csv"):
 			notes = append(notes, f.Name+": moving_s and elapsed_time_s are Strava's totals; not_recorded_s is the clock the recording skipped "+
 				"(pause, auto-pause, dropout), empty for an activity analysed before that was kept")

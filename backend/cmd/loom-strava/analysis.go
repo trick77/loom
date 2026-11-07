@@ -914,7 +914,10 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		for i, r := range rows {
 			gapNote := ""
 			if r.UntimedS > 0 {
-				gapNote = fmt.Sprintf(" | + %s not recorded, %s of the climb in it", clock(r.UntimedS), u.elev(r.UntimedGainM))
+				gapNote = " | + " + clock(r.UntimedS) + " not recorded"
+				if r.UntimedGainM >= 1 {
+					gapNote += ", " + u.elev(r.UntimedGainM) + " of the climb in it"
+				}
 			}
 			line := fmt.Sprintf("%s | %s | %s | %s | %s | %s | %s | %s%s\n", u.distNum(r.ToM), clock(r.Secs), tempoShort(r.SpeedMS, d.SportType, u),
 				num(r.W, 0), num(r.HR, 0), num(r.Cad, 0), elevShort(r.AltM, u), num(r.GradePct, 1), gapNote)

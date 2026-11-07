@@ -595,11 +595,16 @@ func TestAnalysis_paused(t *testing.T) {
 			t.Errorf("attach line lacks %q:\n%s", want, r.Text)
 		}
 	}
-	// get_activity lists the gap next to Strava's splits, which count a
-	// paused stretch's distance and climb without its time.
+	// get_activity lists the gap; the line about Strava's splits only where
+	// there are splits (this ride has none).
 	if g := callTool(t, h, userA, "get_activity", `{"id":1001}`); !strings.Contains(g.Text, "recording off (") ||
-		!strings.Contains(g.Text, "Strava's splits above leave each gap's time out of their pace") {
-		t.Errorf("get_activity without the gap:\n%s", g.Text)
+		strings.Contains(g.Text, "Strava's splits above") {
+		t.Errorf("get_activity gap lines:\n%s", g.Text)
+	}
+	f.addActivity(1, 1002, "Seckle", "Run", local(2026, 11, 2, 9), &ride, map[string]any{
+		"splits_metric": []map[string]any{{"split": 1, "distance": 1000.0, "moving_time": 300, "average_speed": 3.3, "elevation_difference": 42.0}}})
+	if g := callTool(t, h, userA, "get_activity", `{"id":1002}`); !strings.Contains(g.Text, "Strava's splits above leave each gap's time out of their pace") {
+		t.Errorf("get_activity with splits and a gap:\n%s", g.Text)
 	}
 	// A section across the pause gives its clock time too.
 	r = callTool(t, h, userA, "activity_analysis", `{"id":1001,"from_km":1,"to_km":9}`)

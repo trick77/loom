@@ -332,12 +332,15 @@ func TestBuildSeries_gapsAndNulls(t *testing.T) {
 // walkedRamp is 3 km at 3 m/s, climbing 8 % from 1 to 2 km, with the
 // watch paused at 1.4 km for 120 s while 150 m and 30 m up were walked: the
 // recording resumes there.
-func walkedRamp() streamSet {
+func walkedRamp() streamSet { return walkedRampAt(1400) }
+
+// walkedRampAt pauses at pauseM instead.
+func walkedRampAt(pauseM float64) streamSet {
 	var tm, dist, alt, vel floats
 	t, d, h, paused := 0.0, 0.0, 100.0, false
 	for d < 3000 {
 		tm, dist, alt, vel = append(tm, t), append(dist, d), append(alt, h), append(vel, 3)
-		if !paused && d >= 1400 {
+		if !paused && d >= pauseM {
 			paused = true
 			t, d, h = t+121, d+150, h+30
 			continue
@@ -381,6 +384,22 @@ func TestClimbsAndKmRowsAcrossAGap(t *testing.T) {
 	if untimedRows != 1 {
 		t.Errorf("%d rows carry the gap, want 1", untimedRows)
 	}
+	// The row's grade holds the gap's climb like its note: 850 m at 8 % run
+	// plus 150 m at 20 % walked is 9.8 %, not the run part's 6.8 %.
+	for _, r := range rows {
+		if r.UntimedS > 0 && math.Abs(r.GradePct-9.8) > 0.3 {
+			t.Errorf("gap row grade %.1f %%, want about 9.8", r.GradePct)
+		}
+	}
+
+	// A pause right at the foot of the climb: the 100 m grid starts it inside
+	// the gap's jump, where no sample is; it must still count.
+	s = buildSeries(walkedRampAt(1000))
+	cl = climbs(s, 0, s.n, 0)
+	if len(cl) != 1 || cl[0].UntimedS != 120 || cl[0].UntimedGainM < 20 {
+		t.Fatalf("climb starting in a gap: %+v", cl)
+	}
+	near(t, "VAM at the foot", cl[0].VAM*float64(cl[0].Secs)/3600, cl[0].GainM-cl[0].UntimedGainM, 1e-6)
 	if txt := gapsText(gs, units{}); !strings.Contains(txt, "km 1.4 · 2:00 · 150 m +30 m covered") || !strings.Contains(txt, "not a run effort") {
 		t.Errorf("gaps text: %q", txt)
 	}
