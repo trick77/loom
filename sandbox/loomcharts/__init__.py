@@ -1,10 +1,11 @@
 """loomcharts: loom's ready-made activity charts (dark theme, PNG at dpi 200).
 
 Each function reads the CSV files the Strava tools attach (a path or a DataFrame), writes
-one PNG and returns its path. Write into out/ so the chart reaches the chat:
+one PNG and returns its path. The input files sit in in/ (a bare name is looked up there
+too); write into out/ so the chart reaches the chat:
 
     import loomcharts
-    loomcharts.ride_profile("strava_123_streams.csv", "out/profile.png", climbs="strava_123_climbs.csv")
+    loomcharts.ride_profile("in/strava_123_streams.csv", "out/profile.png", climbs="in/strava_123_climbs.csv")
 
 Empty columns are fine: a chart leaves out what is missing (no power -> zones from heart
 rate, no heart rate -> no HR panel) and writes a short notice image when nothing is left.

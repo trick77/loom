@@ -296,7 +296,20 @@ def variants(p, d):
         ("head_activities", loomcharts.activities_summary, (heads["activities"], j("head_activities.png")), {},
          note),
     ]
+    # A job's inputs sit in in/; the tools name them bare, and a bare name must be found there.
+    os.makedirs(j("in"), exist_ok=True)
+    pd.read_csv(p["streams"]).to_csv(os.path.join(d, "in", "bare_streams.csv"), index=False)
+
+    def in_job_dir(fn):
+        def call(*args, **kwargs):
+            with contextlib.chdir(d):
+                return fn(*args, **kwargs)
+        return call
+
     return header_only + [
+        # Absolute out: the call runs inside d, and --out may give a relative d.
+        ("profile_bare_name", in_job_dir(loomcharts.ride_profile),
+         ("bare_streams.csv", os.path.join(os.path.abspath(d), "profile_bare.png")), {}, full),
         ("profile", loomcharts.ride_profile, (p["streams"], j("profile.png")),
          {"climbs": p["climbs"], "title": "Albis loop · 1 Nov 2026"}, full),
         ("profile_hrzones", loomcharts.ride_profile, (nopower, j("profile_hrzones.png")),
@@ -390,6 +403,32 @@ def run(d):
         failures.append("apply_style")
         print("FAIL apply_style did not set the dark style")
     mpl.rcParams.update(before)
+    failures += check_input_path(d)
+    return failures
+
+
+def check_input_path(d):
+    """A bare name is looked up in in/ only when the working directory lacks it; a name
+    with a directory never is; a missing one is reported as in/<name>."""
+    from loomcharts._style import input_path
+
+    root = os.path.join(os.path.abspath(d), "inputs")
+    os.makedirs(os.path.join(root, "in", "sub"), exist_ok=True)
+    for rel in ("both.csv", os.path.join("in", "both.csv"), os.path.join("in", "only_in.csv"),
+                os.path.join("in", "sub", "x.csv")):
+        with open(os.path.join(root, rel), "w") as f:
+            f.write("a\n1\n")
+    want = {"both.csv": "both.csv", "only_in.csv": os.path.join("in", "only_in.csv"),
+            os.path.join("sub", "x.csv"): os.path.join("sub", "x.csv"),
+            "missing.csv": os.path.join("in", "missing.csv"), "": "", ".": "."}
+    failures = []
+    with contextlib.chdir(root):
+        for src, path in want.items():
+            if (got := input_path(src)) != path:
+                failures.append("input_path")
+                print(f"FAIL input_path({src!r}) = {got!r}, want {path!r}")
+    if not failures:
+        print("ok   input_path")
     return failures
 
 

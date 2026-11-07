@@ -167,7 +167,23 @@ def frame(src):
     """A DataFrame from a CSV path, a file object or a DataFrame (copied)."""
     if isinstance(src, pd.DataFrame):
         return src.copy()
-    return pd.read_csv(src)
+    return pd.read_csv(input_path(src))
+
+
+def input_path(src):
+    """src, or in/<src> for a bare file name not in the working directory.
+
+    A job's input files sit in in/, the tools name them bare, and a model passing that name
+    got a FileNotFoundError. A name with a directory, a file in the working directory or a
+    file object stays as given. Missing from in/ too, the error then names in/<src>, which
+    the run_python result explains (pass the file in files).
+    """
+    if not isinstance(src, (str, os.PathLike)):
+        return src
+    name = os.fspath(src)
+    if not isinstance(name, str) or name.strip(". ") == "" or os.path.dirname(name) != "" or os.path.exists(name):
+        return src
+    return os.path.join("in", name)
 
 
 def num(df, name):
