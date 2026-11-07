@@ -353,14 +353,18 @@ func sandboxInputName(name string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(name), "/work/in/"), "in/")
 }
 
-// codeNamedToolFiles are this turn's tool files whose path in/<name> the code
-// spells out, as a whole path (in/a.csv is not in/data.csv), sorted. A model
-// that writes pd.read_csv('in/<name>') but leaves files out otherwise reads
-// an empty in/ (seen twice in one turn). Documents stay explicit.
+// codeNamedToolFiles are this turn's tool files the code names: their path
+// in/<name> as a whole path (in/a.csv is not in/data.csv), or the bare name
+// as a whole string literal ('<name>' or "<name>"), sorted. A model that
+// writes pd.read_csv('in/<name>') but leaves files out otherwise reads an
+// empty in/ (seen twice in one turn); one passing the bare name a tool
+// printed to a loomcharts function had it unmounted. A bare name only in
+// quotes: in a comment or a longer string it names nothing. Documents stay
+// explicit.
 func codeNamedToolFiles(code string, toolFiles map[string]mcp.File) []string {
 	var names []string
 	for _, name := range slices.Sorted(maps.Keys(toolFiles)) {
-		if spellsPath(code, "in/"+name) {
+		if spellsPath(code, "in/"+name) || strings.Contains(code, `"`+name+`"`) || strings.Contains(code, `'`+name+`'`) {
 			names = append(names, name)
 		}
 	}

@@ -126,6 +126,12 @@ func TestCodeNamedToolFiles(t *testing.T) {
 	if codeNamedToolFiles("print(1)", tf) != nil {
 		t.Error("no path in the code, none added")
 	}
+	// A bare name as a whole string literal counts: a loomcharts call takes
+	// the name a tool printed. In a comment or a longer string it does not.
+	got = codeNamedToolFiles(`lc.ride_profile("data.csv", "out/p.png", climbs='y.csv')  # not a.csv; "x.csv.bak"`, tf)
+	if strings.Join(got, ",") != "data.csv,y.csv" {
+		t.Errorf("bare quoted names: got %v", got)
+	}
 }
 
 // A file the code names but the model did not ask for never fails the call:
