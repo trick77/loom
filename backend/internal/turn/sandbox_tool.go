@@ -330,12 +330,23 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 // is not matched by codeNamedToolFiles, and a bare FileNotFoundError taught
 // the model nothing (it then listed an empty in/).
 func missingInputHint(res sandbox.Result, files []sandbox.File, toolFiles map[string]mcp.File) string {
-	if res.ExitCode == 0 || !strings.Contains(res.Stderr, "No such file or directory") || !strings.Contains(res.Stderr, "in/") {
+	if res.ExitCode == 0 || !strings.Contains(res.Stderr, "No such file or directory") {
 		return ""
 	}
 	mounted := make([]string, 0, len(files))
+	// A bare name the program opened is not where an input sits: say where.
+	var bare []string
 	for _, f := range files {
 		mounted = append(mounted, f.Name)
+		if quotesName(res.Stderr, f.Name) {
+			bare = append(bare, f.Name)
+		}
+	}
+	if len(bare) > 0 {
+		return "note: input files are in in/, not the working directory: read in/" + strings.Join(bare, ", in/") + "\n"
+	}
+	if !strings.Contains(res.Stderr, "in/") {
+		return ""
 	}
 	hint := "note: in/ holds only the files named in files"
 	if len(mounted) > 0 {
@@ -353,18 +364,39 @@ func sandboxInputName(name string) string {
 	return strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(name), "/work/in/"), "in/")
 }
 
-// codeNamedToolFiles are this turn's tool files whose path in/<name> the code
-// spells out, as a whole path (in/a.csv is not in/data.csv), sorted. A model
+// codeNamedToolFiles are this turn's tool files the code names: their path
+// in/<name> as a whole path (in/a.csv is not in/data.csv) first, then those
+// only quoted bare ('<name>', "./<name>"), each group sorted: the caps then
+// drop a quoted name (maybe an output or a label) before a path. A model
 // that writes pd.read_csv('in/<name>') but leaves files out otherwise reads
-// an empty in/ (seen twice in one turn). Documents stay explicit.
+// an empty in/ (seen twice in one turn); one passing the bare name a tool
+// printed to a loomcharts function had it unmounted. A quoted name counts
+// wherever it stands, a comment too; unquoted, only as in/<name>. Documents
+// stay explicit.
 func codeNamedToolFiles(code string, toolFiles map[string]mcp.File) []string {
-	var names []string
+	var paths, quoted []string
 	for _, name := range slices.Sorted(maps.Keys(toolFiles)) {
-		if spellsPath(code, "in/"+name) {
-			names = append(names, name)
+		switch {
+		case spellsPath(code, "in/"+name):
+			paths = append(paths, name)
+		case quotesName(code, name):
+			quoted = append(quoted, name)
 		}
 	}
-	return names
+	return append(paths, quoted...)
+}
+
+// quotesName reports whether code holds name, or ./name, as a whole string
+// literal in single or double quotes.
+func quotesName(code, name string) bool {
+	for _, q := range []string{`"`, `'`} {
+		for _, n := range []string{name, "./" + name} {
+			if strings.Contains(code, q+n+q) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // spellsPath reports whether path stands in code on its own: not inside a
