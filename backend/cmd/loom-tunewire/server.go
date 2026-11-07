@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/trick77/loom/internal/loomuser"
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/httpx"
-	"github.com/trick77/ship/kit/secret"
 	"github.com/trick77/toolkit/mcpserver"
 )
 
@@ -83,17 +83,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		httpx.WriteJSON(w, http.StatusOK, st)
 	})))
 
-	root := http.NewServeMux()
-	httpx.Health(root, nil)
-	root.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if tok, ok := httpx.Bearer(r); !ok || !secret.Match(tok, cfg.token) {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		api.ServeHTTP(w, r)
-	}))
-	return root
+	return sidecar.Handler(cfg.token, api)
 }
 
 // requireUser refuses a per-user route that names no loom user: every

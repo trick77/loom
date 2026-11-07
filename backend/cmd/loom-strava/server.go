@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/trick77/loom/internal/loomuser"
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/httpx"
-	"github.com/trick77/ship/kit/secret"
 	"github.com/trick77/toolkit/mcpserver"
 )
 
@@ -80,14 +80,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		httpx.WriteJSON(w, http.StatusOK, st)
 	})
 
-	root := http.NewServeMux()
-	httpx.Health(root, nil)
-	root.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if tok, ok := httpx.Bearer(r); !ok || !secret.Match(tok, cfg.token) {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
+	return sidecar.Handler(cfg.token, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Checked here, once, for every route: the handlers above trust the
 		// id as a map key and a file name. /mcp alone may come without one:
 		// loom discovers the tools for nobody in particular, and a tool call
@@ -99,7 +92,6 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		}
 		api.ServeHTTP(w, r)
 	}))
-	return root
 }
 
 func writeCode(w http.ResponseWriter, status int, msg, code string) {

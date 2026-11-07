@@ -8,8 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/trick77/ship/kit/httpx"
-	"github.com/trick77/ship/kit/secret"
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/toolkit/mcpserver"
 )
 
@@ -34,17 +33,7 @@ var (
 func newServer(cfg config, client *http.Client, version string) http.Handler {
 	api := http.NewServeMux()
 	api.Handle("/mcp", mcpserver.New(mcpServer(cfg, client, version)))
-	root := http.NewServeMux()
-	httpx.Health(root, nil)
-	root.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if tok, ok := httpx.Bearer(r); !ok || !secret.Match(tok, cfg.token) {
-			w.Header().Set("WWW-Authenticate", "Bearer")
-			httpx.WriteError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		api.ServeHTTP(w, r)
-	}))
-	return root
+	return sidecar.Handler(cfg.token, api)
 }
 
 // mcpServer is the search server: the web tool when a provider key is set,
