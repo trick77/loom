@@ -527,7 +527,10 @@ func (s *Engine) persistSandboxFile(ctx context.Context, user auth.User, thread 
 			return artifact.Response{}, "not a valid PNG"
 		}
 		if cfg.Width > maxSandboxImageSide || cfg.Height > maxSandboxImageSide {
-			return artifact.Response{}, fmt.Sprintf("image larger than %d px on a side", maxSandboxImageSide)
+			// The real size: without it the model guessed why a figure it
+			// sized well below the limit came out larger.
+			return artifact.Response{}, fmt.Sprintf("image %d×%d px, over %d px on a side (a tight bounding box grows the canvas to every label; check what is drawn far out)",
+				cfg.Width, cfg.Height, maxSandboxImageSide)
 		}
 	}
 	created, err := s.persistArtifactBytes(ctx, user, thread, artifactSpec{

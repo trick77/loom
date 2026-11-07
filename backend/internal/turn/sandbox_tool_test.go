@@ -291,10 +291,15 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 	if err := png.Encode(&pngBuf, img); err != nil {
 		t.Fatal(err)
 	}
+	var wideBuf bytes.Buffer
+	if err := png.Encode(&wideBuf, image.NewRGBA(image.Rect(0, 0, maxSandboxImageSide+1, 1))); err != nil {
+		t.Fatal(err)
+	}
 	f.box.Result = sandbox.Result{
 		Stdout: "Top: A 10\n",
 		Files: []sandbox.File{
 			{Name: "chart.png", Data: pngBuf.Bytes()},
+			{Name: "wide.png", Data: wideBuf.Bytes()},
 			{Name: "top.csv", Data: []byte("kunde,umsatz\nA,10\n")},
 			{Name: "fake.png", Data: []byte("<svg onload=alert(1)>")},
 			{Name: "x.svg", Data: []byte("<svg/>")},
@@ -314,7 +319,10 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 		t.Fatalf("created %+v", created)
 	}
 	for _, want := range []string{"exit_code: 0", "Top: A 10", "created artifact chart.png", "created artifact top.csv",
-		"fake.png: not a valid PNG", "x.svg: file type not allowed", "link.txt: not a regular file"} {
+		"fake.png: not a valid PNG", "x.svg: file type not allowed", "link.txt: not a regular file",
+		// The size, or the model guesses why (a 14x9 in figure at 130 dpi
+		// grew past the limit through bbox_inches="tight").
+		"wide.png: image 4001×1 px, over 4000 px on a side"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
