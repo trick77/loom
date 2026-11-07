@@ -329,6 +329,36 @@ func TestBuildSeries_gapsAndNulls(t *testing.T) {
 	}
 }
 
+// A pause leaves no samples, so stopped (recorded, not moving) never sees
+// it: paused is the clock the recording skipped.
+func TestComputeMetrics_paused(t *testing.T) {
+	// 0..599 s running, 120 s paused, 720..1199 s running; 30 s standing
+	// still (recorded) at 300..329.
+	var tm floats
+	for i := range 1200 {
+		if i < 600 || i >= 720 {
+			tm = append(tm, float64(i))
+		}
+	}
+	speed := constant(len(tm), 3)
+	for i := 300; i < 330; i++ {
+		speed[i] = 0
+	}
+	s := buildSeries(streamSet{Time: &struct{ Data floats }{tm}, Velocity: &struct{ Data floats }{speed}})
+	m := computeMetrics(s, 0, s.n, nil, nil)
+	if m.PausedS != 120 || m.StoppedS != 30 || m.MovingS != 1050 {
+		t.Errorf("paused %d, stopped %d, moving %d; want 120, 30, 1050", m.PausedS, m.StoppedS, m.MovingS)
+	}
+	// A section that skips the pause has none; a filled dropout is no pause.
+	if m := computeMetrics(s, 0, 600, nil, nil); m.PausedS != 0 {
+		t.Errorf("section before the pause: paused %d", m.PausedS)
+	}
+	s = buildSeries(streamSet{Time: &struct{ Data floats }{floats{0, 1, 2, 8, 9}}, Velocity: &struct{ Data floats }{constant(5, 3)}})
+	if m := computeMetrics(s, 0, s.n, nil, nil); m.PausedS != 0 {
+		t.Errorf("an interpolated dropout counted as paused: %d", m.PausedS)
+	}
+}
+
 func TestMedianAndRank(t *testing.T) {
 	near(t, "odd", median([]float64{3, 1, 2}), 2, 0)
 	near(t, "even", median([]float64{4, 1, 3, 2}), 2.5, 0)

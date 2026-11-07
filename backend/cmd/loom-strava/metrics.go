@@ -194,11 +194,14 @@ func (s series) sub(fromM, toM float64) (int, int) {
 // rideMetrics is everything computed from one stretch of streams. NaN means
 // unknown: the stream is missing or the stretch too short.
 type rideMetrics struct {
-	Samples, MovingS, StoppedS int
-	DistanceM                  float64
-	HasWatts, HasHR            bool
-	AvgW, MaxW, NP, KJ         float64
-	AvgHR, MaxHR               float64
+	// StoppedS is recorded time not moving; PausedS the clock the recording
+	// skipped (watch paused, auto-pause): a pause has no samples, so stopped
+	// alone never shows it.
+	Samples, MovingS, StoppedS, PausedS int
+	DistanceM                           float64
+	HasWatts, HasHR                     bool
+	AvgW, MaxW, NP, KJ                  float64
+	AvgHR, MaxHR                        float64
 	// HRMax10 and HR20m are the best 10 s and 20 min mean heart rate: the
 	// inputs of hr_zones' max and threshold heart rate. 10 s, not the
 	// single highest sample, so one strap spike does not count.
@@ -239,6 +242,7 @@ func computeMetrics(s series, a, b int, pEdges, hEdges []float64) rideMetrics {
 	}
 	m.MovingS = len(movIdx)
 	m.StoppedS = m.Samples - m.MovingS
+	m.PausedS = max(0, int(math.Round(s.elapsed[b-1]-s.elapsed[a]))+1-m.Samples)
 	if s.dist != nil {
 		m.DistanceM = s.dist[b-1] - s.dist[a]
 	}

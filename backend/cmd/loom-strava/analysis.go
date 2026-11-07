@@ -807,7 +807,10 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		parts = append(parts, fmt.Sprintf("grade %.1f to %.1f %%", m.MinGrade, m.MaxGrade))
 	}
 	if m.StoppedS > 0 {
-		parts = append(parts, "stopped "+clock(float64(m.StoppedS)))
+		parts = append(parts, "stopped "+clock(float64(m.StoppedS))+" (recorded, not moving)")
+	}
+	if m.PausedS > 0 {
+		parts = append(parts, "paused "+clock(float64(m.PausedS))+" (recording paused or auto-paused: no data, not in stopped)")
 	}
 	if len(parts) > 0 {
 		b.WriteString(strings.Join(parts, " · ") + "\n")
