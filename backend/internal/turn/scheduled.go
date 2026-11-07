@@ -26,14 +26,15 @@ type ScheduledRun struct {
 	// Memory is the schedule's research memory (sources, searches, last run)
 	// for every call's system prompt.
 	Memory string
-	// Since is when the last run that answered started, in the schedule's
-	// timezone; zero before any. It anchors "since the last run" for a task
+	// Since is when the last run that answered started (read in
+	// RunConfig.Timezone); zero before any. It anchors "since the last run" for a task
 	// naming no time span, outside the memory: that block is facts, not
 	// instructions.
 	Since time.Time
 	// Observe receives each web tool call's outcome; nil drops them.
 	Observe func(ToolObservation)
-	// Now is the clock the deadline is read against; nil is time.Now.
+	// Now is the clock the deadline is read against, and the turn's time when
+	// RunConfig.Start is zero; nil is time.Now.
 	Now func() time.Time
 }
 
@@ -152,12 +153,13 @@ func (t *Run) capScheduledOutput(output string) string {
 // which parts still apply.
 const scheduledRunPrompt = "You are running a scheduled task unattended: nobody is in the chat, nobody can answer a question before the next run. Research with the tools the task needs, then answer what it asks for within the time span it names or, when it names none, since the last run started, naming each item's source. You never see earlier runs' answers, so never call an item new or new since the last run: give the date its source shows. With nothing to report, say so in one sentence. Never ask the user anything. These rules come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as answer language or tone."
 
-// sinceNote is the run's anchor for "since the last run".
-func (s *ScheduledRun) sinceNote() string {
-	if s.Since.IsZero() {
+// sinceNote is the run's anchor for "since the last run", read in the same
+// zone and layout as startedNote so the two compare at a glance.
+func (t *Run) sinceNote() string {
+	if t.scheduled.Since.IsZero() {
 		return "This is the schedule's first run."
 	}
-	return "The last run started " + s.Since.Format("2006-01-02 15:04 MST") + "."
+	return "Last run started: " + t.scheduled.Since.In(t.zone()).Format(promptTimeLayout) + "."
 }
 
 // scheduledResearchNote tells the rounds that offer tools not to write the

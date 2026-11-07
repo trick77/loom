@@ -184,9 +184,20 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 		t.Fatalf("first run's prompt lacks the first-run note:\n%s", first)
 	}
 	zurich, _ := time.LoadLocation("Europe/Zurich")
-	anchor := "The last run started " + runs[2].StartedAt.In(zurich).Format("2006-01-02 15:04 MST") + "."
+	anchor := "Last run started: " + runs[2].StartedAt.In(zurich).Format("Monday, 2006-01-02 15:04 MST") + "."
 	if !strings.Contains(last, anchor) {
 		t.Fatalf("second run's prompt lacks %q:\n%s", anchor, last)
+	}
+	// Every run knows when it fired and which day it is, in the schedule's
+	// zone, not the server's.
+	fired := runs[2].StartedAt.In(zurich)
+	for _, want := range []string{
+		"Run started: " + fired.Format("Monday, 2006-01-02 15:04 MST") + ".",
+		"Current date: " + fired.Format("Monday, 2006-01-02") + " (Europe/Zurich).",
+	} {
+		if !strings.Contains(first, want) {
+			t.Fatalf("first run's prompt lacks %q:\n%s", want, first)
+		}
 	}
 
 	// News on an item reported before is news again: a launch slips, a

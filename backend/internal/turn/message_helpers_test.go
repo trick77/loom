@@ -24,7 +24,7 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 	user := auth.User{ID: "u1", ResponseLanguage: "en"}
 	newMsg := chat.Message{Role: chat.RoleUser, Content: "Hi"}
 
-	without := buildLLMHistory(user, promptBlocks{}, nil, newMsg)
+	without := buildLLMHistory(user, time.Now().UTC(), promptBlocks{}, nil, newMsg)
 	if without[0].Role != "system" {
 		t.Fatalf("first message role = %q, want system", without[0].Role)
 	}
@@ -32,7 +32,7 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 		t.Fatalf("system prompt unexpectedly contains project context: %q", without[0].Content)
 	}
 
-	with := buildLLMHistory(user, promptBlocks{project: "Project name: Amsterdam Trip"}, nil, newMsg)
+	with := buildLLMHistory(user, time.Now().UTC(), promptBlocks{project: "Project name: Amsterdam Trip"}, nil, newMsg)
 	if !strings.Contains(with[0].Content, "Project name: Amsterdam Trip") {
 		t.Fatalf("system prompt missing project context: %q", with[0].Content)
 	}
@@ -43,15 +43,32 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 }
 
 func TestSystemPromptForUserIncludesCurrentDate(t *testing.T) {
-	now := time.Date(2026, time.June, 19, 10, 30, 0, 0, time.UTC)
+	zurich, err := time.LoadLocation("Europe/Zurich")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 23:30 UTC is already the next day in Zurich: the date is the user's.
+	now := time.Date(2026, time.June, 19, 23, 30, 0, 0, time.UTC).In(zurich)
 
 	prompt := systemPromptForUser(auth.User{}, now)
 
-	if !strings.Contains(prompt, "The current date is 2026-06-19") {
-		t.Fatalf("system prompt = %q, want current date line", prompt)
+	if !strings.Contains(prompt, "Current date: Saturday, 2026-06-20 (Europe/Zurich).") {
+		t.Fatalf("system prompt = %q, want the date line in the user's zone", prompt)
 	}
-	if !strings.Contains(prompt, "do not assume an earlier year") {
+	if !strings.Contains(prompt, "never assume an earlier year") {
 		t.Fatalf("system prompt = %q, want search-year guidance", prompt)
+	}
+}
+
+// An incognito turn states the date in the user's zone too.
+func TestBuildIncognitoHistoryDateInUserZone(t *testing.T) {
+	history := BuildIncognitoHistory(auth.User{}, "Europe/Zurich", nil, chat.Message{Role: chat.RoleUser, Content: "Hi"})
+	if !strings.Contains(history[0].Content, "(Europe/Zurich).") {
+		t.Fatalf("incognito prompt = %q, want the date in the user's zone", history[0].Content)
+	}
+	history = BuildIncognitoHistory(auth.User{}, "", nil, chat.Message{Role: chat.RoleUser, Content: "Hi"})
+	if !strings.Contains(history[0].Content, "(UTC).") {
+		t.Fatalf("incognito prompt = %q, want UTC without a zone", history[0].Content)
 	}
 }
 

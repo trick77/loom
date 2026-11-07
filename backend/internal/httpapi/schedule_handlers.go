@@ -13,21 +13,24 @@ import (
 	"github.com/trick77/ship/kit/httpx"
 )
 
-// timezoneHeader carries the browser's IANA timezone; schedule slots are
-// drawn in it.
+// timezoneHeader carries the browser's IANA timezone: schedule slots are
+// drawn in it and a turn's date reads in it.
 const timezoneHeader = "X-Loom-Timezone"
 
 // rememberTimezone keeps the timezone the user's browser last sent, so a
-// schedule created from chat draws its slot in it.
-func (s *server) rememberTimezone(userID string, r *http.Request) {
+// schedule created from chat draws its slot in it and a turn started without
+// a request (queued, handed off) reads its date in it. It returns the
+// request's own zone, else the one kept; "" when neither.
+func (s *server) rememberTimezone(userID string, r *http.Request) string {
 	tz := strings.TrimSpace(r.Header.Get(timezoneHeader))
 	if tz == "" || len(tz) > 64 {
-		return
+		return s.timezoneFor(userID)
 	}
-	if _, err := time.LoadLocation(tz); err != nil {
-		return
+	if _, err := schedule.LoadLocation(tz); err != nil {
+		return s.timezoneFor(userID)
 	}
 	s.timezones.Store(userID, tz)
+	return tz
 }
 
 // timezoneFor is the timezone rememberTimezone kept for the user; "" when

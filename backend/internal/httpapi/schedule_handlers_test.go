@@ -310,7 +310,8 @@ func TestScheduleRunsAdmission(t *testing.T) {
 
 func TestRememberTimezone(t *testing.T) {
 	s := &server{}
-	for _, tz := range []string{"", "Mars/Olympus", strings.Repeat("x", 65)} {
+	// "Local" is the server's zone, never a user's.
+	for _, tz := range []string{"", "Mars/Olympus", strings.Repeat("x", 65), "Local"} {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set(timezoneHeader, tz)
 		s.rememberTimezone("u", req)
@@ -320,9 +321,21 @@ func TestRememberTimezone(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set(timezoneHeader, "Europe/Zurich")
-	s.rememberTimezone("u", req)
+	if got := s.rememberTimezone("u", req); got != "Europe/Zurich" {
+		t.Fatalf("request zone = %q", got)
+	}
 	if got := s.timezoneFor("u"); got != "Europe/Zurich" {
 		t.Fatalf("timezone = %q", got)
+	}
+	// A request's own zone wins over the one kept from another tab; one
+	// without a zone gets the kept one.
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(timezoneHeader, "America/New_York")
+	if got := s.rememberTimezone("u", req); got != "America/New_York" {
+		t.Fatalf("request zone = %q", got)
+	}
+	if got := s.rememberTimezone("u", httptest.NewRequest(http.MethodGet, "/", nil)); got != "America/New_York" {
+		t.Fatalf("zone without a header = %q", got)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/llm"
 )
@@ -45,7 +46,7 @@ func readThreadTool() llm.Tool {
 // exist) returns ok=false and a plain not-found note — there is no cross-user
 // leak. The whole project-summary byte budget is spent on this single thread,
 // then capToolOutput is the final guard on the tool-result envelope.
-func (s *Engine) readThreadDigest(ctx context.Context, userID, threadID string) string {
+func (s *Engine) readThreadDigest(ctx context.Context, userID, threadID string, loc *time.Location) string {
 	threadID = strings.TrimSpace(threadID)
 	if threadID == "" {
 		return "tool failed: thread_id is required."
@@ -63,6 +64,6 @@ func (s *Engine) readThreadDigest(ctx context.Context, userID, threadID string) 
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== Thread: %s ===\n", strings.TrimSpace(displayThreadTitle(thread)))
-	b.WriteString(s.renderThreadDigest(ctx, userID, thread, byteBudget))
+	b.WriteString(s.renderThreadDigest(ctx, userID, thread, byteBudget, loc))
 	return capToolOutput(b.String())
 }

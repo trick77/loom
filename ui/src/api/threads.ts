@@ -1,4 +1,5 @@
 import { request, requestJSON } from "./http";
+import { browserTimezone } from "./schedules";
 import type {
   MessagePastedText,
   Page,
@@ -195,6 +196,8 @@ export async function queueMessage(
     "failed to queue message",
     {
       method: "POST",
+      // The turn this message starts reads its date in the user's zone.
+      headers: { "X-Loom-Timezone": browserTimezone() },
       json: {
         content,
         clientMessageId,

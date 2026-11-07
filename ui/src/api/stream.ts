@@ -185,7 +185,11 @@ export async function streamIncognitoMessage(
   };
   const response = await fetch(`/api/incognito/messages:stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    // The prompt's date reads in the user's zone.
+    headers: {
+      "Content-Type": "application/json",
+      "X-Loom-Timezone": browserTimezone(),
+    },
     body: JSON.stringify(requestBody),
     signal,
   });

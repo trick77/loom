@@ -81,13 +81,14 @@ type Preview struct {
 	NextRuns []time.Time `json:"nextRuns"`
 }
 
-// LoadLocation resolves a timezone name; "" is UTC.
+// LoadLocation resolves a timezone name; "" is UTC. "Local" is refused: it is
+// the server's zone, never a user's.
 func LoadLocation(name string) (*time.Location, error) {
 	if strings.TrimSpace(name) == "" {
 		return time.UTC, nil
 	}
 	loc, err := time.LoadLocation(name)
-	if err != nil {
+	if err != nil || loc == time.Local {
 		return nil, invalid("unknown timezone %q", name)
 	}
 	return loc, nil

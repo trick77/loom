@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
@@ -51,7 +52,7 @@ func projectThreadsTool() llm.Tool {
 // execution window. The output is bounded in BYTES (per-thread share, plus a hard
 // overall ceiling via capToolOutput as a final guard), so returning it without the
 // generic byte cap re-truncating the tail is safe even for multibyte content.
-func (s *Engine) projectThreadsDigest(ctx context.Context, userID string, thread chat.Thread) string {
+func (s *Engine) projectThreadsDigest(ctx context.Context, userID string, thread chat.Thread, loc *time.Location) string {
 	if thread.ProjectID == nil {
 		return "This thread does not belong to a project, so there are no other project threads to read."
 	}
@@ -118,9 +119,9 @@ func (s *Engine) projectThreadsDigest(ctx context.Context, userID string, thread
 	for i, t := range others {
 		fmt.Fprintf(&b, "\n=== Thread %d: %s ===\n", i+1, strings.TrimSpace(displayThreadTitle(t)))
 		if tails != nil {
-			b.WriteString(renderThreadDigestMessages(t, tails[t.ID], perThreadBytes))
+			b.WriteString(renderThreadDigestMessages(t, tails[t.ID], perThreadBytes, loc))
 		} else {
-			b.WriteString(s.renderThreadDigest(ctx, userID, t, perThreadBytes))
+			b.WriteString(s.renderThreadDigest(ctx, userID, t, perThreadBytes, loc))
 		}
 	}
 
