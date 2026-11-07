@@ -151,7 +151,7 @@ func TestTurnRunsARoundsFetchesConcurrentlyInCallOrder(t *testing.T) {
 	body := out.body
 	last := -1
 	for i, u := range urls {
-		at := strings.Index(body, fmt.Sprintf(`Web source [%d]: %s`, i+1, u))
+		at := strings.Index(body, fmt.Sprintf(`Source [%d]: %s`, i+1, u))
 		if at < 0 {
 			t.Fatalf("missing tool result numbering %s as source [%d]:\n%s", u, i+1, body)
 		}

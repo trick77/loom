@@ -51,9 +51,10 @@ type webSourceRegistry struct {
 	// the user's uploaded documents, numbered while the knowledge context was built.
 	// Web sources continue after them so both kinds share one numbering space and a
 	// marker in the answer is never ambiguous.
-	offset       int
-	obscuraNavHd string // header line to prepend to the next obscura snapshot
-	obscuraNavID int    // registry index of the last obscura navigation (0 = none)
+	offset int
+	// browserPage is the browser policy's (web_tools.go): the page navigated
+	// last, for the next snapshot's citation.
+	browserPage browserPage
 }
 
 // newWebSourceRegistryAfter starts numbering at offset+1.
@@ -203,58 +204,37 @@ func capitalizeFirst(s string) string {
 // punctuation.
 var urlPattern = regexp.MustCompile(`https?://[^\s<>"'` + "`" + `)\]}]+`)
 
-// relabelWebToolOutput annotates a web tool's result with [n] citation markers
-// and registers each source URL, so the model can cite them inline. Any other
-// tool is relabeled from the structured sources its result carried, and left
-// alone when it carried none. The raw (un-capped) output is passed in; the
-// caller caps the returned string.
+// relabelWebToolOutput annotates a tool's result with [n] citation markers and
+// registers each source URL, so the model can cite them inline: the tool's
+// own relabel when it has one (toolSpec.relabel, which sees the structured
+// sources), else the structured sources the result carried. A result with
+// neither is left alone. The raw (un-capped) output is passed in; the caller
+// caps the returned string.
 func (s *Engine) relabelWebToolOutput(toolName string, arguments map[string]any, output string, sources []mcp.Source, reg *webSourceRegistry) string {
 	if reg == nil {
 		return output
 	}
-	switch toolName {
-	case tavilySearchExposedName:
-		return relabelTavilyResult(output, reg)
-	case fetchToolName:
-		// The fetched page text is the source's snippet (what it delivered).
-		idx, ok := reg.addDetailed(argURL(arguments), "", output, "")
-		if !ok {
-			return output
-		}
-		return fmt.Sprintf("Web source [%d]: %s\n\n%s", idx, strings.TrimSpace(argURL(arguments)), output)
-	case obscuraNavigateToolName:
-		if strings.HasPrefix(output, toolFailedPrefix) {
-			// Nothing was delivered: register no source, and disarm the header so
-			// the next snapshot is not labelled with the previously navigated page.
-			reg.obscuraNavHd = ""
-			reg.obscuraNavID = 0
-			return output
-		}
-		out := prependURLSource(argURL(arguments), output, reg)
-		if idx, ok := reg.add(argURL(arguments)); ok {
-			// Remember this source so the following browser_snapshot (the call that
-			// actually returns the page text) inherits the same marker and snippet.
-			reg.obscuraNavHd = fmt.Sprintf("Web source [%d]: %s", idx, strings.TrimSpace(argURL(arguments)))
-			reg.obscuraNavID = idx
-		}
-		return out
-	case obscuraSnapshotToolName:
-		if reg.obscuraNavHd == "" {
-			return output
-		}
-		// Backfill the navigated source's snippet from the rendered page text.
-		if pos := reg.obscuraNavID - reg.offset - 1; pos >= 0 && pos < len(reg.sources) {
-			if src := &reg.sources[pos]; src.Snippet == "" {
-				src.Snippet = snippetFromText(output)
-			}
-		}
-		return reg.obscuraNavHd + "\n\n" + output
-	default:
-		if len(sources) > 0 {
-			return relabelStructuredSources(output, sources, reg)
-		}
+	if relabel := s.toolPolicy(toolName).relabel; relabel != nil {
+		return relabel(arguments, output, sources, reg)
+	}
+	if len(sources) > 0 {
+		return relabelStructuredSources(output, sources, reg)
+	}
+	return output
+}
+
+// relabelPageAtURL cites a fetched page: through its structured sources
+// (the built-in's), else as the page at its url argument (an mcp.json
+// replacement that sends none), its text the source's snippet.
+func relabelPageAtURL(arguments map[string]any, output string, sources []mcp.Source, reg *webSourceRegistry) string {
+	if len(sources) > 0 {
+		return relabelStructuredSources(output, sources, reg)
+	}
+	idx, ok := reg.addDetailed(argURL(arguments), "", output, "")
+	if !ok {
 		return output
 	}
+	return fmt.Sprintf("Source [%d]: %s\n\n%s", idx, strings.TrimSpace(argURL(arguments)), output)
 }
 
 func argURL(arguments map[string]any) string {
@@ -265,7 +245,7 @@ func argURL(arguments map[string]any) string {
 	return u
 }
 
-// prependURLSource registers url and prepends a "Web source [n]: url" header to
+// prependURLSource registers url and prepends a "Source [n]: url" header to
 // output so the marker sits next to the content the model reads. If url can't be
 // registered, output is returned unchanged.
 func prependURLSource(rawURL, output string, reg *webSourceRegistry) string {
@@ -273,7 +253,7 @@ func prependURLSource(rawURL, output string, reg *webSourceRegistry) string {
 	if !ok {
 		return output
 	}
-	return fmt.Sprintf("Web source [%d]: %s\n\n%s", idx, strings.TrimSpace(rawURL), output)
+	return fmt.Sprintf("Source [%d]: %s\n\n%s", idx, strings.TrimSpace(rawURL), output)
 }
 
 // tavilyJSON mirrors the subset of Tavily's response we need if a deployment

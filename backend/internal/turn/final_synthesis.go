@@ -96,11 +96,11 @@ const truncationMarker = "\n…[note truncated]"
 //
 // Over budget, each note is trimmed to its own fair share rather than the whole
 // join being tail-cut. A global tail cut deleted the earliest notes outright —
-// including their "Web source [n]:" headers — so the model was asked to cite
+// including their "Source [n]:" headers — so the model was asked to cite
 // [1]..[n] while it could only see the last few, which is a direct cause of
 // answers that cite nothing at all. Fair-share keeps every source represented.
 //
-// Each note keeps its *head*, because that is where the "Web source [n]: url"
+// Each note keeps its *head*, because that is where the "Source [n]: url"
 // header sits; losing it strands the citation marker.
 func collectToolNotes(rounds []llm.Message, maxBytes int) string {
 	var parts []string
@@ -161,7 +161,7 @@ func truncateHead(s string, keep int) string {
 // webSourceIndexBlock renders the complete list of gathered sources as a compact
 // "[n] Label — url" index. It is prepended to the folded research notes so the
 // marker -> source mapping is present even when the notes were truncated: without
-// it, a cut note takes its "Web source [n]:" header with it and the model can no
+// it, a cut note takes its "Source [n]:" header with it and the model can no
 // longer tell what [n] refers to. Roughly 15 tokens per source.
 func webSourceIndexBlock(sources []webSource) string {
 	if len(sources) == 0 {

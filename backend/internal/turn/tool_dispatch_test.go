@@ -194,7 +194,7 @@ func TestExecuteToolCallFetchObscuraFallback(t *testing.T) {
 		}
 		// The fallback fetched https://example.com, so its snapshot is annotated
 		// with that source's [n] marker for inline citation.
-		if !strings.HasPrefix(got, "Web source [1]: https://example.com") {
+		if !strings.HasPrefix(got, "Source [1]: https://example.com") {
 			t.Fatalf("output = %q, want leading web-source marker", got)
 		}
 	})

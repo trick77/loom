@@ -149,7 +149,7 @@ func TestWebSourceCitationsReflectBackfillWithoutLengthChange(t *testing.T) {
 func TestPrependURLSourceFetch(t *testing.T) {
 	reg := newWebSourceRegistryAfter(0)
 	out := prependURLSource("https://modal.com/docs", "The page content.", reg)
-	if !strings.HasPrefix(out, "Web source [1]: https://modal.com/docs") {
+	if !strings.HasPrefix(out, "Source [1]: https://modal.com/docs") {
 		t.Errorf("expected fetch header, got:\n%s", out)
 	}
 	if reg.len() != 1 || reg.all()[0].Label != "Modal" {
@@ -165,7 +165,7 @@ func TestRelabelWebToolOutputObscuraNavigateThenSnapshot(t *testing.T) {
 	_ = srv.relabelWebToolOutput(obscuraNavigateToolName, navArgs, "navigated ok", nil, reg)
 	// Snapshot (no URL of its own) inherits the marker.
 	snap := srv.relabelWebToolOutput(obscuraSnapshotToolName, map[string]any{}, "<rendered page>", nil, reg)
-	if !strings.HasPrefix(snap, "Web source [1]: https://truefoundry.com/pricing") {
+	if !strings.HasPrefix(snap, "Source [1]: https://truefoundry.com/pricing") {
 		t.Errorf("expected snapshot to inherit navigate marker, got:\n%s", snap)
 	}
 	if reg.len() != 1 {
@@ -236,7 +236,7 @@ func TestFetchSourceCapturesSnippet(t *testing.T) {
 	reg := newWebSourceRegistryAfter(0)
 	page := "  Modal is a serverless   platform\nfor running Python.  "
 	out := srv.relabelWebToolOutput(fetchToolName, map[string]any{"url": "https://modal.com/docs"}, page, nil, reg)
-	if !strings.HasPrefix(out, "Web source [1]: https://modal.com/docs") {
+	if !strings.HasPrefix(out, "Source [1]: https://modal.com/docs") {
 		t.Errorf("expected fetch header, got:\n%s", out)
 	}
 	if got := reg.all()[0].Snippet; got != "Modal is a serverless platform for running Python." {

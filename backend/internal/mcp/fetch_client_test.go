@@ -51,6 +51,20 @@ func TestFetchClientCallToolRequiresURL(t *testing.T) {
 	}
 }
 
+// A fetched page cites itself through structured sources, like any server's
+// result; a failed fetch cites nothing.
+// (webfetch refuses loopback, so the outcome is tested past the network.)
+func TestFetchClientCitesThePage(t *testing.T) {
+	got, err := fetchResult(" https://a.example/page ", "page text", nil)
+	if err != nil || len(got.Sources) != 1 || got.Sources[0].URL != "https://a.example/page" || got.Sources[0].Snippet != "page text" {
+		t.Fatalf("result %+v, %v", got, err)
+	}
+	failed, err := fetchResult("https://a.example", "", errors.New("Failed to extract PDF: tika down"))
+	if !IsPDFExtractionError(err) || len(failed.Sources) != 0 {
+		t.Fatalf("failed fetch: %+v, %v", failed, err)
+	}
+}
+
 func TestFetchClientOptionsWirePDFExtractor(t *testing.T) {
 	if (NewFetchClient("fetch", nil).(*fetchClient)).options(nil).PDFHandler != nil {
 		t.Fatal("no extractor must leave PDFHandler nil")

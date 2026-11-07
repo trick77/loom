@@ -105,8 +105,8 @@ func (t *Run) clampScheduledCall(call *llm.ToolCall) {
 	if t.scheduled == nil {
 		return
 	}
-	name := call.Function.Name
-	if name != fetchToolName && name != tavilySearchExposedName {
+	clamp := t.e.toolPolicy(call.Function.Name).scheduledClamp
+	if clamp == nil {
 		return
 	}
 	args, err := parseToolArguments(call.Function.Arguments)
@@ -115,18 +115,7 @@ func (t *Run) clampScheduledCall(call *llm.ToolCall) {
 	}
 	// Only a size the model set is lowered: the tools' own defaults are
 	// smaller than the caps.
-	switch name {
-	case fetchToolName:
-		if n, ok := args["max_length"].(float64); ok && n > scheduledFetchMaxLength {
-			args["max_length"] = scheduledFetchMaxLength
-		}
-	case tavilySearchExposedName:
-		if n, ok := args["max_results"].(float64); ok && n > scheduledSearchMaxResults {
-			args["max_results"] = scheduledSearchMaxResults
-		}
-		args["search_depth"] = "basic"
-		delete(args, "include_raw_content")
-	}
+	clamp(args)
 	if raw, err := json.Marshal(args); err == nil {
 		call.Function.Arguments = string(raw)
 	}
@@ -138,7 +127,7 @@ func (t *Run) tavilyCapped(name string) bool {
 	if t.scheduled == nil {
 		return false
 	}
-	if server, _, ok := mcp.SplitExposedToolName(name); !ok || server != tavilyServerName {
+	if !t.e.toolPolicy(name).scheduledLimited {
 		return false
 	}
 	if t.tavilyCalls >= scheduledTavilyCalls {
@@ -223,20 +212,12 @@ func (t *Run) observeToolCall(name string, arguments map[string]any, sources []m
 	if t.scheduled == nil || t.scheduled.Observe == nil {
 		return
 	}
-	o := ToolObservation{OK: ok, FellBack: fellBack}
-	switch name {
-	case fetchToolName:
-		o.Tool, o.URL = "fetch", argURL(arguments)
-	case obscuraNavigateToolName:
-		o.Tool, o.URL = "browser", argURL(arguments)
-	case tavilySearchExposedName:
-		o.Tool, o.Query = "search", stringArg(arguments, "query")
-		for _, s := range sources {
-			o.ResultURLs = append(o.ResultURLs, s.URL)
-		}
-	default:
+	observe := t.e.toolPolicy(name).observe
+	if observe == nil {
 		return
 	}
+	o := observe(arguments, sources)
+	o.OK, o.FellBack = ok, fellBack
 	t.scheduled.Observe(o)
 }
 

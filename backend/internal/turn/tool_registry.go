@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 )
 
 // toolSpec is everything the engine knows about one tool. A built-in has a
@@ -45,6 +46,27 @@ type toolSpec struct {
 	// imageGenerator marks the image tool: an image turn forces it, a turn
 	// makes one image, loom fills its loomArgs and locks the thread's model.
 	imageGenerator bool
+
+	// What follows is particular to an MCP tool loom knows by name (the web
+	// tools, web_tools.go); nil or zero leaves the generic behaviour.
+
+	// fixedArgs are set on every call (a server's opt-in the model need not
+	// know about).
+	fixedArgs map[string]any
+	// relabel cites a result in the tool's own way; it gets the result's
+	// structuredContent.sources and decides (fetch uses them when sent, the
+	// browser keeps its navigate/snapshot pairing either way). nil: the
+	// structured sources, if any.
+	relabel func(arguments map[string]any, output string, sources []mcp.Source, reg *webSourceRegistry) string
+	// fallback retries a failed call another way; false keeps the failure.
+	fallback func(ctx context.Context, t *Run, arguments map[string]any, round int, reg *webSourceRegistry) (string, bool)
+	// scheduledClamp lowers the sizes a scheduled run's call asks for.
+	scheduledClamp func(args map[string]any)
+	// scheduledLimited counts the call against a scheduled run's paid-search
+	// limit (scheduledTavilyCalls).
+	scheduledLimited bool
+	// observe describes a finished call for a scheduled run's report.
+	observe func(arguments map[string]any, sources []mcp.Source) ToolObservation
 }
 
 // usageCounter is one per-user usage counter: its label in the usage log and
@@ -150,43 +172,35 @@ var sandboxToolSpec = toolSpec{
 	capPerRound: sandboxToolCallsPerRound,
 }
 
-// mcpPolicies are the policies of the MCP tools loom knows by name. fetch and
-// obscura are very inexpensive (an HTTP read, a headless page load), so they
-// get a higher cap than the default that guards pricier tools. An obscura page
-// load counts per navigate; the fetch->obscura fallback navigates outside the
-// tool loop and counts itself (see fetchObscuraFallback).
-var mcpPolicies = []toolSpec{
-	{
-		name:        fetchToolName,
-		capPerRound: cheapToolCallsPerRound,
-		concurrent:  true,
-		counts:      &usageCounter{"web_fetch", UsageStore.IncWebFetch},
-	},
-	{
-		name:       tavilySearchExposedName,
-		concurrent: true,
-		counts:     &usageCounter{"web_search", UsageStore.IncWebSearch},
-	},
-	{
-		name:        obscuraNavigateToolName,
-		capPerRound: cheapToolCallsPerRound,
-		counts:      &usageCounter{"obscura_fetch", UsageStore.IncObscuraFetch},
-	},
-	{name: obscuraSnapshotToolName, capPerRound: cheapToolCallsPerRound},
+// mcpPolicies are the policies of the MCP tools loom knows by name: the web
+// tools (web_tools.go) and the image tool. Any other MCP tool gets the
+// defaults.
+var mcpPolicies = append(slices.Clone(webToolPolicies),
 	// One image per turn; its image_gen count comes with the artifact.
-	{name: imageToolName, capPerRound: 1, imageGenerator: true},
-}
+	toolSpec{name: imageToolName, capPerRound: 1, imageGenerator: true},
+)
 
 // toolPolicy returns the spec that holds name's round policy: this engine's
 // built-in of that name, else the MCP policy. A tool loom does not know by
 // name gets the zero spec, i.e. the defaults.
-func (s *Engine) toolPolicy(name string) toolSpec {
+func (s *Engine) toolPolicy(name string) *toolSpec {
 	_, byName := s.registry()
 	if spec := byName[name]; spec != nil {
-		return *spec
+		return spec
 	}
-	return toolSpec{}
+	// A server's policy covers every tool it serves that has none of its own
+	// (an mcp.json replacement may add tools the built-in never had).
+	if server, _, ok := mcp.SplitExposedToolName(name); ok {
+		if spec := serverPolicies[server]; spec != nil {
+			return spec
+		}
+	}
+	return &defaultPolicy
 }
+
+// defaultPolicy is the policy of a tool loom does not know: the defaults.
+// Shared and read-only, like every policy toolPolicy returns.
+var defaultPolicy toolSpec
 
 // indexTools maps each spec by name; on a duplicate the first wins.
 func indexTools(tools []toolSpec) map[string]*toolSpec {
