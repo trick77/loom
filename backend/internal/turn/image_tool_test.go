@@ -110,9 +110,12 @@ func TestModelCannotSetLoomArgs(t *testing.T) {
 		sent = args
 		return "", nil
 	}}}
-	e.runToolCallWith(context.Background(), imageCall("c1", `{"prompt":"x","model":"fal-ai/expensive","input_images":[{"data":"aGk="}]}`), map[string]any{argTextHeavy: false})
+	e.runToolCallWith(context.Background(), imageCall("c1", `{"prompt":"x","model":"fal-ai/expensive","Model":"also","input_images":[{"data":"aGk="}]}`), map[string]any{argTextHeavy: false})
 	if _, ok := sent[argModel]; ok {
 		t.Errorf("model's own model reached the server: %v", sent)
+	}
+	if _, ok := sent["Model"]; ok {
+		t.Errorf("a case variant slipped through (JSON decoders match it): %v", sent)
 	}
 	if _, ok := sent[argInputImages]; ok {
 		t.Errorf("model's own input image reached the server: %v", sent)

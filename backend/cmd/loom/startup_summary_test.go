@@ -69,10 +69,14 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 
 // An mcp.json server named imagegen serves images, with or without a fal key.
 func TestStartupCapabilitiesImageServerFromFile(t *testing.T) {
-	items := startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
+	servers := mcp.Config{Servers: map[string]mcp.ServerConfig{
 		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp", Artifacts: true},
-	}}, startupRuntime{})
+	}}
+	items := startupCapabilities(config.Config{}, servers, startupRuntime{ImageToolUp: true})
 	assertCapability(t, items, "Image generation", "enabled", "mcp.json server imagegen")
+	// Configured but not answering discovery: not "enabled".
+	items = startupCapabilities(config.Config{}, servers, startupRuntime{})
+	assertCapability(t, items, "Image generation", "configured", "not answering yet")
 	// Without artifacts its images are dropped: say so, not "enabled".
 	items = startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
 		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp"},
@@ -102,7 +106,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	}, mcp.Config{Servers: map[string]mcp.ServerConfig{
 		"fetch":            {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
 		mcp.ImagegenServer: mcp.ImagegenServerConfig("http://imagegen:8040", "token"),
-	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3})
+	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3, ImageToolUp: true})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
 	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)

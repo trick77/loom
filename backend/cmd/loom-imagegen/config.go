@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
 )
 
@@ -19,8 +20,6 @@ const (
 	// maxPollTimeout keeps fal's polling inside the tool's 170 s and loom's
 	// 3 min call limit, with room to fetch and send the picture.
 	maxPollTimeout = 2*time.Minute + 30*time.Second
-	// minTokenLen matches loom's BACKEND_IMAGE_GEN_TOKEN floor.
-	minTokenLen = 32
 )
 
 type config struct {
@@ -52,12 +51,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if strings.EqualFold(cfg.typographyModel, "off") {
 		cfg.typographyModel = ""
 	}
-	// Required: whoever calls spends the fal account's money.
-	if len(cfg.token) < minTokenLen {
-		r.Fail("IMAGEGEN_TOKEN must be at least %d characters (openssl rand -hex 32)", minTokenLen)
-	}
-	if strings.ContainsFunc(cfg.token, func(c rune) bool { return c <= ' ' || c == 0x7f }) {
-		r.Fail("IMAGEGEN_TOKEN must not contain whitespace or control characters")
+	// Required: whoever calls spends the fal account's money. loom checks its
+	// side with the same rule.
+	if msg := sidecar.TokenProblem("IMAGEGEN_TOKEN", cfg.token); msg != "" {
+		r.Fail("%s", msg)
 	}
 	if cfg.apiKey == "" {
 		r.Fail("IMAGEGEN_API_KEY is required (fal API key)")

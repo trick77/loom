@@ -112,9 +112,11 @@ type Output struct {
 	DurationMs int64
 }
 
-// Call decodes raw arguments and generates. A mistyped optional value (a
-// width sent as "1024", a fractional seed) is dropped, not fatal: the image
-// is still made, as with any model argument the provider would round.
+// Call decodes raw arguments and generates. A whole number sent as a string
+// ("1024") counts; any other mistyped value ("512px", a fractional seed, a
+// width that is an object) is dropped, not fatal: the image is still made.
+// Keys match case-insensitively (encoding/json), so a client stripping its
+// own arguments must strip every case (loom does).
 func (s *Service) Call(ctx context.Context, raw json.RawMessage) (Output, error) {
 	var w wireArgs
 	if len(raw) > 0 {

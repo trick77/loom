@@ -14,6 +14,7 @@ import (
 
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
 )
 
@@ -109,7 +110,7 @@ type Config struct {
 	ProjectSummaryTokenBudget int
 	// ImageGenURL is the loom-imagegen sidecar (docs/imagegen.md); empty keeps
 	// image generation off unless an mcp.json server named imagegen serves it.
-	// ImageGenToken is its IMAGEGEN_TOKEN (minImageGenToken), required with
+	// ImageGenToken is its IMAGEGEN_TOKEN (sidecar.TokenProblem), required with
 	// the URL.
 	ImageGenURL   string
 	ImageGenToken string
@@ -512,9 +513,6 @@ func tunewireProblem(cfg Config) string {
 	return ""
 }
 
-// minImageGenToken is the sidecar's own floor for IMAGEGEN_TOKEN.
-const minImageGenToken = 32
-
 // imagegenProblem says what is wrong with a configured imagegen sidecar: one
 // that refuses to start without its token would only cost the image tool,
 // silently.
@@ -525,12 +523,11 @@ func imagegenProblem(cfg Config) string {
 	switch {
 	case !isAbsoluteHTTPURL(cfg.ImageGenURL):
 		return "BACKEND_IMAGE_GEN_URL must be an absolute http(s) URL"
-	case len(cfg.ImageGenToken) < minImageGenToken:
-		return fmt.Sprintf("BACKEND_IMAGE_GEN_TOKEN must be at least %d characters when BACKEND_IMAGE_GEN_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minImageGenToken)
-	case strings.ContainsFunc(cfg.ImageGenToken, func(c rune) bool { return c <= ' ' || c == 0x7f }):
-		// The sidecar refuses such a token too; say so here, not as a
-		// silently missing tool.
-		return "BACKEND_IMAGE_GEN_TOKEN must not contain whitespace or control characters"
+	}
+	// The sidecar's own rule: a token it refuses must fail here, not as a
+	// silently missing tool.
+	if msg := sidecar.TokenProblem("BACKEND_IMAGE_GEN_TOKEN", cfg.ImageGenToken); msg != "" {
+		return msg + " when BACKEND_IMAGE_GEN_URL is set: the sidecar refuses to start without a valid one"
 	}
 	return ""
 }

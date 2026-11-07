@@ -185,9 +185,10 @@ func runServer() error {
 		mcpRefresh = func(ctx context.Context) { discovered.RunRefresh(ctx, slog.Default()) }
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
-	discoveredTools := 0
+	discoveredTools, imageToolUp := 0, false
 	if toolService != nil {
 		discoveredTools = len(toolService.Tools())
+		imageToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool))
 	}
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
@@ -224,6 +225,7 @@ func runServer() error {
 	logStartupCapabilities(cfg, mcpConfig, startupRuntime{
 		DocToolCount:        len(docTools),
 		DiscoveredToolCount: discoveredTools,
+		ImageToolUp:         imageToolUp,
 	})
 
 	// Post-turn refreshes outlive their request; serve() drains this group before

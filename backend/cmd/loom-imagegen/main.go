@@ -12,13 +12,15 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/imagegen"
+	"github.com/trick77/ship/kit/env"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/version"
 )
 
 // shutdownTimeout lets a running generation finish on SIGTERM: fal's render
-// is paid for whether loom gets the picture or not.
-const shutdownTimeout = 3 * time.Minute
+// is paid for whether loom gets the picture or not. Inside compose's 3 min
+// stop_grace_period, so the drain ends before Docker's SIGKILL.
+const shutdownTimeout = 175 * time.Second
 
 func main() {
 	if len(os.Args) < 2 {
@@ -30,7 +32,9 @@ func main() {
 	case "serve":
 		err = serve()
 	case "healthcheck":
-		os.Exit(httpx.Healthcheck(httpx.LocalURL(envOr("IMAGEGEN_ADDR", defaultAddr), "/healthz")))
+		// Read like serve reads it (trimmed, empty is unset), or the probe
+		// would miss a server listening fine.
+		os.Exit(httpx.Healthcheck(httpx.LocalURL(env.New(os.Getenv).String("IMAGEGEN_ADDR", defaultAddr), "/healthz")))
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -58,11 +62,4 @@ func newService(cfg config) *imagegen.Service {
 		Model:       cfg.model,
 		PollTimeout: cfg.pollTimeout,
 	}), cfg.model, cfg.typographyModel)
-}
-
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
 }

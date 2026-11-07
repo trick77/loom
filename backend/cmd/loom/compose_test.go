@@ -24,8 +24,9 @@ func TestComposePassesImageGenerationEnv(t *testing.T) {
 			// the sidecar only (loom names no image vendor or model).
 			for _, want := range []string{
 				`BACKEND_IMAGE_GEN_URL: "${BACKEND_IMAGE_GEN_URL:-}"`,
-				// env_file hands loom every .env key: the fal key is blanked over it.
-				`BACKEND_IMAGE_GEN_API_KEY: ""`,
+				// env_file hands loom every .env key: over it, loom sees only
+				// whether a fal key is set, never the key.
+				`BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:+set}"`,
 				`IMAGEGEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"`,
 				`IMAGEGEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-}"`,
 				`IMAGEGEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-}"`,
@@ -37,7 +38,7 @@ func TestComposePassesImageGenerationEnv(t *testing.T) {
 					t.Fatalf("%s lacks %s", path, want)
 				}
 			}
-			for _, notLoom := range []string{"      BACKEND_IMAGE_GEN_MODEL:", "      BACKEND_IMAGE_GEN_BASE_URL:", "      BACKEND_IMAGE_GEN_API_KEY: \"${"} {
+			for _, notLoom := range []string{"      BACKEND_IMAGE_GEN_MODEL:", "      BACKEND_IMAGE_GEN_BASE_URL:", "      BACKEND_IMAGE_GEN_API_KEY: \"${BACKEND_IMAGE_GEN_API_KEY:-"} {
 				if strings.Contains(compose, notLoom) {
 					t.Fatalf("%s hands %s to loom; the sidecar reads it", path, strings.TrimSpace(notLoom))
 				}

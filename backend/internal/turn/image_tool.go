@@ -48,10 +48,15 @@ func (s *Engine) imageToolAvailable(userID string) bool {
 		s.mcp.ToolAllowed(MCPPrincipal(auth.User{ID: userID}), imageToolName)
 }
 
-// dropLoomArgs removes the arguments only loom fills from args, in place.
+// dropLoomArgs removes the arguments only loom fills from args, in place,
+// whatever their case: a JSON decoder matches "Model" to model.
 func dropLoomArgs(args map[string]any) {
-	for _, name := range imageLoomArgs {
-		delete(args, name)
+	for key := range args {
+		for _, name := range imageLoomArgs {
+			if strings.EqualFold(key, name) {
+				delete(args, key)
+			}
+		}
 	}
 }
 

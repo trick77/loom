@@ -11,7 +11,8 @@ around the tool, never the provider:
 
 The sidecar holds the fal key and every model fact (which model renders text, the 1024 px cap for it, an edit keeping
 its source's shape). It is stateless (no volume) and best-effort: loom boots without it and offers images while it
-answers.
+answers. The cost of the boundary: an edit's source and every result cross HTTP as base64, so one edit of a 20 MiB
+photo holds ~100 MiB across loom and the sidecar for its duration.
 
 ## Setup (sidecar)
 

@@ -13,6 +13,9 @@ import (
 type startupRuntime struct {
 	DocToolCount        int
 	DiscoveredToolCount int
+	// ImageToolUp: discovery found the image tool (a best-effort sidecar may
+	// be configured and still not answering).
+	ImageToolUp bool
 }
 
 type startupCapability struct {
@@ -44,7 +47,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		mcpCapability(mcpConfig, runtime),
 		mcpFileCapability(cfg),
 		tavilyCapability(cfg),
-		imageGenCapability(mcpConfig),
+		imageGenCapability(mcpConfig, runtime),
 		sandboxCapability(cfg),
 		responseLoggingCapability(cfg),
 	}
@@ -117,18 +120,23 @@ func tavilyCapability(cfg config.Config) startupCapability {
 }
 
 // imageGenCapability says who serves the image tool: the loom-imagegen
-// sidecar, or an mcp.json server named imagegen that replaces it.
-func imageGenCapability(mcpConfig mcp.Config) startupCapability {
+// sidecar, or an mcp.json server named imagegen that replaces it, and whether
+// it answered discovery.
+func imageGenCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
 	server, ok := mcpConfig.Servers[mcp.ImagegenServer]
+	who := "mcp.json server " + mcp.ImagegenServer
+	if server.BuiltIn {
+		who = "loom-imagegen sidecar"
+	}
 	switch {
 	case !ok:
 		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "set BACKEND_IMAGE_GEN_URL (loom-imagegen sidecar)"}
 	case !server.Artifacts:
-		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "mcp.json server " + mcp.ImagegenServer + " lacks \"artifacts\": true"}
-	case server.BuiltIn:
-		return startupCapability{Name: "Image generation", Status: "enabled", Detail: "loom-imagegen sidecar"}
+		return startupCapability{Name: "Image generation", Status: "disabled", Detail: who + " lacks \"artifacts\": true"}
+	case !runtime.ImageToolUp:
+		return startupCapability{Name: "Image generation", Status: "configured", Detail: who + " not answering yet; offered once it does"}
 	}
-	return startupCapability{Name: "Image generation", Status: "enabled", Detail: "mcp.json server " + mcp.ImagegenServer}
+	return startupCapability{Name: "Image generation", Status: "enabled", Detail: who}
 }
 
 // sandboxCapability reports the configuration only: whether run_python is

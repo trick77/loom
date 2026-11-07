@@ -72,8 +72,9 @@ services:
       # BACKEND_IMAGE_GEN_API_KEY in .env.
       BACKEND_IMAGE_GEN_URL: "${BACKEND_IMAGE_GEN_URL:-}"
       BACKEND_IMAGE_GEN_TOKEN: dev-imagegen-token-please-change-0123456789
-      # The fal key is the sidecar's alone: blanked over what env_file loads.
-      BACKEND_IMAGE_GEN_API_KEY: ""
+      # The fal key is the sidecar's alone: over what env_file loads, loom sees
+      # only whether one is set (it warns when the sidecar is not configured).
+      BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:+set}"
     volumes:
       - loom-dev-data:/data
       - ./conf:/conf:ro
