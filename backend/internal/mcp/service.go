@@ -449,6 +449,21 @@ func (s *Service) ToolTitle(name string) string {
 	return s.routes[name].title
 }
 
+// MakesArtifacts reports whether a tool's server may turn its results into
+// artifacts (ServerConfig.Artifacts): such a call gets ArtifactCallTimeout.
+func (s *Service) MakesArtifacts(name string) bool {
+	if s == nil {
+		return false
+	}
+	server, _, ok := SplitExposedToolName(name)
+	if !ok {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg.Servers[server].Artifacts
+}
+
 // CallTool invokes an MCP tool by its exposed name and returns its text.
 func (s *Service) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
 	result, err := s.CallToolResult(ctx, name, arguments)

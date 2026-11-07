@@ -36,6 +36,8 @@ type fileServer struct {
 	Users userList `json:"users"`
 	// TrustInstructions lets the server's instructions into the system prompt.
 	TrustInstructions bool `json:"trustInstructions"`
+	// Artifacts lets the server's image results become artifacts.
+	Artifacts bool `json:"artifacts"`
 }
 
 // userList accepts `"users": ["a","b"]` and `"users": "a,b"`. set records
@@ -174,6 +176,7 @@ func (f fileServer) toServerConfig(lookupEnv func(string) (string, bool)) (Serve
 		RestrictUsers:     f.Users.set,
 		Users:             users,
 		TrustInstructions: f.TrustInstructions,
+		Artifacts:         f.Artifacts,
 	}
 	switch transport {
 	case TransportStreamableHTTP:

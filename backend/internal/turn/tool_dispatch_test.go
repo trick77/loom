@@ -147,7 +147,8 @@ func TestExecuteBuiltInToolFollowsWhatWasOffered(t *testing.T) {
 
 // executeToolCall runs one MCP call start to finish for user, outside a turn.
 func (s *Engine) executeToolCall(ctx context.Context, user auth.User, call llm.ToolCall, round int, reg *webSourceRegistry) string {
-	return (&Run{e: s, user: user}).finishToolCall(ctx, call, round, reg, s.runToolCall(ctx, call))
+	output, _ := (&Run{e: s, user: user}).finishToolCall(ctx, call, round, reg, s.runToolCall(ctx, call))
+	return output
 }
 
 func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {

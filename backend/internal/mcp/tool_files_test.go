@@ -23,7 +23,7 @@ func TestToolFilesKeepOnlyPlainCSVAndJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &r); err != nil {
 		t.Fatal(err)
 	}
-	got := r.toCallResult()
+	got := r.toCallResult(false)
 	if got.Text != "analysis" {
 		t.Errorf("text = %q: a resource must not join the text", got.Text)
 	}
