@@ -22,7 +22,7 @@ def _window(weeks):
 def power_curve(curve, out, title=None, weeks=None):
     """Mean-max power by duration (log x): this activity, window best and window median.
 
-    curve: strava_<id>_power_curve.csv. Dots mark durations where this activity beats the
+    curve: in/strava_<id>_power_curve.csv. Dots mark durations where this activity beats the
     window best. weeks: the baseline window (labels read "6-week best"); omitted: "window best".
     """
     title = title or "Power curve"
@@ -118,7 +118,7 @@ RANK_ROWS = (
 def rank_strip(baseline, out, title=None, weeks=None):
     """Where this activity sits among the baseline, one row per metric on its own scale.
 
-    baseline: strava_<id>_baseline.csv (the analysed activity has is_this=1). Right is more
+    baseline: in/strava_<id>_baseline.csv (the analysed activity has is_this=1). Right is more
     (volume) or better; HR drift is flipped (right = less drift); avg HR has no rank.
     Rows without a value for this activity are left out. weeks: the window, for the title.
     """
@@ -228,7 +228,7 @@ def _gap_columns(df):
 def same_route_gap(same_route, out, title=None):
     """Time gap to each earlier ride of the same route by distance (below 0 = this one ahead).
 
-    same_route: strava_<id>_same_route.csv. The two most recent rides get colour and an end
+    same_route: in/strava_<id>_same_route.csv. The two most recent rides get colour and an end
     label; older ones are drawn as muted context.
     """
     title = title or "Same route: time gap"

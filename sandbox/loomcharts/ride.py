@@ -97,7 +97,9 @@ def _read_climbs(climbs):
         return []
     try:
         cf = frame(climbs)
-    except (OSError, ValueError):
+    except (OSError, ValueError) as e:
+        # Drawn without climbs, and said: silently the model would report labels never drawn.
+        print(f"loomcharts: climbs not read ({e}); the chart has no climb labels")
         return []
     rows = []
     for i in range(len(cf)):
@@ -114,7 +116,7 @@ def _read_climbs(climbs):
 def ride_profile(streams, out, climbs=None, title=None):
     """Elevation area coloured by power zone (HR zone without power), climbs labelled, HR panel below.
 
-    streams: strava_<id>_streams.csv; climbs: strava_<id>_climbs.csv (optional).
+    streams: in/strava_<id>_streams.csv; climbs: in/strava_<id>_climbs.csv (optional).
     Without altitude only the HR panel is drawn; without HR only the elevation.
     """
     title = title or "Ride profile"

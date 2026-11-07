@@ -93,7 +93,7 @@ def _avg_line(fig, ax, value, text, x, bars, labels):
 def weekly_load(weeks, out, metric="tss", sport_type=None, title=None):
     """Columns per week (latest highlighted) with the average of the earlier weeks as a line.
 
-    weeks: strava_weeks.csv. metric: tss (default), moving_s, distance_km, gain_m or count;
+    weeks: in/strava_weeks.csv. metric: tss (default), moving_s, distance_km, gain_m or count;
     without any TSS (no power) it falls back to moving time. sport_type: one or a list to
     keep (default: all sports summed per week).
     """
@@ -166,7 +166,7 @@ def weekly_load(weeks, out, metric="tss", sport_type=None, title=None):
 def activities_summary(activities, out, metric="distance_km", by="week", title=None):
     """Bars of a metric over listed activities, grouped by week, month, sport_type or activity.
 
-    activities: strava_activities.csv. metric: distance_km (default), moving_s, gain_m, count,
+    activities: in/strava_activities.csv. metric: distance_km (default), moving_s, gain_m, count,
     kj, suffer_score (summed) or avg_kmh, avg_hr, avg_w, weighted_w (averaged per group).
     """
     df = frame(activities)
