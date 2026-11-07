@@ -342,6 +342,8 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		UserMessage: userMessage,
 		Usage:       usageTotal,
 		Start:       start,
+		// The run's date and fire time read in the schedule's zone.
+		Timezone: sch.Timezone,
 		Scheduled: &turn.ScheduledRun{
 			TokenBudget:  schedule.RunTokenBudget,
 			SoftDeadline: start.Add(s.scheduleSoftDeadline()),

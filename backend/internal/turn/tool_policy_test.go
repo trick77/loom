@@ -3,6 +3,7 @@ package turn
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
@@ -180,7 +181,7 @@ func TestFileToolGuardrailTracksDocgenGating(t *testing.T) {
 		return ""
 	}
 	systemPrompt := func(gate toolGate) string {
-		history := buildLLMHistory(user, promptBlocks{toolGuidance: guidanceFor(gate)}, nil, newMsg)
+		history := buildLLMHistory(user, time.Now().UTC(), promptBlocks{toolGuidance: guidanceFor(gate)}, nil, newMsg)
 		return history[0].Content
 	}
 
