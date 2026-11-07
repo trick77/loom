@@ -64,8 +64,8 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	// answers directly instead of emitting a stripped-to-empty inline tool call.
 	priorMessages := incognitoPriorMessages(body.History)
 	userMessage := chat.Message{Role: chat.RoleUser, Content: body.Content}
-	s.rememberTimezone(user.ID, r)
-	history := turn.BuildIncognitoHistory(user, s.timezoneFor(user.ID), priorMessages, userMessage)
+	// This request's own zone: another tab's may have replaced the kept one.
+	history := turn.BuildIncognitoHistory(user, s.rememberTimezone(user.ID, r), priorMessages, userMessage)
 
 	streamCtx, cancelStream := context.WithCancelCause(r.Context())
 	defer cancelStream(nil)

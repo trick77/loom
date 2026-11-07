@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
@@ -54,7 +55,7 @@ func conversationSearchTool() llm.Tool {
 // model. It is user-scoped via SearchMessages, excludes the active thread (already
 // in context), and never errors out — failures and empty results surface as plain
 // notes, since this feeds a tool result.
-func (s *Engine) conversationSearchDigest(ctx context.Context, userID string, thread chat.Thread, args map[string]any) string {
+func (s *Engine) conversationSearchDigest(ctx context.Context, userID string, thread chat.Thread, args map[string]any, loc *time.Location) string {
 	query, _ := args["query"].(string)
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -86,7 +87,7 @@ func (s *Engine) conversationSearchDigest(ctx context.Context, userID string, th
 		fmt.Fprintf(&b, "\n%d. %s — %s — thread %s [%s]\n",
 			i+1,
 			strings.TrimSpace(displayThreadTitle(chat.Thread{Title: h.ThreadTitle})),
-			h.CreatedAt.Format("2006-01-02"),
+			h.CreatedAt.In(loc).Format("2006-01-02"),
 			h.ThreadID,
 			h.Role.TranscriptLabel(),
 		)

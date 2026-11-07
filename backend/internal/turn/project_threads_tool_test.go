@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/chat"
@@ -75,7 +76,7 @@ func TestProjectThreadsDigestExcludesAndCovers(t *testing.T) {
 	})
 
 	srv := &Engine{thread: st, projectSummaryTokenBudget: 6000}
-	digest := srv.projectThreadsDigest(ctx, userID, current)
+	digest := srv.projectThreadsDigest(ctx, userID, current, time.UTC)
 
 	for _, want := range []string{"Warsaw Weather", "Warsaw Food", "around 15C", "pierogi at Zapiecek"} {
 		if !strings.Contains(digest, want) {
@@ -101,7 +102,7 @@ func TestProjectThreadsDigestNoOtherThreads(t *testing.T) {
 	}
 	current := seedThread(t, st, userID, project.ID, "Only Thread", [][2]string{{"user", "hi"}})
 
-	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current)
+	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current, time.UTC)
 	if !strings.Contains(digest, "no other threads") {
 		t.Errorf("expected an explicit no-other-threads message, got:\n%s", digest)
 	}
@@ -111,7 +112,7 @@ func TestProjectThreadsDigestNoOtherThreads(t *testing.T) {
 // must not attempt to read sibling threads.
 func TestProjectThreadsDigestProjectless(t *testing.T) {
 	st, userID := openProjectDigestStore(t)
-	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(context.Background(), userID, chat.Thread{ID: "x"})
+	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(context.Background(), userID, chat.Thread{ID: "x"}, time.UTC)
 	if !strings.Contains(digest, "does not belong to a project") {
 		t.Errorf("expected projectless message, got:\n%s", digest)
 	}
@@ -157,7 +158,7 @@ func TestProjectThreadsDigestBoundedBytes(t *testing.T) {
 	}
 	current := seedThread(t, st, userID, project.ID, "current", [][2]string{{"user", "summarize"}})
 
-	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current)
+	digest := (&Engine{thread: st, projectSummaryTokenBudget: 6000}).projectThreadsDigest(ctx, userID, current, time.UTC)
 	if len(digest) > maxToolResultContentBytes {
 		t.Errorf("digest is %d bytes, exceeds the %d-byte tool envelope", len(digest), maxToolResultContentBytes)
 	}

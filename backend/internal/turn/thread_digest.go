@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/chat"
 )
@@ -34,29 +35,30 @@ const minPerThreadDigestBytes = 600
 // title line first, then delegates the activity header + transcript here so that
 // rendering lives in one place. It never returns an error — the output feeds a
 // tool result — surfacing load failures and empty threads as readable notes.
-func (s *Engine) renderThreadDigest(ctx context.Context, userID string, t chat.Thread, byteBudget int) string {
+func (s *Engine) renderThreadDigest(ctx context.Context, userID string, t chat.Thread, byteBudget int, loc *time.Location) string {
 	messages, err := s.thread.ListRecentMessages(ctx, userID, t.ID, maxRecentMessagesPerThread)
 	if err != nil {
 		slog.Warn("thread digest: list messages failed", "thread_id", t.ID, "err", err)
-		return threadActivityLine(t) + "(could not load this thread's messages)\n"
+		return threadActivityLine(t, loc) + "(could not load this thread's messages)\n"
 	}
-	return renderThreadDigestMessages(t, messages, byteBudget)
+	return renderThreadDigestMessages(t, messages, byteBudget, loc)
 }
 
 // threadActivityLine is the "Last activity" header of a digest, empty for a
-// thread that never had a message.
-func threadActivityLine(t chat.Thread) string {
+// thread that never had a message. It reads in the user's zone (loc), as the
+// prompt's date line does.
+func threadActivityLine(t chat.Thread, loc *time.Location) string {
 	if t.LastMessageAt == nil {
 		return ""
 	}
-	return fmt.Sprintf("Last activity: %s\n", t.LastMessageAt.Format("2006-01-02"))
+	return fmt.Sprintf("Last activity: %s\n", t.LastMessageAt.In(loc).Format("2006-01-02"))
 }
 
 // renderThreadDigestMessages renders a thread's digest from messages already
 // loaded (the project tool loads every sibling's tail in one query).
-func renderThreadDigestMessages(t chat.Thread, messages []chat.Message, byteBudget int) string {
+func renderThreadDigestMessages(t chat.Thread, messages []chat.Message, byteBudget int, loc *time.Location) string {
 	var b strings.Builder
-	b.WriteString(threadActivityLine(t))
+	b.WriteString(threadActivityLine(t, loc))
 	section := buildThreadDigestSection(messages, byteBudget)
 	if section == "" {
 		b.WriteString("(no readable messages in this thread)\n")

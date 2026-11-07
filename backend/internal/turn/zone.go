@@ -2,29 +2,28 @@ package turn
 
 import (
 	"time"
-	// The image ships no zoneinfo: without the embedded copy every zone fails
-	// to load and each date line silently reads UTC.
-	_ "time/tzdata"
+
+	"github.com/trick77/loom/internal/schedule"
 )
 
 // promptTimeLayout is how a prompt states a point in time.
 const promptTimeLayout = "Monday, 2006-01-02 15:04 MST"
 
-// zoneLocation resolves a turn's IANA zone. Empty, unknown and "Local" read
-// UTC: a prompt never states the server's own time.
+// zoneLocation resolves a turn's IANA zone the way schedules do (one rule for
+// the date line and the schedule slots); one that fails reads UTC.
 func zoneLocation(name string) *time.Location {
-	if loc, err := time.LoadLocation(name); err == nil && loc != time.Local {
+	if loc, err := schedule.LoadLocation(name); err == nil {
 		return loc
 	}
 	return time.UTC
 }
 
-// zone is the turn's location, resolved once by Prepare.
+// zone is the turn's location: the one Prepare resolved, else resolved now.
 func (t *Run) zone() *time.Location {
-	if t.loc == nil {
-		t.loc = zoneLocation(t.timezone)
+	if t.loc != nil {
+		return t.loc
 	}
-	return t.loc
+	return zoneLocation(t.timezone)
 }
 
 // now is the turn's time in its user's zone: the browser's for a chat turn,

@@ -91,7 +91,7 @@ var coreTools = []toolSpec{
 		schema:  projectThreadsTool,
 		offered: func(_ *Engine, thread chat.Thread, _ toolGate) bool { return thread.ProjectID != nil },
 		run: func(ctx context.Context, t *Run, _ llm.ToolCall) (string, []artifact.Response) {
-			return t.e.projectThreadsDigest(ctx, t.user.ID, t.thread), nil
+			return t.e.projectThreadsDigest(ctx, t.user.ID, t.thread, t.zone()), nil
 		},
 	},
 	// Cross-thread memory: conversation_search finds anything across the
@@ -101,7 +101,7 @@ var coreTools = []toolSpec{
 		name:   conversationSearchToolName,
 		schema: conversationSearchTool,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
-			return t.e.conversationSearchDigest(ctx, t.user.ID, t.thread, args)
+			return t.e.conversationSearchDigest(ctx, t.user.ID, t.thread, args, t.zone())
 		}),
 	},
 	{
@@ -109,7 +109,7 @@ var coreTools = []toolSpec{
 		schema: readThreadTool,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
 			threadID, _ := args["thread_id"].(string)
-			return t.e.readThreadDigest(ctx, t.user.ID, threadID)
+			return t.e.readThreadDigest(ctx, t.user.ID, threadID, t.zone())
 		}),
 	},
 	// The directive tools manage the user's standing instructions. They are
