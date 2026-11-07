@@ -178,12 +178,33 @@ func (t *Run) keepToolFiles(files []mcp.File) string {
 		}
 		t.toolFiles[f.Name] = f
 		t.toolFileBytes = total
-		kept = append(kept, f.Name)
+		kept = append(kept, f.Name+csvColumns(f))
 	}
 	if len(kept) == 0 {
 		return ""
 	}
-	return "\n\n[run_python can read these files in this turn only (in a later turn, call this tool again first): " + strings.Join(kept, ", ") + "]"
+	return "\n\n[run_python can read these files in this turn only (pass the name in run_python's files; in a later turn, call this tool again first): " + strings.Join(kept, ", ") + "]"
+}
+
+// maxColumnsBytes bounds the header line csvColumns repeats to the model.
+const maxColumnsBytes = 300
+
+// csvColumns is " (columns: …)" from a CSV file's header line, "" for any
+// other file: a model that does not see them guesses (it once asked for
+// "time" in a file whose column is elapsed_s). Only the header, never a row.
+func csvColumns(f mcp.File) string {
+	if f.MimeType != "text/csv" && !strings.HasSuffix(strings.ToLower(f.Name), ".csv") {
+		return ""
+	}
+	head, _, _ := strings.Cut(string(f.Data[:min(len(f.Data), maxColumnsBytes+1)]), "\n")
+	head = strings.TrimSpace(strings.TrimPrefix(head, string(rune(0xFEFF)))) // a UTF-8 BOM
+	if head == "" {
+		return ""
+	}
+	if len(head) > maxColumnsBytes {
+		head = strings.ToValidUTF8(head[:maxColumnsBytes], "") + "…"
+	}
+	return " (columns: " + head + ")"
 }
 
 // keepToolArtifacts stores the images and documents a tool returned as the

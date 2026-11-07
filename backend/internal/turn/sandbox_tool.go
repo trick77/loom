@@ -11,6 +11,7 @@ import (
 	_ "image/png" // DecodeConfig for sandbox PNG output
 	"io"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -283,7 +284,7 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 	if strings.TrimSpace(code) == "" {
 		return "tool failed: invalid arguments: code is required", nil
 	}
-	files, msg := s.sandboxFiles(ctx, user.ID, thread, args["files"], toolFiles)
+	files, msg := s.sandboxFiles(ctx, user.ID, thread, withCodeNamedToolFiles(args["files"], code, toolFiles), toolFiles)
 	if msg != "" {
 		return capToolOutput(msg), nil
 	}
@@ -318,6 +319,39 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 	}
 	notes = append(notes, res.Dropped...)
 	return capToolOutput(formatSandboxResult(res, created, notes, s.sandbox.Timeout())), created
+}
+
+// withCodeNamedToolFiles adds to the files argument every tool file of this
+// turn whose name the code spells out, up to the per-call cap: a model that
+// writes pd.read_csv('in/<name>') but leaves files out otherwise reads an
+// empty in/ (seen twice in one turn). Documents stay explicit. A malformed
+// argument is left for sandboxFiles to refuse.
+func withCodeNamedToolFiles(raw any, code string, toolFiles map[string]mcp.File) any {
+	list, ok := raw.([]any)
+	if raw != nil && !ok {
+		return raw
+	}
+	have := map[string]bool{}
+	for _, item := range list {
+		name, _ := item.(string)
+		have[strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(name), "/work/in/"), "in/")] = true
+	}
+	names := slices.Sorted(maps.Keys(toolFiles))
+	added := false
+	for _, name := range names {
+		if len(list) >= maxSandboxInputFiles {
+			break
+		}
+		if !have[name] && strings.Contains(code, name) {
+			list = append(list, name)
+			have[name] = true
+			added = true
+		}
+	}
+	if !added {
+		return raw
+	}
+	return list
 }
 
 // sandboxFiles resolves the model's file names to the bytes of in-scope
