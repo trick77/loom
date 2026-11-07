@@ -296,7 +296,19 @@ def variants(p, d):
         ("head_activities", loomcharts.activities_summary, (heads["activities"], j("head_activities.png")), {},
          note),
     ]
+    # A job's inputs sit in in/; the tools name them bare, and a bare name must be found there.
+    os.makedirs(j("in"), exist_ok=True)
+    pd.read_csv(p["streams"]).to_csv(os.path.join(d, "in", "bare_streams.csv"), index=False)
+
+    def in_job_dir(fn):
+        def call(*args, **kwargs):
+            with contextlib.chdir(d):
+                return fn(*args, **kwargs)
+        return call
+
     return header_only + [
+        ("profile_bare_name", in_job_dir(loomcharts.ride_profile), ("bare_streams.csv", j("profile_bare.png")), {},
+         full),
         ("profile", loomcharts.ride_profile, (p["streams"], j("profile.png")),
          {"climbs": p["climbs"], "title": "Albis loop · 1 Nov 2026"}, full),
         ("profile_hrzones", loomcharts.ride_profile, (nopower, j("profile_hrzones.png")),

@@ -164,9 +164,19 @@ def header(ax, title, subtitle=None, pad=0):
 
 
 def frame(src):
-    """A DataFrame from a CSV path, a file object or a DataFrame (copied)."""
+    """A DataFrame from a CSV path, a file object or a DataFrame (copied).
+
+    A bare file name that is not in the working directory is read from in/, where a job's
+    input files sit: the tools name their files bare, and a model passing that name got a
+    FileNotFoundError.
+    """
     if isinstance(src, pd.DataFrame):
         return src.copy()
+    if isinstance(src, (str, os.PathLike)):
+        name = os.fspath(src)
+        inside = os.path.join("in", name)
+        if not os.path.exists(name) and os.path.dirname(name) == "" and os.path.exists(inside):
+            src = inside
     return pd.read_csv(src)
 
 
