@@ -1867,7 +1867,7 @@ func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 	if !strings.Contains(history[0].Content, "past your training cutoff") {
 		t.Fatalf("system prompt = %q, want knowledge-limit directive", history[0].Content)
 	}
-	if !strings.Contains(history[0].Content, "look it up with the search and fetch tools first") {
+	if !strings.Contains(history[0].Content, "look it up with the available tools first") {
 		t.Fatalf("system prompt = %q, want tool-use-before-giving-up directive", history[0].Content)
 	}
 }
