@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -358,6 +359,10 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	}
 	if len(imageParts) > 0 {
 		history[len(history)-1].Content = ""
+		// The parts carry the bare user text: the earlier links go along.
+		if note := earlierSourcesNote(in.PriorMessages); note != "" {
+			imageParts = append(slices.Clip(imageParts), llm.MessageContentPart{Type: "text", Text: strings.TrimSpace(note)})
+		}
 		history[len(history)-1].ContentParts = imageParts
 	}
 	// When the image path will run, forward the source image's original full-res

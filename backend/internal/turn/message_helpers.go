@@ -1,7 +1,12 @@
 package turn
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -189,7 +194,100 @@ func buildHistory(systemContent string, messages []chat.Message, newUserMessage 
 			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
 		}
 	}
-	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
+	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content + earlierSourcesNote(messages)})
+}
+
+// Bounds of earlierSourcesNote: the whole note, not per answer, so a long
+// thread does not grow every request.
+const (
+	maxEarlierSources     = 20
+	maxEarlierSourceBytes = 300
+)
+
+var citedMarker = regexp.MustCompile(`\[(\d+)\]`)
+
+// earlierSourcesNote names the links behind the thread's earlier answers on
+// the new message. Tool rows are not replayed, so a later turn saw only "[1]"
+// and, needing the id in that source's URL, had nothing to go on. It sits on
+// the new message, not in the answers: inside them it would read as the
+// model's own habit (lists and raw URLs its answers must not have), its [n]
+// would clash with this turn's numbering, and the cached prefix stays as it
+// was.
+//
+// URLs only, re-encoded: the note rides in the user's own message, which the
+// schedule tools trust as the user's words, so no page title (outside text)
+// goes along, and an encoded URL cannot close the bracket. Cited links of
+// every answer (newest first) before any uncited one, each URL once (a turn
+// split by a queued message stores its sources on both rows). Only http(s):
+// a data: URI or other scheme is no link to act on. Document citations stay
+// out: they have no URL, retrieval reads the documents again.
+func earlierSourcesNote(messages []chat.Message) string {
+	var cited, rest []string
+	for i := len(messages) - 1; i >= 0; i-- {
+		m := messages[i]
+		// Most rows hold no web source: skip decoding their snippets.
+		if m.Role != chat.RoleAssistant || !bytes.Contains(m.Citations, []byte(`"url"`)) {
+			continue
+		}
+		var cites []struct {
+			URL   string `json:"url"`
+			Index int    `json:"index"`
+		}
+		if err := json.Unmarshal(m.Citations, &cites); err != nil {
+			continue
+		}
+		marked := map[int]bool{}
+		for _, g := range citedMarker.FindAllStringSubmatch(m.Content, -1) {
+			if n, err := strconv.Atoi(g[1]); err == nil {
+				marked[n] = true
+			}
+		}
+		for _, c := range cites {
+			if marked[c.Index] {
+				cited = append(cited, c.URL)
+			} else {
+				rest = append(rest, c.URL)
+			}
+		}
+	}
+	seen := map[string]bool{}
+	var lines []string
+	for _, raw := range append(cited, rest...) {
+		if len(lines) == maxEarlierSources {
+			break
+		}
+		link, key := replayableURL(raw)
+		if link == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		lines = append(lines, "- "+link)
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "\n\n[Links behind earlier answers in this thread, the ones they cited first, for the ids and pages they name. They are not numbered sources of this turn: never cite them as [n].\n" +
+		strings.Join(lines, "\n") + "]"
+}
+
+// replayableURL is raw re-encoded (spaces and brackets escaped) and its key
+// for spotting the same link spelled apart (host case, fragment, trailing
+// slash); "" for anything but a short absolute http(s) URL.
+func replayableURL(raw string) (link, key string) {
+	if len(raw) > maxEarlierSourceBytes {
+		return "", ""
+	}
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+		return "", ""
+	}
+	u.Host = strings.ToLower(u.Host)
+	// A raw query keeps its spaces: escaped too, so no sentence rides along.
+	link = strings.NewReplacer("[", "%5B", "]", "%5D", " ", "%20").Replace(u.String())
+	u.Fragment, u.RawFragment = "", ""
+	u.Path = strings.TrimSuffix(u.Path, "/")
+	u.RawPath = ""
+	return link, u.String()
 }
 
 // incognitoSystemPrompt is the system prompt for a tool-free incognito turn. Unlike
