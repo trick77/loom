@@ -6,12 +6,10 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
-
-	"github.com/trick77/loom/internal/artifact"
 )
 
 // allowedTextExtensions are the UTF-8 text formats create_text_file may emit.
-// Kept in sync with the tool description and artifact.MIMEType so an extension
+// Kept in sync with the tool description and MIMEType so an extension
 // inferred from the filename always maps to a sensible MIME type.
 var allowedTextExtensions = map[string]bool{
 	"txt": true, "md": true, "csv": true, "json": true,
@@ -78,6 +76,6 @@ func (g TextGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta
 	return GeneratedMeta{
 		DisplayFilename: req.Filename,
 		Extension:       extension,
-		MIMEType:        artifact.MIMEType(extension),
+		MIMEType:        MIMEType(extension),
 	}, nil
 }

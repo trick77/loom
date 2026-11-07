@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
-	"github.com/trick77/loom/internal/artifact"
 )
 
 // PPTXGenerator generates PPTX presentations.
@@ -100,7 +98,7 @@ func (g PPTXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta
 	if err := writeZipPackage(w, pptxPackage(title, slides)); err != nil {
 		return GeneratedMeta{}, err
 	}
-	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "pptx", MIMEType: artifact.MIMEType("pptx")}, nil
+	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "pptx", MIMEType: MIMEType("pptx")}, nil
 }
 
 func presentationSlides(payload map[string]any) ([]pptxSlide, error) {

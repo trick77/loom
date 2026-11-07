@@ -45,21 +45,8 @@ func TestLoad_defaults(t *testing.T) {
 	if cfg.ObscuraMCPURL != "" {
 		t.Errorf("ObscuraMCPURL default = %q, want empty opt-in value", cfg.ObscuraMCPURL)
 	}
-	if cfg.GotenbergURL != "http://gotenberg:3000" {
-		t.Errorf("GotenbergURL default = %q, want http://gotenberg:3000", cfg.GotenbergURL)
-	}
-}
-
-func TestLoad_gotenbergURLOverride(t *testing.T) {
-	requiredEnv(t)
-	t.Setenv("BACKEND_GOTENBERG_URL", "http://localhost:3000")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.GotenbergURL != "http://localhost:3000" {
-		t.Errorf("GotenbergURL = %q, want override", cfg.GotenbergURL)
+	if cfg.DocgenURL != "" {
+		t.Errorf("DocgenURL default = %q, want empty opt-in value", cfg.DocgenURL)
 	}
 }
 
@@ -313,6 +300,36 @@ func TestLoadSearchSidecarProblems(t *testing.T) {
 	t.Setenv("BACKEND_SEARCH_TOKEN", "")
 	if cfg, err := Load(); err != nil || cfg.SearchURL != "" {
 		t.Fatalf("off: %q, %v", cfg.SearchURL, err)
+	}
+}
+
+func TestLoadDocgenSidecar(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_DOCGEN_URL", "http://docgen:8020")
+	t.Setenv("BACKEND_DOCGEN_TOKEN", strings.Repeat("a", 32))
+	cfg, err := Load()
+	if err != nil || cfg.DocgenURL != "http://docgen:8020" || cfg.DocgenToken != strings.Repeat("a", 32) {
+		t.Fatalf("configured: %+v, %v", cfg, err)
+	}
+}
+
+// Like search's: a sidecar without a token it accepts would only lose the
+// document tools, silently.
+func TestLoadDocgenSidecarProblems(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_DOCGEN_URL", "http://docgen:8020")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_DOCGEN_TOKEN must be at least 32") {
+		t.Fatalf("no token: %v", err)
+	}
+	t.Setenv("BACKEND_DOCGEN_URL", "docgen:8020")
+	t.Setenv("BACKEND_DOCGEN_TOKEN", strings.Repeat("a", 32))
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_DOCGEN_URL must be an absolute") {
+		t.Fatalf("relative url: %v", err)
+	}
+	t.Setenv("BACKEND_DOCGEN_URL", "off")
+	t.Setenv("BACKEND_DOCGEN_TOKEN", "")
+	if cfg, err := Load(); err != nil || cfg.DocgenURL != "" {
+		t.Fatalf("off: %q, %v", cfg.DocgenURL, err)
 	}
 }
 

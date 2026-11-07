@@ -21,7 +21,9 @@ services:
       PUBLIC_FQDN: "${PUBLIC_FQDN:-}"
       BACKEND_AUTH_MODE: "${BACKEND_AUTH_MODE:-oidc}"
       BACKEND_TIKA_URL: "http://tika:9998"
-      BACKEND_GOTENBERG_URL: "http://gotenberg:3000"
+      # Document tools sidecar (docs/docgen.md), always on. BACKEND_DOCGEN_TOKEN
+      # comes in through env_file.
+      BACKEND_DOCGEN_URL: "${BACKEND_DOCGEN_URL:-http://docgen:8020}"
       # Web search sidecar (docs/search.md), always on. BACKEND_SEARCH_TOKEN
       # comes in through env_file.
       BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-http://search:8030}"
@@ -86,8 +88,9 @@ services:
     depends_on:
       tika:
         condition: service_healthy
-      gotenberg:
-        # HTML→PDF rendering for create_pdf_file
+      docgen:
+        # Discovered at boot: waiting keeps the document tools from missing
+        # until the next refresh.
         condition: service_healthy
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
@@ -128,7 +131,7 @@ services:
       traefik.enable: "false"
 
   gotenberg:
-    # Chromium-based HTML→PDF renderer for create_pdf_file (Noto Color Emoji bundled)
+    # Chromium-based HTML→PDF renderer for the docgen sidecar's PDFs (Noto Color Emoji bundled)
     image: gotenberg/gotenberg:8
     restart: unless-stopped
     networks:
@@ -314,6 +317,36 @@ services:
       start_interval: 5s
       retries: 3
     # The loom network: reachable from loom only, with egress to Tavily.
+    networks:
+      - loom
+    labels:
+      traefik.enable: "false"
+
+  docgen:
+    # loom's document tools over MCP (docs/docgen.md): text, PDF, XLSX, DOCX,
+    # PPTX files; Gotenberg renders the PDFs. Every route needs DOCGEN_TOKEN.
+    # Stateless: no volume.
+    image: ghcr.io/trick77/loom-docgen:latest
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DOCGEN_TOKEN: "${BACKEND_DOCGEN_TOKEN:-}"
+      DOCGEN_GOTENBERG_URL: "http://gotenberg:3000"
+    depends_on:
+      gotenberg:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/loom-docgen", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+    # The loom network: reachable from loom only, beside Gotenberg.
     networks:
       - loom
     labels:

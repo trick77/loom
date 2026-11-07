@@ -1,19 +1,18 @@
 package turn
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/usage"
@@ -28,10 +27,12 @@ type toolRun struct {
 	sources   []mcp.Source
 	files     []mcp.File
 	images    []mcp.Image
-	// droppedImages counts the image blocks mcp refused.
-	droppedImages int
-	err           error
-	durationMS    int64
+	documents []mcp.Document
+	// droppedImages and droppedDocuments count the image blocks and blob
+	// resources mcp refused.
+	droppedImages, droppedDocuments int
+	err                             error
+	durationMS                      int64
 }
 
 // runToolCall performs the MCP call itself. It touches no per-turn state, so a
@@ -66,7 +67,9 @@ func (s *Engine) runToolCallWith(ctx context.Context, call llm.ToolCall, extra m
 	}
 	start := time.Now()
 	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, sent)
-	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files, images: result.Images, droppedImages: result.DroppedImages, err: err, durationMS: time.Since(start).Milliseconds()}
+	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files,
+		images: result.Images, documents: result.Documents, droppedImages: result.DroppedImages, droppedDocuments: result.DroppedDocuments,
+		err: err, durationMS: time.Since(start).Milliseconds()}
 }
 
 // toolCallDuration bounds one MCP call: a server that returns artifacts
@@ -79,21 +82,21 @@ func (s *Engine) toolCallDuration(name string) time.Duration {
 }
 
 // finishToolCall turns a finished run into the tool result the model sees
-// and the artifacts its images became: the obscura fallback for a failed
-// fetch, the usage count, and the [n] source labels. It writes to the source
-// registry and the shared obscura browser, so it runs one call at a time, in
-// the order the model issued the calls.
+// and the artifacts its images and documents became: the obscura fallback
+// for a failed fetch, the usage count, and the [n] source labels. It writes
+// to the source registry and the shared obscura browser, so it runs one call
+// at a time, in the order the model issued the calls.
 func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) (string, []artifact.Response) {
 	output := t.finishToolText(ctx, call, round, reg, run)
 	if run.err != nil || run.argsErr != nil {
 		return output, nil
 	}
-	note, created := t.keepToolImages(ctx, call.Function.Name, run.images, run.droppedImages)
+	note, created := t.keepToolArtifacts(ctx, call.Function.Name, run)
 	if t.e.toolPolicy(call.Function.Name).imageGenerator {
 		t.lockImageModel(ctx, created)
 	}
 	if strings.TrimSpace(output) == "" {
-		// An image-only result: the note is the whole result, so a failed
+		// A file-only result: the note is the whole result, so a failed
 		// store reads as a failure (toolFailedPrefix), not a blank success.
 		return strings.TrimLeft(note, "\n"), created
 	}
@@ -184,57 +187,69 @@ func (t *Run) keepToolFiles(files []mcp.File) string {
 	return "\n\n[run_python can read these files in this turn only (in a later turn, call this tool again first): " + strings.Join(kept, ", ") + "]"
 }
 
-// keepToolImages stores the images a tool returned as the turn's artifacts
-// and streams each to the browser, the way a built-in generator's files go.
-// It returns the lines that tell the model what was kept (never the bytes)
-// and the artifacts made. mcp lets images through only from a server allowed
-// to make artifacts (mcp.ServerConfig.Artifacts).
-func (t *Run) keepToolImages(ctx context.Context, toolName string, images []mcp.Image, dropped int) (string, []artifact.Response) {
+// keepToolArtifacts stores the images and documents a tool returned as the
+// turn's artifacts and streams each to the browser. It returns the lines
+// that tell the model what was kept (never the bytes) and the artifacts
+// made. mcp lets them through only from a server allowed to make artifacts
+// (mcp.ServerConfig.Artifacts). An image counts as image_gen usage; a
+// document counts nothing.
+func (t *Run) keepToolArtifacts(ctx context.Context, toolName string, run toolRun) (string, []artifact.Response) {
 	var lines strings.Builder
-	if dropped > 0 {
-		fmt.Fprintf(&lines, "\n\n[%d image(s) the tool returned were refused (type, size or count): they do not exist for the user]", dropped)
+	if run.droppedImages > 0 {
+		fmt.Fprintf(&lines, "\n\n[%d image(s) the tool returned were refused (type, size or count): they do not exist for the user]", run.droppedImages)
 	}
-	if len(images) == 0 {
+	if run.droppedDocuments > 0 {
+		fmt.Fprintf(&lines, "\n\n[%d file(s) the tool returned were refused (type, size or count): they do not exist for the user]", run.droppedDocuments)
+	}
+	if len(run.images)+len(run.documents) == 0 {
 		return lines.String(), nil
 	}
 	if !t.e.canStoreArtifacts() {
-		fmt.Fprintf(&lines, "\n\n[%d image(s) could not be kept: this loom stores no files]", len(images))
+		fmt.Fprintf(&lines, "\n\n[%d file(s) could not be kept: this loom stores no files]", len(run.images)+len(run.documents))
 		return lines.String(), nil
 	}
-	// The image is already here: a round cut short (a scheduled run's soft
+	// The file is already here: a round cut short (a scheduled run's soft
 	// deadline) or a client gone must not lose it between call and insert.
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), artifactPersistTimeout)
 	defer cancel()
 	var created []artifact.Response
-	for _, img := range images {
+	keep := func(spec artifactSpec, describe func(*artifact.Response) string) {
+		stored, err := t.e.persistArtifactBytes(persistCtx, t.user, t.thread, spec)
+		if err != nil {
+			slog.Warn("tool artifact not stored", "tool", toolName, "thread_id", t.thread.ID, "err", err)
+			lines.WriteString("\n\n" + toolFailedPrefix + ": " + err.Error())
+			return
+		}
+		response := stored.Response()
+		line := describe(&response)
+		_ = t.stream.SendJSON("artifact", response)
+		created = append(created, response)
+		lines.WriteString("\n\n" + line)
+	}
+	for _, img := range run.images {
 		name := img.Filename
 		if name == "" {
 			name = "image"
 		}
-		stored, err := t.e.persistArtifactBytes(persistCtx, t.user, t.thread, artifactSpec{
-			DisplayFilename: name,
-			Extension:       img.Extension,
-			MIMEType:        img.MimeType,
-			Data:            img.Data,
-			Thumbnail:       true,
-		})
-		if err != nil {
-			slog.Warn("tool image not stored", "tool", toolName, "thread_id", t.thread.ID, "err", err)
-			lines.WriteString("\n\n" + toolFailedPrefix + ": " + err.Error())
-			continue
-		}
-		response := stored.Response()
-		response.Model, response.Provider = img.Model, img.Provider
-		response.Width, response.Height, response.DurationMs = img.Width, img.Height, img.DurationMs
-		usage.Record(t.e.usage, "image_gen", func() error { return t.e.usage.IncImageGen(persistCtx, t.user.ID) })
-		_ = t.stream.SendJSON("artifact", response)
-		created = append(created, response)
-		fmt.Fprintf(&lines, "\n\ncreated image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes)
+		keep(artifactSpec{DisplayFilename: name, Extension: img.Extension, MIMEType: img.MimeType, Data: img.Data, Thumbnail: true},
+			func(response *artifact.Response) string {
+				response.Model, response.Provider = img.Model, img.Provider
+				response.Width, response.Height, response.DurationMs = img.Width, img.Height, img.DurationMs
+				usage.Record(t.e.usage, "image_gen", func() error { return t.e.usage.IncImageGen(persistCtx, t.user.ID) })
+				return fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes)
+			})
+	}
+	for _, doc := range run.documents {
+		// The type is loom's own for the extension (artifact.MIMEType).
+		keep(artifactSpec{DisplayFilename: doc.Name, Extension: doc.Extension, Data: doc.Data, Thumbnail: true},
+			func(response *artifact.Response) string {
+				return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes)
+			})
 	}
 	return capToolOutput(lines.String()), created
 }
 
-// artifactPersistTimeout bounds storing a tool's images once the call is done.
+// artifactPersistTimeout bounds storing a tool's files once the call is done.
 const artifactPersistTimeout = time.Minute
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at
@@ -369,7 +384,8 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 		if !s.mcp.ToolAllowed(MCPPrincipal(user), tool.Function.Name) {
 			continue
 		}
-		if s.toolPolicy(tool.Function.Name).imageGenerator {
+		policy := s.toolPolicy(tool.Function.Name)
+		if policy.imageGenerator {
 			// Its image needs somewhere to go; its loom-filled arguments are
 			// not the model's to set.
 			if !s.canStoreArtifacts() {
@@ -377,9 +393,23 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 			}
 			tool = withoutLoomArgs(tool)
 		}
+		if policy.documentGenerator {
+			if !s.canStoreArtifacts() || !gate.docgenEnabled() {
+				continue
+			}
+			tool.LongRunning = true
+		}
 		out = append(out, tool)
 	}
 	return out
+}
+
+// offersDocumentTools reports whether the turn gets a document tool: the
+// file-tool guidance may name them only then.
+func (s *Engine) offersDocumentTools(user auth.User, gate toolGate) bool {
+	return slices.ContainsFunc(s.offeredMCPTools(user, gate), func(tool llm.Tool) bool {
+		return s.toolPolicy(tool.Function.Name).documentGenerator
+	})
 }
 
 // MCPPrincipal is the account an MCP users allowlist checks: its user id,
@@ -454,70 +484,6 @@ func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string
 // userIntentAfterOutside refuses a userIntent tool in a turn that already
 // read content from another tool.
 const userIntentAfterOutside = "Not done: this turn already read content from other tools, so the request may not be the user's. Ask the user to repeat it in their next message."
-
-func oneArtifact(resp *artifact.Response) []artifact.Response {
-	if resp == nil {
-		return nil
-	}
-	return []artifact.Response{*resp}
-}
-
-// runDocGenerator executes a file-generating built-in tool (create_pdf_file,
-// create_docx_file, …) and returns the model-facing output plus any artifact
-// response. Unlike the MCP path (finishToolCall), these tools previously logged
-// nothing on failure — a "tool failed: …" string went only to the model, leaving
-// server-side failures invisible. The deferred log fixes that: every outcome is
-// recorded with the tool name, argument size, a truncated argument preview and
-// the result, so the next failure is diagnosable from the logs.
-func (t *Run) runDocGenerator(ctx context.Context, call llm.ToolCall, generator docgen.Generator) (output string, resp *artifact.Response) {
-	start := time.Now()
-	defer func() {
-		attrs := []any{
-			"tool", call.Function.Name,
-			"thread_id", t.thread.ID,
-			"user_id", t.user.ID,
-			"arg_bytes", len(call.Function.Arguments),
-			"args", summarizeForLog(call.Function.Arguments),
-			"duration_ms", time.Since(start).Milliseconds(),
-		}
-		if strings.HasPrefix(output, "tool failed") {
-			slog.Warn("builtin tool failed", append(attrs, "output", output)...)
-		} else {
-			slog.Info("builtin tool completed", append(attrs, "result", output)...)
-		}
-	}()
-
-	args, err := parseToolArguments(call.Function.Arguments)
-	if err != nil {
-		return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil
-	}
-	filename, _ := args["filename"].(string)
-	var buffer bytes.Buffer
-	meta, err := generator.Generate(docgen.GenerateRequest{
-		Format:   generator.ToolName(),
-		Filename: filename,
-		Payload:  args,
-		Context:  ctx,
-	}, &buffer)
-	if err != nil {
-		return capToolOutput("tool failed: " + err.Error()), nil
-	}
-	if buffer.Len() > artifact.MaxArtifactSizeBytes {
-		return "tool failed: generated file is too large", nil
-	}
-	created, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
-		DisplayFilename: meta.DisplayFilename,
-		Extension:       meta.Extension,
-		Data:            buffer.Bytes(),
-		Thumbnail:       true,
-	})
-	if err != nil {
-		return capToolOutput("tool failed: " + err.Error()), nil
-	}
-	response := created.Response()
-	_ = t.stream.SendJSON("artifact", response)
-	return fmt.Sprintf("created artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes), &response
-}
 
 func capToolOutput(output string) string {
 	if len(output) <= maxToolResultContentBytes {

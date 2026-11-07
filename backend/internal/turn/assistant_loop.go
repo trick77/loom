@@ -189,7 +189,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			break
 		}
 		// Log every tool call's argument size so document payloads are measurable in
-		// retrospect instead of guessed at: a create_*_file call serializes the whole
+		// retrospect instead of guessed at: a document tool call serializes the whole
 		// file into its argument JSON, so arg_bytes ≈ document size. Pair this with
 		// completion_tokens from the matching "llm inference completed" line (same
 		// thread_id + round) to read the size in tokens — the unit the completion-token

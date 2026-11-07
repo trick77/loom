@@ -211,6 +211,25 @@ describe("activity trace model", () => {
       kind: "generated",
       title: "Creating presentation",
     });
+    // The document tools on the docgen server, any of them a file.
+    expect(
+      summarizeToolCall(
+        "docgen__create_pdf_file",
+        '{"filename":"report","content":"# Q3"}',
+      ),
+    ).toMatchObject({ kind: "generated", title: "Creating PDF file" });
+    expect(
+      summarizeToolCall(
+        "docgen__create_text_file",
+        '{"filename":"notes","content":"x"}',
+      ),
+    ).toMatchObject({ kind: "generated", title: "Creating file" });
+    expect(
+      summarizeToolCall("docgen__make_odt", '{"filename":"letter"}'),
+    ).toMatchObject({ kind: "generated", title: "Creating file" });
+    expect(
+      summarizeToolCall("acme__create_issue", '{"title":"bug"}'),
+    ).toMatchObject({ kind: "generic" });
     expect(summarizeToolCall("custom__lookup", "not-json")).toMatchObject({
       title: "Lookup",
     });

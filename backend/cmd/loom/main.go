@@ -26,7 +26,6 @@ import (
 	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/config"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/httpapi"
 	"github.com/trick77/loom/internal/llm"
@@ -137,20 +136,6 @@ func runServer() error {
 		docs.SetUsageRecorder(usageStore)
 		documentService = docs
 	}
-	gotenbergClient := docgen.NewGotenbergClient(docgen.GotenbergConfig{BaseURL: cfg.GotenbergURL})
-	// Gotenberg backs PDF export, and the doc tools are always offered (config
-	// requires a users dir). Fail fast at boot rather than let the model start a
-	// create_pdf_file call that can only end in a per-request "tool failed".
-	if err := requireSidecar("gotenberg", cfg.GotenbergURL, gotenbergClient.Ping); err != nil {
-		return err
-	}
-	docTools := []docgen.Generator{
-		docgen.TextGenerator{},
-		docgen.NewPDFGenerator(gotenbergClient),
-		docgen.XLSXGenerator{},
-		docgen.DOCXGenerator{},
-		docgen.PPTXGenerator{},
-	}
 	// The Python sandbox is optional and never blocks boot: its health probe
 	// (a worker below) offers run_python while the sidecar answers.
 	sandboxRunner, sandboxWatch := sandboxForConfig(cfg)
@@ -169,6 +154,7 @@ func runServer() error {
 	}
 	warnOrphanedImageKey(cfg, os.Getenv)
 	warnOrphanedSearchKey(cfg, os.Getenv)
+	warnOrphanedGotenbergURL(cfg, os.Getenv)
 	mcpConfig := toolCfg.union()
 	if len(mcpConfig.Servers) > 0 {
 		// Give discovery room for cold MCP sidecars: the fetch bridge boots a
@@ -188,12 +174,13 @@ func runServer() error {
 		mcpRefresh = func(ctx context.Context) { discovered.RunRefresh(ctx, slog.Default()) }
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
-	discoveredTools, imageToolUp, searchToolUp, searchServerUp := 0, false, false, false
+	discoveredTools, imageToolUp, searchToolUp, searchServerUp, docgenTools := 0, false, false, false, 0
 	if toolService != nil {
 		discoveredTools = len(toolService.Tools())
 		imageToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool))
 		searchToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.SearchServer, mcp.SearchTool))
 		searchServerUp = mcpService.Answered(mcp.SearchServer)
+		docgenTools = serverToolCount(toolService.Tools(), mcp.DocgenServer)
 	}
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
@@ -228,7 +215,7 @@ func runServer() error {
 		}
 	}
 	logStartupCapabilities(cfg, mcpConfig, startupRuntime{
-		DocToolCount:        len(docTools),
+		DocgenToolCount:     docgenTools,
 		DiscoveredToolCount: discoveredTools,
 		ImageToolUp:         imageToolUp,
 		SearchToolUp:        searchToolUp,
@@ -257,7 +244,6 @@ func runServer() error {
 		Documents:                  documentService,
 		LLM:                        chatClient,
 		MCP:                        toolService,
-		DocTools:                   docTools,
 		Sandbox:                    sandboxRunner,
 		AppleMusic:                 appleMusicService(cfg),
 		AppleMusicUsers:            cfg.TunewireUsers,
@@ -402,17 +388,17 @@ func serve(ctx context.Context, srv *http.Server, ln net.Listener, bg *backgroun
 	return nil
 }
 
-// sidecarReadinessTimeout bounds each startup health probe. Gotenberg and Tika
-// are declared service_healthy dependencies in compose, so under Docker they are
-// already up by the time loom boots; this window only needs to absorb a brief
-// restart race, not a cold start.
+// sidecarReadinessTimeout bounds each startup health probe. Tika is a declared
+// service_healthy dependency in compose, so under Docker it is already up by
+// the time loom boots; this window only needs to absorb a brief restart race,
+// not a cold start.
 const sidecarReadinessTimeout = 15 * time.Second
 
 // requireSidecar probes an essential sidecar's health endpoint at startup and
 // returns an error (aborting boot) when it is unreachable. This is a defensive,
 // in-process guard on top of compose's depends_on: service_healthy — it keeps the
-// backend from coming up able to accept work (PDF export, document extraction) it
-// cannot fulfil, failing fast with a clear cause instead of opaque per-request
+// backend from coming up able to accept work (document extraction) it cannot
+// fulfil, failing fast with a clear cause instead of opaque per-request
 // errors. It does not address slow/unavailable upstreams once serving.
 func requireSidecar(name, url string, ping func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), sidecarReadinessTimeout)
@@ -530,6 +516,11 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	if searchConfigured(cfg) {
 		out.FileServers.Servers[mcp.SearchServer] = mcp.SearchServerConfig(cfg.SearchURL, cfg.SearchToken)
 	}
+	// loom-docgen likewise (docs/docgen.md): a dead sidecar costs the
+	// document tools. An mcp.json server named docgen replaces it.
+	if docgenConfigured(cfg) {
+		out.FileServers.Servers[mcp.DocgenServer] = mcp.DocgenServerConfig(cfg.DocgenURL, cfg.DocgenToken)
+	}
 	for name, server := range fileServers {
 		if _, exists := required.Servers[name]; exists {
 			slog.Warn("MCP servers file overrides built-in server", "server", name)
@@ -552,6 +543,33 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 		out.FileServers.Servers[name] = server
 	}
 	return out, nil
+}
+
+func docgenConfigured(cfg config.Config) bool {
+	return strings.TrimSpace(cfg.DocgenURL) != ""
+}
+
+// warnOrphanedGotenbergURL points an install run without compose and
+// upgraded past the move to the sidecar at it: loom no longer renders PDFs
+// with the Gotenberg it still names, and the document tools would quietly be
+// gone. It reports whether it warned.
+func warnOrphanedGotenbergURL(cfg config.Config, getenv func(string) string) bool {
+	if docgenConfigured(cfg) || strings.TrimSpace(getenv("BACKEND_GOTENBERG_URL")) == "" {
+		return false
+	}
+	slog.Warn("BACKEND_GOTENBERG_URL is set, but the document tools now run in the loom-docgen sidecar: set BACKEND_DOCGEN_URL and BACKEND_DOCGEN_TOKEN, and DOCGEN_GOTENBERG_URL on the sidecar (docs/docgen.md)")
+	return true
+}
+
+// serverToolCount counts the discovered tools of one server.
+func serverToolCount(tools []llm.Tool, server string) int {
+	n := 0
+	for _, tool := range tools {
+		if s, _, ok := mcp.SplitExposedToolName(tool.Function.Name); ok && s == server {
+			n++
+		}
+	}
+	return n
 }
 
 func searchConfigured(cfg config.Config) bool {

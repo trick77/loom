@@ -25,20 +25,23 @@ const (
 	defaultHTTPTimeout  = 15 * time.Second
 	maxRPCResponseBytes = 4 << 20
 	maxToolOutputBytes  = 32 << 10
-	// maxArtifactRPCBytes fits one artifact's worth of images
-	// (artifact.MaxArtifactSizeBytes, all images of a reply together) as
-	// base64, plus the rest of the reply.
-	maxArtifactRPCBytes = artifact.MaxArtifactSizeBytes/3*4 + 2<<20
+	// maxArtifactRPCBytes fits one artifact's worth of images and documents
+	// (artifact.MaxArtifactSizeBytes, all of a reply together, the most loom
+	// keeps) as base64, plus the rest of the reply: its text, the text files
+	// a server may add for run_python (toolkit's mcpserver caps them at
+	// 3 MiB) and the envelope.
+	maxArtifactRPCBytes = artifact.MaxArtifactSizeBytes/3*4 + 4<<20
 	// maxStdioLineBytes is a stdio server's reply line without artifacts.
 	maxStdioLineBytes = 1 << 20
 )
 
 // ArtifactCallTimeout bounds one call to a server that makes artifacts:
-// rendering an image and sending it takes far longer than a text tool.
+// rendering an image or a document and sending it takes far longer than a
+// text tool.
 const ArtifactCallTimeout = 3 * time.Minute
 
 // maxResponseBytes is the largest reply loom reads from an HTTP server: room
-// for images only when the server may make artifacts.
+// for images and documents only when the server may make artifacts.
 func (cfg ServerConfig) maxResponseBytes() int {
 	if cfg.Artifacts {
 		return maxArtifactRPCBytes

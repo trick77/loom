@@ -19,11 +19,11 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/turn"
+	"github.com/trick77/loom/internal/turn/turntest"
 )
 
 func TestStreamMessageEmitsDeltasAndPersistsAssistant(t *testing.T) {
@@ -602,7 +602,7 @@ func TestStreamMessageUsesFallbackWhenForcedFinalAnswerIsEmpty(t *testing.T) {
 				ToolCalls: []llm.ToolCall{{
 					ID:       "call_1",
 					Type:     "function",
-					Function: llm.ToolCallFunction{Name: "create_text_file", Arguments: `{"filename":"notes.md","extension":"md","content":"# Notes"}`},
+					Function: llm.ToolCallFunction{Name: turntest.DocgenTool("create_text_file"), Arguments: `{"filename":"notes.md","extension":"md","content":"# Notes"}`},
 				}},
 			},
 			{Content: ""}, // round 2: no text, no tool calls -> forces tool-free final answer
@@ -614,7 +614,7 @@ func TestStreamMessageUsesFallbackWhenForcedFinalAnswerIsEmpty(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
 		Artifacts: artifactStore,
-		DocTools:  []docgen.Generator{docgen.TextGenerator{}},
+		MCP:       turntest.DocgenService(t),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -645,7 +645,9 @@ func TestStreamMessageUsesFallbackWhenForcedFinalAnswerIsEmpty(t *testing.T) {
 	}
 }
 
-func TestStreamMessageExecutesBuiltInArtifactTool(t *testing.T) {
+// A document tool's file, from the docgen sidecar, becomes an artifact the
+// stream announces.
+func TestStreamMessageKeepsDocumentToolArtifact(t *testing.T) {
 	db := newUserDB(t)
 	threadStore := chat.NewStore(db)
 	artifactStore := artifact.NewStore(db)
@@ -663,7 +665,7 @@ func TestStreamMessageExecutesBuiltInArtifactTool(t *testing.T) {
 					ID:   "call_1",
 					Type: "function",
 					Function: llm.ToolCallFunction{
-						Name:      "create_text_file",
+						Name:      turntest.DocgenTool("create_text_file"),
 						Arguments: `{"filename":"notes.md","extension":"md","content":"# Notes"}`,
 					},
 				}},
@@ -676,7 +678,7 @@ func TestStreamMessageExecutesBuiltInArtifactTool(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
 		Artifacts: artifactStore,
-		DocTools:  []docgen.Generator{docgen.TextGenerator{}},
+		MCP:       turntest.DocgenService(t),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})
@@ -2296,10 +2298,9 @@ func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 		Thread:    &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Weekend plans", Category: string(classifier.General)}},
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
-		DocTools:  []docgen.Generator{docgen.TextGenerator{}},
 		LLM:       llmClient,
 		MCP: fakeMCPService{
-			ToolList:       []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs"}}},
+			ToolList:       []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs"}}, turntest.DocgenToolDef("create_text_file")},
 			ToolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
 		},
 	})
@@ -2318,7 +2319,7 @@ func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 		switch tool.Function.Name {
 		case "context7__query-docs":
 			hasContext7 = true
-		case "create_text_file":
+		case turntest.DocgenTool("create_text_file"):
 			hasDocgen = true
 		}
 	}

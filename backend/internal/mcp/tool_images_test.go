@@ -127,6 +127,13 @@ func TestArtifactServerGetsLongerTimeout(t *testing.T) {
 	}
 }
 
+// toolImages is toolArtifacts for a reply of images: what it keeps and how
+// many it refused.
+func toolImages(content []toolContent, meta []imageMeta, limit int) ([]Image, int) {
+	kept := toolArtifacts(content, meta, limit)
+	return kept.images, kept.droppedImages
+}
+
 func TestToolImagesRejectUnsafeOrBroken(t *testing.T) {
 	html := []byte("<!doctype html><script>alert(1)</script>")
 	cases := map[string]toolContent{
@@ -157,7 +164,7 @@ func TestToolImagesForgiveTypeSpelling(t *testing.T) {
 func TestToolImagesCappedAndMetaByPosition(t *testing.T) {
 	var content []toolContent
 	var meta []imageMeta
-	for i := range maxToolImages + 2 {
+	for i := range maxToolArtifacts + 2 {
 		content = append(content, toolContent{Type: "image", MimeType: "image/png", Data: base64.StdEncoding.EncodeToString(pngBytes(32))})
 		meta = append(meta, imageMeta{Filename: string(rune('a' + i))})
 	}
@@ -165,8 +172,8 @@ func TestToolImagesCappedAndMetaByPosition(t *testing.T) {
 	content[0].MimeType = "image/svg+xml"
 	meta[1].Filename = "/tmp/out/b.png"
 	got, dropped := toolImages(content, meta, 1024)
-	if len(got) != maxToolImages || dropped != 2 {
-		t.Fatalf("%d images, %d dropped, want %d and 2", len(got), dropped, maxToolImages)
+	if len(got) != maxToolArtifacts || dropped != 2 {
+		t.Fatalf("%d images, %d dropped, want %d and 2", len(got), dropped, maxToolArtifacts)
 	}
 	if got[0].Filename != "b.png" {
 		t.Errorf("first kept image named %q, want b.png (meta by block position, path stripped)", got[0].Filename)

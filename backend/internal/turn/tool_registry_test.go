@@ -3,7 +3,6 @@ package turn
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -13,20 +12,24 @@ import (
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn/turntest"
 	"github.com/trick77/toolkit/llmwire/llmwiretest"
 )
 
-// allDocTools is the docgen set cmd/loom wires up.
-func allDocTools() []docgen.Generator {
-	return []docgen.Generator{
-		docgen.TextGenerator{},
-		docgen.NewPDFGenerator(nil),
-		docgen.XLSXGenerator{},
-		docgen.DOCXGenerator{},
-		docgen.PPTXGenerator{},
+// docToolNames are the document tools loom-docgen serves, by exposed name.
+var docToolNames = []string{
+	turntest.DocgenTool("create_text_file"), turntest.DocgenTool("create_pdf_file"), turntest.DocgenTool("create_xlsx_file"),
+	turntest.DocgenTool("create_docx_file"), turntest.DocgenTool("create_pptx_presentation"),
+}
+
+// docToolDefs are docToolNames as an MCP tool list carries them.
+func docToolDefs() []llm.Tool {
+	var out []llm.Tool
+	for _, name := range docToolNames {
+		out = append(out, llm.Tool{Type: "function", Function: llm.ToolFunction{Name: name, Parameters: map[string]any{"type": "object"}}})
 	}
+	return out
 }
 
 func orderedToolNames(tools []llm.Tool) []string {
@@ -37,19 +40,17 @@ func orderedToolNames(tools []llm.Tool) []string {
 	return names
 }
 
-// The offered tool set, in order, for representative turns. MCP's
-// create_text_file collides with the built-in: it is dropped while the
-// built-in is offered and passes through while docgen is gated off.
+// The offered tool set, in order, for representative turns: built-ins first,
+// then the MCP tools in their order, the document tools among them only while
+// the gate wants files and files can be stored.
 func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
-	mcpTools := []llm.Tool{
+	mcpTools := append([]llm.Tool{
 		{Type: "function", Function: llm.ToolFunction{Name: "fetch__fetch"}},
 		{Type: "function", Function: llm.ToolFunction{Name: searchToolName}},
 		{Type: "function", Function: llm.ToolFunction{Name: "obscura__browser_navigate"}},
-		{Type: "function", Function: llm.ToolFunction{Name: "create_text_file"}},
-	}
+	}, docToolDefs()...)
 	mcpNames := []string{"fetch__fetch", searchToolName, "obscura__browser_navigate"}
 	core := []string{"conversation_search", "read_thread", "remember_user_directive", "forget_user_directive", "update_user_directive", "remember_user_fact", "update_user_fact", "forget_user_fact"}
-	docs := []string{"create_text_file", "create_pdf_file", "create_xlsx_file", "create_docx_file", "create_pptx_presentation"}
 	project := "p1"
 	docgenOn := newToolGate(string(classifier.Coding), "", "")
 	docgenOff := newToolGate(string(classifier.General), string(classifier.General), "just chatting")
@@ -73,27 +74,27 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 		{
 			name: "no project, docgen off, sandbox off, image", artifacts: true, images: true,
 			gate: docgenOff,
-			want: concat(core, mcpNames, []string{"create_text_file", imageToolName}),
+			want: concat(core, mcpNames, []string{imageToolName}),
 		},
 		{
 			name: "project, docgen on, sandbox on, image", artifacts: true, images: true,
 			thread: chat.Thread{ProjectID: &project}, gate: withSandbox(docgenOn),
-			want: concat([]string{"read_project_threads"}, core, docs, []string{"run_python"}, mcpNames, []string{imageToolName}),
+			want: concat([]string{"read_project_threads"}, core, []string{"run_python"}, mcpNames, docToolNames, []string{imageToolName}),
 		},
 		{
 			name: "no project, docgen on, sandbox off, no image", artifacts: true,
 			gate: docgenOn,
-			want: concat(core, docs, mcpNames),
+			want: concat(core, mcpNames, docToolNames),
 		},
 		{
 			name: "no project, docgen off, sandbox on, no image", artifacts: true,
 			gate: withSandbox(docgenOff),
-			want: concat(core, []string{"run_python"}, mcpNames, []string{"create_text_file"}),
+			want: concat(core, []string{"run_python"}, mcpNames),
 		},
 		{
 			name: "no artifact store", images: true,
 			gate: withSandbox(docgenOn),
-			want: concat(core, mcpNames, []string{"create_text_file"}),
+			want: concat(core, mcpNames),
 		},
 	}
 	for _, tc := range tests {
@@ -102,11 +103,7 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 			if tc.images {
 				offered = append(slices.Clone(mcpTools), llm.Tool{Type: "function", Function: llm.ToolFunction{Name: imageToolName}})
 			}
-			e := &Engine{
-				usersDir: t.TempDir(),
-				docTools: allDocTools(),
-				mcp:      fakeMCPService{ToolList: offered},
-			}
+			e := &Engine{usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: offered}}
 			if tc.artifacts {
 				e.artifacts = fakeArtifactStore{}
 			}
@@ -118,38 +115,24 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 	}
 }
 
-// recordingDocGen is a docgen tool under any name: it counts how often its
-// schema is built and how many calls reach it.
-type recordingDocGen struct {
-	name    string
-	schemas int
-	calls   int
-}
-
-func (g *recordingDocGen) ToolName() string { return g.name }
-
-func (g *recordingDocGen) Schema() docgen.ToolSchema {
-	g.schemas++
-	return docgen.ToolSchema{Name: g.name, Parameters: map[string]any{"type": "object"}}
-}
-
-func (g *recordingDocGen) Generate(docgen.GenerateRequest, io.Writer) (docgen.GeneratedMeta, error) {
-	g.calls++
-	return docgen.GeneratedMeta{}, errors.New("recorded")
-}
-
-// A built-in's definition is built once per engine, not on every turn.
+// A built-in's definition is built once per engine, not on every turn: every
+// turn offers the same shared definition.
 func TestBuiltInDefinitionsBuiltOnce(t *testing.T) {
-	gen := &recordingDocGen{name: "create_text_file"}
-	e := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), docTools: []docgen.Generator{gen}}
-	gate := newToolGate(string(classifier.Coding), "", "")
-	for range 3 {
-		if !toolNames(e.availableTools(chat.Thread{}, gate))[gen.name] {
-			t.Fatalf("%s not offered", gen.name)
+	e := &Engine{}
+	params := func() uintptr {
+		for _, tool := range e.availableTools(chat.Thread{}, toolGate{}) {
+			if tool.Function.Name == conversationSearchToolName {
+				return reflect.ValueOf(tool.Function.Parameters).Pointer()
+			}
 		}
+		t.Fatalf("%s not offered", conversationSearchToolName)
+		return 0
 	}
-	if gen.schemas != 1 {
-		t.Fatalf("schema built %d times over three turns, want once", gen.schemas)
+	first := params()
+	for range 2 {
+		if params() != first {
+			t.Fatal("definition rebuilt for a later turn")
+		}
 	}
 }
 
@@ -198,14 +181,14 @@ func TestToolPolicyPerName(t *testing.T) {
 		{"obscura__browser_snapshot", 12, false, ""},
 		{"run_python", 3, false, ""},
 		{imageToolName, 1, false, ""},
-		{"create_pdf_file", 8, false, ""},
+		{turntest.DocgenTool("create_pdf_file"), 8, false, ""},
 		{"conversation_search", 8, false, ""},
 		{"context7__query-docs", 8, false, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			u := &countingUsage{counts: map[string]int{}}
-			e := &Engine{usage: u, docTools: allDocTools()}
+			e := &Engine{usage: u}
 			if got := e.toolCallCapPerRound(tc.name); got != tc.cap {
 				t.Errorf("cap = %d, want %d", got, tc.cap)
 			}
@@ -224,31 +207,46 @@ func TestToolPolicyPerName(t *testing.T) {
 	}
 }
 
-// The round policy comes from the engine's registry, so one set on a docgen
-// spec takes effect like one on a core tool.
-func TestToolPolicyFollowsGeneratorSpecs(t *testing.T) {
-	u := &countingUsage{counts: map[string]int{}}
-	e := &Engine{usage: u, docTools: allDocTools()}
-	_, byName := e.registry()
-	byName["create_pdf_file"].capPerRound = 2
-	byName["create_pdf_file"].concurrent = true
-	byName["create_pdf_file"].counts = &usageCounter{"image_gen", UsageStore.IncImageGen}
+// Every tool of the docgen server is a document tool, whatever its name: a
+// replacement server's extra tools are gated like the sidecar's.
+func TestDocgenServerPolicyCoversEveryTool(t *testing.T) {
+	e := &Engine{}
+	for _, name := range append(slices.Clone(docToolNames), turntest.DocgenTool("create_odt_file")) {
+		if !e.toolPolicy(name).documentGenerator {
+			t.Errorf("%s: not a document tool", name)
+		}
+	}
+	if e.toolPolicy("other__create_pdf_file").documentGenerator || e.toolPolicy("create_pdf_file").documentGenerator {
+		t.Error("a tool of another server is a document tool")
+	}
+}
 
-	if got := e.toolCallCapPerRound("create_pdf_file"); got != 2 {
-		t.Errorf("create_pdf_file cap = %d, want 2", got)
+// The round policy comes from the engine's registry, so one set on a
+// built-in's spec takes effect for that tool.
+func TestToolPolicyFollowsRegistrySpecs(t *testing.T) {
+	u := &countingUsage{counts: map[string]int{}}
+	e := &Engine{usage: u}
+	_, byName := e.registry()
+	spec := byName[conversationSearchToolName]
+	spec.capPerRound = 2
+	spec.concurrent = true
+	spec.counts = &usageCounter{"image_gen", UsageStore.IncImageGen}
+
+	if got := e.toolCallCapPerRound(conversationSearchToolName); got != 2 {
+		t.Errorf("cap = %d, want 2", got)
 	}
-	if !e.runsConcurrently("create_pdf_file") {
-		t.Error("create_pdf_file not concurrent")
+	if !e.runsConcurrently(conversationSearchToolName) {
+		t.Error("not concurrent")
 	}
-	e.countToolCall(context.Background(), testUser, "create_pdf_file")
+	e.countToolCall(context.Background(), testUser, conversationSearchToolName)
 	if want := map[string]int{"image_gen": 1}; !reflect.DeepEqual(u.counts, want) {
 		t.Errorf("counters = %v, want %v", u.counts, want)
 	}
 }
 
-// Every docgen tool as offered widens the LLM client's tool-call idle window:
-// a buffering endpoint goes silent mid-argument for longer than the normal
-// window. A non-document tool keeps the normal window and stalls.
+// Every document tool as offered widens the LLM client's tool-call idle
+// window: a buffering endpoint goes silent mid-argument for longer than the
+// normal window. A non-document tool keeps the normal window and stalls.
 func TestDocgenToolsWidenToolCallIdleTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -275,7 +273,7 @@ func TestDocgenToolsWidenToolCallIdleTimeout(t *testing.T) {
 		return err
 	}
 
-	e := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), docTools: allDocTools()}
+	e := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: docToolDefs()}}
 	offered := map[string]llm.Tool{}
 	for _, tool := range e.availableTools(chat.Thread{}, newToolGate(string(classifier.Coding), "", "")) {
 		offered[tool.Function.Name] = tool
@@ -283,15 +281,15 @@ func TestDocgenToolsWidenToolCallIdleTimeout(t *testing.T) {
 	// Each case waits out the server's pause, so they run in parallel: the
 	// handler keeps no state, and the client and offered are only read. The
 	// parent's server cleanup runs after every subtest.
-	for _, gen := range allDocTools() {
-		t.Run(gen.ToolName(), func(t *testing.T) {
+	for _, name := range docToolNames {
+		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			tool, ok := offered[gen.ToolName()]
+			tool, ok := offered[name]
 			if !ok {
-				t.Fatalf("%s not offered", gen.ToolName())
+				t.Fatalf("%s not offered", name)
 			}
 			if err := stream(tool); err != nil {
-				t.Errorf("%s: stream error = %v, want the widened idle window", gen.ToolName(), err)
+				t.Errorf("%s: stream error = %v, want the widened idle window", name, err)
 			}
 		})
 	}
