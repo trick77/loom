@@ -291,15 +291,20 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 	if err := png.Encode(&pngBuf, img); err != nil {
 		t.Fatal(err)
 	}
-	var wideBuf bytes.Buffer
-	if err := png.Encode(&wideBuf, image.NewRGBA(image.Rect(0, 0, maxSandboxImageSide+1, 1))); err != nil {
-		t.Fatal(err)
+	pngOf := func(w, h int) []byte {
+		var b bytes.Buffer
+		if err := png.Encode(&b, image.NewRGBA(image.Rect(0, 0, w, h))); err != nil {
+			t.Fatal(err)
+		}
+		return b.Bytes()
 	}
 	f.box.Result = sandbox.Result{
 		Stdout: "Top: A 10\n",
 		Files: []sandbox.File{
 			{Name: "chart.png", Data: pngBuf.Bytes()},
-			{Name: "wide.png", Data: wideBuf.Bytes()},
+			{Name: "wide.png", Data: pngOf(maxSandboxImageSide+1, 1)},
+			{Name: "tall.png", Data: pngOf(1, maxSandboxImageSide+1)},
+			{Name: "edge.png", Data: pngOf(maxSandboxImageSide, 1)},
 			{Name: "top.csv", Data: []byte("kunde,umsatz\nA,10\n")},
 			{Name: "fake.png", Data: []byte("<svg onload=alert(1)>")},
 			{Name: "x.svg", Data: []byte("<svg/>")},
@@ -315,20 +320,32 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 	if req.Code != "print(1)" || len(req.Files) != 2 || string(req.Files[0].Data) != "kunde,umsatz\nA,10\n" || req.Files[1].Name != aliasNotes {
 		t.Fatalf("request %+v", req)
 	}
-	if len(created) != 2 || created[0].DisplayFilename != "chart.png" || created[1].DisplayFilename != "top.csv" {
+	// edge.png, exactly at the limit, is kept.
+	if len(created) != 3 || created[0].DisplayFilename != "chart.png" || created[1].DisplayFilename != "edge.png" || created[2].DisplayFilename != "top.csv" {
 		t.Fatalf("created %+v", created)
 	}
 	for _, want := range []string{"exit_code: 0", "Top: A 10", "created artifact chart.png", "created artifact top.csv",
 		"fake.png: not a valid PNG", "x.svg: file type not allowed", "link.txt: not a regular file",
-		// The size, or the model guesses why (a 14x9 in figure at 130 dpi
-		// grew past the limit through bbox_inches="tight").
-		"wide.png: image 4001×1 px, over 4000 px on a side"} {
+		// The size and where it comes from, or the model guesses: its figure
+		// set dpi=130, the sandbox saved at 200.
+		"wide.png: image 4001×1 px, over 4000 px on a side; make it smaller (a matplotlib figure saves at 200 dpi",
+		"tall.png: image 1×4001 px", "created artifact edge.png"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Count(f.body.Body.String(), "event: artifact") != 2 {
-		t.Fatalf("want two artifact events:\n%s", f.body.Body.String())
+	if strings.Count(f.body.Body.String(), "event: artifact") != 3 {
+		t.Fatalf("want three artifact events:\n%s", f.body.Body.String())
+	}
+}
+
+// The prompt states the limits the rejection enforces; the two must not
+// drift apart (the prompt is a const, so it spells the numbers out).
+func TestSandboxGuidanceStatesImageLimits(t *testing.T) {
+	for _, want := range []string{fmt.Sprintf("over %d px a side", maxSandboxImageSide), fmt.Sprintf("save at %d dpi", sandboxSaveDPI)} {
+		if !strings.Contains(sandboxGuidancePrompt, want) {
+			t.Errorf("guidance lacks %q", want)
+		}
 	}
 }
 
