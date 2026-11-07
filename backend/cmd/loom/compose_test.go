@@ -567,6 +567,52 @@ func TestBackendContainerfileBuildsAndEmbedsUI(t *testing.T) {
 	}
 }
 
+// A runaway in any one container must not take the host down: every
+// production service carries a memory ceiling, so a new sidecar cannot ship
+// without one.
+func TestProductionComposeLimitsEveryServiceMemory(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	compose := string(data)
+	names := composeServiceNames(t, compose)
+	if len(names) < 10 {
+		t.Fatalf("found only %d services in compose.yaml: %v", len(names), names)
+	}
+	limit := regexp.MustCompile(`\n    mem_limit: \d+[mg]\n`)
+	for _, name := range names {
+		if !limit.MatchString(composeService(t, compose, name) + "\n") {
+			t.Errorf("%s service has no mem_limit", name)
+		}
+	}
+	// The JVM sizes its heap from the limit: without this it takes only 25%.
+	if !strings.Contains(composeService(t, compose, "tika"), `JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70"`) {
+		t.Error("tika must raise MaxRAMPercentage to use its mem_limit")
+	}
+}
+
+// composeServiceNames lists the service keys under the top-level services:.
+func composeServiceNames(t *testing.T, compose string) []string {
+	t.Helper()
+	_, services, ok := strings.Cut("\n"+compose, "\nservices:\n")
+	if !ok {
+		t.Fatal("compose.yaml has no services section")
+	}
+	key := regexp.MustCompile(`^  ([A-Za-z0-9_.-]+):$`)
+	var names []string
+	for _, line := range strings.Split(services, "\n") {
+		// The next top-level key ends the section.
+		if line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#") {
+			break
+		}
+		if m := key.FindStringSubmatch(line); m != nil {
+			names = append(names, m[1])
+		}
+	}
+	return names
+}
+
 func composeService(t *testing.T, compose, name string) string {
 	t.Helper()
 	start := strings.Index(compose, "\n  "+name+":")

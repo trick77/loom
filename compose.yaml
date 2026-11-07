@@ -6,6 +6,8 @@ services:
     # sudo chown -R 65532:65532 data
     user: "65532:65532"
     restart: unless-stopped
+    # Uploads up to 25 MiB, image edits ~100 MiB transient, vector compaction at boot.
+    mem_limit: 1g
     # Model choice (BACKEND_*_MODEL) and the LLMWIRE_<PROVIDER>_API_KEY a
     # model's provider reads come from .env as they are, so a model swap never
     # touches this file. .env is their only source: values exported in the
@@ -118,6 +120,11 @@ services:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
     image: apache/tika:4.2.0-1-full
     restart: unless-stopped
+    # JVM heap plus Tesseract OCR on large scans.
+    mem_limit: 1536m
+    environment:
+      # A containerized JVM takes only 25% of the limit as heap by default.
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70"
     networks:
       - loom
     healthcheck:
@@ -134,6 +141,8 @@ services:
     # Chromium-based HTML→PDF renderer for the docgen sidecar's PDFs (Noto Color Emoji bundled)
     image: gotenberg/gotenberg:8
     restart: unless-stopped
+    # Chromium per render.
+    mem_limit: 1g
     networks:
       - loom
     healthcheck:
@@ -153,6 +162,8 @@ services:
     # surfaced to the LLM as obscura__<tool>.
     image: h4ckf0r0day/obscura:0.2.5
     restart: unless-stopped
+    # Headless browser.
+    mem_limit: 1g
     environment:
       # v0.2.3+ refuses MCP beyond loopback without a token of at least 32
       # characters: the one loom reads from .env.
@@ -236,6 +247,8 @@ services:
     image: ghcr.io/trick77/loom-tunewire:latest
     profiles: ["tunewire"]
     restart: unless-stopped
+    # Small Go service proxying JSON to Apple.
+    mem_limit: 256m
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
@@ -269,6 +282,8 @@ services:
     image: ghcr.io/trick77/loom-strava:latest
     profiles: ["strava"]
     restart: unless-stopped
+    # Small Go service proxying JSON to Strava.
+    mem_limit: 256m
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
@@ -301,6 +316,8 @@ services:
     # Without a key it serves no tool and web search is off.
     image: ghcr.io/trick77/loom-search:latest
     restart: unless-stopped
+    # Small Go service proxying JSON to Tavily.
+    mem_limit: 256m
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
@@ -328,6 +345,8 @@ services:
     # Stateless: no volume.
     image: ghcr.io/trick77/loom-docgen:latest
     restart: unless-stopped
+    # Builds whole XLSX/DOCX/PPTX files in memory.
+    mem_limit: 512m
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
@@ -361,6 +380,8 @@ services:
     restart: unless-stopped
     # A render in flight finishes on SIGTERM (it is paid for either way).
     stop_grace_period: 3m
+    # Holds source and rendered images in memory.
+    mem_limit: 512m
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
