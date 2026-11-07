@@ -3,7 +3,33 @@ package turn
 import (
 	"strings"
 	"testing"
+	"time"
 )
+
+func TestRunNowReadsInTheTurnsZone(t *testing.T) {
+	fixed := time.Date(2026, time.November, 7, 23, 30, 0, 0, time.UTC)
+	clock := func() time.Time { return fixed }
+	for zone, want := range map[string]string{
+		"Europe/Zurich": "2026-11-08 00:30 CET",
+		"":              "2026-11-07 23:30 UTC",
+		"Not/AZone":     "2026-11-07 23:30 UTC",
+	} {
+		run := &Run{timezone: zone, scheduled: &ScheduledRun{Now: clock}}
+		if got := run.now().Format("2006-01-02 15:04 MST"); got != want {
+			t.Errorf("zone %q: now = %s, want %s", zone, got, want)
+		}
+	}
+}
+
+// A scheduled run knows when it fired, in the schedule's zone, on its first
+// run too.
+func TestScheduledRunStartedNote(t *testing.T) {
+	start := time.Date(2026, time.November, 7, 6, 0, 0, 0, time.UTC)
+	run := &Run{timezone: "Europe/Zurich", start: start, scheduled: &ScheduledRun{}}
+	if got, want := run.startedNote(), "Run started: Saturday, 2026-11-07 07:00 CET."; got != want {
+		t.Fatalf("startedNote = %q, want %q", got, want)
+	}
+}
 
 func TestDropImages(t *testing.T) {
 	cases := map[string]string{

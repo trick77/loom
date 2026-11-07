@@ -98,6 +98,30 @@ func (t *Run) scheduledNow() time.Time {
 	return time.Now()
 }
 
+// now is the turn's time in its user's zone: the browser's for a chat turn,
+// the schedule's for a run. An empty or unknown zone reads UTC, never the
+// server's local time.
+func (t *Run) now() time.Time {
+	return t.scheduledNow().In(t.location())
+}
+
+func (t *Run) location() *time.Location {
+	if loc, err := time.LoadLocation(t.timezone); err == nil && loc != time.Local {
+		return loc
+	}
+	return time.UTC
+}
+
+// startedNote is when the run fired, in the schedule's zone: the date line
+// says which day it is, this the time of day.
+func (t *Run) startedNote() string {
+	start := t.start
+	if start.IsZero() {
+		start = t.scheduledNow()
+	}
+	return "Run started: " + start.In(t.location()).Format("Monday, 2006-01-02 15:04 MST") + "."
+}
+
 // clampScheduledCall shrinks what a scheduled run's web call returns: a
 // shorter fetch, fewer and shallower search results. The model picks these
 // sizes itself and picks large ones.

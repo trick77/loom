@@ -312,10 +312,10 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// only the tool-free call that writes the answer gets them (finalContext).
 	finalContext := ""
 	if scheduled {
-		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.scheduled.sinceNote(), scheduledResearchNote, t.scheduled.Memory)
+		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.startedNote(), t.scheduled.sinceNote(), scheduledResearchNote, t.scheduled.Memory)
 		finalContext, userContext = userContext, ""
 	}
-	history := buildLLMHistory(t.user, promptBlocks{
+	history := buildLLMHistory(t.user, t.now(), promptBlocks{
 		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate)),
 		schedule:     scheduleBlock,
 		classifier:   classifier.Block(category),

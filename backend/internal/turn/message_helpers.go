@@ -157,12 +157,14 @@ type promptBlocks struct {
 	toolGuidance, schedule, classifier, user, project, knowledge, document string
 }
 
-func buildLLMHistory(user auth.User, blocks promptBlocks, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+// now is the turn's time in the user's zone (Run.now): its date is the one the
+// prompt calls today.
+func buildLLMHistory(user auth.User, now time.Time, blocks promptBlocks, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	// Tool guidance (e.g. the file-creation guardrail) travels with the tools it
 	// describes: it is passed non-empty only when those tools are offered this
 	// turn, so the prompt never names a tool that was gated out of the request.
 	// The blocks keep this order; an empty one is skipped.
-	systemContent := systemPromptForUser(user, time.Now())
+	systemContent := systemPromptForUser(user, now)
 	for _, block := range []string{blocks.toolGuidance, blocks.schedule, blocks.classifier, blocks.user, blocks.project, blocks.knowledge, blocks.document} {
 		if strings.TrimSpace(block) != "" {
 			systemContent += "\n\n" + block
@@ -203,7 +205,7 @@ const incognitoSystemPrompt = "You are Loom in an incognito conversation. Defaul
 const incognitoDirectAnswerNudge = "Answer my previous message directly now, in prose, using only your own knowledge. Do not call, attempt, or describe any tool, search, browse, or file operation."
 
 func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
-	dateLine := "\nThe current date is " + now.Format("2006-01-02") + ". Treat this as today when interpreting time-relative requests; do not assume an earlier year."
+	dateLine := "\nCurrent date: " + now.Format("Monday, 2006-01-02") + ". Treat it as today for time-relative requests; never assume an earlier year."
 	return incognitoSystemPrompt + languageDirective(user) + dateLine
 }
 
@@ -232,8 +234,11 @@ func ShouldGenerateThreadTitle(currentTitle, firstPrompt string) bool {
 	return currentTitle == normalized || currentTitle == chat.CapitalizeThreadTitle(normalized)
 }
 
+// systemPromptForUser ends in the date only, never the time: the line sits
+// ahead of every block, so a value changing each turn would cost the cached
+// prompt prefix. The time a scheduled run needs is in its own block.
 func systemPromptForUser(user auth.User, now time.Time) string {
-	dateLine := "\nThe current date is " + now.Format("2006-01-02") + ". Treat this as today when interpreting time-relative requests and when constructing search queries; do not assume an earlier year."
+	dateLine := "\nCurrent date: " + now.Format("Monday, 2006-01-02") + " (" + now.Location().String() + "). Treat it as today for time-relative requests and search queries; never assume an earlier year."
 	return loomSystemPrompt + languageDirective(user) + dateLine
 }
 
