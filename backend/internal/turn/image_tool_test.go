@@ -63,6 +63,12 @@ func TestOfferedImageToolHidesLoomArgs(t *testing.T) {
 	if tools := (&Engine{mcp: svc}).offeredMCPTools(testUser, toolGate{}); len(tools) != 0 {
 		t.Errorf("offered without an artifact store: %v", orderedToolNames(tools))
 	}
+	// A server not allowed to make artifacts would have every image dropped:
+	// the image tool is not offered (as no turn is routed to it).
+	plain := &Engine{mcp: fakeMCPService{ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: imageToolName}}}}, artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
+	if tools := plain.offeredMCPTools(testUser, toolGate{}); len(tools) != 0 {
+		t.Errorf("offered from a server without artifacts: %v", orderedToolNames(tools))
+	}
 }
 
 func TestWithoutLoomArgsTrimsRequired(t *testing.T) {
