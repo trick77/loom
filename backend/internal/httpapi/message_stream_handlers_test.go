@@ -2301,6 +2301,7 @@ func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 		LLM:       llmClient,
 		MCP: fakeMCPService{
 			ToolList:       []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs"}}, turntest.DocgenToolDef("create_text_file")},
+			Artifacts:      turntest.DocgenArtifacts(),
 			ToolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
 		},
 	})

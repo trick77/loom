@@ -216,6 +216,7 @@ func TestTurnGatesToolsByCategory(t *testing.T) {
 			UsersDir:  t.TempDir(),
 			LLM:       llmClient,
 			MCP: fakeMCPService{
+				Artifacts: turntest.DocgenArtifacts(),
 				ToolList: []llm.Tool{
 					{Type: "function", Function: llm.ToolFunction{Name: "search__web", Description: "Search the web"}},
 					{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs", Description: "Library docs"}},

@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
-	"mime"
 	"net/http"
 	"path"
 	"regexp"
@@ -227,9 +226,10 @@ func decodeBase64(encoded string, limit int) ([]byte, bool) {
 }
 
 // documentTypes are the documents loom keeps from a blob resource, by
-// extension: the formats loom's document tools generate (docs/docgen.md),
-// each with the check its bytes must pass. A server cannot store HTML under
-// a PDF name, nor a binary as text.
+// extension: the formats loom's document tools generate (docs/docgen.md;
+// loom-docgen's tests hold them to docgen.Extensions), each with the check
+// its bytes must pass. A server cannot store HTML under a PDF name, nor a
+// binary as text.
 var documentTypes = map[string]func([]byte) bool{
 	"pdf":  hasPrefix("%PDF-"),
 	"docx": hasPrefix("PK\x03\x04"),
@@ -249,14 +249,15 @@ func isText(data []byte) bool {
 }
 
 // decodeToolDocument returns a blob resource as a Document when its name's
-// extension is a document type, the resource's type is loom's type for that
-// extension (artifact.MIMEType, parameters aside), it fits limit and its
-// bytes pass the type's check.
+// extension is a document type, it fits limit and its bytes pass the type's
+// check. The resource's own mimeType decides nothing: loom stores the file
+// under its type for the extension (artifact.MIMEType), so a server that
+// spells a type differently (application/yaml, octet-stream) loses nothing.
 func decodeToolDocument(res toolResource, limit int) (Document, bool) {
 	name := baseName(strings.TrimPrefix(res.URI, "file://"))
 	ext := strings.ToLower(strings.TrimPrefix(path.Ext(name), "."))
 	check, ok := documentTypes[ext]
-	if !ok || mediaType(res.MimeType) != mediaType(artifact.MIMEType(ext)) {
+	if !ok {
 		return Document{}, false
 	}
 	data, ok := decodeBase64(res.Blob, limit)
@@ -264,14 +265,6 @@ func decodeToolDocument(res toolResource, limit int) (Document, bool) {
 		return Document{}, false
 	}
 	return Document{Name: name, Extension: ext, Data: data}, true
-}
-
-// mediaType is a Content-Type without its parameters, lower case.
-func mediaType(contentType string) string {
-	if t, _, err := mime.ParseMediaType(contentType); err == nil {
-		return t
-	}
-	return strings.ToLower(strings.TrimSpace(contentType))
 }
 
 // checkImage is the one gate every image passes before it can become an

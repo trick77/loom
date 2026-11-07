@@ -14,6 +14,8 @@ func TestFileName(t *testing.T) {
 		{"notes.md", "md", "notes.md"},
 		{"Report.PDF", "pdf", "Report.PDF"},
 		{"notes.txt", "md", "notes.md"},
+		{"Q3 v1.2 summary", "pdf", "Q3 v1.2 summary.pdf"},
+		{"report.final", "docx", "report.final.docx"},
 		{"/tmp/out/q3 report", "pdf", "q3 report.pdf"},
 		{`C:\docs\deck`, "pptx", "deck.pptx"},
 		{"", "xlsx", "artifact.xlsx"},

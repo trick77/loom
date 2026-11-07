@@ -1,6 +1,7 @@
 package turn
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -92,7 +93,7 @@ func TestTurnDocumentNotes(t *testing.T) {
 	name := turntest.DocgenTool("create_pdf_file")
 
 	out, llmClient := docToolTurn(t, Config{
-		MCP:       fakeMCPService{ToolList: tool, DroppedDocuments: 2},
+		MCP:       fakeMCPService{ToolList: tool, DroppedDocuments: 2, Artifacts: turntest.DocgenArtifacts()},
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
 	}, name, `{}`)
@@ -101,7 +102,7 @@ func TestTurnDocumentNotes(t *testing.T) {
 	}
 
 	out, llmClient = docToolTurn(t, Config{
-		MCP:       fakeMCPService{ToolList: tool, Documents: doc},
+		MCP:       fakeMCPService{ToolList: tool, Documents: doc, Artifacts: turntest.DocgenArtifacts()},
 		Artifacts: fakeArtifactStore{CreateErr: errors.New("disk full")},
 		UsersDir:  t.TempDir(),
 	}, name, `{}`)
@@ -109,10 +110,48 @@ func TestTurnDocumentNotes(t *testing.T) {
 		t.Errorf("not stored: %q, %v", got, out.err)
 	}
 
+	// Nowhere to store them: each kind is named as what it is.
 	run := &Run{e: &Engine{}}
-	note, created := run.keepToolArtifacts(t.Context(), name, toolRun{documents: doc})
-	if created != nil || !strings.Contains(note, "1 file(s) could not be kept") {
+	note, created := run.keepToolArtifacts(t.Context(), name, toolRun{documents: doc, images: []mcp.Image{{}, {}}})
+	if created != nil || !strings.Contains(note, "1 file(s) could not be kept") || !strings.Contains(note, "2 image(s) could not be kept") {
 		t.Errorf("no storage: %q, %v", note, created)
+	}
+}
+
+// The gate holds at call time: a document tool the turn was not offered
+// never runs, whatever the model names.
+func TestTurnRefusesDocumentToolNotOffered(t *testing.T) {
+	calls := 0
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title", Category: string(classifier.General)}}
+	name := turntest.DocgenTool("create_pdf_file")
+	llmClient := &fakeToolChatClient{
+		ClassifyResult: string(classifier.General),
+		Results: []llm.StreamResult{
+			{ToolCalls: []llm.ToolCall{{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: `{}`}}}},
+			{Content: "Hello."},
+		},
+	}
+	out := runStoredTurn(t, Config{
+		LLM: llmClient,
+		MCP: fakeMCPService{
+			ToolList:  []llm.Tool{turntest.DocgenToolDef("create_pdf_file"), {Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			Artifacts: turntest.DocgenArtifacts(),
+			CallFunc: func(context.Context, string, map[string]any) (string, error) {
+				calls++
+				return "", nil
+			},
+		},
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+	}, store, "just chatting, hi there")
+	if out.err != nil {
+		t.Fatalf("turn: %v", out.err)
+	}
+	if toolNames(llmClient.Tools[0])[name] {
+		t.Fatal("chit-chat turn offered the document tool")
+	}
+	if got := lastToolResult(llmClient); calls != 0 || !strings.Contains(got, "unknown tool") {
+		t.Fatalf("calls %d, tool result %q", calls, got)
 	}
 }
 

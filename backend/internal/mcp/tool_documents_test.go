@@ -76,6 +76,10 @@ func TestToolDocumentsAcceptTheGeneratedTypes(t *testing.T) {
 		{"file:///cfg.yaml", "text/plain; charset=utf-8", []byte("a: 1"), "yaml"},
 		{"file:///a.txt", "TEXT/PLAIN", []byte("x"), "txt"},
 		{"/out/dir/a.json", "application/json", []byte("{}"), "json"},
+		// The server's type decides nothing: loom stores its own for the extension.
+		{"file:///cfg.yml", "application/yaml", []byte("a: 1"), "yml"},
+		{"file:///a.docx", "application/octet-stream", zip, "docx"},
+		{"file:///a.md", "text/plain", []byte("x"), "md"},
 	} {
 		kept := toolArtifacts([]toolContent{blobContent(tc.uri, tc.mimeType, tc.data)}, nil, 1024)
 		if len(kept.documents) != 1 || kept.droppedDocuments != 0 || kept.documents[0].Extension != tc.ext {
@@ -86,18 +90,17 @@ func TestToolDocumentsAcceptTheGeneratedTypes(t *testing.T) {
 
 func TestToolDocumentsRejectUnsafeOrBroken(t *testing.T) {
 	for name, item := range map[string]toolContent{
-		"html under a pdf name":   blobContent("file:///a.pdf", "application/pdf", []byte("<html>")),
-		"pdf type, html name":     blobContent("file:///a.html", "application/pdf", pdfBytes(16)),
-		"no extension":            blobContent("file:///report", "application/pdf", pdfBytes(16)),
-		"unknown type":            blobContent("file:///run.exe", "application/octet-stream", []byte("MZ")),
-		"svg":                     blobContent("file:///a.svg", "image/svg+xml", []byte("<svg/>")),
-		"binary as text":          blobContent("file:///a.txt", "text/plain", []byte("a\x00b")),
-		"not utf-8":               blobContent("file:///a.csv", "text/csv", []byte{0xff, 0xfe}),
-		"docx without zip":        blobContent("file:///a.docx", artifact.MIMEType("docx"), []byte("plain")),
-		"over the size limit":     blobContent("file:///a.pdf", "application/pdf", pdfBytes(2048)),
-		"not base64":              {Type: "resource", Resource: &toolResource{URI: "file:///a.pdf", MimeType: "application/pdf", Blob: "%%%"}},
-		"directory name":          blobContent("file:///", "application/pdf", pdfBytes(16)),
-		"markdown typed as plain": blobContent("file:///a.md", "text/plain", []byte("x")),
+		"html under a pdf name": blobContent("file:///a.pdf", "application/pdf", []byte("<html>")),
+		"no extension":          blobContent("file:///report", "application/pdf", pdfBytes(16)),
+		"unknown type":          blobContent("file:///run.exe", "application/octet-stream", []byte("MZ")),
+		"svg":                   blobContent("file:///a.svg", "image/svg+xml", []byte("<svg/>")),
+		"binary as text":        blobContent("file:///a.txt", "text/plain", []byte("a\x00b")),
+		"pdf bytes as html":     blobContent("file:///a.html", "application/pdf", []byte{0xff, 0xfe, 0x00}),
+		"not utf-8":             blobContent("file:///a.csv", "text/csv", []byte{0xff, 0xfe}),
+		"docx without zip":      blobContent("file:///a.docx", artifact.MIMEType("docx"), []byte("plain")),
+		"over the size limit":   blobContent("file:///a.pdf", "application/pdf", pdfBytes(2048)),
+		"not base64":            {Type: "resource", Resource: &toolResource{URI: "file:///a.pdf", MimeType: "application/pdf", Blob: "%%%"}},
+		"directory name":        blobContent("file:///", "application/pdf", pdfBytes(16)),
 	} {
 		kept := toolArtifacts([]toolContent{item}, nil, 1024)
 		if len(kept.documents) != 0 || kept.droppedDocuments != 1 {
@@ -123,13 +126,5 @@ func TestToolArtifactsShareTheLimits(t *testing.T) {
 	kept = toolArtifacts(content, nil, 1024)
 	if len(kept.documents) != maxToolArtifacts || kept.droppedDocuments != 1 {
 		t.Fatalf("count: %+v", kept)
-	}
-}
-
-func TestMediaType(t *testing.T) {
-	for in, want := range map[string]string{"Text/Plain; charset=utf-8": "text/plain", "application/pdf": "application/pdf", " bad;; ": "bad;;"} {
-		if got := mediaType(in); got != want {
-			t.Errorf("mediaType(%q) = %q, want %q", in, got, want)
-		}
 	}
 }

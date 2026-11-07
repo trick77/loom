@@ -136,6 +136,31 @@ func TestLoomGetsEveryDocument(t *testing.T) {
 	}
 }
 
+// loom keeps a file of every extension the generators make: a new one docgen
+// adds and loom does not accept would be refused in production, unseen.
+func TestLoomKeepsEveryExtension(t *testing.T) {
+	svc := loomService(t, (&fakeGotenberg{}).server(t).URL)
+	binary := map[string]struct {
+		tool string
+		args map[string]any
+	}{
+		"pdf":  {"create_pdf_file", map[string]any{"filename": "f", "content": "x"}},
+		"xlsx": {"create_xlsx_file", map[string]any{"filename": "f", "rows": []any{[]any{"a"}}}},
+		"docx": {"create_docx_file", map[string]any{"filename": "f", "content": "x"}},
+		"pptx": {"create_pptx_presentation", map[string]any{"filename": "f", "slides": []any{map[string]any{"title": "t"}}}},
+	}
+	for _, ext := range docgen.Extensions() {
+		call, ok := binary[ext]
+		if !ok {
+			call.tool, call.args = "create_text_file", map[string]any{"filename": "f", "extension": ext, "content": "x"}
+		}
+		got, err := svc.CallToolResult(context.Background(), mcp.ExposedToolName(mcp.DocgenServer, call.tool), call.args)
+		if err != nil || len(got.Documents) != 1 || got.Documents[0].Extension != ext {
+			t.Errorf("%s: %+v, %v", ext, got, err)
+		}
+	}
+}
+
 // A generator's refusal and a failing Gotenberg are errors the model reads.
 func TestErrorsAreToolErrors(t *testing.T) {
 	dead := httptest.NewServer(http.NotFoundHandler())

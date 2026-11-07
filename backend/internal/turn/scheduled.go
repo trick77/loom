@@ -187,6 +187,13 @@ func (t *Run) allowTools(tools []llm.Tool, builtIns map[string]*toolSpec) ([]llm
 	return tools, map[string]*toolSpec{}
 }
 
+// docToolDenied reports whether a call names a document tool this turn was
+// not offered: the gate (no file wanted, nowhere to store it) holds at call
+// time too, whatever the model names.
+func (t *Run) docToolDenied(name string) bool {
+	return t.e.toolPolicy(name).documentGenerator && !t.offeredDocTools[name]
+}
+
 // scheduledDenies reports whether a scheduled run refuses a tool call: one
 // to a tool it was not offered, whatever the model names.
 func (t *Run) scheduledDenies(name string) bool {

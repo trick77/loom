@@ -41,6 +41,12 @@ func DocgenTool(name string) string {
 	return mcp.ExposedToolName(mcp.DocgenServer, name)
 }
 
+// DocgenArtifacts marks the docgen server as one that makes artifacts, for a
+// fake ToolService's Artifacts: loom offers its tools only then.
+func DocgenArtifacts() map[string]bool {
+	return map[string]bool{mcp.DocgenServer: true}
+}
+
 // DocgenToolDef is a document tool as an MCP tool list carries it, for a fake
 // ToolService.
 func DocgenToolDef(name string) llm.Tool {

@@ -38,6 +38,9 @@ type Run struct {
 	// offered is the built-ins the assistant loop offered, by name; dispatch
 	// runs a built-in only through it (see offerTools).
 	offered map[string]*toolSpec
+	// offeredDocTools are the document tools the loop offered, by name: a
+	// call to one the gate left out never runs (documentGenerator).
+	offeredDocTools map[string]bool
 	// acc sums every model call of the turn; start times its wall clock.
 	acc   *llm.UsageAccumulator
 	start time.Time

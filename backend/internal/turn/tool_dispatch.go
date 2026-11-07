@@ -205,7 +205,12 @@ func (t *Run) keepToolArtifacts(ctx context.Context, toolName string, run toolRu
 		return lines.String(), nil
 	}
 	if !t.e.canStoreArtifacts() {
-		fmt.Fprintf(&lines, "\n\n[%d file(s) could not be kept: this loom stores no files]", len(run.images)+len(run.documents))
+		if len(run.images) > 0 {
+			fmt.Fprintf(&lines, "\n\n[%d image(s) could not be kept: this loom stores no files]", len(run.images))
+		}
+		if len(run.documents) > 0 {
+			fmt.Fprintf(&lines, "\n\n[%d file(s) could not be kept: this loom stores no files]", len(run.documents))
+		}
 		return lines.String(), nil
 	}
 	// The file is already here: a round cut short (a scheduled run's soft
@@ -394,7 +399,9 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 			tool = withoutLoomArgs(tool)
 		}
 		if policy.documentGenerator {
-			if !s.canStoreArtifacts() || !gate.docgenEnabled() {
+			// A server without artifacts would have every file dropped: the
+			// model would read an empty success.
+			if !s.canStoreArtifacts() || !gate.docgenEnabled() || !s.mcp.MakesArtifacts(tool.Function.Name) {
 				continue
 			}
 			tool.LongRunning = true

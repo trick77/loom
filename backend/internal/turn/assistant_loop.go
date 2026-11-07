@@ -83,6 +83,12 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	history := t.plan.history
 	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
 	tools, t.offered = t.allowTools(tools, offered)
+	t.offeredDocTools = map[string]bool{}
+	for _, tool := range tools {
+		if t.e.toolPolicy(tool.Function.Name).documentGenerator {
+			t.offeredDocTools[tool.Function.Name] = true
+		}
+	}
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(history), inferenceWithPurpose(t.inference, "chat", 1), nil)
@@ -239,7 +245,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			perToolCount[call.Function.Name]++
 			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
 			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), call.Function.Name)
-			if t.scheduledDenies(call.Function.Name) {
+			if t.scheduledDenies(call.Function.Name) || t.docToolDenied(call.Function.Name) {
 				denied[i] = true
 			}
 			capped[i] = !deferred[i] && !denied[i] && t.searchCapped(call.Function.Name)

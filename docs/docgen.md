@@ -7,7 +7,8 @@ keeps the policy around the tools, never the generator:
 
 - every tool of the server is a document tool, whatever its name;
 - it offers them only when the turn plausibly wants a file (a document-producing category, or the message asks for a
-  file or names a format) and files can be stored, and names them in the system prompt only then;
+  file or names a format) and files can be stored, names them in the system prompt only then, and runs no call to one
+  the turn was not offered;
 - it gives a turn that offers them the document budgets (completion tokens, total and tool-call idle timeouts): the
   argument is the whole document;
 - a scheduled run never gets them;
@@ -16,7 +17,8 @@ keeps the policy around the tools, never the generator:
 
 The sidecar is stateless (no volume) and always started by `compose.yaml`, after Gotenberg is healthy; it refuses to
 start while Gotenberg does not answer. loom discovers it best-effort: a dead sidecar costs the document tools, never
-boot.
+loom's own boot (`compose.yaml` still starts loom only once the sidecar is healthy, like `search`, so the tools are
+there from the first turn).
 
 ## Setup (sidecar)
 
@@ -37,7 +39,7 @@ document tools off. The sidecar reads `DOCGEN_TOKEN`, `DOCGEN_ADDR` (`:8020`) an
   "headers": { "Authorization": "Bearer ${MY_DOCS_TOKEN}" } }
 ```
 
-Without `"artifacts": true` every file is dropped (the startup summary says so).
+Without `"artifacts": true` its tools are not offered (every file would be dropped; the startup summary says so).
 
 ## Tools
 
@@ -63,8 +65,8 @@ One binary resource per file, no text (loom names the artifact):
 
 loom keeps a blob only from a server with `"artifacts": true`, and only when
 
-- the name's extension is one of the table's, and the `mimeType` is loom's type for it (`artifact.MIMEType`,
-  parameters aside: `text/markdown; charset=utf-8` for md, `text/plain` for txt, yaml, yml and log);
+- the name's extension is one of the table's (loom stores the file under its own type for it, `artifact.MIMEType`;
+  the resource's `mimeType` decides nothing);
 - the bytes are that type: `%PDF-` for pdf, a ZIP for docx, xlsx and pptx, UTF-8 without NUL for text;
 - the reply's files and images together stay within one artifact's 25 MiB and four files.
 

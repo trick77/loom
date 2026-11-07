@@ -103,7 +103,7 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 			if tc.images {
 				offered = append(slices.Clone(mcpTools), llm.Tool{Type: "function", Function: llm.ToolFunction{Name: imageToolName}})
 			}
-			e := &Engine{usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: offered}}
+			e := &Engine{usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: offered, Artifacts: turntest.DocgenArtifacts()}}
 			if tc.artifacts {
 				e.artifacts = fakeArtifactStore{}
 			}
@@ -273,7 +273,7 @@ func TestDocgenToolsWidenToolCallIdleTimeout(t *testing.T) {
 		return err
 	}
 
-	e := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: docToolDefs()}}
+	e := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: docToolDefs(), Artifacts: turntest.DocgenArtifacts()}}
 	offered := map[string]llm.Tool{}
 	for _, tool := range e.availableTools(chat.Thread{}, newToolGate(string(classifier.Coding), "", "")) {
 		offered[tool.Function.Name] = tool

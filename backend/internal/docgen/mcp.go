@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -84,15 +85,20 @@ func generate(ctx context.Context, gen Generator, raw json.RawMessage) mcpserver
 }
 
 // fileName is the plain name a file goes out under: the model's name without
-// any directory, its extension replaced by the one generated (the client
-// reads the type from it). A name with nothing left is "artifact".
+// any directory, ending in the extension generated (the client reads the type
+// from it). A generator extension already there is replaced ("notes.txt" as
+// md is "notes.md"); any other dot is part of the name ("Q3 v1.2 summary").
+// A name with nothing left is "artifact".
 func fileName(display, ext string) string {
 	name := strings.TrimSpace(path.Base(strings.ReplaceAll(strings.TrimSpace(display), `\`, "/")))
 	if name == "." || name == "/" || name == ".." {
 		name = ""
 	}
-	if !strings.EqualFold(path.Ext(name), "."+ext) {
-		name = strings.TrimSuffix(name, path.Ext(name)) + "." + ext
+	if have := path.Ext(name); !strings.EqualFold(have, "."+ext) {
+		if slices.Contains(Extensions(), strings.ToLower(strings.TrimPrefix(have, "."))) {
+			name = strings.TrimSuffix(name, have)
+		}
+		name += "." + ext
 	}
 	if strings.TrimSuffix(name, "."+ext) == "" {
 		name = "artifact." + ext

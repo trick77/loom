@@ -91,9 +91,12 @@ func TestCategoryGrantsCodingDocs(t *testing.T) {
 // TestAvailableToolsGatesDocgen verifies the end-to-end effect on the offered
 // tool set: the document tools (any tool of the docgen server) are withheld
 // for a plain category and present, long-running, once the gate enables them,
-// and only where files can be stored.
+// and only where files can be stored and the server may make them.
 func TestAvailableToolsGatesDocgen(t *testing.T) {
-	docTools := fakeMCPService{ToolList: []llm.Tool{turntest.DocgenToolDef("create_text_file"), turntest.DocgenToolDef("create_new_format")}}
+	docTools := fakeMCPService{
+		ToolList:  []llm.Tool{turntest.DocgenToolDef("create_text_file"), turntest.DocgenToolDef("create_new_format")},
+		Artifacts: turntest.DocgenArtifacts(),
+	}
 	srv := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), mcp: docTools}
 
 	offered := func(e *Engine, gate toolGate) []llm.Tool {
@@ -122,6 +125,12 @@ func TestAvailableToolsGatesDocgen(t *testing.T) {
 	nowhere := &Engine{mcp: docTools}
 	if got := offered(nowhere, newToolGate("", "", "anything")); len(got) != 0 {
 		t.Fatalf("docgen tools offered without artifact storage: %v", got)
+	}
+	// An mcp.json docgen without "artifacts": every file would be dropped.
+	docTools.Artifacts = nil
+	noArtifacts := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), mcp: docTools}
+	if got := offered(noArtifacts, newToolGate("", "", "anything")); len(got) != 0 {
+		t.Fatalf("docgen tools offered from a server without artifacts: %v", got)
 	}
 }
 
@@ -180,7 +189,10 @@ func TestFileToolGuardrailTracksOfferedDocumentTools(t *testing.T) {
 			Artifacts: fakeArtifactStore{},
 			UsersDir:  t.TempDir(),
 			LLM:       llmClient,
-			MCP:       fakeMCPService{ToolList: append([]llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}, tools...)},
+			MCP: fakeMCPService{
+				ToolList:  append([]llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}, tools...),
+				Artifacts: turntest.DocgenArtifacts(),
+			},
 		}, &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}}, content)
 		if out.err != nil || len(llmClient.Histories) == 0 {
 			t.Fatalf("turn: %v, %d rounds; body=%s", out.err, len(llmClient.Histories), out.body)
