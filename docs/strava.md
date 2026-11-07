@@ -25,7 +25,7 @@ comment text, segment explore or leaderboards, and no write scope.
 | `profile` | athlete, FTP, weight, bikes and shoes, HR and power zones |
 | `totals` | recent, year-to-date and all-time totals (Strava counts only Everyone-visible activities here) |
 | `list_activities` | activities by date range and sport, with totals per sport and week; attaches `strava_activities.csv` |
-| `get_activity` | one activity in full: laps, splits, best efforts, segment efforts, gear, device; `refresh` reads it from Strava again |
+| `get_activity` | one activity in full: laps, splits, best efforts, segment efforts, gear, device; `refresh` reads it from Strava again; an activity from the last 14 days attaches `strava_<id>_streams.csv` |
 | `activity_analysis` | metrics from the streams (NP, IF, TSS, power curve, zones, decoupling, climbs, intervals, per-km rows), always compared with the user's same-sport activities of the last `weeks` (default 6); attaches the CSVs below |
 | `compare_activities` | 2-5 activities side by side |
 | `hr_zones` | max HR, threshold HR (LTHR) and Friel zones per sport (cycling, running) from the user's own streams of the last 365 days, next to Strava's zones |
@@ -40,6 +40,11 @@ Each activity named comes with a link to it on Strava (citation and attribution)
 loom keeps them for the running turn only and hands them to `run_python` by name; they are never stored, shown or put
 into the prompt. `loomcharts` in the sandbox image draws them in loom's style. A follow-up turn asks the tool again:
 the sidecar answers from its store.
+
+`get_activity` attaches the streams file unasked for an activity started in the last 14 days: a question about a
+recent ride often turns into a closer look, and the raw data is then already there. One streams read the first time,
+none after (stored). Older activities get it only through `activity_analysis`: a look back over many old activities
+would spend the shared budget on streams nobody asked for. A failed or missing streams read never fails the activity.
 
 ## Limits and storage
 
@@ -61,7 +66,8 @@ Activities barely change after upload, so every activity read is kept per user i
   capped at 1 GB per user, least recently read first out.
 - `refresh: true` on `get_activity` or `activity_analysis` reads the activity from Strava again: for an activity
   the user changed there (cropped, corrected, retagged). Not twice within 10 min. A refreshed detail drops the stored
-  streams and metrics, so the next analysis reads them again.
+  streams and metrics, so the next analysis reads them again (a recent activity's `get_activity` reads the streams
+  again right away).
 - Nothing stored expires: kept for good, by design (no age limit, no knob). Activities do not change, and every
   reread costs the shared rate budget. What does remove or replace stored data: a newer read or a refresh, Strava's
   404, a head read no longer listing it, the stream cap, a corrupt file, disconnect, another athlete.

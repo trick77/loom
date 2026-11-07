@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/loomuser"
 	"github.com/trick77/toolkit/mcpserver"
@@ -116,7 +118,8 @@ func toolServer(svc *service, version string) mcpserver.Server {
 			{
 				Name: "get_activity", Title: "Read a Strava activity", ReadOnly: true, OpenWorld: true,
 				Description: "Everything Strava has on one of the user's activities: description, private note, device, " +
-					"calories, perceived exertion, gear, laps, splits, best efforts, segment efforts with PR and KOM rank.",
+					"calories, perceived exertion, gear, laps, splits, best efforts, segment efforts with PR and KOM rank. " +
+					"An activity from the last 14 days also attaches its streams CSV for run_python.",
 				Schema: mcpserver.ObjectSchema(map[string]any{"id": idArg("The activity id, from list_activities."), "refresh": refreshArg}, "id"),
 				Run:    t.getActivity,
 			},
@@ -412,7 +415,57 @@ func (t *tools) getActivity(ctx context.Context, raw json.RawMessage) mcpserver.
 		t.svc.forget(user, id)
 		t.svc.markRefreshed(user, id)
 	}
-	return mcpserver.Result{Text: describeActivity(d, unitsOf(a)), Sources: []mcpserver.Source{activitySource(d.summaryActivity)}}
+	text := describeActivity(d, unitsOf(a))
+	var files []mcpserver.File
+	if f, ok := t.recentStreams(ctx, user, a, d); ok {
+		files = []mcpserver.File{f}
+		text += "\n" + fileNames(files)
+	}
+	return mcpserver.Result{Text: text, Sources: []mcpserver.Source{activitySource(d.summaryActivity)}, Files: files}
+}
+
+// recentStreamsAge: get_activity attaches the streams file of an activity
+// this recent unasked, so a follow-up question about a recent ride has its
+// raw data at hand. Older ones only through activity_analysis: the streams
+// read costs the shared rate budget once (stored for good after).
+const recentStreamsAge = 14 * 24 * time.Hour
+
+// recentStreams is d's streams file when d started within recentStreamsAge.
+// ok false when it is older, has no streams, or the read failed: the
+// activity itself is answered either way.
+func (t *tools) recentStreams(ctx context.Context, user string, a athlete, d detailedActivity) (mcpserver.File, bool) {
+	if t.svc.now().Sub(d.utcStart()) > recentStreamsAge {
+		return mcpserver.File{}, false
+	}
+	s, err := t.svc.streams(ctx, user, d.ID, false)
+	if err != nil {
+		slog.Warn("strava: streams for get_activity unavailable", "activity", d.ID, "err", err)
+		return mcpserver.File{}, false
+	}
+	if s.n == 0 {
+		return mcpserver.File{}, false
+	}
+	pE, hE := t.zoneEdges(ctx, user, a, d.SportType)
+	return streamsCSV(d.ID, s, pE, hE, maxFilesBytes)
+}
+
+// zoneEdges are the zones the streams file buckets by, as activity_analysis
+// picks them: Strava's power zones (else Coggan's from FTP), the user's own
+// stored heart-rate zones of the sport unless Strava's are custom.
+func (t *tools) zoneEdges(ctx context.Context, user string, a athlete, sport string) (pE, hE []float64) {
+	z, zerr := t.svc.zones(ctx, user)
+	if zerr != nil {
+		z = athleteZones{}
+	}
+	pE, hE = powerEdges(z, a.FTP), hrEdges(z)
+	if zerr == nil && (z.HeartRate == nil || !z.HeartRate.CustomZones) {
+		if f, ok := familyOf(sport); ok {
+			if oz, ok := t.loadHRZones(user, a.ID)[f.key]; ok && oz.edges() != nil {
+				hE = oz.edges()
+			}
+		}
+	}
+	return pE, hE
 }
 
 // ownActivity reads an activity and makes sure it is the user's own: the

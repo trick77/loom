@@ -561,3 +561,49 @@ func TestSimpleTools(t *testing.T) {
 		t.Errorf("unconnected user: %q", r.Text)
 	}
 }
+
+// get_activity attaches the streams file of an activity from the last 14
+// days unasked; an older one costs no streams read.
+func TestGetActivity_recentStreams(t *testing.T) {
+	f := newFakeStrava(t) // now: 2026-11-03 10:02 UTC
+	f.addAthlete(1, "Anna", "code-a", 250)
+	ride := synthRide(false)
+	f.addActivity(1, 1001, "Albis loop", "Ride", local(2026, 11, 1, 9), &ride, nil)
+	// start_date is the local start an hour earlier: 11:00 UTC is 13d 23h
+	// before now, 09:00 UTC 14d 1h.
+	f.addActivity(1, 1002, "Edge in", "Ride", local(2026, 10, 20, 12), &ride, nil)
+	f.addActivity(1, 1003, "Edge out", "Ride", local(2026, 10, 20, 10), &ride, nil)
+	f.addActivity(1, 1004, "Broken", "Ride", local(2026, 11, 2, 9), &ride, nil)
+	f.addActivity(1, 1005, "Pool", "Swim", local(2026, 11, 2, 7), nil, nil)
+	f.failStreams[1004] = true
+	_, h, _ := newTestService(t, f)
+	connect(t, h, userA, "code-a")
+
+	r := callTool(t, h, userA, "get_activity", `{"id":1001}`)
+	csv := r.file("strava_1001_streams.csv")
+	if r.IsError || !strings.HasPrefix(csv, hdrStreams+"\n") || strings.Count(csv, "\n") < 10 {
+		t.Fatalf("recent activity without its streams file: %s\n%.200s", r.Text, csv)
+	}
+	if !strings.Contains(r.Text, "attached for run_python: strava_1001_streams.csv") {
+		t.Errorf("file not named:\n%s", r.Text)
+	}
+	// Stored: a second look reads no streams again.
+	callTool(t, h, userA, "get_activity", `{"id":1001}`)
+	if n := f.count("/activities/1001/streams"); n != 1 {
+		t.Errorf("%d streams reads, want 1", n)
+	}
+
+	if r := callTool(t, h, userA, "get_activity", `{"id":1002}`); r.file("strava_1002_streams.csv") == "" {
+		t.Errorf("13 days 23 hours old: no streams file:\n%s", r.Text)
+	}
+	if r := callTool(t, h, userA, "get_activity", `{"id":1003}`); len(r.Files) != 0 || f.count("/activities/1003/streams") != 0 {
+		t.Errorf("past 14 days: %d files, %d streams reads", len(r.Files), f.count("/activities/1003/streams"))
+	}
+	// The streams failing or missing never fails the activity itself.
+	for _, id := range []string{"1004", "1005"} {
+		r := callTool(t, h, userA, "get_activity", `{"id":`+id+`}`)
+		if r.IsError || len(r.Files) != 0 || !strings.Contains(r.Text, "[1] Activity "+id) {
+			t.Errorf("activity %s: error %v, %d files:\n%s", id, r.IsError, len(r.Files), r.Text)
+		}
+	}
+}

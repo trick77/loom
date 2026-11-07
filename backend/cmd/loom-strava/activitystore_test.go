@@ -136,11 +136,13 @@ func TestStore_refresh(t *testing.T) {
 	if r := callTool(t, h, userA, "get_activity", `{"id":1001}`); strings.Contains(r.Text, "cropped") || f.count("/activities/1001") != details {
 		t.Fatalf("a plain read went to Strava: %s", r.Text)
 	}
+	streams := f.count("/activities/1001/streams")
 	r := callTool(t, h, userA, "get_activity", `{"id":1001,"refresh":true}`)
 	if !strings.Contains(r.Text, "Albis loop (cropped)") || f.count("/activities/1001") != details+1 {
 		t.Fatalf("refresh: %s", r.Text)
 	}
-	if exists(storedFile(dir, 1001, kindStreams)) {
+	// A recent activity: its streams file is read again, not the old one.
+	if f.count("/activities/1001/streams") != streams+1 || r.file("strava_1001_streams.csv") == "" {
 		t.Error("the old streams survived a refresh")
 	}
 	if m, _ := svc.store.loadMetrics(userA); m.Activities["1001"].V != 0 {
@@ -155,7 +157,7 @@ func TestStore_refresh(t *testing.T) {
 		t.Error("a second refresh within 10 minutes went to Strava")
 	}
 	f.advance(11 * time.Minute)
-	streams := f.count("/activities/1001/streams")
+	streams = f.count("/activities/1001/streams")
 	if r := callTool(t, h, userA, "activity_analysis", `{"id":1001,"refresh":true}`); r.IsError || !strings.Contains(r.Text, "cropped") {
 		t.Fatalf("analysis refresh: %s", r.Text)
 	}
