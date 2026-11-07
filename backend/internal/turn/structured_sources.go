@@ -23,11 +23,11 @@ func relabelStructuredSources(output string, sources []mcp.Source, reg *webSourc
 		if !ok {
 			continue
 		}
-		title := strings.TrimSpace(src.Title)
-		if title == "" {
-			title = src.URL
+		if title := strings.TrimSpace(src.Title); title != "" {
+			fmt.Fprintf(&header, "Source [%d]: %s — %s\n", idx, title, strings.TrimSpace(src.URL))
+		} else {
+			fmt.Fprintf(&header, "Source [%d]: %s\n", idx, strings.TrimSpace(src.URL))
 		}
-		fmt.Fprintf(&header, "Source [%d]: %s — %s\n", idx, title, strings.TrimSpace(src.URL))
 	}
 	if header.Len() == 0 {
 		return output

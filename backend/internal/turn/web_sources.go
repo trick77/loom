@@ -203,58 +203,34 @@ func capitalizeFirst(s string) string {
 // punctuation.
 var urlPattern = regexp.MustCompile(`https?://[^\s<>"'` + "`" + `)\]}]+`)
 
-// relabelWebToolOutput annotates a web tool's result with [n] citation markers
-// and registers each source URL, so the model can cite them inline. Any other
-// tool is relabeled from the structured sources its result carried, and left
-// alone when it carried none. The raw (un-capped) output is passed in; the
-// caller caps the returned string.
+// relabelWebToolOutput annotates a tool's result with [n] citation markers and
+// registers each source URL, so the model can cite them inline: from the
+// structured sources the result carried, else the tool's own relabel for a
+// server that sends none (toolSpec.relabel). A result with neither is left
+// alone. The raw (un-capped) output is passed in; the caller caps the
+// returned string.
 func (s *Engine) relabelWebToolOutput(toolName string, arguments map[string]any, output string, sources []mcp.Source, reg *webSourceRegistry) string {
 	if reg == nil {
 		return output
 	}
-	switch toolName {
-	case tavilySearchExposedName:
-		return relabelTavilyResult(output, reg)
-	case fetchToolName:
-		// The fetched page text is the source's snippet (what it delivered).
-		idx, ok := reg.addDetailed(argURL(arguments), "", output, "")
-		if !ok {
-			return output
-		}
-		return fmt.Sprintf("Web source [%d]: %s\n\n%s", idx, strings.TrimSpace(argURL(arguments)), output)
-	case obscuraNavigateToolName:
-		if strings.HasPrefix(output, toolFailedPrefix) {
-			// Nothing was delivered: register no source, and disarm the header so
-			// the next snapshot is not labelled with the previously navigated page.
-			reg.obscuraNavHd = ""
-			reg.obscuraNavID = 0
-			return output
-		}
-		out := prependURLSource(argURL(arguments), output, reg)
-		if idx, ok := reg.add(argURL(arguments)); ok {
-			// Remember this source so the following browser_snapshot (the call that
-			// actually returns the page text) inherits the same marker and snippet.
-			reg.obscuraNavHd = fmt.Sprintf("Web source [%d]: %s", idx, strings.TrimSpace(argURL(arguments)))
-			reg.obscuraNavID = idx
-		}
-		return out
-	case obscuraSnapshotToolName:
-		if reg.obscuraNavHd == "" {
-			return output
-		}
-		// Backfill the navigated source's snippet from the rendered page text.
-		if pos := reg.obscuraNavID - reg.offset - 1; pos >= 0 && pos < len(reg.sources) {
-			if src := &reg.sources[pos]; src.Snippet == "" {
-				src.Snippet = snippetFromText(output)
-			}
-		}
-		return reg.obscuraNavHd + "\n\n" + output
-	default:
-		if len(sources) > 0 {
-			return relabelStructuredSources(output, sources, reg)
-		}
+	if len(sources) > 0 {
+		return relabelStructuredSources(output, sources, reg)
+	}
+	if relabel := s.toolPolicy(toolName).relabel; relabel != nil {
+		return relabel(arguments, output, reg)
+	}
+	return output
+}
+
+// relabelPageAtURL cites a result that is the page at its url argument, for
+// a fetch server that sends no structuredContent.sources (an mcp.json
+// replacement of the built-in): the page text is the source's snippet.
+func relabelPageAtURL(arguments map[string]any, output string, reg *webSourceRegistry) string {
+	idx, ok := reg.addDetailed(argURL(arguments), "", output, "")
+	if !ok {
 		return output
 	}
+	return fmt.Sprintf("Web source [%d]: %s\n\n%s", idx, strings.TrimSpace(argURL(arguments)), output)
 }
 
 func argURL(arguments map[string]any) string {

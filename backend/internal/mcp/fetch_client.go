@@ -142,15 +142,20 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 
 func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[string]any) (CallResult, error) {
 	url, _ := arguments["url"].(string)
-	// A non-nil error keeps the deterministic fetch->obscura fallback working:
-	// the dispatch layer treats a CallTool error on fetch__fetch as "try
-	// obscura" (see turn's fetchObscuraFallback), except for a failed PDF
-	// extraction, which is marked so the fallback skips it.
+	// A non-nil error keeps the fetch->browser fallback working: the dispatch
+	// layer treats a CallTool error on fetch__fetch as "try the browser" (turn's
+	// fetchBrowserFallback), except for a failed PDF extraction, which is
+	// marked so the fallback skips it.
 	out, err := webfetch.Fetch(ctx, url, c.options(arguments))
-	if err != nil && strings.HasPrefix(err.Error(), "Failed to extract PDF") {
-		err = PDFExtractionError{Err: err}
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "Failed to extract PDF") {
+			err = PDFExtractionError{Err: err}
+		}
+		return CallResult{Text: out}, err
 	}
-	return CallResult{Text: out}, err
+	// The page cites itself, as any server's result would
+	// (structuredContent.sources); its text is the source's snippet.
+	return CallResult{Text: out, Sources: []Source{{URL: strings.TrimSpace(url), Snippet: out}}}, nil
 }
 
 // options maps the tool arguments onto webfetch.Options.

@@ -52,11 +52,7 @@ func (s *Engine) runToolCallWith(ctx context.Context, call llm.ToolCall, extra m
 	if s.mcp == nil {
 		return toolRun{arguments: arguments, err: fmt.Errorf("unknown tool %q", call.Function.Name)}
 	}
-	// Ask Tavily for each result's favicon regardless of what the model requested,
-	// so the sources sidebar can show real icons. Harmless if the model already set it.
-	if call.Function.Name == tavilySearchExposedName {
-		arguments["include_favicon"] = true
-	}
+	maps.Copy(arguments, s.toolPolicy(call.Function.Name).fixedArgs)
 	callCtx, cancel := context.WithTimeout(ctx, s.toolCallDuration(call.Function.Name))
 	defer cancel()
 	sent := arguments
@@ -120,15 +116,15 @@ func (t *Run) finishToolText(ctx context.Context, call llm.ToolCall, round int, 
 	arguments, output, err, durationMS := run.arguments, run.output, run.err, run.durationMS
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
-		// A fresh budget: callCtx is already expired when fetch failed on its deadline.
-		fallbackCtx, cancelFallback := context.WithTimeout(ctx, maxToolCallDuration)
-		defer cancelFallback()
-		// A failed PDF extraction is reported as is: obscura on a PDF URL only
-		// snapshots the browser's PDF viewer.
-		if !mcp.IsPDFExtractionError(err) {
-			if fallback, ok := t.fetchObscuraFallback(fallbackCtx, call.Function.Name, arguments, round, reg); ok {
+		// A failed PDF extraction is reported as is: a browser on a PDF URL only
+		// snapshots its PDF viewer.
+		if fallback := t.e.toolPolicy(call.Function.Name).fallback; fallback != nil && !mcp.IsPDFExtractionError(err) {
+			// A fresh budget: callCtx is already expired when the call failed on its deadline.
+			fallbackCtx, cancelFallback := context.WithTimeout(ctx, maxToolCallDuration)
+			defer cancelFallback()
+			if out, ok := fallback(fallbackCtx, t, arguments, round, reg); ok {
 				t.observeToolCall(call.Function.Name, arguments, nil, false, true)
-				return fallback
+				return out
 			}
 		}
 		t.observeToolCall(call.Function.Name, arguments, nil, false, false)
@@ -302,70 +298,14 @@ func (s *Engine) startToolRuns(ctx context.Context, calls []llm.ToolCall, skippe
 }
 
 // countToolCall increments the per-user counter for a successfully completed
-// MCP tool call (see toolSpec.counts). An obscura page load is counted per
-// browser_navigate (one fetch = one navigated page); this covers the model
-// driving obscura directly. The deterministic fetch->obscura fallback navigates
-// obscura outside this path, so it counts itself in fetchObscuraFallback —
-// there is no double count.
+// MCP tool call (see toolSpec.counts). A fallback (toolSpec.fallback) runs
+// outside this path and counts itself: there is no double count.
 func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName string) {
 	counter := s.toolPolicy(toolName).counts
 	if counter == nil {
 		return
 	}
 	usage.Record(s.usage, counter.label, func() error { return counter.inc(s.usage, ctx, user.ID) })
-}
-
-// Tool names involved in the deterministic fetch->obscura fallback. fetch is the
-// lightweight HTTP reader; when it fails on a URL we retry with obscura's
-// headless browser (navigate, then snapshot the rendered page).
-const (
-	fetchToolName           = "fetch__fetch"
-	obscuraNavigateToolName = "obscura__browser_navigate"
-	obscuraSnapshotToolName = "obscura__browser_snapshot"
-	// tavilyServerName is the map key under which the built-in Tavily web-search
-	// server is registered (see cmd/loom/main.go).
-	tavilyServerName = "tavily"
-)
-
-// tavilySearchExposedName is the namespaced web-search tool as dispatched. It is
-// derived from the mcp package's source-of-truth names so a rename there fails
-// the build / shifts here instead of silently zeroing the counter.
-var tavilySearchExposedName = mcp.ExposedToolName(tavilyServerName, mcp.TavilySearchToolName)
-
-// fetchObscuraFallback retries a failed fetch via obscura's headless browser.
-// It only fires for the fetch tool when obscura is configured and the call
-// carried a URL. On success it returns the obscura snapshot and true; otherwise
-// it returns ok=false so the caller surfaces the original fetch failure.
-func (t *Run) fetchObscuraFallback(ctx context.Context, toolName string, arguments map[string]any, round int, reg *webSourceRegistry) (string, bool) {
-	if toolName != fetchToolName {
-		return "", false
-	}
-	if !t.e.mcp.HasTool(obscuraNavigateToolName) || !t.e.mcp.HasTool(obscuraSnapshotToolName) {
-		return "", false
-	}
-	// The fallback calls obscura directly, so it honours a users allowlist on
-	// obscura itself the way an offered call would.
-	if !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), obscuraNavigateToolName) {
-		return "", false
-	}
-	url, ok := arguments["url"].(string)
-	if !ok || strings.TrimSpace(url) == "" {
-		return "", false
-	}
-	if _, err := t.e.mcp.CallTool(ctx, obscuraNavigateToolName, map[string]any{"url": url}); err != nil {
-		slog.Warn("obscura fallback navigate failed", "url", url, "round", round, "err", err)
-		return "", false
-	}
-	snapshot, err := t.e.mcp.CallTool(ctx, obscuraSnapshotToolName, map[string]any{})
-	if err != nil {
-		slog.Warn("obscura fallback snapshot failed", "url", url, "round", round, "err", err)
-		return "", false
-	}
-	slog.Info("fetch failed, obscura fallback succeeded", "url", url, "round", round, "result_bytes", len(snapshot))
-	usage.Record(t.e.usage, "obscura_fetch", func() error { return t.e.usage.IncObscuraFetch(ctx, t.user.ID) })
-	// The requested fetch URL is the source; annotate the rendered snapshot with
-	// its [n] marker so the model cites it inline like any other web source.
-	return capToolOutput(prependURLSource(url, t.capScheduledOutput(snapshot), reg)), true
 }
 
 // offerTools assembles the tool set injected into the prompt for this turn:
