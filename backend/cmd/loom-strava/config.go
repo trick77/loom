@@ -2,8 +2,8 @@ package main
 
 import (
 	"net/url"
-	"strings"
 
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
 )
 
@@ -11,8 +11,6 @@ const (
 	defaultAddr    = ":8050"
 	defaultDataDir = "/data"
 	defaultBaseURL = "https://www.strava.com"
-	// minTokenLen matches loom's BACKEND_STRAVA_TOKEN floor.
-	minTokenLen = 32
 )
 
 type config struct {
@@ -40,11 +38,9 @@ func loadConfig(getenv func(string) string) (config, error) {
 	}
 	// Required: this sidecar holds every user's Strava tokens, and nothing on
 	// the network may read with them unasked.
-	if len(cfg.token) < minTokenLen {
-		r.Fail("STRAVA_TOKEN must be at least %d characters (openssl rand -hex 32)", minTokenLen)
-	}
-	if strings.ContainsFunc(cfg.token, func(c rune) bool { return c <= ' ' || c == 0x7f }) {
-		r.Fail("STRAVA_TOKEN must not contain whitespace or control characters")
+	// loom checks its side with the same rule.
+	if msg := sidecar.TokenProblem("STRAVA_TOKEN", cfg.token); msg != "" {
+		r.Fail("%s", msg)
 	}
 	if err := r.Err(); err != nil {
 		return config{}, err

@@ -1,8 +1,13 @@
 package sidecar
 
 import (
+	"go/parser"
+	"go/token"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -11,7 +16,8 @@ func TestHandler(t *testing.T) {
 	api := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	})
-	srv := httptest.NewServer(Handler(token, api))
+	h := Handler(token, api)
+	srv := httptest.NewServer(h)
 	defer srv.Close()
 
 	for _, tc := range []struct {
@@ -27,7 +33,10 @@ func TestHandler(t *testing.T) {
 		{"readiness without a token", "/readyz", "", http.StatusOK},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			req, _ := http.NewRequest(http.MethodGet, srv.URL+tc.path, nil)
+			req, err := http.NewRequest(http.MethodGet, srv.URL+tc.path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if tc.auth != "" {
 				req.Header.Set("Authorization", tc.auth)
 			}
@@ -43,5 +52,52 @@ func TestHandler(t *testing.T) {
 				t.Errorf("WWW-Authenticate %q", resp.Header.Get("WWW-Authenticate"))
 			}
 		})
+	}
+
+	// The probes answer the container's own healthcheck only: a caller across
+	// the network gets 404, token or not, never the API's 401.
+	for _, auth := range []string{"", "Bearer " + token} {
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		if auth != "" {
+			req.Header.Set("Authorization", auth)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("healthz from afar (auth %t): %d", auth != "", rec.Code)
+		}
+	}
+}
+
+// Every sidecar image copies only internal/sidecar and internal/loomuser of
+// loom (besides its own packages), and CI builds no image: an import of any
+// other loom package here would pass make check and break every sidecar's
+// build at release.
+func TestImportsNoOtherLoomPackage(t *testing.T) {
+	const loom = "github.com/trick77/loom/"
+	allowed := map[string]map[string]bool{
+		".":           {loom + "internal/loomuser": true},
+		"../loomuser": {},
+	}
+	for dir, ok := range allowed {
+		files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+		if err != nil || len(files) == 0 {
+			t.Fatalf("%s: no Go files (%v)", dir, err)
+		}
+		for _, file := range files {
+			if strings.HasSuffix(file, "_test.go") {
+				continue
+			}
+			f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ImportsOnly)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, imp := range f.Imports {
+				path, _ := strconv.Unquote(imp.Path.Value)
+				if strings.HasPrefix(path, loom) && !ok[path] {
+					t.Errorf("%s imports %s: the sidecar images do not copy it", file, path)
+				}
+			}
+		}
 	}
 }

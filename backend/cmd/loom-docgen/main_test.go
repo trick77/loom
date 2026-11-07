@@ -51,13 +51,6 @@ func TestServerNeedsTheToken(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("no token: %d", rec.Code)
 	}
-	rec = httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{}`))
-	req.Header.Set("Authorization", "Bearer wrong")
-	h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("wrong token: %d", rec.Code)
-	}
 }
 
 // fakeGotenberg answers the health probe and renders every page as a tiny

@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
 )
 
@@ -11,8 +12,6 @@ const (
 	defaultAddr       = ":8060"
 	defaultDataDir    = "/data"
 	defaultStorefront = "ch"
-	// minTokenLen matches loom's BACKEND_TUNEWIRE_TOKEN floor.
-	minTokenLen = 32
 )
 
 var storefrontRe = regexp.MustCompile(`^[a-z]{2}$`)
@@ -38,11 +37,9 @@ func loadConfig(getenv func(string) string) (config, error) {
 	}
 	// Required, unlike the sandbox's: this sidecar holds a personal Apple
 	// Music token, and nothing on the network may read with it unasked.
-	if len(cfg.token) < minTokenLen {
-		r.Fail("TUNEWIRE_TOKEN must be at least %d characters (openssl rand -hex 32)", minTokenLen)
-	}
-	if strings.ContainsFunc(cfg.token, func(c rune) bool { return c <= ' ' || c == 0x7f }) {
-		r.Fail("TUNEWIRE_TOKEN must not contain whitespace or control characters")
+	// loom checks its side with the same rule.
+	if msg := sidecar.TokenProblem("TUNEWIRE_TOKEN", cfg.token); msg != "" {
+		r.Fail("%s", msg)
 	}
 	if !storefrontRe.MatchString(cfg.storefront) {
 		r.Fail("TUNEWIRE_STOREFRONT must be a two-letter country code, got %q", cfg.storefront)

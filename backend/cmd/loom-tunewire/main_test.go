@@ -622,17 +622,11 @@ func do(t *testing.T, h http.Handler, method, path, auth, body string) (int, map
 func TestServer_routes(t *testing.T) {
 	svc, api, _ := newTestService(t)
 	h := newServer(config{token: testToken}, svc, "test")
+	// Every route behind the token (the token rules: sidecar.TestHandler).
 	for _, r := range [][2]string{{"GET", "/status"}, {"PUT", "/token"}, {"DELETE", "/token"}, {"POST", "/mcp/library"}, {"POST", "/mcp/catalog"}} {
 		if code, _ := do(t, h, r[0], r[1], "", ""); code != http.StatusUnauthorized {
 			t.Errorf("%v without token: %d", r, code)
 		}
-		if code, _ := do(t, h, r[0], r[1], "wrong-token-wrong-token-wrong-tok", ""); code != http.StatusUnauthorized {
-			t.Errorf("%v wrong token: %d", r, code)
-		}
-	}
-	// kit's probe: loopback only, so a caller across the network gets 404.
-	if code, _ := do(t, h, "GET", "/healthz", testToken, ""); code != http.StatusNotFound {
-		t.Errorf("healthz from afar: %d", code)
 	}
 	if code, st := do(t, h, "GET", "/status", testToken, ""); code != 200 || st["state"] != "never" {
 		t.Errorf("status: %d %v", code, st)

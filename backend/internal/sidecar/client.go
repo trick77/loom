@@ -4,8 +4,8 @@
 // strava): every request names the signed-in loom user (loomuser.Header)
 // and carries loom's bearer token; failures come back as *Error with the
 // sidecar's code, so the settings page can word them without the sidecar's
-// own text. Sidecar binaries build with only this and loomuser of loom
-// (their Containerfiles copy no more), so it imports nothing else of loom.
+// own text. Every sidecar image copies this package, so it imports nothing
+// of loom but loomuser (TestImportsNoOtherLoomPackage).
 package sidecar
 
 import (
