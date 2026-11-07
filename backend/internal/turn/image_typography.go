@@ -15,7 +15,7 @@ import (
 // signal (see llm.ClassifyImageIntent). The gate authoritatively picks the
 // typography model on the required-image path from the user's own words in any
 // language; this lexical check additionally covers the case where the model
-// self-initiates generate_image in the normal tool loop (where no gate NeedsText
+// self-initiates the image tool in the normal tool loop (where no gate NeedsText
 // flag flows), reading its own English-leaning compiled prompt. resolveThreadImageModel
 // ORs the two, so either signal selects flex.
 //

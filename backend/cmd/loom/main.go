@@ -152,16 +152,6 @@ func runServer() error {
 		docgen.DOCXGenerator{},
 		docgen.PPTXGenerator{},
 	}
-	var imageTools []imagegen.Tool
-	if imageGenConfigured(cfg) {
-		imageProvider := imagegen.NewFalClient(imagegen.FalConfig{
-			BaseURL:     cfg.ImageGenBaseURL,
-			APIKey:      cfg.ImageGenAPIKey,
-			Model:       cfg.ImageGenModel,
-			PollTimeout: cfg.ImageGenPollTimeout,
-		})
-		imageTools = append(imageTools, imagegen.NewTool(imageProvider))
-	}
 	// The Python sandbox is optional and never blocks boot: its health probe
 	// (a worker below) offers run_python while the sidecar answers.
 	sandboxRunner, sandboxWatch := sandboxForConfig(cfg)
@@ -233,7 +223,6 @@ func runServer() error {
 	}
 	logStartupCapabilities(cfg, mcpConfig, startupRuntime{
 		DocToolCount:        len(docTools),
-		ImageToolCount:      len(imageTools),
 		DiscoveredToolCount: discoveredTools,
 	})
 
@@ -260,14 +249,11 @@ func runServer() error {
 		LLM:                        chatClient,
 		MCP:                        toolService,
 		DocTools:                   docTools,
-		ImageTools:                 imageTools,
 		Sandbox:                    sandboxRunner,
 		AppleMusic:                 appleMusicService(cfg),
 		AppleMusicUsers:            cfg.TunewireUsers,
 		Strava:                     stravaService(cfg),
 		StravaUsers:                cfg.StravaUsers,
-		ImageDefaultModel:          cfg.ImageGenModel,
-		ImageGenTypographyModel:    cfg.ImageGenTypographyModel,
 		UsersDir:                   cfg.UsersDir,
 		OIDCAdminGroup:             cfg.OIDC.AdminGroup,
 		DevAuthClaims:              devAuthClaims,
@@ -504,6 +490,18 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// Fetch runs in-process (no sidecar), so it is always available. Fetched
 	// PDFs are parsed in the Tika sidecar (pdf), never in the backend.
 	required.Servers["fetch"] = mcp.FetchServerConfig(pdf)
+	// Image generation runs in-process behind the imagegen MCP contract
+	// (docs/imagegen.md); an mcp.json server of that name replaces it.
+	if imageGenConfigured(cfg) {
+		required.Servers[imagegen.ServerName] = mcp.ImagegenServerConfig(imagegen.NewService(
+			imagegen.NewFalClient(imagegen.FalConfig{
+				BaseURL:     cfg.ImageGenBaseURL,
+				APIKey:      cfg.ImageGenAPIKey,
+				Model:       cfg.ImageGenModel,
+				PollTimeout: cfg.ImageGenPollTimeout,
+			}),
+			cfg.ImageGenModel, cfg.ImageGenTypographyModel))
+	}
 	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
 		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL, cfg.ObscuraMCPToken)
 	}

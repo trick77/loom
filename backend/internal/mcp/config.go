@@ -82,6 +82,9 @@ type ServerConfig struct {
 	// (a sidecar loom must boot without): status labels it built-in, not
 	// file-defined.
 	BuiltIn bool `json:"-"`
+	// InProcess builds the client of an in-process server other than fetch
+	// (TransportInProcess), for the server name it is registered under.
+	InProcess func(name string) Client `json:"-"`
 	// PDFExtractor, for the in-process fetch server only, turns a fetched PDF
 	// into text outside the backend process. Nil leaves PDFs unextracted.
 	PDFExtractor PDFExtractor `json:"-"`

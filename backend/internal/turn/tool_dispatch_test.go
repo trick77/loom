@@ -12,7 +12,6 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
 	"github.com/trick77/loom/internal/docgen"
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 )
@@ -52,14 +51,6 @@ func offeredRun(e *Engine, thread chat.Thread, gate toolGate) *Run {
 	return run
 }
 
-// failingImageProvider fails every image, so a test sees the image tool was
-// reached without persisting one.
-type failingImageProvider struct{}
-
-func (failingImageProvider) Generate(context.Context, imagegen.GenerateRequest) (imagegen.GenerateResult, error) {
-	return imagegen.GenerateResult{}, errors.New("image provider reached")
-}
-
 // A call runs the built-in only when this turn offered that built-in under
 // the name; otherwise it goes to MCP. Built-ins still win when both are
 // offered.
@@ -80,15 +71,12 @@ func TestExecuteBuiltInToolFollowsWhatWasOffered(t *testing.T) {
 	call := func(name string) llm.ToolCall {
 		return llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: `{"prompt":"a cat"}`}}
 	}
-	newEngine := func(gen *recordingDocGen, images bool, mcpNames ...string) *Engine {
+	newEngine := func(gen *recordingDocGen, mcpNames ...string) *Engine {
 		e := &Engine{
 			artifacts: fakeArtifactStore{},
 			usersDir:  t.TempDir(),
 			thread:    &fakeThreadStore{},
 			docTools:  []docgen.Generator{gen},
-		}
-		if images {
-			e.imageTools = []imagegen.Tool{imagegen.NewTool(failingImageProvider{})}
 		}
 		var tools []llm.Tool
 		for _, name := range mcpNames {
@@ -100,7 +88,7 @@ func TestExecuteBuiltInToolFollowsWhatWasOffered(t *testing.T) {
 
 	t.Run("MCP tool of a gated-off built-in's name reaches MCP", func(t *testing.T) {
 		gen := &recordingDocGen{name: "create_text_file"}
-		e := newEngine(gen, false, "create_text_file")
+		e := newEngine(gen, "create_text_file")
 		_, _, handled := offeredRun(e, chat.Thread{}, docgenOff).executeBuiltInTool(context.Background(), call("create_text_file"))
 		if handled || gen.calls != 0 {
 			t.Fatalf("handled=%v generator calls=%d, want the call left to MCP", handled, gen.calls)
@@ -108,31 +96,15 @@ func TestExecuteBuiltInToolFollowsWhatWasOffered(t *testing.T) {
 	})
 	t.Run("built-in wins over an MCP tool of its name", func(t *testing.T) {
 		gen := &recordingDocGen{name: "create_text_file"}
-		e := newEngine(gen, false, "create_text_file")
+		e := newEngine(gen, "create_text_file")
 		_, _, handled := offeredRun(e, chat.Thread{}, docgenOn).executeBuiltInTool(context.Background(), call("create_text_file"))
 		if !handled || gen.calls != 1 {
 			t.Fatalf("handled=%v generator calls=%d, want the built-in run", handled, gen.calls)
 		}
 	})
-	t.Run("image tool offered alone runs, not a gated-off docgen tool of its name", func(t *testing.T) {
-		gen := &recordingDocGen{name: imagegen.ToolName}
-		e := newEngine(gen, true)
-		output, _, handled := offeredRun(e, chat.Thread{}, docgenOff).executeBuiltInTool(context.Background(), call(imagegen.ToolName))
-		if !handled || gen.calls != 0 || !strings.Contains(output, "image provider reached") {
-			t.Fatalf("handled=%v generator calls=%d output=%q, want the image tool run", handled, gen.calls, output)
-		}
-	})
-	t.Run("docgen tool offered ahead of an image tool of its name runs", func(t *testing.T) {
-		gen := &recordingDocGen{name: imagegen.ToolName}
-		e := newEngine(gen, true)
-		output, _, handled := offeredRun(e, chat.Thread{}, docgenOn).executeBuiltInTool(context.Background(), call(imagegen.ToolName))
-		if !handled || gen.calls != 1 || strings.Contains(output, "image provider reached") {
-			t.Fatalf("handled=%v generator calls=%d output=%q, want the docgen tool run", handled, gen.calls, output)
-		}
-	})
 	t.Run("built-in never offered is not dispatched", func(t *testing.T) {
 		gen := &recordingDocGen{name: "create_text_file"}
-		e := newEngine(gen, false)
+		e := newEngine(gen)
 		run := offeredRun(e, chat.Thread{}, docgenOff)
 		for _, name := range []string{"create_text_file", sandboxToolName, ProjectThreadsToolName} {
 			if _, _, handled := run.executeBuiltInTool(context.Background(), call(name)); handled {

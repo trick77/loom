@@ -3,6 +3,7 @@ package turn
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/png"
@@ -11,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/trick77/loom/internal/artifact"
-	"github.com/trick77/loom/internal/imagegen"
+	"github.com/trick77/loom/internal/llm"
 )
 
 // writeTestPNG writes a w×h PNG artifact for a user and returns the users dir.
@@ -42,10 +43,10 @@ func writeTestPNG(t *testing.T, userID, rel string, w, h int) string {
 	return usersDir
 }
 
-// The edit path forwards the source pixels to the model, so the output must keep
-// the source's proportions: restyling a 16:9 photo that comes back as a square
-// crops or squashes the composition the user asked to preserve.
-func TestLoadEditSourceImage_reportsSourceDimensions(t *testing.T) {
+// The edit path forwards the source pixels to the image tool as input_images;
+// the tool keeps their proportions (imagegen's Service), so loom only has to
+// hand on the real image.
+func TestLoadEditSourceImage_forwardsSourceToImageTool(t *testing.T) {
 	const userID, rel = "u1", "outputs/wide-photo.png"
 	usersDir := writeTestPNG(t, userID, rel, 1920, 1080)
 
@@ -65,22 +66,15 @@ func TestLoadEditSourceImage_reportsSourceDimensions(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("loadEditSourceImage() ok=%v err=%v", ok, err)
 	}
-	if src.Width != 1920 || src.Height != 1080 {
-		t.Fatalf("source dimensions = %dx%d, want 1920x1080", src.Width, src.Height)
+	run := &Run{e: s, plan: turnPlan{editSource: &src}}
+	extra := run.loomArgs(llm.ToolCall{Function: llm.ToolCallFunction{Name: imageToolName, Arguments: `{"prompt":"make it a watercolor"}`}})
+	images, _ := extra[argInputImages].([]map[string]any)
+	if len(images) != 1 || images[0]["mime_type"] != "image/png" {
+		t.Fatalf("input_images = %v, want the source PNG", extra[argInputImages])
 	}
-	// The dispatcher turns those dimensions into the request's aspect ratio.
-	ratio := imagegen.AspectRatioForSize(src.Width, src.Height)
-	if ratio != "16:9" {
-		t.Fatalf("AspectRatioForSize(%d, %d) = %q, want 16:9", src.Width, src.Height, ratio)
-	}
-	// And that ratio has to survive normalization as a genuinely wide size,
-	// not collapse back to the square default.
-	req, err := imagegen.GenerateRequest{Prompt: "make it a watercolor", AspectRatio: ratio}.Normalized()
-	if err != nil {
-		t.Fatalf("Normalized() error = %v", err)
-	}
-	if req.Width <= req.Height {
-		t.Fatalf("edit of a landscape source normalized to %dx%d, want a landscape size", req.Width, req.Height)
+	data, err := base64.StdEncoding.DecodeString(images[0]["data"].(string))
+	if err != nil || !bytes.Equal(data, src.Data) {
+		t.Fatalf("input_images data differs from the source (%v)", err)
 	}
 }
 
@@ -115,10 +109,7 @@ func TestLoadEditSourceImage_undecodableHasUnknownDimensions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadEditSourceImage() error = %v", err)
 	}
-	if !ok {
+	if !ok || string(src.Data) != "not a png" {
 		t.Fatal("an undecodable but in-limit image should still be forwarded")
-	}
-	if src.Width != 0 || src.Height != 0 {
-		t.Fatalf("dimensions = %dx%d, want 0x0 for an undecodable image", src.Width, src.Height)
 	}
 }

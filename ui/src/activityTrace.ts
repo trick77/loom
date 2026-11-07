@@ -548,6 +548,7 @@ const KNOWN_TOOL_SOURCES: Record<string, string> = {
   tavily: "sources.tavily",
   fetch: "sources.fetch",
   obscura: "sources.browser",
+  imagegen: "sources.imageGenerator",
   run_python: "sources.python",
   conversation_search: "sources.conversations",
   read_thread: "sources.conversations",

@@ -90,14 +90,14 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 		ChatLogDir:     "logs/llm-responses",
 	}, mcp.Config{Servers: map[string]mcp.ServerConfig{
 		"fetch": {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
-	}}, startupRuntime{DocToolCount: 5, ImageToolCount: 1, DiscoveredToolCount: 3})
+	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
 	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)
 	assertCapability(t, items, "embeddings", "enabled", "model="+llmwiretest.EmbedModel)
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")
-	assertCapability(t, items, "Image generation", "enabled", "model=fal-ai/flux-2-pro tools=1")
+	assertCapability(t, items, "Image generation", "enabled", "model=fal-ai/flux-2-pro in-process mcp")
 	assertCapability(t, items, "LLM response logging", "enabled", "logs/llm-responses")
 }
 

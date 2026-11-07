@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/artifact"
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 )
@@ -95,17 +94,17 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		return b.result(result, nil, ""), err
 	}
 	if t.plan.imageRoute.generate {
-		if imageTool := findGenerateImageTool(tools); imageTool != nil {
+		if imageTool := t.e.findImageTool(tools); imageTool != nil {
 			return t.runRequiredImageAssistantLoop(ctx, history, *imageTool)
 		}
-		slog.Warn("image artifact required but generate_image tool is unavailable", "thread_id", t.thread.ID, "tools", len(tools))
+		slog.Warn("image artifact required but no image tool is offered", "thread_id", t.thread.ID, "tools", len(tools))
 	}
 
 	toolRan := false
 	// pickups counts the queued messages batches picked up at tool boundaries.
 	pickups := 0
 	// One generated image per turn, regardless of format: the model sometimes
-	// emits several generate_image calls (across rounds or within one round).
+	// emits several image tool calls (across rounds or within one round).
 	// Only the first that produces an artifact runs; the rest are skipped with a
 	// tool result so the model sees the limit and stops asking.
 	imageGenerated := false
@@ -259,11 +258,12 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		lastRoundDeferred = false
 		for i, call := range result.ToolCalls {
 			var output string
-			// The one-image-per-turn skip is checked first: generate_image is bounded
+			// The one-image-per-turn skip is checked first: the image tool is bounded
 			// by imageGenerated, not the per-round cap, so it must never fall through
 			// to the "reissue it next round" deferral message (which would be wrong —
 			// a reissued image call is only skipped again).
-			if call.Function.Name == imagegen.ToolName && imageGenerated {
+			isImageTool := t.e.toolPolicy(call.Function.Name).imageGenerator
+			if isImageTool && imageGenerated {
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
 			} else if denied[i] {
 				output = fmt.Sprintf("tool failed: unknown tool %q", call.Function.Name)
@@ -285,20 +285,20 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 						artifacts = append(artifacts, response)
 						b.addArtifact(response)
 					}
-					if len(created) > 0 && call.Function.Name == imagegen.ToolName {
-						imageGenerated = true
-					}
 				} else {
 					var run toolRun
 					if runs[i] != nil {
 						run = <-runs[i]
 					} else {
-						run = t.e.runToolCall(toolsCtx, call)
+						run = t.e.runToolCallWith(toolsCtx, call, t.loomArgs(call))
 					}
 					output, created = t.finishToolCall(toolsCtx, call, round, reg, run)
 					for _, response := range created {
 						artifacts = append(artifacts, response)
 						b.addArtifact(response)
+					}
+					if len(created) > 0 && isImageTool {
+						imageGenerated = true
 					}
 				}
 			}
@@ -453,14 +453,14 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 	if err != nil {
 		return LoopResult{}, err
 	}
-	// The first generate_image call wins. Only one image is generated per turn, and
+	// The first image tool call wins. Only one image is generated per turn, and
 	// a compiled call — with its prompt, aspect ratio and filename — beats the raw
 	// user text the fallback would otherwise send, so extra calls alongside it are
 	// no reason to discard it.
 	var call llm.ToolCall
 	var compiled bool
 	for _, candidate := range result.ToolCalls {
-		if candidate.Function.Name == imagegen.ToolName {
+		if candidate.Function.Name == imageTool.Function.Name {
 			call, compiled = candidate, true
 			break
 		}
@@ -468,7 +468,7 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 	if !compiled {
 		// The user's own text comes from the stored message, not history: the last
 		// history message's Content is blanked when image parts are attached.
-		fallback, ok := fallbackImageToolCall(t.userMessage.Content)
+		fallback, ok := fallbackImageToolCall(imageTool.Function.Name, t.userMessage.Content)
 		if !ok {
 			return b.result(result, nil, ""), nil
 		}
@@ -493,10 +493,9 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 		Role:      "assistant",
 		ToolCalls: []llm.ToolCall{call},
 	})
-	output, created, handled := t.executeBuiltInTool(ctx, call)
-	if !handled {
-		output = capToolOutput("tool failed: generate_image is not available")
-	}
+	// The call's MCP context names the caller, as every round's does.
+	callCtx := mcp.WithPrincipal(ctx, MCPPrincipal(t.user))
+	output, created := t.finishToolCall(callCtx, call, 1, nil, t.e.runToolCallWith(callCtx, call, t.loomArgs(call)))
 	if err := t.stream.SendJSON("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 		return LoopResult{}, err
 	}
@@ -537,7 +536,7 @@ func fallbackArtifactResponse(response artifact.Response) string {
 	return "Created " + response.DisplayFilename + "."
 }
 
-// fallbackImageToolCall builds the generate_image call the prompt compiler
+// fallbackImageToolCall builds the image tool call the prompt compiler
 // should have made, from the user's own message text. The compiler sometimes
 // answers an image turn with reasoning and no tool call at all — a refusal on
 // content grounds, typically — which would otherwise end the turn showing
@@ -548,13 +547,13 @@ func fallbackArtifactResponse(response artifact.Response) string {
 //
 // Reports false when there is no user text to send, leaving the caller's
 // original empty-handed return in place.
-func fallbackImageToolCall(userPrompt string) (llm.ToolCall, bool) {
+func fallbackImageToolCall(toolName, userPrompt string) (llm.ToolCall, bool) {
 	prompt := strings.TrimSpace(userPrompt)
 	if prompt == "" {
 		return llm.ToolCall{}, false
 	}
-	if runes := []rune(prompt); len(runes) > imagegen.MaxPromptRunes {
-		prompt = string(runes[:imagegen.MaxPromptRunes])
+	if runes := []rune(prompt); len(runes) > maxImagePromptRunes {
+		prompt = string(runes[:maxImagePromptRunes])
 	}
 	// No filename: the provider derives one from the prompt itself, with the
 	// character set the artifact store can actually keep.
@@ -565,7 +564,7 @@ func fallbackImageToolCall(userPrompt string) (llm.ToolCall, bool) {
 	return llm.ToolCall{
 		ID:       "fallback_generate_image",
 		Type:     "function",
-		Function: llm.ToolCallFunction{Name: imagegen.ToolName, Arguments: string(args)},
+		Function: llm.ToolCallFunction{Name: toolName, Arguments: string(args)},
 	}, true
 }
 

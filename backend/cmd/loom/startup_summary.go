@@ -12,7 +12,6 @@ import (
 
 type startupRuntime struct {
 	DocToolCount        int
-	ImageToolCount      int
 	DiscoveredToolCount int
 }
 
@@ -45,7 +44,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		mcpCapability(mcpConfig, runtime),
 		mcpFileCapability(cfg),
 		tavilyCapability(cfg),
-		imageGenCapability(cfg, runtime),
+		imageGenCapability(cfg),
 		sandboxCapability(cfg),
 		responseLoggingCapability(cfg),
 	}
@@ -117,11 +116,11 @@ func tavilyCapability(cfg config.Config) startupCapability {
 	return startupCapability{Name: "Tavily web search", Status: "enabled", Detail: "source=env"}
 }
 
-func imageGenCapability(cfg config.Config, runtime startupRuntime) startupCapability {
+func imageGenCapability(cfg config.Config) startupCapability {
 	if !imageGenConfigured(cfg) {
 		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "set BACKEND_IMAGE_GEN_API_KEY"}
 	}
-	return startupCapability{Name: "Image generation", Status: "enabled", Detail: fmt.Sprintf("model=%s tools=%d", cfg.ImageGenModel, runtime.ImageToolCount)}
+	return startupCapability{Name: "Image generation", Status: "enabled", Detail: fmt.Sprintf("model=%s in-process mcp", cfg.ImageGenModel)}
 }
 
 // sandboxCapability reports the configuration only: whether run_python is

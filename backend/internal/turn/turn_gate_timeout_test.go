@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn/turntest"
 )
 
 // hangingIntentChatClient answers every helper call except the image-intent gate,
@@ -31,7 +31,7 @@ func serverWithHangingIntentGate(t *testing.T, gateTimeout time.Duration) (*Engi
 	chat := &hangingIntentChatClient{entered: make(chan struct{})}
 	return New(Config{
 		LLM:             chat,
-		ImageTools:      []imagegen.Tool{imagegen.NewTool(fakeImageProvider{})},
+		MCP:             turntest.ImageService(fakeImageProvider{}, "", ""),
 		Artifacts:       fakeArtifactStore{},
 		UsersDir:        t.TempDir(),
 		TurnGateTimeout: gateTimeout,

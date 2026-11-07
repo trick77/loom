@@ -8,7 +8,6 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/docgen"
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 )
 
@@ -43,6 +42,9 @@ type toolSpec struct {
 	// sharesIntent marks a built-in whose output brings in no outside text,
 	// so calling it first leaves a userIntent tool callable.
 	sharesIntent bool
+	// imageGenerator marks the image tool: an image turn forces it, a turn
+	// makes one image, loom fills its loomArgs and locks the thread's model.
+	imageGenerator bool
 }
 
 // usageCounter is one per-user usage counter: its label in the usage log and
@@ -171,6 +173,8 @@ var mcpPolicies = []toolSpec{
 		counts:      &usageCounter{"obscura_fetch", UsageStore.IncObscuraFetch},
 	},
 	{name: obscuraSnapshotToolName, capPerRound: cheapToolCallsPerRound},
+	// One image per turn; its image_gen count comes with the artifact.
+	{name: imageToolName, capPerRound: 1, imageGenerator: true},
 }
 
 // toolPolicy returns the spec that holds name's round policy: this engine's
@@ -219,23 +223,6 @@ func docToolSpec(gen docgen.Generator) toolSpec {
 	}
 }
 
-// imageToolSpec offers an image generator in every turn: one small schema,
-// and the image path forces it separately when a turn requires an image.
-func imageToolSpec(gen imagegen.Tool) toolSpec {
-	return toolSpec{
-		name: gen.ToolName(),
-		schema: func() llm.Tool {
-			s := gen.Schema()
-			return toolFromSchema(s.Name, s.Description, s.Parameters)
-		},
-		offered: func(e *Engine, _ chat.Thread, _ toolGate) bool { return e.canStoreArtifacts() },
-		run: func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response) {
-			output, resp := t.executeImageTool(ctx, call, gen)
-			return output, oneArtifact(resp)
-		},
-	}
-}
-
 // registry returns this engine's built-ins in offer order, and by name every
 // spec loom knows: those built-ins, then the MCP policies. It is built once,
 // on first use, so an Engine literal works like one from New; so is each
@@ -247,9 +234,6 @@ func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 			tools = append(tools, docToolSpec(gen))
 		}
 		tools = append(tools, sandboxToolSpec)
-		for _, gen := range s.imageTools {
-			tools = append(tools, imageToolSpec(gen))
-		}
 		for i := range tools {
 			tools[i].tool = tools[i].schema()
 		}
