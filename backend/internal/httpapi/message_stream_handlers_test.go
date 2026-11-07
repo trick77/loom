@@ -1010,7 +1010,7 @@ func TestStreamMessageGeneratesFromUserTextWhenCompilerRefuses(t *testing.T) {
 	for _, message := range llmClient.Histories[0] {
 		if message.Role == "system" &&
 			strings.Contains(message.Content, "Your only job is to call the image generation tool you are given exactly once") &&
-			strings.Contains(message.Content, "Do not refuse based on being text-based") {
+			strings.Contains(message.Content, "Do not refuse for being text-based") {
 			foundDirective = true
 		}
 	}
@@ -1836,10 +1836,10 @@ func TestStreamMessageSystemPromptRoutesURLTools(t *testing.T) {
 	if len(history) == 0 {
 		t.Fatal("history is empty")
 	}
-	if !strings.Contains(history[0].Content, "For URLs, use the lightweight fetch tool first") {
+	if !strings.Contains(history[0].Content, "use the fetch tool first") {
 		t.Fatalf("system prompt = %q, want fetch-first URL routing directive", history[0].Content)
 	}
-	if !strings.Contains(history[0].Content, "Use the browser navigation tool only when fetch cannot access useful content") {
+	if !strings.Contains(history[0].Content, "use the browser navigation tool only when fetch gets nothing useful") {
 		t.Fatalf("system prompt = %q, want browser fallback directive", history[0].Content)
 	}
 }
@@ -1867,7 +1867,7 @@ func TestStreamMessageSystemPromptDirectsToolsAtKnowledgeLimit(t *testing.T) {
 	if !strings.Contains(history[0].Content, "past your training cutoff") {
 		t.Fatalf("system prompt = %q, want knowledge-limit directive", history[0].Content)
 	}
-	if !strings.Contains(history[0].Content, "first use the available search and fetch tools to look it up") {
+	if !strings.Contains(history[0].Content, "look it up with the search and fetch tools first") {
 		t.Fatalf("system prompt = %q, want tool-use-before-giving-up directive", history[0].Content)
 	}
 }
