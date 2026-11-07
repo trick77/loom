@@ -11,11 +11,13 @@ import (
 	_ "image/png" // DecodeConfig for sandbox PNG output
 	"io"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
@@ -283,7 +285,7 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 	if strings.TrimSpace(code) == "" {
 		return "tool failed: invalid arguments: code is required", nil
 	}
-	files, msg := s.sandboxFiles(ctx, user.ID, thread, args["files"], toolFiles)
+	files, msg := s.sandboxFiles(ctx, user.ID, thread, args["files"], code, toolFiles)
 	if msg != "" {
 		return capToolOutput(msg), nil
 	}
@@ -317,24 +319,105 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 		created = append(created, resp)
 	}
 	notes = append(notes, res.Dropped...)
-	return capToolOutput(formatSandboxResult(res, created, notes, s.sandbox.Timeout())), created
+	return capToolOutput(missingInputHint(res, files, toolFiles) + formatSandboxResult(res, created, notes, s.sandbox.Timeout())), created
+}
+
+// missingInputHint is a line ahead of the result when the program could not
+// open a file under in/: a path the code builds at run time (f-string, glob)
+// is not matched by codeNamedToolFiles, and a bare FileNotFoundError taught
+// the model nothing (it then listed an empty in/).
+func missingInputHint(res sandbox.Result, files []sandbox.File, toolFiles map[string]mcp.File) string {
+	if res.ExitCode == 0 || !strings.Contains(res.Stderr, "No such file or directory") || !strings.Contains(res.Stderr, "in/") {
+		return ""
+	}
+	mounted := make([]string, 0, len(files))
+	for _, f := range files {
+		mounted = append(mounted, f.Name)
+	}
+	hint := "note: in/ holds only the files named in files"
+	if len(mounted) > 0 {
+		hint += " (this call: " + strings.Join(mounted, ", ") + ")"
+	}
+	if len(toolFiles) > 0 {
+		hint += "; this turn's tool files: " + strings.Join(slices.Sorted(maps.Keys(toolFiles)), ", ")
+	}
+	return hint + "\n"
+}
+
+// sandboxInputName is a files entry as the model may spell it: bare, in/<name>
+// or /work/in/<name>.
+func sandboxInputName(name string) string {
+	return strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(name), "/work/in/"), "in/")
+}
+
+// codeNamedToolFiles are this turn's tool files whose path in/<name> the code
+// spells out, as a whole path (in/a.csv is not in/data.csv), sorted. A model
+// that writes pd.read_csv('in/<name>') but leaves files out otherwise reads
+// an empty in/ (seen twice in one turn). Documents stay explicit.
+func codeNamedToolFiles(code string, toolFiles map[string]mcp.File) []string {
+	var names []string
+	for _, name := range slices.Sorted(maps.Keys(toolFiles)) {
+		if spellsPath(code, "in/"+name) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// spellsPath reports whether path stands in code on its own: not inside a
+// longer name on either side (main/x.csv, in/x.csv.bak).
+func spellsPath(code, path string) bool {
+	nameRune := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("_.-", r) }
+	for from := 0; ; {
+		i := strings.Index(code[from:], path)
+		if i < 0 {
+			return false
+		}
+		i += from
+		before, _ := utf8.DecodeLastRuneInString(code[:i])
+		after, _ := utf8.DecodeRuneInString(code[i+len(path):])
+		if (i == 0 || !nameRune(before)) && (i+len(path) == len(code) || !nameRune(after)) {
+			return true
+		}
+		from = i + 1
+	}
 }
 
 // sandboxFiles resolves the model's file names to the bytes of in-scope
 // documents and of the files this turn's tools handed on (toolFiles, which
 // win on a name clash: their names come from the tool, a document's alias
-// carries a hash). The second result is a model-facing message when a name is
-// unknown or the files are too large.
-func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Thread, raw any, toolFiles map[string]mcp.File) ([]sandbox.File, string) {
-	if raw == nil {
-		return nil, ""
+// carries a hash), then adds the tool files the code names (codeNamedToolFiles)
+// while they fit the caps: one the model did not ask for never fails the call.
+// The second result is a model-facing message when a name is unknown or the
+// files are too large.
+func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Thread, raw any, code string, toolFiles map[string]mcp.File) ([]sandbox.File, string) {
+	var list []any
+	if raw != nil {
+		var ok bool
+		if list, ok = raw.([]any); !ok {
+			return nil, `tool failed: invalid arguments: files must be an array of names, e.g. ["data_1a2b3c.csv"]`
+		}
 	}
-	list, ok := raw.([]any)
-	if !ok {
-		return nil, `tool failed: invalid arguments: files must be an array of names, e.g. ["data_1a2b3c.csv"]`
+	files, total, seen, msg := s.namedSandboxFiles(ctx, userID, thread, list, toolFiles)
+	if msg != "" {
+		return nil, msg
 	}
+	for _, name := range codeNamedToolFiles(code, toolFiles) {
+		data := toolFiles[name].Data
+		if seen[name] || len(files) == maxSandboxInputFiles || total+len(data) > maxSandboxInputBytes {
+			continue
+		}
+		total += len(data)
+		files = append(files, sandbox.File{Name: name, Data: data})
+	}
+	return files, ""
+}
+
+// namedSandboxFiles resolves the files argument's names.
+func (s *Engine) namedSandboxFiles(ctx context.Context, userID string, thread chat.Thread, list []any, toolFiles map[string]mcp.File) ([]sandbox.File, int, map[string]bool, string) {
+	seen := map[string]bool{}
 	if len(list) == 0 {
-		return nil, ""
+		return nil, 0, seen, ""
 	}
 	inputs := s.sandboxInputs(ctx, userID, thread, 0)
 	byAlias := map[string]sandboxInput{}
@@ -343,10 +426,9 @@ func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Th
 	}
 	var files []sandbox.File
 	total := 0
-	seen := map[string]bool{}
 	for _, item := range list {
 		name, _ := item.(string)
-		name = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(name), "/work/in/"), "in/")
+		name = sandboxInputName(name)
 		// Where the bytes come from: a tool file of this turn, else a document.
 		var read func(budget int) ([]byte, error)
 		if tf, ok := toolFiles[name]; ok {
@@ -365,23 +447,23 @@ func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Th
 				return data, err
 			}
 		} else {
-			return nil, unknownSandboxInput(name, inputs, toolFiles)
+			return nil, 0, nil, unknownSandboxInput(name, inputs, toolFiles)
 		}
 		if seen[name] {
 			continue
 		}
 		if len(files) == maxSandboxInputFiles {
-			return nil, fmt.Sprintf("tool failed: at most %d input files per call; split the work across calls", maxSandboxInputFiles)
+			return nil, 0, nil, fmt.Sprintf("tool failed: at most %d input files per call; split the work across calls", maxSandboxInputFiles)
 		}
 		seen[name] = true
 		data, err := read(maxSandboxInputBytes - total)
 		if err != nil {
-			return nil, fmt.Sprintf("tool failed: input file %q: %v", name, err)
+			return nil, 0, nil, fmt.Sprintf("tool failed: input file %q: %v", name, err)
 		}
 		total += len(data)
 		files = append(files, sandbox.File{Name: name, Data: data})
 	}
-	return files, ""
+	return files, total, seen, ""
 }
 
 // unknownSandboxInput is the model-facing answer to a name run_python cannot
