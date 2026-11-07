@@ -163,12 +163,22 @@ func toolImages(content []toolContent, meta []imageMeta, limit int) ([]Image, in
 // it fits limit and its bytes sniff as that type: a server cannot store HTML
 // under image/png.
 func decodeToolImage(item toolContent, limit int) (Image, bool) {
-	mime, ext, ok := artifact.CanonicalImageMIME(item.MimeType)
-	if !ok || item.Data == "" || base64.StdEncoding.DecodedLen(len(item.Data)) > limit+2 {
+	if item.Data == "" || base64.StdEncoding.DecodedLen(len(item.Data)) > limit+2 {
 		return Image{}, false
 	}
 	data, err := base64.StdEncoding.DecodeString(item.Data)
-	if err != nil || len(data) == 0 || len(data) > limit || http.DetectContentType(data) != mime {
+	if err != nil {
+		return Image{}, false
+	}
+	return checkImage(item.MimeType, data, limit)
+}
+
+// checkImage is the one gate every image passes before it can become an
+// artifact, whoever produced it: an accepted raster type, non-empty, within
+// limit, bytes that sniff as that type.
+func checkImage(mimeType string, data []byte, limit int) (Image, bool) {
+	mime, ext, ok := artifact.CanonicalImageMIME(mimeType)
+	if !ok || len(data) == 0 || len(data) > limit || http.DetectContentType(data) != mime {
 		return Image{}, false
 	}
 	return Image{MimeType: mime, Extension: ext, Data: data}, true

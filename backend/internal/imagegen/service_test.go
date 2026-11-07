@@ -111,8 +111,43 @@ func TestServiceSchemaDeclaresLoomArgs(t *testing.T) {
 			t.Errorf("schema lacks %s", name)
 		}
 	}
-	// The tool's own schema stays as it was.
-	if _, ok := NewTool(&recordingProvider{}).Schema().Parameters["properties"].(map[string]any)[ArgModel]; ok {
-		t.Error("Schema() wrote into the tool's shared properties")
+}
+
+// A mistyped optional value is dropped, the image still made; a numeric
+// string counts. An explicit zero safety tolerance is kept.
+func TestServiceCallIsLenientWithModelArgs(t *testing.T) {
+	p := &recordingProvider{}
+	svc := NewService(p, "", "")
+	_, err := svc.Call(context.Background(), json.RawMessage(`{"prompt":"x","width":"512","height":512,"seed":3.5,"safety_tolerance":0,"text_heavy":"yes"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.got.Width != 512 || p.got.Height != 512 || p.got.Seed != nil || p.got.SafetyTolerance == nil || *p.got.SafetyTolerance != 0 {
+		t.Fatalf("request %+v", p.got)
+	}
+	_, err = svc.Call(context.Background(), json.RawMessage(`{"prompt":"x","seed":7,"input_images":[{"data":"`+pngOfSize(t, 8, 8)+`","mime_type":"image/png"}]}`))
+	if err != nil || p.got.Seed == nil || *p.got.Seed != 7 || len(p.got.InputImages) != 1 {
+		t.Fatalf("request %+v, %v", p.got, err)
+	}
+}
+
+// A locked model arrives as the provider reported it (no slashes); it still
+// counts as the typography model and is clamped.
+func TestServiceNormalizesModelNames(t *testing.T) {
+	p := &recordingProvider{}
+	if _, err := NewService(p, " /pro/ ", "/max/").Generate(context.Background(), CallArgs{Prompt: "x", Model: "max", Width: 2048, Height: 2048}); err != nil {
+		t.Fatal(err)
+	}
+	if p.got.Model != "max" || p.got.Width > maxTypographySide {
+		t.Fatalf("request %+v, want max clamped", p.got)
+	}
+	if _, err := NewService(p, " /pro/ ", "").Generate(context.Background(), CallArgs{Prompt: "x"}); err != nil || p.got.Model != "pro" {
+		t.Fatalf("default model %q, %v", p.got.Model, err)
+	}
+}
+
+func TestServiceDescription(t *testing.T) {
+	if NewService(&recordingProvider{}, "", "").Description() == "" {
+		t.Fatal("no description")
 	}
 }

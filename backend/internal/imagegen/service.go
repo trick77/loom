@@ -6,22 +6,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
+	"math"
 	"strings"
 	"time"
 
 	"github.com/trick77/loom/internal/imagescale"
 )
 
-// The MCP contract loom addresses (docs/imagegen.md): server ServerName, tool
+// The MCP contract (docs/imagegen.md): server ServerName, tool
 // GenerateToolName.
 const (
 	ServerName       = "imagegen"
 	GenerateToolName = "generate"
 )
 
-// Arguments loom fills itself: declared in the schema so any server can read
-// them, never shown to the model (loom strips them from the tool it offers).
+// Arguments the client (loom) fills itself: declared in the schema so any
+// server can read them, never shown to the model (loom strips them from the
+// tool it offers).
 const (
 	ArgInputImages = "input_images"
 	ArgTextHeavy   = "text_heavy"
@@ -46,19 +47,24 @@ type Service struct {
 // image ("" leaves the provider's own); typographyModel the one for
 // text-heavy work ("" keeps every image on the default).
 func NewService(provider Provider, defaultModel, typographyModel string) *Service {
-	return &Service{provider: provider, defaultModel: strings.TrimSpace(defaultModel), typographyModel: strings.TrimSpace(typographyModel)}
+	return &Service{provider: provider, defaultModel: normalizeModel(defaultModel), typographyModel: normalizeModel(typographyModel)}
+}
+
+// normalizeModel is a model id as the provider reports it back (fal trims
+// surrounding slashes), so a locked model compares equal to the configured one.
+func normalizeModel(model string) string {
+	return strings.Trim(strings.TrimSpace(model), "/")
 }
 
 // Description is the tool's description for the model.
 func (s *Service) Description() string {
-	return NewTool(s.provider).Schema().Description
+	return toolDescription
 }
 
 // Schema is the tool's input schema: what the model fills plus the
-// loom-filled arguments.
+// client-filled arguments.
 func (s *Service) Schema() map[string]any {
-	schema := NewTool(s.provider).Schema().Parameters
-	props := maps.Clone(schema["properties"].(map[string]any))
+	props := toolProperties()
 	props[ArgInputImages] = map[string]any{
 		"type":        "array",
 		"description": "Filled by the client: images to edit, the first is the source.",
@@ -69,9 +75,7 @@ func (s *Service) Schema() map[string]any {
 	}
 	props[ArgTextHeavy] = map[string]any{"type": "boolean", "description": "Filled by the client: the image must render legible text (a logo, a sign, a poster)."}
 	props[ArgModel] = map[string]any{"type": "string", "description": "Filled by the client: the model an earlier image of the conversation used, to keep its look."}
-	out := maps.Clone(schema)
-	out["properties"] = props
-	return out
+	return map[string]any{"type": "object", "properties": props, "required": []string{"prompt"}}
 }
 
 // InputImage is one entry of input_images.
@@ -80,19 +84,19 @@ type InputImage struct {
 	MimeType string `json:"mime_type"`
 }
 
-// CallArgs is a call's arguments: the model's and loom's.
+// CallArgs is a call's arguments: the model's and the client's.
 type CallArgs struct {
-	Prompt          string       `json:"prompt"`
-	Filename        string       `json:"filename"`
-	AspectRatio     string       `json:"aspect_ratio"`
-	Width           int          `json:"width"`
-	Height          int          `json:"height"`
-	Seed            *int64       `json:"seed"`
-	OutputFormat    string       `json:"output_format"`
-	SafetyTolerance *int         `json:"safety_tolerance"`
-	InputImages     []InputImage `json:"input_images"`
-	TextHeavy       bool         `json:"text_heavy"`
-	Model           string       `json:"model"`
+	Prompt          string
+	Filename        string
+	AspectRatio     string
+	Width           int
+	Height          int
+	Seed            *int64
+	OutputFormat    string
+	SafetyTolerance *int
+	InputImages     []InputImage
+	TextHeavy       bool
+	Model           string
 }
 
 // Output is one generated image and its details.
@@ -107,15 +111,62 @@ type Output struct {
 	DurationMs int64
 }
 
-// Call decodes raw arguments and generates.
+// Call decodes raw arguments and generates. A mistyped optional value (a
+// width sent as "1024", a fractional seed) is dropped, not fatal: the image
+// is still made, as with any model argument the provider would round.
 func (s *Service) Call(ctx context.Context, raw json.RawMessage) (Output, error) {
-	var args CallArgs
+	var m map[string]any
 	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &args); err != nil {
+		if err := json.Unmarshal(raw, &m); err != nil {
 			return Output{}, fmt.Errorf("invalid arguments: %w", err)
 		}
 	}
+	args := CallArgs{
+		Prompt:       stringArg(m, "prompt"),
+		Filename:     stringArg(m, "filename"),
+		AspectRatio:  stringArg(m, "aspect_ratio"),
+		OutputFormat: stringArg(m, "output_format"),
+		Model:        stringArg(m, ArgModel),
+	}
+	args.Width, _ = intArg(m, "width")
+	args.Height, _ = intArg(m, "height")
+	if seed, ok := intArg(m, "seed"); ok {
+		s := int64(seed)
+		args.Seed = &s
+	}
+	if tol, ok := intArg(m, "safety_tolerance"); ok {
+		args.SafetyTolerance = &tol
+	}
+	args.TextHeavy, _ = m[ArgTextHeavy].(bool)
+	if list, ok := m[ArgInputImages].([]any); ok {
+		for _, item := range list {
+			entry, _ := item.(map[string]any)
+			args.InputImages = append(args.InputImages, InputImage{Data: stringArg(entry, "data"), MimeType: stringArg(entry, "mime_type")})
+		}
+	}
 	return s.Generate(ctx, args)
+}
+
+func stringArg(m map[string]any, key string) string {
+	v, _ := m[key].(string)
+	return v
+}
+
+// intArg reads a whole number a JSON argument carries (as float64), or one
+// sent as a numeric string; anything else is absent.
+func intArg(m map[string]any, key string) (int, bool) {
+	switch v := m[key].(type) {
+	case float64:
+		if v == math.Trunc(v) && math.Abs(v) <= math.MaxInt32 {
+			return int(v), true
+		}
+	case string:
+		var n int
+		if _, err := fmt.Sscanf(strings.TrimSpace(v), "%d", &n); err == nil {
+			return n, true
+		}
+	}
+	return 0, false
 }
 
 // Generate renders one image. An edit keeps its source's proportions unless
@@ -125,7 +176,7 @@ func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 	if s == nil || s.provider == nil {
 		return Output{}, errors.New("image provider is not configured")
 	}
-	req := ToolRequest{
+	req := GenerateRequest{
 		Prompt: args.Prompt, Filename: args.Filename, AspectRatio: args.AspectRatio,
 		Width: args.Width, Height: args.Height, Seed: args.Seed,
 		OutputFormat: args.OutputFormat, SafetyTolerance: args.SafetyTolerance,
@@ -153,7 +204,7 @@ func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 		req.Width, req.Height = ClampMaxSide(req.Width, req.Height, maxTypographySide)
 	}
 	start := time.Now()
-	result, err := s.provider.Generate(ctx, GenerateRequest(req))
+	result, err := s.provider.Generate(ctx, req)
 	if err != nil {
 		return Output{}, err
 	}
@@ -167,7 +218,7 @@ func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 // pickModel keeps the model the conversation already used, else sends
 // text-heavy work to the typography model, else the default.
 func (s *Service) pickModel(args CallArgs) string {
-	if m := strings.TrimSpace(args.Model); m != "" {
+	if m := normalizeModel(args.Model); m != "" {
 		return m
 	}
 	if args.TextHeavy && s.typographyModel != "" {

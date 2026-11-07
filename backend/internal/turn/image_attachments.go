@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/imagescale"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 )
 
 const maxImageAttachmentsPerMessage = 5
@@ -94,15 +95,13 @@ func (s *Engine) ResolveImageAttachments(ctx context.Context, userID, text strin
 	return parts, items, nil
 }
 
-// editImageSource carries the original bytes of an uploaded/prior image that is
-// forwarded to the image model for direct editing or transformation. The provider encodes
-// the raw bytes as base64 with no MIME prefix, so only the bytes are needed.
 // maxEditSourceBytes is the largest source image loom forwards to the image
 // tool (input_images): the size the contract (docs/imagegen.md) accepts.
-const maxEditSourceBytes = 20 << 20
+const maxEditSourceBytes = mcp.ImagegenMaxInputBytes
 
-// editImageSource is the image an edit turn hands the image tool. The tool
-// keeps its proportions (it reads them from the bytes, EXIF orientation too).
+// editImageSource is the original bytes of an uploaded or earlier image that
+// an edit turn hands the image tool. The tool keeps its proportions (it reads
+// them from the bytes, EXIF orientation too).
 type editImageSource struct {
 	Data []byte
 }

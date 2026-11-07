@@ -44,7 +44,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		mcpCapability(mcpConfig, runtime),
 		mcpFileCapability(cfg),
 		tavilyCapability(cfg),
-		imageGenCapability(cfg),
+		imageGenCapability(cfg, mcpConfig),
 		sandboxCapability(cfg),
 		responseLoggingCapability(cfg),
 	}
@@ -116,11 +116,17 @@ func tavilyCapability(cfg config.Config) startupCapability {
 	return startupCapability{Name: "Tavily web search", Status: "enabled", Detail: "source=env"}
 }
 
-func imageGenCapability(cfg config.Config) startupCapability {
-	if !imageGenConfigured(cfg) {
-		return startupCapability{Name: "Image generation", Status: "disabled", Detail: "set BACKEND_IMAGE_GEN_API_KEY"}
+// imageGenCapability says who serves the image tool: an mcp.json server named
+// imagegen wins over the built-in.
+func imageGenCapability(cfg config.Config, mcpConfig mcp.Config) startupCapability {
+	server, ok := mcpConfig.Servers[mcp.ImagegenServer]
+	switch {
+	case ok && server.Transport != mcp.TransportInProcess:
+		return startupCapability{Name: "Image generation", Status: "enabled", Detail: "mcp.json server " + mcp.ImagegenServer}
+	case imageGenConfigured(cfg):
+		return startupCapability{Name: "Image generation", Status: "enabled", Detail: fmt.Sprintf("model=%s built-in", cfg.ImageGenModel)}
 	}
-	return startupCapability{Name: "Image generation", Status: "enabled", Detail: fmt.Sprintf("model=%s in-process mcp", cfg.ImageGenModel)}
+	return startupCapability{Name: "Image generation", Status: "disabled", Detail: "set BACKEND_IMAGE_GEN_API_KEY"}
 }
 
 // sandboxCapability reports the configuration only: whether run_python is

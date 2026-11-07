@@ -67,6 +67,14 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	assertCapability(t, items, "Python sandbox", "disabled", "BACKEND_SANDBOX_URL")
 }
 
+// An mcp.json server named imagegen serves images, with or without a fal key.
+func TestStartupCapabilitiesImageServerFromFile(t *testing.T) {
+	items := startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
+		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp"},
+	}}, startupRuntime{})
+	assertCapability(t, items, "Image generation", "enabled", "mcp.json server imagegen")
+}
+
 func TestStartupCapabilitiesSandboxConfigured(t *testing.T) {
 	items := startupCapabilities(config.Config{SandboxURL: "http://sandbox:8070", SandboxTimeout: time.Minute}, mcp.Config{}, startupRuntime{})
 	assertCapability(t, items, "Python sandbox", "configured", "url=http://sandbox:8070 timeout=1m0s")
@@ -97,7 +105,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	assertCapability(t, items, "embeddings", "enabled", "model="+llmwiretest.EmbedModel)
 	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")
-	assertCapability(t, items, "Image generation", "enabled", "model=fal-ai/flux-2-pro in-process mcp")
+	assertCapability(t, items, "Image generation", "enabled", "model=fal-ai/flux-2-pro built-in")
 	assertCapability(t, items, "LLM response logging", "enabled", "logs/llm-responses")
 }
 

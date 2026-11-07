@@ -1,141 +1,45 @@
 package imagegen
 
-import (
-	"context"
-	"fmt"
-	"io"
-	"time"
-)
+// toolDescription is the image tool's description for the model.
+const toolDescription = "Generate a PNG or JPEG image from a text prompt. Use this when the user asks to create, draw, render, or generate an image. Generate at most one image per turn."
 
-// Tool is an LLM tool that wraps an image generation provider.
-type Tool struct {
-	provider Provider
-}
-
-// ToolRequest is a request to the image generation tool from an LLM.
-type ToolRequest struct {
-	Prompt          string `json:"prompt"`
-	Filename        string `json:"filename,omitempty"`
-	AspectRatio     string `json:"aspect_ratio,omitempty"`
-	Width           int    `json:"width,omitempty"`
-	Height          int    `json:"height,omitempty"`
-	Seed            *int64 `json:"seed,omitempty"`
-	OutputFormat    string `json:"output_format,omitempty"`
-	SafetyTolerance *int   `json:"safety_tolerance,omitempty"`
-	// Model is injected by the dispatcher (never parsed from LLM tool arguments —
-	// note the json:"-") to override the provider's configured model for this
-	// request, e.g. routing typography/logo work to FLUX.2 [max].
-	Model string `json:"-"`
-	// InputImages is injected by the dispatcher (never parsed from LLM tool
-	// arguments — note the json:"-") to forward the user's uploaded photo for
-	// direct editing/transformation.
-	InputImages [][]byte `json:"-"`
-}
-
-// ToolMeta contains metadata about a completed image generation operation.
-type ToolMeta struct {
-	DisplayFilename string
-	Extension       string
-	MIMEType        string
-	Provider        string
-	Model           string
-	RequestID       string
-	Width           int
-	Height          int
-	DurationMs      int64
-}
-
-// ToolSchema describes the image generation tool's name, description, and parameters for LLM tool use.
-type ToolSchema struct {
-	Name        string
-	Description string
-	Parameters  map[string]any
-}
-
-// NewTool creates a new image generation tool wrapping the given provider.
-func NewTool(provider Provider) Tool {
-	return Tool{provider: provider}
-}
-
-// ToolName is the image generation tool's name for LLM tool use.
-const ToolName = "generate_image"
-
-// ToolName returns the name of the tool for LLM tool use.
-func (t Tool) ToolName() string {
-	return ToolName
-}
-
-// Schema returns the tool schema describing the tool's interface to LLMs.
-func (t Tool) Schema() ToolSchema {
-	return ToolSchema{
-		Name:        t.ToolName(),
-		Description: "Generate a PNG or JPEG image from a text prompt. Use this when the user asks to create, draw, render, or generate an image. Generate at most one image per turn.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"prompt": map[string]any{
-					"type":        "string",
-					"description": "Detailed visual prompt for the generated image. Maximum 4000 characters.",
-				},
-				"filename": map[string]any{
-					"type":        "string",
-					"description": "Optional output filename without path. The extension is added automatically.",
-				},
-				"aspect_ratio": map[string]any{
-					"type":        "string",
-					"enum":        AspectRatioNames(),
-					"description": "Shape of the image, chosen from what the request depicts: 16:9 or 3:2 for wide scenes, landscapes, banners and desktop wallpapers; 9:16 or 2:3 for tall subjects, posters, book covers and phone wallpapers; 4:3 or 3:4 for a mild landscape or portrait lean. Omit this parameter entirely when the request implies no particular shape, and when editing an image that should keep its own proportions — a square is what you get by default, so it never needs to be asked for. Judge this from what the user actually asks for in whatever language they write in, not from specific words.",
-				},
-				"width": map[string]any{
-					"type":        "integer",
-					"description": "Output width in pixels. Only set this when the user asks for an exact size; otherwise use aspect_ratio and leave this unset. Rounded up to a multiple of 16, fitted to 256-2560 pixels per side, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
-				},
-				"height": map[string]any{
-					"type":        "integer",
-					"description": "Output height in pixels. Only set this when the user asks for an exact size; otherwise use aspect_ratio and leave this unset. Rounded up to a multiple of 16, fitted to 256-2560 pixels per side, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
-				},
-				"seed": map[string]any{
-					"type":        "integer",
-					"description": "Optional seed for reproducible generation.",
-				},
-				"output_format": map[string]any{
-					"type":        "string",
-					"enum":        []string{"png", "jpeg"},
-					"description": "Output image format. Defaults to png.",
-				},
-				"safety_tolerance": map[string]any{
-					"type":        "integer",
-					"description": "Content-safety tolerance from 0 (strictest) to 5 (most permissive). Defaults to 2.",
-				},
-			},
-			"required": []string{"prompt"},
+// toolProperties are the arguments the model fills. Built per call: callers
+// add to the map.
+func toolProperties() map[string]any {
+	return map[string]any{
+		"prompt": map[string]any{
+			"type":        "string",
+			"description": "Detailed visual prompt for the generated image. Maximum 4000 characters.",
+		},
+		"filename": map[string]any{
+			"type":        "string",
+			"description": "Optional output filename without path. The extension is added automatically.",
+		},
+		"aspect_ratio": map[string]any{
+			"type":        "string",
+			"enum":        AspectRatioNames(),
+			"description": "Shape of the image, chosen from what the request depicts: 16:9 or 3:2 for wide scenes, landscapes, banners and desktop wallpapers; 9:16 or 2:3 for tall subjects, posters, book covers and phone wallpapers; 4:3 or 3:4 for a mild landscape or portrait lean. Omit this parameter entirely when the request implies no particular shape, and when editing an image that should keep its own proportions — a square is what you get by default, so it never needs to be asked for. Judge this from what the user actually asks for in whatever language they write in, not from specific words.",
+		},
+		"width": map[string]any{
+			"type":        "integer",
+			"description": "Output width in pixels. Only set this when the user asks for an exact size; otherwise use aspect_ratio and leave this unset. Rounded up to a multiple of 16, fitted to 256-2560 pixels per side, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
+		},
+		"height": map[string]any{
+			"type":        "integer",
+			"description": "Output height in pixels. Only set this when the user asks for an exact size; otherwise use aspect_ratio and leave this unset. Rounded up to a multiple of 16, fitted to 256-2560 pixels per side, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
+		},
+		"seed": map[string]any{
+			"type":        "integer",
+			"description": "Optional seed for reproducible generation.",
+		},
+		"output_format": map[string]any{
+			"type":        "string",
+			"enum":        []string{"png", "jpeg"},
+			"description": "Output image format. Defaults to png.",
+		},
+		"safety_tolerance": map[string]any{
+			"type":        "integer",
+			"description": "Content-safety tolerance from 0 (strictest) to 5 (most permissive). Defaults to 2.",
 		},
 	}
-}
-
-// Generate generates an image from the request and writes the image bytes to the provided writer, returning metadata about the generation.
-func (t Tool) Generate(ctx context.Context, req ToolRequest, w io.Writer) (ToolMeta, error) {
-	if t.provider == nil {
-		return ToolMeta{}, fmt.Errorf("image provider is not configured")
-	}
-	start := time.Now()
-	result, err := t.provider.Generate(ctx, GenerateRequest(req))
-	if err != nil {
-		return ToolMeta{}, err
-	}
-	durationMs := time.Since(start).Milliseconds()
-	if _, err := w.Write(result.Bytes); err != nil {
-		return ToolMeta{}, err
-	}
-	return ToolMeta{
-		DisplayFilename: result.Filename,
-		Extension:       result.Extension,
-		MIMEType:        result.MIMEType,
-		Provider:        result.Provider,
-		Model:           result.Model,
-		RequestID:       result.RequestID,
-		Width:           result.Width,
-		Height:          result.Height,
-		DurationMs:      durationMs,
-	}, nil
 }

@@ -102,6 +102,65 @@ func TestRunToolCallWithAddsArgsForTheServerOnly(t *testing.T) {
 	}
 }
 
+// The model cannot set what only loom sets: its own model or input image
+// never reaches the server, even with no loom value to replace it.
+func TestModelCannotSetLoomArgs(t *testing.T) {
+	var sent map[string]any
+	e := &Engine{mcp: fakeMCPService{CallFunc: func(_ context.Context, _ string, args map[string]any) (string, error) {
+		sent = args
+		return "", nil
+	}}}
+	e.runToolCallWith(context.Background(), imageCall("c1", `{"prompt":"x","model":"fal-ai/expensive","input_images":[{"data":"aGk="}]}`), map[string]any{argTextHeavy: false})
+	if _, ok := sent[argModel]; ok {
+		t.Errorf("model's own model reached the server: %v", sent)
+	}
+	if _, ok := sent[argInputImages]; ok {
+		t.Errorf("model's own input image reached the server: %v", sent)
+	}
+	// Another tool's argument of the same name is its own business.
+	e.runToolCallWith(context.Background(), llm.ToolCall{Function: llm.ToolCallFunction{Name: "other__tool", Arguments: `{"model":"m"}`}}, nil)
+	if sent[argModel] != "m" {
+		t.Errorf("a non-image tool lost its model argument: %v", sent)
+	}
+}
+
+// A scheduled run never gets the image tool: it researches unattended.
+func TestScheduledRunGetsNoImageTool(t *testing.T) {
+	run := &Run{e: &Engine{}, scheduled: &ScheduledRun{}}
+	tools, _ := run.allowTools([]llm.Tool{
+		{Function: llm.ToolFunction{Name: imageToolName}},
+		{Function: llm.ToolFunction{Name: "fetch__fetch"}},
+	}, map[string]*toolSpec{})
+	if names := orderedToolNames(tools); len(names) != 1 || names[0] != "fetch__fetch" {
+		t.Fatalf("scheduled tools = %v, want fetch only", names)
+	}
+}
+
+// An image turn routes only to an image tool this user may use and whose
+// images can be kept.
+func TestImageToolAvailable(t *testing.T) {
+	image := []llm.Tool{{Function: llm.ToolFunction{Name: imageToolName}}}
+	cases := []struct {
+		name string
+		svc  fakeMCPService
+		want bool
+	}{
+		{"artifact server", fakeMCPService{ToolList: image, Available: map[string]bool{imageToolName: true}, Artifacts: map[string]bool{"imagegen": true}}, true},
+		{"server without artifacts", fakeMCPService{ToolList: image, Available: map[string]bool{imageToolName: true}}, false},
+		{"other users only", fakeMCPService{ToolList: image, Available: map[string]bool{imageToolName: true}, Artifacts: map[string]bool{"imagegen": true}, Users: map[string][]string{"imagegen": {"someone_else"}}}, false},
+		{"not configured", fakeMCPService{}, false},
+	}
+	for _, tc := range cases {
+		e := &Engine{mcp: tc.svc, artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
+		if got := e.imageToolAvailable(testUser.ID); got != tc.want {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	if (&Engine{mcp: cases[0].svc}).imageToolAvailable(testUser.ID) {
+		t.Error("available without an artifact store")
+	}
+}
+
 // The first image locks the thread's model as the server reported it; the
 // next image is sent with it, even when its prompt reads as typography work.
 func TestImageModelLockedAndEchoed(t *testing.T) {

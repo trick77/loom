@@ -11,7 +11,6 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/llm"
-	"github.com/trick77/loom/internal/mcp"
 )
 
 const (
@@ -252,7 +251,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		toolsCtx, cancelTools := t.roundContext(ctx)
 		// Every MCP call of the round knows its caller: a per-user server
 		// (each user's own account, never shared) refuses a call without one.
-		toolsCtx = mcp.WithPrincipal(toolsCtx, MCPPrincipal(t.user))
+		toolsCtx = t.toolCallContext(toolsCtx)
 		runsCtx, cancelRuns := context.WithCancel(toolsCtx)
 		runs := t.e.startToolRuns(runsCtx, result.ToolCalls, skipped)
 		lastRoundDeferred = false
@@ -493,8 +492,7 @@ func (t *Run) runRequiredImageAssistantLoop(ctx context.Context, history []llm.M
 		Role:      "assistant",
 		ToolCalls: []llm.ToolCall{call},
 	})
-	// The call's MCP context names the caller, as every round's does.
-	callCtx := mcp.WithPrincipal(ctx, MCPPrincipal(t.user))
+	callCtx := t.toolCallContext(ctx)
 	output, created := t.finishToolCall(callCtx, call, 1, nil, t.e.runToolCallWith(callCtx, call, t.loomArgs(call)))
 	if err := t.stream.SendJSON("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
 		return LoopResult{}, err

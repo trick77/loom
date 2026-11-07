@@ -6,18 +6,17 @@ import (
 )
 
 // isTypographyImageRequest reports whether a (compiled) image prompt is about
-// typography / logos / legible text — work for which FLUX.2 [flex] renders text
-// far better than the klein default. It runs on the prompt the compiler produced
-// (which is told to preserve "text requirements"), so logo/text intent surfaces
-// as vocab even when the raw user message lacked it.
+// typography / logos / legible text: the image tool's text_heavy hint, which
+// the server maps to a model that renders text well. It runs on the prompt the
+// compiler produced (which is told to preserve "text requirements"), so
+// logo/text intent surfaces as vocab even when the raw user message lacked it.
 //
-// This is now a FALLBACK to the semantic gate's language-agnostic NeedsText
-// signal (see llm.ClassifyImageIntent). The gate authoritatively picks the
-// typography model on the required-image path from the user's own words in any
-// language; this lexical check additionally covers the case where the model
-// self-initiates the image tool in the normal tool loop (where no gate NeedsText
-// flag flows), reading its own English-leaning compiled prompt. resolveThreadImageModel
-// ORs the two, so either signal selects flex.
+// This is a FALLBACK to the semantic gate's language-agnostic NeedsText
+// signal (see llm.ClassifyImageIntent). The gate is authoritative on the
+// required-image path, from the user's own words in any language; this lexical
+// check covers the model calling the image tool on its own in the normal tool
+// loop (where no gate NeedsText flag flows), reading its own English-leaning
+// prompt. loomArgs ORs the two.
 //
 // It fires on three cues, biased toward firing because the cost of a miss (text
 // rendered on the weaker klein model) is worse than the cost of a false positive

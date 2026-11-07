@@ -10,42 +10,56 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/mcp"
 )
 
 // imageToolName is the image tool as loom addresses it: server imagegen, tool
 // generate (the contract in docs/imagegen.md). Whatever serves that name, the
 // built-in or an mcp.json server, is the one an image turn forces.
-const imageToolName = "imagegen__generate"
+var imageToolName = mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool)
 
 // The arguments loom fills for the image tool (docs/imagegen.md). The server
 // declares them; loom strips them from the tool it offers the model and adds
 // them at dispatch.
 const (
-	argInputImages = "input_images"
-	argTextHeavy   = "text_heavy"
-	argModel       = "model"
+	argInputImages = mcp.ImagegenArgInputImages
+	argTextHeavy   = mcp.ImagegenArgTextHeavy
+	argModel       = mcp.ImagegenArgModel
 )
 
 var imageLoomArgs = []string{argInputImages, argTextHeavy, argModel}
 
 // maxImagePromptRunes caps the user's own text when loom writes the image
-// call itself (fallbackImageToolCall); the contract allows 4000 characters.
-const maxImagePromptRunes = 4000
+// call itself (fallbackImageToolCall).
+const maxImagePromptRunes = mcp.ImagegenMaxPromptRunes
 
-// imageToolAvailable reports whether an image tool is configured and its
-// images have somewhere to go: the precondition for routing a turn to it.
-func (s *Engine) imageToolAvailable() bool {
+// imageToolAvailable reports whether userID may use an image tool whose
+// images can be kept: one configured, open to them, allowed to make
+// artifacts, and somewhere to store them. It is the precondition for routing
+// a turn to images.
+func (s *Engine) imageToolAvailable(userID string) bool {
 	if s.mcp == nil || !s.canStoreArtifacts() {
 		return false
 	}
 	_, byName := s.registry()
 	for name, spec := range byName {
-		if spec.imageGenerator && s.mcp.HasTool(name) {
+		if spec.imageGenerator && s.mcp.HasTool(name) && s.mcp.MakesArtifacts(name) && s.mcp.ToolAllowed(mcp.Principal{ID: userID}, name) {
 			return true
 		}
 	}
 	return false
+}
+
+// toolCallContext is the context a round's MCP calls run on: it names the
+// caller (a per-user server refuses a call without one) and attributes the
+// call's log lines to the user and thread, a backstop for a path that reaches
+// here without the stream handler's attribution (an in-process server's model
+// call would otherwise log unattributed).
+func (t *Run) toolCallContext(ctx context.Context) context.Context {
+	ctx = inference.WithAttribution(ctx, t.user.ID, t.user.Username, t.thread.ID)
+	return mcp.WithPrincipal(ctx, MCPPrincipal(t.user))
 }
 
 // withoutLoomArgs is the image tool as the model sees it: the arguments loom

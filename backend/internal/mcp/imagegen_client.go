@@ -4,10 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/imagegen"
+)
+
+// The image tool's contract (docs/imagegen.md) as loom addresses it, tied to
+// the default server's own names so a rename there moves these too.
+const (
+	ImagegenServer         = imagegen.ServerName
+	ImagegenTool           = imagegen.GenerateToolName
+	ImagegenArgInputImages = imagegen.ArgInputImages
+	ImagegenArgTextHeavy   = imagegen.ArgTextHeavy
+	ImagegenArgModel       = imagegen.ArgModel
+	// ImagegenMaxInputBytes is the largest input image the contract takes.
+	ImagegenMaxInputBytes = imagegen.MaxInputImageBytes
+	// ImagegenMaxPromptRunes is the longest prompt the contract takes.
+	ImagegenMaxPromptRunes = imagegen.MaxPromptRunes
 )
 
 // imagegenClient serves the image tool in-process, through the same MCP
@@ -51,19 +64,15 @@ func (c *imagegenClient) CallTool(ctx context.Context, name string, arguments ma
 	if err != nil {
 		return CallResult{}, err
 	}
-	// The same checks a server's image block passes: a canonical raster type
-	// whose bytes are that type, within the artifact size.
-	mime, ext, ok := artifact.CanonicalImageMIME(out.MIMEType)
-	if !ok || len(out.Bytes) == 0 || len(out.Bytes) > artifact.MaxArtifactSizeBytes || http.DetectContentType(out.Bytes) != mime {
+	// The same gate a server's image block passes.
+	img, ok := checkImage(out.MIMEType, out.Bytes, artifact.MaxArtifactSizeBytes)
+	if !ok {
 		return CallResult{Text: "The image provider returned no usable image.", DroppedImages: 1}, nil
 	}
+	img.Filename, img.Model, img.Provider = baseName(out.Filename), out.Model, out.Provider
+	img.Width, img.Height, img.DurationMs = out.Width, out.Height, out.DurationMs
 	// No text: loom's "created image artifact" line is the whole result.
-	return CallResult{
-		Images: []Image{{
-			Filename: baseName(out.Filename), MimeType: mime, Extension: ext, Data: out.Bytes,
-			Model: out.Model, Provider: out.Provider, Width: out.Width, Height: out.Height, DurationMs: out.DurationMs,
-		}},
-	}, nil
+	return CallResult{Images: []Image{img}}, nil
 }
 
 func (c *imagegenClient) Close() error { return nil }
