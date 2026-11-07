@@ -32,7 +32,7 @@ func imageCall(id, args string) llm.ToolCall {
 // The image tool as offered never shows the arguments loom fills, and its
 // shared definition is left as the server sent it.
 func TestOfferedImageToolHidesLoomArgs(t *testing.T) {
-	svc := turntest.ImageService(&countingImageProvider{}, "", "")
+	svc := turntest.ImageService(t, &countingImageProvider{}, "", "")
 	e := &Engine{mcp: svc, artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
 	var offered *llm.Tool
 	for _, tool := range e.offeredMCPTools(testUser, toolGate{}) {
@@ -110,9 +110,12 @@ func TestModelCannotSetLoomArgs(t *testing.T) {
 		sent = args
 		return "", nil
 	}}}
-	e.runToolCallWith(context.Background(), imageCall("c1", `{"prompt":"x","model":"fal-ai/expensive","input_images":[{"data":"aGk="}]}`), map[string]any{argTextHeavy: false})
+	e.runToolCallWith(context.Background(), imageCall("c1", `{"prompt":"x","model":"fal-ai/expensive","Model":"also","input_images":[{"data":"aGk="}]}`), map[string]any{argTextHeavy: false})
 	if _, ok := sent[argModel]; ok {
 		t.Errorf("model's own model reached the server: %v", sent)
+	}
+	if _, ok := sent["Model"]; ok {
+		t.Errorf("a case variant slipped through (JSON decoders match it): %v", sent)
 	}
 	if _, ok := sent[argInputImages]; ok {
 		t.Errorf("model's own input image reached the server: %v", sent)
@@ -167,7 +170,7 @@ func TestImageModelLockedAndEchoed(t *testing.T) {
 	provider := &countingImageProvider{}
 	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Pics"}}
 	cfg := Config{
-		MCP:       turntest.ImageService(provider, "pro", "max"),
+		MCP:       turntest.ImageService(t, provider, "pro", "max"),
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
 	}
@@ -199,7 +202,7 @@ func TestImageToolTextHeavyHint(t *testing.T) {
 	provider := &countingImageProvider{}
 	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Pics"}}
 	out := runStoredTurn(t, Config{
-		MCP:       turntest.ImageService(provider, "pro", "max"),
+		MCP:       turntest.ImageService(t, provider, "pro", "max"),
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
 		LLM: &fakeToolChatClient{Results: []llm.StreamResult{
@@ -225,7 +228,7 @@ func TestImageToolOnePerTurn(t *testing.T) {
 		{Content: "Done."},
 	}}
 	out := runStoredTurn(t, Config{
-		MCP:       turntest.ImageService(provider, "", ""),
+		MCP:       turntest.ImageService(t, provider, "", ""),
 		Artifacts: fakeArtifactStore{},
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,

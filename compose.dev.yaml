@@ -67,11 +67,14 @@ services:
       PEEQ_MCP_URL: "${PEEQ_MCP_URL:-}"
       PEEQ_MCP_TOKEN: "${PEEQ_MCP_TOKEN:-}"
       BACKEND_PEEQ_USERS: "${BACKEND_PEEQ_USERS:-}"
-      BACKEND_IMAGE_GEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-https://queue.fal.run}"
-      BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"
-      BACKEND_IMAGE_GEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-fal-ai/flux-2-pro}"
-      BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-fal-ai/flux-2-max}"
-      BACKEND_IMAGE_GEN_POLL_TIMEOUT: "${BACKEND_IMAGE_GEN_POLL_TIMEOUT:-1m}"
+      # Image sidecar, opt-in: COMPOSE_PROFILES=imagegen,
+      # BACKEND_IMAGE_GEN_URL=http://localhost:8040 and the fal key
+      # BACKEND_IMAGE_GEN_API_KEY in .env.
+      BACKEND_IMAGE_GEN_URL: "${BACKEND_IMAGE_GEN_URL:-}"
+      BACKEND_IMAGE_GEN_TOKEN: dev-imagegen-token-please-change-0123456789
+      # The fal key is the sidecar's alone: over what env_file loads, loom sees
+      # only whether one is set (it warns when the sidecar is not configured).
+      BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:+set}"
     volumes:
       - loom-dev-data:/data
       - ./conf:/conf:ro
@@ -83,6 +86,10 @@ services:
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
         condition: service_healthy
+      imagegen:
+        # Opt-in profile, so not required; discovered at boot once healthy.
+        condition: service_healthy
+        required: false
 
   gotenberg:
     # Chromium-based HTML→PDF renderer. Loom is host-networked here, so it is
@@ -180,6 +187,36 @@ services:
       - "127.0.0.1:8060:8060"
     healthcheck:
       test: ["CMD", "/loom-tunewire", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+
+  imagegen:
+    # Image sidecar, built from source, published on a localhost port.
+    build:
+      context: .
+      dockerfile: imagegen/Containerfile
+    profiles: ["imagegen"]
+    stop_grace_period: 3m
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Same value as loom's BACKEND_IMAGE_GEN_TOKEN above.
+      IMAGEGEN_TOKEN: dev-imagegen-token-please-change-0123456789
+      IMAGEGEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"
+      IMAGEGEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-}"
+      IMAGEGEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-}"
+      IMAGEGEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-}"
+      IMAGEGEN_POLL_TIMEOUT: "${BACKEND_IMAGE_GEN_POLL_TIMEOUT:-}"
+    ports:
+      - "127.0.0.1:8040:8040"
+    healthcheck:
+      test: ["CMD", "/loom-imagegen", "healthcheck"]
       interval: 60s
       timeout: 5s
       start_period: 30s

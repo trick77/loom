@@ -352,9 +352,6 @@ func NewServiceFromConfigs(ctx context.Context, required, bestEffort Config, htt
 func clientForServer(name string, server ServerConfig, httpClient *http.Client) Client {
 	switch server.Transport {
 	case TransportInProcess:
-		if server.InProcess != nil {
-			return server.InProcess(name)
-		}
 		return NewFetchClient(name, server.PDFExtractor)
 	case TransportStdio:
 		return NewStdioClient(name, server)

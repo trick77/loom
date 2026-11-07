@@ -15,6 +15,8 @@ images:
   - { suffix: "-tunewire", containerfile: tunewire/Containerfile }
   # Strava sidecar (docs/strava.md), same version as loom.
   - { suffix: "-strava", containerfile: strava/Containerfile }
+  # Image generation sidecar (docs/imagegen.md), same version as loom.
+  - { suffix: "-imagegen", containerfile: imagegen/Containerfile }
 visibility: public
 allow:
   - { rule: containerfile, image: "-sandbox", why: "loom-sandbox starts as root to drop each job to its own slot uid (cap_add SETUID/SETGID in compose)" }

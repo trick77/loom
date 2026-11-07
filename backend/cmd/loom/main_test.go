@@ -104,6 +104,30 @@ func TestToolConfigForConfigAddsBuiltInTavily(t *testing.T) {
 	}
 }
 
+// The image sidecar is a best-effort built-in that may make artifacts.
+func TestToolConfigForConfigAddsImagegenSidecar(t *testing.T) {
+	got := mustToolConfig(t, config.Config{ImageGenURL: "http://imagegen:8040", ImageGenToken: strings.Repeat("t", 32)})
+	sc, ok := got.Servers[mcp.ImagegenServer]
+	if !ok || !sc.Artifacts || !sc.BuiltIn || sc.URL != "http://imagegen:8040/mcp" || sc.Headers["Authorization"] != "Bearer "+strings.Repeat("t", 32) {
+		t.Fatalf("imagegen = %+v (present %v)", sc, ok)
+	}
+	if _, ok := mustToolConfig(t, config.Config{}).Servers[mcp.ImagegenServer]; ok {
+		t.Fatal("imagegen registered without its URL")
+	}
+}
+
+// An upgraded install that still sets the fal key for loom is told where it went.
+func TestWarnOrphanedImageKey(t *testing.T) {
+	key := func(string) string { return "fal-key" }
+	none := func(string) string { return "" }
+	if !warnOrphanedImageKey(config.Config{}, key) {
+		t.Error("orphaned key not reported")
+	}
+	if warnOrphanedImageKey(config.Config{ImageGenURL: "http://imagegen:8040"}, key) || warnOrphanedImageKey(config.Config{}, none) {
+		t.Error("warned without cause")
+	}
+}
+
 func TestToolConfigForConfigLeavesTavilyDisabledWhenKeyIsEmpty(t *testing.T) {
 	got := mustToolConfig(t, config.Config{TavilyURL: "https://mcp.tavily.com/mcp/"})
 	if _, exists := got.Servers["tavily"]; exists {

@@ -74,7 +74,7 @@ func TestClassifyImageTurnPreconditions(t *testing.T) {
 	configured := &Engine{
 		artifacts: fakeArtifactStore{},
 		usersDir:  t.TempDir(),
-		mcp:       turntest.ImageService(fakeImageProvider{}, "", ""),
+		mcp:       turntest.ImageService(t, fakeImageProvider{}, "", ""),
 		llm:       fakeChatClient{ImageIntent: create},
 	}
 	if got := configured.classifyImageTurn(context.Background(), llm.InferenceMetadata{UserID: "user_1", Username: "jan", ThreadID: "thr_1"}, "zeichne mir einen Fuchs", false, nil); !got.generate {

@@ -43,7 +43,7 @@ func TestStreamMessageAppliesAspectRatioFromToolCall(t *testing.T) {
 	server := newAuthenticatedServer(t, Deps{
 		Thread:    threadStore,
 		Artifacts: artifactStore,
-		MCP:       imageTools(normalizingImageProvider{}),
+		MCP:       imageTools(t, normalizingImageProvider{}),
 		UsersDir:  t.TempDir(),
 		LLM:       llmClient,
 	})

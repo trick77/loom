@@ -29,7 +29,6 @@ import (
 	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/httpapi"
-	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
@@ -166,6 +165,7 @@ func runServer() error {
 	if err != nil {
 		return err
 	}
+	warnOrphanedImageKey(cfg, os.Getenv)
 	mcpConfig := toolCfg.union()
 	if len(mcpConfig.Servers) > 0 {
 		// Give discovery room for cold MCP sidecars: the fetch bridge boots a
@@ -185,9 +185,10 @@ func runServer() error {
 		mcpRefresh = func(ctx context.Context) { discovered.RunRefresh(ctx, slog.Default()) }
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
-	discoveredTools := 0
+	discoveredTools, imageToolUp := 0, false
 	if toolService != nil {
 		discoveredTools = len(toolService.Tools())
+		imageToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool))
 	}
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
@@ -224,6 +225,7 @@ func runServer() error {
 	logStartupCapabilities(cfg, mcpConfig, startupRuntime{
 		DocToolCount:        len(docTools),
 		DiscoveredToolCount: discoveredTools,
+		ImageToolUp:         imageToolUp,
 	})
 
 	// Post-turn refreshes outlive their request; serve() drains this group before
@@ -490,18 +492,6 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// Fetch runs in-process (no sidecar), so it is always available. Fetched
 	// PDFs are parsed in the Tika sidecar (pdf), never in the backend.
 	required.Servers["fetch"] = mcp.FetchServerConfig(pdf)
-	// Image generation runs in-process behind the imagegen MCP contract
-	// (docs/imagegen.md); an mcp.json server of that name replaces it.
-	if imageGenConfigured(cfg) {
-		required.Servers[imagegen.ServerName] = mcp.ImagegenServerConfig(imagegen.NewService(
-			imagegen.NewFalClient(imagegen.FalConfig{
-				BaseURL:     cfg.ImageGenBaseURL,
-				APIKey:      cfg.ImageGenAPIKey,
-				Model:       cfg.ImageGenModel,
-				PollTimeout: cfg.ImageGenPollTimeout,
-			}),
-			cfg.ImageGenModel, cfg.ImageGenTypographyModel))
-	}
 	if strings.TrimSpace(cfg.ObscuraMCPURL) != "" {
 		required.Servers["obscura"] = mcp.ObscuraServerConfig(cfg.ObscuraMCPURL, cfg.ObscuraMCPToken)
 	}
@@ -525,6 +515,11 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// loom-strava likewise: each listed user's own Strava, best-effort.
 	if strings.TrimSpace(cfg.StravaURL) != "" {
 		out.FileServers.Servers[stravaServer] = mcp.StravaServerConfig(cfg.StravaURL, cfg.StravaToken, cfg.StravaUsers)
+	}
+	// loom-imagegen likewise (docs/imagegen.md): a dead sidecar costs the
+	// image tool. An mcp.json server named imagegen replaces it.
+	if imageGenConfigured(cfg) {
+		out.FileServers.Servers[mcp.ImagegenServer] = mcp.ImagegenServerConfig(cfg.ImageGenURL, cfg.ImageGenToken)
 	}
 	for name, server := range fileServers {
 		if _, exists := required.Servers[name]; exists {
@@ -555,5 +550,16 @@ func tavilyConfigured(cfg config.Config) bool {
 }
 
 func imageGenConfigured(cfg config.Config) bool {
-	return strings.TrimSpace(cfg.ImageGenAPIKey) != ""
+	return strings.TrimSpace(cfg.ImageGenURL) != ""
+}
+
+// warnOrphanedImageKey points an install upgraded past the move to the
+// sidecar at it: loom no longer reads the fal key it still sets, and image
+// requests would quietly become text. It reports whether it warned.
+func warnOrphanedImageKey(cfg config.Config, getenv func(string) string) bool {
+	if imageGenConfigured(cfg) || strings.TrimSpace(getenv("BACKEND_IMAGE_GEN_API_KEY")) == "" {
+		return false
+	}
+	slog.Warn("BACKEND_IMAGE_GEN_API_KEY is set, but image generation now runs in the loom-imagegen sidecar: set COMPOSE_PROFILES=imagegen, BACKEND_IMAGE_GEN_URL and BACKEND_IMAGE_GEN_TOKEN (docs/imagegen.md)")
+	return true
 }

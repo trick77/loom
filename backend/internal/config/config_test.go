@@ -254,83 +254,37 @@ func TestLoad_obscuraTokenNotNeededWithoutURL(t *testing.T) {
 	}
 }
 
-func TestLoadImageGenerationDefaultsDisabled(t *testing.T) {
+func TestLoadImagegenSidecar(t *testing.T) {
 	requiredEnv(t)
 	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+	if err != nil || cfg.ImageGenURL != "" {
+		t.Fatalf("default: url %q, %v; want off", cfg.ImageGenURL, err)
 	}
-	if cfg.ImageGenAPIKey != "" {
-		t.Fatal("ImageGenAPIKey default was not empty")
-	}
-	if cfg.ImageGenBaseURL != "https://queue.fal.run" {
-		t.Fatalf("ImageGenBaseURL = %q", cfg.ImageGenBaseURL)
-	}
-	if cfg.ImageGenModel != "fal-ai/flux-2-pro" {
-		t.Fatalf("ImageGenModel = %q", cfg.ImageGenModel)
-	}
-	if cfg.ImageGenTypographyModel != "fal-ai/flux-2-max" {
-		t.Fatalf("ImageGenTypographyModel = %q", cfg.ImageGenTypographyModel)
-	}
-	if cfg.ImageGenPollTimeout != 1*time.Minute {
-		t.Fatalf("ImageGenPollTimeout = %s, want 1m0s", cfg.ImageGenPollTimeout)
+	t.Setenv("BACKEND_IMAGE_GEN_URL", "http://imagegen:8040")
+	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", strings.Repeat("a", 32))
+	cfg, err = Load()
+	if err != nil || cfg.ImageGenURL != "http://imagegen:8040" || cfg.ImageGenToken != strings.Repeat("a", 32) {
+		t.Fatalf("configured: %+v, %v", cfg, err)
 	}
 }
 
-func TestLoadImageGenRequiresBaseURLWhenAPIKeyIsSet(t *testing.T) {
+// A sidecar set without its token, or at a relative URL, fails boot: it would
+// refuse every call and the image tool would just vanish.
+func TestLoadImagegenSidecarProblems(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("BACKEND_IMAGE_GEN_API_KEY", "fal-test")
-	t.Setenv("BACKEND_IMAGE_GEN_BASE_URL", "queue.fal.run")
-	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_BASE_URL must be an absolute") {
-		t.Fatalf("Load() error = %v, want BACKEND_IMAGE_GEN_BASE_URL required", err)
+	t.Setenv("BACKEND_IMAGE_GEN_URL", "http://imagegen:8040")
+	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", "short")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_TOKEN must be at least 32") {
+		t.Fatalf("short token: %v", err)
 	}
-}
-
-func TestLoadImageGenConfiguredByAPIKey(t *testing.T) {
-	requiredEnv(t)
-	t.Setenv("BACKEND_IMAGE_GEN_API_KEY", "fal-test")
-	t.Setenv("BACKEND_IMAGE_GEN_MODEL", "flux-2-klein-9b")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", strings.Repeat("a", 32)+" b")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "must not contain whitespace") {
+		t.Fatalf("token with a space: %v", err)
 	}
-	if cfg.ImageGenAPIKey != "fal-test" {
-		t.Fatalf("ImageGenAPIKey was not loaded")
-	}
-	if cfg.ImageGenModel != "flux-2-klein-9b" {
-		t.Fatalf("ImageGenModel = %q", cfg.ImageGenModel)
-	}
-}
-
-func TestLoadImageGenPollTimeoutOverride(t *testing.T) {
-	requiredEnv(t)
-	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "2m")
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if cfg.ImageGenPollTimeout != 2*time.Minute {
-		t.Fatalf("ImageGenPollTimeout = %s, want 2m0s", cfg.ImageGenPollTimeout)
-	}
-}
-
-// A poll longer than the image tool call's limit would be cut off by the
-// call: refused at boot instead of failing every slow image.
-func TestLoadImageGenRejectsPollPastCallLimit(t *testing.T) {
-	requiredEnv(t)
-	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "7m")
-	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "the image tool call's limit") {
-		t.Fatalf("Load() error = %v, want the call limit named", err)
-	}
-}
-
-func TestLoadImageGenRejectsInvalidPollTimeout(t *testing.T) {
-	requiredEnv(t)
-	t.Setenv("BACKEND_IMAGE_GEN_POLL_TIMEOUT", "soon")
-	_, err := Load()
-	if err == nil || !strings.Contains(err.Error(), `BACKEND_IMAGE_GEN_POLL_TIMEOUT: "soon" is not a duration`) {
-		t.Fatalf("Load() error = %v, want invalid poll timeout", err)
+	t.Setenv("BACKEND_IMAGE_GEN_URL", "imagegen:8040")
+	t.Setenv("BACKEND_IMAGE_GEN_TOKEN", strings.Repeat("a", 32))
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_IMAGE_GEN_URL must be an absolute") {
+		t.Fatalf("relative url: %v", err)
 	}
 }
 
@@ -676,7 +630,7 @@ func TestLoad_validatesURLsAndDirs(t *testing.T) {
 		{"fqdn with query", "PUBLIC_FQDN", "loom.example.com?x", "PUBLIC_FQDN", nil},
 		{"fqdn with trailing space", "PUBLIC_FQDN", "loom.example.com ", "PUBLIC_FQDN", nil},
 		{"relative users dir", "BACKEND_USERS_DIR", "data/users", "BACKEND_USERS_DIR", nil},
-		{"image gen base url without scheme", "BACKEND_IMAGE_GEN_BASE_URL", "queue.fal.run", "BACKEND_IMAGE_GEN_BASE_URL", map[string]string{"BACKEND_IMAGE_GEN_API_KEY": "k"}},
+		{"imagegen url without scheme", "BACKEND_IMAGE_GEN_URL", "imagegen:8040", "BACKEND_IMAGE_GEN_URL", map[string]string{"BACKEND_IMAGE_GEN_TOKEN": strings.Repeat("t", 32)}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requiredEnv(t)
@@ -798,22 +752,20 @@ func TestLoad_sandbox(t *testing.T) {
 // settings off.
 func TestLoad_offDisablesOptionalSettings(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "")
 	t.Setenv("BACKEND_CHAT_LOG_DIR", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.ImageGenTypographyModel != "fal-ai/flux-2-max" || cfg.ChatLogDir != "logs/llm-responses" {
-		t.Fatalf("empty = typography %q, log dir %q; want the defaults", cfg.ImageGenTypographyModel, cfg.ChatLogDir)
+	if cfg.ChatLogDir != "logs/llm-responses" {
+		t.Fatalf("empty = log dir %q; want the default", cfg.ChatLogDir)
 	}
-	t.Setenv("BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "off")
 	t.Setenv("BACKEND_CHAT_LOG_DIR", "OFF")
 	if cfg, err = Load(); err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.ImageGenTypographyModel != "" || cfg.ChatLogDir != "" {
-		t.Fatalf("off = typography %q, log dir %q; want both off", cfg.ImageGenTypographyModel, cfg.ChatLogDir)
+	if cfg.ChatLogDir != "" {
+		t.Fatalf("off = log dir %q; want off", cfg.ChatLogDir)
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 	"image"
 	"image/png"
 	"testing"
+
+	"github.com/trick77/loom/internal/artifact"
 )
 
 type recordingProvider struct{ got GenerateRequest }
@@ -155,6 +157,13 @@ func TestServiceNormalizesModelNames(t *testing.T) {
 	}
 	if _, err := NewService(p, " /pro/ ", "").Generate(context.Background(), CallArgs{Prompt: "x"}); err != nil || p.got.Model != "pro" {
 		t.Fatalf("default model %q, %v", p.got.Model, err)
+	}
+}
+
+// The sidecar sends what loom keeps: its image budget is one artifact.
+func TestImageBudgetIsOneArtifact(t *testing.T) {
+	if maxImageBytes != artifact.MaxArtifactSizeBytes {
+		t.Fatalf("maxImageBytes %d, artifact limit %d", maxImageBytes, artifact.MaxArtifactSizeBytes)
 	}
 }
 

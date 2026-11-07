@@ -61,7 +61,7 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	assertCapability(t, items, "embeddings", "disabled", "BACKEND_EMBED_MODEL")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
-	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_API_KEY")
+	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_URL")
 	assertCapability(t, items, "document generation", "enabled", "tools=5")
 	assertCapability(t, items, "artifacts", "enabled", "users_dir=/data/users")
 	assertCapability(t, items, "Python sandbox", "disabled", "BACKEND_SANDBOX_URL")
@@ -69,10 +69,14 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 
 // An mcp.json server named imagegen serves images, with or without a fal key.
 func TestStartupCapabilitiesImageServerFromFile(t *testing.T) {
-	items := startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
+	servers := mcp.Config{Servers: map[string]mcp.ServerConfig{
 		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp", Artifacts: true},
-	}}, startupRuntime{})
+	}}
+	items := startupCapabilities(config.Config{}, servers, startupRuntime{ImageToolUp: true})
 	assertCapability(t, items, "Image generation", "enabled", "mcp.json server imagegen")
+	// Configured but not answering discovery: not "enabled".
+	items = startupCapabilities(config.Config{}, servers, startupRuntime{})
+	assertCapability(t, items, "Image generation", "configured", "not answering yet")
 	// Without artifacts its images are dropped: say so, not "enabled".
 	items = startupCapabilities(config.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
 		mcp.ImagegenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://imagegen:8080/mcp"},
@@ -90,27 +94,26 @@ func TestStartupCapabilitiesSandboxConfigured(t *testing.T) {
 
 func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 	items := startupCapabilities(config.Config{
-		AuthMode:       config.AuthModeDev,
-		ChatEnabled:    true,
-		ChatModels:     testChatModels(t),
-		EmbedEnabled:   true,
-		EmbedModel:     rag.EmbedModel{ID: llmwiretest.EmbedModel},
-		TikaURL:        "http://tika:9998",
-		UsersDir:       "/data/users",
-		TavilyAPIKey:   "tavily-key",
-		ImageGenAPIKey: "fal-key",
-		ImageGenModel:  "fal-ai/flux-2-pro",
-		ChatLogDir:     "logs/llm-responses",
+		AuthMode:     config.AuthModeDev,
+		ChatEnabled:  true,
+		ChatModels:   testChatModels(t),
+		EmbedEnabled: true,
+		EmbedModel:   rag.EmbedModel{ID: llmwiretest.EmbedModel},
+		TikaURL:      "http://tika:9998",
+		UsersDir:     "/data/users",
+		TavilyAPIKey: "tavily-key",
+		ChatLogDir:   "logs/llm-responses",
 	}, mcp.Config{Servers: map[string]mcp.ServerConfig{
-		"fetch": {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
-	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3})
+		"fetch":            {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
+		mcp.ImagegenServer: mcp.ImagegenServerConfig("http://imagegen:8040", "token"),
+	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3, ImageToolUp: true})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
 	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)
 	assertCapability(t, items, "embeddings", "enabled", "model="+llmwiretest.EmbedModel)
-	assertCapability(t, items, "MCP tools", "enabled", "servers=1 discovered_tools=3")
+	assertCapability(t, items, "MCP tools", "enabled", "servers=2 discovered_tools=3")
 	assertCapability(t, items, "Tavily web search", "enabled", "source=env")
-	assertCapability(t, items, "Image generation", "enabled", "model=fal-ai/flux-2-pro built-in")
+	assertCapability(t, items, "Image generation", "enabled", "loom-imagegen sidecar")
 	assertCapability(t, items, "LLM response logging", "enabled", "logs/llm-responses")
 }
 

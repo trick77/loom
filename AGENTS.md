@@ -5,15 +5,12 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 ## Working conventions
 - Docs, specs, code comments English only (maintainer talks German). TDD. YAML is `.yaml`.
 - One branch per change, never commit to `master`.
-- Commit subjects + PR titles: Go style `area: what` (`httpapi: …`, `chat: …`, `rag: …`, `store: …`, `sandbox: …`, `turn: …`, `ui: …`), gated by ship; release notes list them by area.
+- Commit subjects + PR titles: Go style `area: what` (`turn: …`, `ui: …`), gated by ship.
 - Fresh clone: `ship hooks` before the first push (check, conform and init install it too); without the pre-push hook a push skips the gate.
-- Gate: `make check` (`ship check`): conform, lint, tests, floors 75 (Go, UI), patch 75, `ship.yaml` steps.
-  Raise tests, never a floor. Sandbox escape test is CI only (`sandbox-escape.yaml`, docker); isolation
+- Gate: `make check` (`ship check`), floors 75 (Go, UI, patch). Raise tests, never a floor. Sandbox escape test is CI only (`sandbox-escape.yaml`, docker); isolation
   change → `make sandbox-escape-test` locally.
-- Release by hand: `gh workflow run Release -f bump=auto` (patch, or `Release: minor` + `Release-note: …`
-  lines).
-- Plumbing kit (`github.com/trick77/ship/kit`) provides → from kit, never hand-rolled. Lint config is
-  ship's, no local copy.
+- Release by hand: `gh workflow run Release -f bump=auto` (`Release: minor`/`Release-note: …` lines).
+- What kit (`github.com/trick77/ship/kit`) provides → from kit, never hand-rolled. Lint config is ship's.
 
 ## Locked technical choices (change only with explicit agreement)
 - **Pure-Go SQLite**: `ncruces/go-sqlite3` **v0.23.3** + `sqlite-vec-go-bindings/ncruces`
@@ -24,10 +21,11 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
   prompts, accounting. **Never name a model, vendor or model behaviour in loom**: intents
   (`ReasoningMinimal`/`ReasoningBalanced`, `MaxAnswerTokens`), profile fields; a missing fact goes into
   llmwire. Tests use `llmwiretest`. Extraction: Tika sidecar.
-- Tools are MCP-backed. `fetch__fetch` in-process (`webfetch`); Tavily, Obscura, Apple Music
-  (`docs/tunewire.md`), Strava (`docs/strava.md`) built in; extras in `BACKEND_MCP_SERVERS_FILE` (default `/conf/mcp.json`, overrides
-  built-ins by name, secrets only as `${VAR}`). Sources → `structuredContent.sources`, no tool-name case.
-  `users` = loom user id.
+- Tools are MCP-backed; extras in `BACKEND_MCP_SERVERS_FILE` (`/conf/mcp.json`, overrides built-ins by
+  name, secrets only `${VAR}`). Outside service behind a tool → own MCP sidecar (`loom-<name>`), contract in
+  `docs/<name>.md`, swappable by an `mcp.json` entry of that name. loom keeps policy via `toolSpec` flags,
+  never a tool-name check, vendor import or vendor arg. Results only via text, `structuredContent.sources`,
+  files, images (`artifacts: true`). `users` = loom user id.
 - `run_python` → `loom-sandbox` (`docs/sandbox.md`): a job never gets `/data`, a user id or a socket.
 
 ## Config
@@ -54,7 +52,7 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
   write lock for minutes (rongo: 8m33s), far past the busy timeout. Deletes only warn.
 
 ## Frontend
-- Direction A (Warm Editorial): themed classes from `ui/src/index.css` tokens (`bg-panel`, `text-ink`, …).
+- Direction A: themed classes from `ui/src/index.css` tokens (`bg-panel`, `text-ink`).
 - Build writes the Go embed `backend/web/dist`; unbuilt binary serves `web/placeholder.html` with 503.
   Never commit built assets.
 
@@ -68,5 +66,4 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 ## Security invariants
 - Every DB query scoped by `user_id`. Per-user file access confined to the user's root (`..`, absolute,
   symlink escape rejected). Admin endpoints role-gated.
-- Personal data → own token per user, never shared (`PerUser`; `_USERS` only grants). New integration → own
-  sidecar.
+- Personal data → own token per user, never shared (`PerUser`; `_USERS` only grants).

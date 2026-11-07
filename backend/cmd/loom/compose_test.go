@@ -20,15 +20,27 @@ func TestComposePassesImageGenerationEnv(t *testing.T) {
 			}
 			compose := string(data)
 
+			// loom gets the sidecar's address; the fal key and the models go to
+			// the sidecar only (loom names no image vendor or model).
 			for _, want := range []string{
-				`BACKEND_IMAGE_GEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-https://queue.fal.run}"`,
-				`BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"`,
-				`BACKEND_IMAGE_GEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-fal-ai/flux-2-pro}"`,
-				`BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-fal-ai/flux-2-max}"`,
-				`BACKEND_IMAGE_GEN_POLL_TIMEOUT: "${BACKEND_IMAGE_GEN_POLL_TIMEOUT:-1m}"`,
+				`BACKEND_IMAGE_GEN_URL: "${BACKEND_IMAGE_GEN_URL:-}"`,
+				// env_file hands loom every .env key: over it, loom sees only
+				// whether a fal key is set, never the key.
+				`BACKEND_IMAGE_GEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:+set}"`,
+				`IMAGEGEN_API_KEY: "${BACKEND_IMAGE_GEN_API_KEY:-}"`,
+				`IMAGEGEN_MODEL: "${BACKEND_IMAGE_GEN_MODEL:-}"`,
+				`IMAGEGEN_TYPOGRAPHY_MODEL: "${BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL:-}"`,
+				`IMAGEGEN_BASE_URL: "${BACKEND_IMAGE_GEN_BASE_URL:-}"`,
+				`IMAGEGEN_POLL_TIMEOUT: "${BACKEND_IMAGE_GEN_POLL_TIMEOUT:-}"`,
+				`stop_grace_period: 3m`,
 			} {
 				if !strings.Contains(compose, want) {
-					t.Fatalf("%s does not pass %s into the loom container", path, strings.Split(want, ":")[0])
+					t.Fatalf("%s lacks %s", path, want)
+				}
+			}
+			for _, notLoom := range []string{"      BACKEND_IMAGE_GEN_MODEL:", "      BACKEND_IMAGE_GEN_BASE_URL:", "      BACKEND_IMAGE_GEN_API_KEY: \"${BACKEND_IMAGE_GEN_API_KEY:-"} {
+				if strings.Contains(compose, notLoom) {
+					t.Fatalf("%s hands %s to loom; the sidecar reads it", path, strings.TrimSpace(notLoom))
 				}
 			}
 		})

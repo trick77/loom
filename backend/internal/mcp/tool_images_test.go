@@ -182,6 +182,14 @@ func TestToolImagesShareOneSizeLimit(t *testing.T) {
 	}
 }
 
+// A mistyped meta field spoils its own entry only.
+func TestStructuredImageMetaPerEntry(t *testing.T) {
+	meta := structuredImageMeta(json.RawMessage(`{"images":[{"filename":"a","width":"wide"},{"filename":"b","width":640}]}`))
+	if len(meta) != 2 || meta[1].Filename != "b" || meta[1].Width != 640 {
+		t.Fatalf("meta = %+v", meta)
+	}
+}
+
 func TestBaseName(t *testing.T) {
 	for in, want := range map[string]string{"cat": "cat", " /a/b/cat.png ": "cat.png", `C:\out\cat.png`: "cat.png", "..": "", "/": "", "": ""} {
 		if got := baseName(in); got != want {

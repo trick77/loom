@@ -14,16 +14,9 @@ import (
 
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/rag"
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
 )
-
-// Keep in sync with imagegen's direct-client fallback default.
-const defaultImageGenPollTimeout = 1 * time.Minute
-
-// maxImageGenPollTimeout keeps fal's polling inside the image tool call's
-// 3 min limit (mcp.ArtifactCallTimeout), with room to upload and store: a
-// longer poll would be cut off by the call, not reported as fal's timeout.
-const maxImageGenPollTimeout = 2*time.Minute + 30*time.Second
 
 // defaultChatMaxCompletionTokens covers reasoning plus answer: the cap counts
 // both, and a reasoning model can think past a few thousand tokens on its own,
@@ -115,16 +108,12 @@ type Config struct {
 	// ProjectSummaryTokenBudget bounds the cross-thread digest the
 	// read_project_threads tool returns when summarizing a project's threads.
 	ProjectSummaryTokenBudget int
-	ImageGenBaseURL           string
-	ImageGenAPIKey            string
-	ImageGenModel             string
-	// ImageGenTypographyModel is used instead of ImageGenModel for the first image
-	// of a thread when the request reads as typography/logo/text work (FLUX.2
-	// [max] renders legible text far better than the [pro] default). Empty
-	// (BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL=off) disables typography routing —
-	// every image stays on ImageGenModel.
-	ImageGenTypographyModel string
-	ImageGenPollTimeout     time.Duration
+	// ImageGenURL is the loom-imagegen sidecar (docs/imagegen.md); empty keeps
+	// image generation off unless an mcp.json server named imagegen serves it.
+	// ImageGenToken is its IMAGEGEN_TOKEN (sidecar.TokenProblem), required with
+	// the URL.
+	ImageGenURL   string
+	ImageGenToken string
 
 	TikaURL       string
 	GotenbergURL  string // Gotenberg (Chromium) sidecar for HTML→PDF rendering
@@ -289,10 +278,8 @@ func Load() (Config, error) {
 		UsersDir:                r.String("BACKEND_USERS_DIR", "/data/users"),
 		ChatMaxCompletionTokens: defaultChatMaxCompletionTokens,
 		ChatLogDir:              optional(r, "BACKEND_CHAT_LOG_DIR", "logs/llm-responses"),
-		ImageGenBaseURL:         r.String("BACKEND_IMAGE_GEN_BASE_URL", "https://queue.fal.run"),
-		ImageGenAPIKey:          r.String("BACKEND_IMAGE_GEN_API_KEY", ""),
-		ImageGenModel:           r.String("BACKEND_IMAGE_GEN_MODEL", "fal-ai/flux-2-pro"),
-		ImageGenTypographyModel: optional(r, "BACKEND_IMAGE_GEN_TYPOGRAPHY_MODEL", "fal-ai/flux-2-max"),
+		ImageGenURL:             r.String("BACKEND_IMAGE_GEN_URL", ""),
+		ImageGenToken:           r.String("BACKEND_IMAGE_GEN_TOKEN", ""),
 		TikaURL:                 r.String("BACKEND_TIKA_URL", "http://tika:9998"),
 		GotenbergURL:            r.String("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
 		TavilyURL:               r.String("BACKEND_TAVILY_URL", "https://mcp.tavily.com/mcp/"),
@@ -333,10 +320,6 @@ func Load() (Config, error) {
 	}
 	// An unparsable value is r's fault and comes back as the default, so each
 	// range check below fires only on a parsed value.
-	cfg.ImageGenPollTimeout = r.Duration("BACKEND_IMAGE_GEN_POLL_TIMEOUT", defaultImageGenPollTimeout)
-	if cfg.ImageGenPollTimeout <= 0 || cfg.ImageGenPollTimeout > maxImageGenPollTimeout {
-		r.Fail("BACKEND_IMAGE_GEN_POLL_TIMEOUT must be a duration greater than 0 and at most %s (the image tool call's limit)", maxImageGenPollTimeout)
-	}
 	cfg.ChatMaxCompletionTokens = r.Int("BACKEND_CHAT_MAX_COMPLETION_TOKENS", defaultChatMaxCompletionTokens)
 	if cfg.ChatMaxCompletionTokens <= 0 {
 		r.Fail("BACKEND_CHAT_MAX_COMPLETION_TOKENS must be an integer greater than 0")
@@ -373,6 +356,9 @@ func Load() (Config, error) {
 		r.Fail("BACKEND_OBSCURA_MCP_TOKEN must be at least %d characters when BACKEND_OBSCURA_MCP_URL is set: obscura refuses MCP without it (openssl rand -hex 32)", minObscuraMCPToken)
 	}
 	if msg := tunewireProblem(cfg); msg != "" {
+		r.Fail("%s", msg)
+	}
+	if msg := imagegenProblem(cfg); msg != "" {
 		r.Fail("%s", msg)
 	}
 	if msg := stravaProblem(cfg); msg != "" {
@@ -432,14 +418,6 @@ func Load() (Config, error) {
 		cfg.PublicURL = "http://" + cfg.Addr
 	default:
 		return Config{}, fmt.Errorf("BACKEND_AUTH_MODE must be one of: oidc, dev")
-	}
-	if cfg.ImageGenAPIKey != "" {
-		if !isAbsoluteHTTPURL(cfg.ImageGenBaseURL) {
-			return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_BASE_URL must be an absolute http(s) URL when BACKEND_IMAGE_GEN_API_KEY is set")
-		}
-		if cfg.ImageGenModel == "" {
-			return Config{}, fmt.Errorf("BACKEND_IMAGE_GEN_MODEL is required when BACKEND_IMAGE_GEN_API_KEY is set")
-		}
 	}
 	return cfg, nil
 }
@@ -531,6 +509,25 @@ func tunewireProblem(cfg Config) string {
 		return fmt.Sprintf("BACKEND_TUNEWIRE_TOKEN must be at least %d characters when BACKEND_TUNEWIRE_URL is set: the sidecar refuses to start without it (openssl rand -hex 32)", minTunewireToken)
 	case len(cfg.TunewireUsers) == 0:
 		return "BACKEND_TUNEWIRE_USERS must list the loom user id(s) who may connect their own Apple Music account when BACKEND_TUNEWIRE_URL is set"
+	}
+	return ""
+}
+
+// imagegenProblem says what is wrong with a configured imagegen sidecar: one
+// that refuses to start without its token would only cost the image tool,
+// silently.
+func imagegenProblem(cfg Config) string {
+	if strings.TrimSpace(cfg.ImageGenURL) == "" {
+		return ""
+	}
+	switch {
+	case !isAbsoluteHTTPURL(cfg.ImageGenURL):
+		return "BACKEND_IMAGE_GEN_URL must be an absolute http(s) URL"
+	}
+	// The sidecar's own rule: a token it refuses must fail here, not as a
+	// silently missing tool.
+	if msg := sidecar.TokenProblem("BACKEND_IMAGE_GEN_TOKEN", cfg.ImageGenToken); msg != "" {
+		return msg + " when BACKEND_IMAGE_GEN_URL is set: the sidecar refuses to start without a valid one"
 	}
 	return ""
 }
