@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -567,6 +568,81 @@ func TestBackendContainerfileBuildsAndEmbedsUI(t *testing.T) {
 	}
 }
 
+// A runaway in any one container must not take the host down: every
+// production service carries a memory ceiling, so a new sidecar cannot ship
+// without one.
+func TestProductionComposeLimitsEveryServiceMemory(t *testing.T) {
+	data, err := os.ReadFile("../../../compose.yaml")
+	if err != nil {
+		t.Fatalf("read compose.yaml: %v", err)
+	}
+	services, names := composeServices(t, string(data))
+	for _, want := range []string{"loom", "tika", "sandbox"} {
+		if !slices.Contains(names, want) {
+			t.Fatalf("service scan missed %s, found %v", want, names)
+		}
+	}
+	limit := regexp.MustCompile(`(?m)^    mem_limit: "?(\d+)([kKmMgG])?[bB]?"?\s*(#.*)?$`)
+	goLimit := regexp.MustCompile(`(?m)^      GOMEMLIMIT: "?(\d+)(KiB|MiB|GiB)"?\s*(#.*)?$`)
+	for _, name := range names {
+		service := composeService(t, services, name)
+		m := limit.FindStringSubmatch(service)
+		if m == nil {
+			t.Errorf("%s service has no mem_limit", name)
+			continue
+		}
+		// The Go GC's soft limit must sit below the hard one, or it never acts.
+		if g := goLimit.FindStringSubmatch(service); g != nil && byteSize(t, g[1], g[2]) >= byteSize(t, m[1], m[2]) {
+			t.Errorf("%s GOMEMLIMIT %s%s is not below mem_limit %s%s", name, g[1], g[2], m[1], m[2])
+		}
+	}
+	// The JVM sizes its heap from the limit: without this it takes only 25%.
+	if !strings.Contains(composeService(t, services, "tika"), `JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70"`) {
+		t.Error("tika must raise MaxRAMPercentage to use its mem_limit")
+	}
+}
+
+// composeServices returns the top-level services: section (newline-led, so
+// composeService finds its first entry) and the service keys in it.
+func composeServices(t *testing.T, compose string) (string, []string) {
+	t.Helper()
+	_, rest, ok := strings.Cut("\n"+compose, "\nservices:\n")
+	if !ok {
+		t.Fatal("compose.yaml has no services section")
+	}
+	key := regexp.MustCompile(`^  ([A-Za-z0-9_.-]+):(\s+&\S+)?\s*(#.*)?$`)
+	var names, lines []string
+	for _, line := range strings.Split(rest, "\n") {
+		// The next top-level key ends the section.
+		if line != "" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "#") {
+			break
+		}
+		lines = append(lines, line)
+		if m := key.FindStringSubmatch(line); m != nil {
+			names = append(names, m[1])
+		}
+	}
+	return "\n" + strings.Join(lines, "\n"), names
+}
+
+// byteSize turns a compose or Go size (number plus unit) into bytes.
+func byteSize(t *testing.T, n, unit string) int64 {
+	t.Helper()
+	v, err := strconv.ParseInt(n, 10, 64)
+	if err != nil {
+		t.Fatalf("size %q: %v", n, err)
+	}
+	switch strings.ToLower(unit) {
+	case "k", "kib":
+		return v << 10
+	case "m", "mib":
+		return v << 20
+	case "g", "gib":
+		return v << 30
+	}
+	return v
+}
+
 func composeService(t *testing.T, compose, name string) string {
 	t.Helper()
 	start := strings.Index(compose, "\n  "+name+":")
@@ -577,7 +653,8 @@ func composeService(t *testing.T, compose, name string) string {
 	lines := strings.Split(rest, "\n")
 	for i := 1; i < len(lines); i++ {
 		line := lines[i]
-		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "    ") && strings.HasSuffix(line, ":") {
+		// The next key at service depth, trailing comment or anchor or not.
+		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   ") && !strings.HasPrefix(line, "  #") && strings.Contains(line, ":") {
 			return strings.Join(lines[:i], "\n")
 		}
 	}
