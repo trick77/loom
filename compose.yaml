@@ -26,7 +26,7 @@ services:
       # comes in through env_file.
       BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-http://search:8030}"
       # The Tavily key is the sidecar's alone: over what env_file loads, loom
-      # sees only whether one is set (it says why web search is off).
+      # sees only whether one is set (it warns when the sidecar is not configured).
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"
       # BACKEND_OBSCURA_MCP_TOKEN comes in through env_file, like the other secrets.
       BACKEND_OBSCURA_MCP_URL: "http://obscura:8090/mcp"

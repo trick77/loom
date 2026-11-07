@@ -57,9 +57,13 @@ func (c tavily) search(ctx context.Context, req tavilyRequest) ([]tavilyResult, 
 		return nil, fmt.Errorf("search provider unreachable: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxTavilyBody))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxTavilyBody+1))
 	if err != nil {
 		return nil, fmt.Errorf("search provider reply unreadable: %w", err)
+	}
+	if len(raw) > maxTavilyBody {
+		// Cut JSON would only read as unreadable: say what happened.
+		return nil, fmt.Errorf("search provider reply over %d MiB; ask for fewer results or basic depth", maxTavilyBody>>20)
 	}
 	if resp.StatusCode != http.StatusOK {
 		// The status says what went wrong (401 key, 429 or 432 credits); the

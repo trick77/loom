@@ -22,7 +22,8 @@ BACKEND_SEARCH_TOKEN=          # openssl rand -hex 32; loom and the sidecar shar
 BACKEND_TAVILY_API_KEY=        # Tavily key; compose hands it to the sidecar, loom only sees whether it is set
 ```
 
-`BACKEND_SEARCH_URL` defaults to `http://search:8030` in `compose.yaml`. The sidecar reads `SEARCH_TOKEN`,
+`BACKEND_SEARCH_URL` defaults to `http://search:8030` in `compose.yaml`; outside compose, unset or `off` keeps web
+search off. The sidecar reads `SEARCH_TOKEN`,
 `SEARCH_TAVILY_API_KEY`, `SEARCH_ADDR` (`:8030`) and `SEARCH_TAVILY_URL` (`https://api.tavily.com`).
 
 ## Replacing it

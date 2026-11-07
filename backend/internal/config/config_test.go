@@ -308,6 +308,12 @@ func TestLoadSearchSidecarProblems(t *testing.T) {
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_SEARCH_URL must be an absolute") {
 		t.Fatalf("relative url: %v", err)
 	}
+	// off: no sidecar, no token needed.
+	t.Setenv("BACKEND_SEARCH_URL", "off")
+	t.Setenv("BACKEND_SEARCH_TOKEN", "")
+	if cfg, err := Load(); err != nil || cfg.SearchURL != "" {
+		t.Fatalf("off: %q, %v", cfg.SearchURL, err)
+	}
 }
 
 func TestLoad_oidcSettings(t *testing.T) {

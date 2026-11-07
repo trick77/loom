@@ -16,10 +16,10 @@ type startupRuntime struct {
 	// ImageToolUp: discovery found the image tool (a best-effort sidecar may
 	// be configured and still not answering).
 	ImageToolUp bool
-	// SearchToolUp: discovery found the web search tool. SearchKeySet: the
-	// install has a Tavily key for the sidecar (loom sees only that it is set).
-	SearchToolUp bool
-	SearchKeySet bool
+	// SearchToolUp: discovery found the web search tool. SearchServerUp: its
+	// server answered, with or without the tool.
+	SearchToolUp   bool
+	SearchServerUp bool
 }
 
 type startupCapability struct {
@@ -118,7 +118,8 @@ func mcpFileCapability(cfg config.Config) startupCapability {
 
 // searchCapability says who serves web search: the loom-search sidecar, or
 // an mcp.json server named search that replaces it, and whether it answered
-// discovery. The sidecar answers without a provider key but serves no tool.
+// discovery. The sidecar answers without a provider key but serves no tool,
+// which is not the same as not answering.
 func searchCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
 	server, ok := mcpConfig.Servers[mcp.SearchServer]
 	who := "mcp.json server " + mcp.SearchServer
@@ -130,8 +131,9 @@ func searchCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapab
 		return startupCapability{Name: "Web search", Status: "disabled", Detail: "set BACKEND_SEARCH_URL (loom-search sidecar)"}
 	case runtime.SearchToolUp:
 		return startupCapability{Name: "Web search", Status: "enabled", Detail: who}
-	case server.BuiltIn && !runtime.SearchKeySet:
-		return startupCapability{Name: "Web search", Status: "disabled", Detail: who + " has no provider key: set BACKEND_TAVILY_API_KEY"}
+	case runtime.SearchServerUp:
+		// The sidecar serves the tool only with a provider key.
+		return startupCapability{Name: "Web search", Status: "disabled", Detail: who + " serves no " + mcp.SearchTool + " tool (the sidecar's provider key unset?)"}
 	}
 	return startupCapability{Name: "Web search", Status: "configured", Detail: who + " not answering yet; offered once it does"}
 }

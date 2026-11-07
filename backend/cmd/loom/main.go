@@ -159,6 +159,8 @@ func runServer() error {
 		chatClient = llmClient
 	}
 	var toolService httpapi.ToolService
+	// mcpService is toolService's concrete service, for the startup summary.
+	var mcpService *mcp.Service
 	// mcpRefresh keeps the servers' tool lists current (see Service.RunRefresh).
 	mcpRefresh := func(context.Context) {}
 	toolCfg, err := toolConfigForConfig(cfg, fetchPDF)
@@ -182,15 +184,16 @@ func runServer() error {
 		if err != nil {
 			return err
 		}
-		toolService = discovered
+		toolService, mcpService = discovered, discovered
 		mcpRefresh = func(ctx context.Context) { discovered.RunRefresh(ctx, slog.Default()) }
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
-	discoveredTools, imageToolUp, searchToolUp := 0, false, false
+	discoveredTools, imageToolUp, searchToolUp, searchServerUp := 0, false, false, false
 	if toolService != nil {
 		discoveredTools = len(toolService.Tools())
 		imageToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool))
 		searchToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.SearchServer, mcp.SearchTool))
+		searchServerUp = mcpService.Answered(mcp.SearchServer)
 	}
 	var oidcService httpapi.OIDCService
 	var devAuthClaims auth.Claims
@@ -229,7 +232,7 @@ func runServer() error {
 		DiscoveredToolCount: discoveredTools,
 		ImageToolUp:         imageToolUp,
 		SearchToolUp:        searchToolUp,
-		SearchKeySet:        searchKeySet(os.Getenv),
+		SearchServerUp:      searchServerUp,
 	})
 
 	// Post-turn refreshes outlive their request; serve() drains this group before
@@ -555,18 +558,13 @@ func searchConfigured(cfg config.Config) bool {
 	return strings.TrimSpace(cfg.SearchURL) != ""
 }
 
-// searchKeySet reports whether the install has a Tavily key: compose hands
-// loom only "set" for it (the key is the sidecar's), so loom can say why
-// web search is off without ever holding the key.
-func searchKeySet(getenv func(string) string) bool {
-	return strings.TrimSpace(getenv("BACKEND_TAVILY_API_KEY")) != ""
-}
-
-// warnOrphanedSearchKey points an install upgraded past the move to the
-// sidecar at it: loom no longer calls Tavily with the key it still sets, and
-// web search would quietly be gone. It reports whether it warned.
+// warnOrphanedSearchKey points an install run without compose and upgraded
+// past the move to the sidecar at it: loom no longer calls Tavily with the
+// key it still sets, and web search would quietly be gone. (compose sets
+// BACKEND_SEARCH_URL and hands loom only "set" for the key.) It reports
+// whether it warned.
 func warnOrphanedSearchKey(cfg config.Config, getenv func(string) string) bool {
-	if searchConfigured(cfg) || !searchKeySet(getenv) {
+	if searchConfigured(cfg) || strings.TrimSpace(getenv("BACKEND_TAVILY_API_KEY")) == "" {
 		return false
 	}
 	slog.Warn("BACKEND_TAVILY_API_KEY is set, but web search now runs in the loom-search sidecar: set BACKEND_SEARCH_URL and BACKEND_SEARCH_TOKEN (docs/search.md)")

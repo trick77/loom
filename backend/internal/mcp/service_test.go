@@ -461,6 +461,29 @@ func TestNewServiceFromConfigsRequiredFailureIsFatal(t *testing.T) {
 	}
 }
 
+// A best-effort server that answered is told apart from one that did not,
+// whatever tools it lists.
+func TestServiceAnswered(t *testing.T) {
+	up := multiToolMockServer(t)
+	t.Cleanup(up.Close)
+	dead := httptest.NewServer(http.NotFoundHandler())
+	dead.Close()
+	service, err := NewServiceFromConfigs(context.Background(), Config{}, Config{Servers: map[string]ServerConfig{
+		"up":   {Transport: TransportStreamableHTTP, URL: up.URL, Tools: []string{"none"}},
+		"dead": {Transport: TransportStreamableHTTP, URL: dead.URL},
+	}}, up.Client(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !service.Answered("up") || service.Answered("dead") || service.Answered("unknown") {
+		t.Fatal("Answered mixes up servers")
+	}
+	var none *Service
+	if none.Answered("up") {
+		t.Fatal("nil service answered")
+	}
+}
+
 func TestServiceServerStatusProbesSearchSidecar(t *testing.T) {
 	mock := multiToolMockServer(t)
 	t.Cleanup(mock.Close)

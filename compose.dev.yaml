@@ -42,7 +42,7 @@ services:
       BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-http://localhost:8030}"
       BACKEND_SEARCH_TOKEN: dev-search-token-please-change-0123456789
       # The Tavily key is the sidecar's alone: over what env_file loads, loom
-      # sees only whether one is set (it says why web search is off).
+      # sees only whether one is set (it warns when the sidecar is not configured).
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
       # Same value as the obscura service's OBSCURA_MCP_TOKEN.

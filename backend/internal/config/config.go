@@ -286,7 +286,7 @@ func Load() (Config, error) {
 		ImageGenToken:           r.String("BACKEND_IMAGE_GEN_TOKEN", ""),
 		TikaURL:                 r.String("BACKEND_TIKA_URL", "http://tika:9998"),
 		GotenbergURL:            r.String("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
-		SearchURL:               r.String("BACKEND_SEARCH_URL", ""),
+		SearchURL:               optional(r, "BACKEND_SEARCH_URL", ""),
 		SearchToken:             r.String("BACKEND_SEARCH_TOKEN", ""),
 		ObscuraMCPURL:           r.String("BACKEND_OBSCURA_MCP_URL", ""),
 		ObscuraMCPToken:         r.String("BACKEND_OBSCURA_MCP_TOKEN", ""),
@@ -548,8 +548,10 @@ func searchProblem(cfg Config) string {
 	if !isAbsoluteHTTPURL(cfg.SearchURL) {
 		return "BACKEND_SEARCH_URL must be an absolute http(s) URL"
 	}
+	// compose sets the URL by default: an upgraded install meets this first,
+	// so it names the sidecar and the way out.
 	if msg := sidecar.TokenProblem("BACKEND_SEARCH_TOKEN", cfg.SearchToken); msg != "" {
-		return msg + " when BACKEND_SEARCH_URL is set: the sidecar refuses to start without a valid one"
+		return msg + ": web search runs in the loom-search sidecar, which shares it and refuses to start without it (docs/search.md)"
 	}
 	return ""
 }

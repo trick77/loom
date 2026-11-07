@@ -85,14 +85,14 @@ func TestStartupCapabilitiesImageServerFromFile(t *testing.T) {
 }
 
 // The search sidecar answers without a provider key but serves no tool: say
-// why, not "not answering". An mcp.json server named search needs no key.
+// so, not "not answering".
 func TestStartupCapabilitiesSearch(t *testing.T) {
 	sidecar := mcp.Config{Servers: map[string]mcp.ServerConfig{mcp.SearchServer: mcp.SearchServerConfig("http://search:8030", "t")}}
-	items := startupCapabilities(config.Config{}, sidecar, startupRuntime{SearchToolUp: true, SearchKeySet: true})
+	items := startupCapabilities(config.Config{}, sidecar, startupRuntime{SearchToolUp: true, SearchServerUp: true})
 	assertCapability(t, items, "Web search", "enabled", "loom-search sidecar")
+	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{SearchServerUp: true})
+	assertCapability(t, items, "Web search", "disabled", "serves no web tool")
 	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{})
-	assertCapability(t, items, "Web search", "disabled", "set BACKEND_TAVILY_API_KEY")
-	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{SearchKeySet: true})
 	assertCapability(t, items, "Web search", "configured", "not answering yet")
 
 	file := mcp.Config{Servers: map[string]mcp.ServerConfig{
@@ -126,7 +126,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 		"fetch":            {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
 		mcp.ImagegenServer: mcp.ImagegenServerConfig("http://imagegen:8040", "token"),
 		mcp.SearchServer:   mcp.SearchServerConfig("http://search:8030", "token"),
-	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3, ImageToolUp: true, SearchToolUp: true, SearchKeySet: true})
+	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3, ImageToolUp: true, SearchToolUp: true, SearchServerUp: true})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
 	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)

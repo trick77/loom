@@ -206,6 +206,17 @@ func TestUnreadableReply(t *testing.T) {
 	}
 }
 
+func TestOversizedReply(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"results":[{"content":"` + strings.Repeat("x", maxTavilyBody) + `"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	svc := loomService(t, config{tavilyKey: "k", tavilyURL: srv.URL})
+	if _, err := svc.CallToolResult(context.Background(), webTool, map[string]any{"query": "x"}); err == nil || !strings.Contains(err.Error(), "fewer results") {
+		t.Fatalf("err %v", err)
+	}
+}
+
 // Without a provider key the sidecar answers but serves no tool: web search
 // is off, loom boots as usual.
 func TestNoKeyNoTool(t *testing.T) {
