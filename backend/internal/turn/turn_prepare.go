@@ -47,9 +47,10 @@ type Run struct {
 	// inbox is where the turn picks up queued messages; nil when nothing can
 	// queue.
 	inbox Inbox
-	// timezone is the asking browser's IANA zone, for the schedule tools; ""
-	// when unknown.
+	// timezone is the user's IANA zone (RunConfig.Timezone); "" when unknown.
+	// loc is it resolved (zone).
 	timezone string
+	loc      *time.Location
 	// scheduled is set when the turn is a schedule's headless run.
 	scheduled *ScheduledRun
 	// scheduledTools are the tools a scheduled run was offered, by name; it
@@ -83,8 +84,9 @@ type RunConfig struct {
 	// Inbox, when set, lets the turn pick up the messages the user queues
 	// while it runs (see Inbox).
 	Inbox Inbox
-	// Timezone is the asking browser's IANA zone; the schedule tools draw
-	// slots in it.
+	// Timezone is the user's IANA zone: the asking browser's for a chat turn,
+	// the schedule's for a scheduled run. The prompt's date reads in it and the
+	// schedule tools draw slots in it; "" reads UTC.
 	Timezone string
 	// Scheduled makes the turn a schedule's headless run; nil for a chat turn.
 	Scheduled *ScheduledRun
@@ -148,6 +150,7 @@ func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
 		start:       c.Start,
 		inbox:       c.Inbox,
 		timezone:    c.Timezone,
+		loc:         zoneLocation(c.Timezone),
 		scheduled:   c.Scheduled,
 	}
 	t.plan = t.prepare(in)
@@ -312,7 +315,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// only the tool-free call that writes the answer gets them (finalContext).
 	finalContext := ""
 	if scheduled {
-		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.startedNote(), t.scheduled.sinceNote(), scheduledResearchNote, t.scheduled.Memory)
+		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.startedNote(), t.sinceNote(), scheduledResearchNote, t.scheduled.Memory)
 		finalContext, userContext = userContext, ""
 	}
 	history := buildLLMHistory(t.user, t.now(), promptBlocks{

@@ -60,6 +60,18 @@ func TestSystemPromptForUserIncludesCurrentDate(t *testing.T) {
 	}
 }
 
+// An incognito turn states the date in the user's zone too.
+func TestBuildIncognitoHistoryDateInUserZone(t *testing.T) {
+	history := BuildIncognitoHistory(auth.User{}, "Europe/Zurich", nil, chat.Message{Role: chat.RoleUser, Content: "Hi"})
+	if !strings.Contains(history[0].Content, "(Europe/Zurich).") {
+		t.Fatalf("incognito prompt = %q, want the date in the user's zone", history[0].Content)
+	}
+	history = BuildIncognitoHistory(auth.User{}, "", nil, chat.Message{Role: chat.RoleUser, Content: "Hi"})
+	if !strings.Contains(history[0].Content, "(UTC).") {
+		t.Fatalf("incognito prompt = %q, want UTC without a zone", history[0].Content)
+	}
+}
+
 // A pinned profile language is used by default but must be phrased so an explicit
 // in-message request wins, and it must never force English on an unset profile.
 func TestSystemPromptForUser_LanguageDirective(t *testing.T) {

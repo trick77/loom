@@ -13,8 +13,8 @@ import (
 	"github.com/trick77/ship/kit/httpx"
 )
 
-// timezoneHeader carries the browser's IANA timezone; schedule slots are
-// drawn in it.
+// timezoneHeader carries the browser's IANA timezone: schedule slots are
+// drawn in it and a turn's date reads in it.
 const timezoneHeader = "X-Loom-Timezone"
 
 // rememberTimezone keeps the timezone the user's browser last sent, so a

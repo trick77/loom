@@ -205,16 +205,18 @@ const incognitoSystemPrompt = "You are Loom in an incognito conversation. Defaul
 const incognitoDirectAnswerNudge = "Answer my previous message directly now, in prose, using only your own knowledge. Do not call, attempt, or describe any tool, search, browse, or file operation."
 
 func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
-	dateLine := "\nCurrent date: " + now.Format("Monday, 2006-01-02") + ". Treat it as today for time-relative requests; never assume an earlier year."
+	dateLine := "\nCurrent date: " + now.Format("Monday, 2006-01-02") + " (" + now.Location().String() + "). Treat it as today for time-relative requests; never assume an earlier year."
 	return incognitoSystemPrompt + languageDirective(user) + dateLine
 }
 
 // BuildIncognitoHistory assembles the model history for an incognito turn: the
 // tool-free incognito system prompt, the client-supplied prior turns, then the new
 // user message. It reads no persisted memory or context (mirroring the "not added to
-// memory" promise on the read side too).
-func BuildIncognitoHistory(user auth.User, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
-	return buildHistory(incognitoSystemPromptForUser(user, time.Now()), messages, newUserMessage)
+// memory" promise on the read side too). timezone is the user's IANA zone, as
+// RunConfig.Timezone.
+func BuildIncognitoHistory(user auth.User, timezone string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+	now := time.Now().In(zoneLocation(timezone))
+	return buildHistory(incognitoSystemPromptForUser(user, now), messages, newUserMessage)
 }
 
 // ShouldGenerateThreadTitle reports whether a thread still carries the title it

@@ -171,6 +171,19 @@ describe("streamMessage", () => {
   });
 });
 
+test("streamIncognitoMessage sends the browser's zone", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(new Response(sseBody(["event: done\ndata: {}\n\n"])));
+  vi.stubGlobal("fetch", fetchMock);
+
+  await streamIncognitoMessage("hi", [], handlers());
+
+  expect(fetchMock.mock.calls[0][1].headers["X-Loom-Timezone"]).toBe(
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+  );
+});
+
 test("streamIncognitoMessage shares the interruption rule", async () => {
   const body = sseBody(['event: assistant_delta\ndata: {"content":"p"}\n\n']);
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body)));

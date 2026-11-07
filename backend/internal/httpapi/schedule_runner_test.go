@@ -184,7 +184,7 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 		t.Fatalf("first run's prompt lacks the first-run note:\n%s", first)
 	}
 	zurich, _ := time.LoadLocation("Europe/Zurich")
-	anchor := "The last run started " + runs[2].StartedAt.In(zurich).Format("2006-01-02 15:04 MST") + "."
+	anchor := "Last run started: " + runs[2].StartedAt.In(zurich).Format("Monday, 2006-01-02 15:04 MST") + "."
 	if !strings.Contains(last, anchor) {
 		t.Fatalf("second run's prompt lacks %q:\n%s", anchor, last)
 	}

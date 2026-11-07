@@ -390,6 +390,11 @@ describe("queueMessage", () => {
         }),
       }),
     );
+    // The turn it starts reads its date in the user's zone.
+    const headers = new Headers(fetchMock.mock.calls[0][1].headers);
+    expect(headers.get("X-Loom-Timezone")).toBe(
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
   });
 
   test("reports a deleted queued message, and false when it is gone", async () => {

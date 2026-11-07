@@ -26,14 +26,15 @@ type ScheduledRun struct {
 	// Memory is the schedule's research memory (sources, searches, last run)
 	// for every call's system prompt.
 	Memory string
-	// Since is when the last run that answered started, in the schedule's
-	// timezone; zero before any. It anchors "since the last run" for a task
+	// Since is when the last run that answered started (read in
+	// RunConfig.Timezone); zero before any. It anchors "since the last run" for a task
 	// naming no time span, outside the memory: that block is facts, not
 	// instructions.
 	Since time.Time
 	// Observe receives each web tool call's outcome; nil drops them.
 	Observe func(ToolObservation)
-	// Now is the clock the deadline is read against; nil is time.Now.
+	// Now is the clock the deadline is read against, and the turn's time when
+	// RunConfig.Start is zero; nil is time.Now.
 	Now func() time.Time
 }
 
@@ -98,30 +99,6 @@ func (t *Run) scheduledNow() time.Time {
 	return time.Now()
 }
 
-// now is the turn's time in its user's zone: the browser's for a chat turn,
-// the schedule's for a run. An empty or unknown zone reads UTC, never the
-// server's local time.
-func (t *Run) now() time.Time {
-	return t.scheduledNow().In(t.location())
-}
-
-func (t *Run) location() *time.Location {
-	if loc, err := time.LoadLocation(t.timezone); err == nil && loc != time.Local {
-		return loc
-	}
-	return time.UTC
-}
-
-// startedNote is when the run fired, in the schedule's zone: the date line
-// says which day it is, this the time of day.
-func (t *Run) startedNote() string {
-	start := t.start
-	if start.IsZero() {
-		start = t.scheduledNow()
-	}
-	return "Run started: " + start.In(t.location()).Format("Monday, 2006-01-02 15:04 MST") + "."
-}
-
 // clampScheduledCall shrinks what a scheduled run's web call returns: a
 // shorter fetch, fewer and shallower search results. The model picks these
 // sizes itself and picks large ones.
@@ -176,12 +153,13 @@ func (t *Run) capScheduledOutput(output string) string {
 // which parts still apply.
 const scheduledRunPrompt = "You are running a scheduled task on your own: nobody is waiting in the chat and nobody can answer a question before the next run. Research with the tools this task needs, then answer with what the task asks for within the time span it names or, when it names none, since the last run started, naming each item with its source. You never see earlier runs' answers, so never call an item new or new since the last run: give the date its source shows instead. When there is nothing to report, say so in one sentence. Never ask the user anything. These rules of the task come before any standing instruction or tool guidance written for a live chat; follow those only where they fit an unattended run, such as the answer's language or tone."
 
-// sinceNote is the run's anchor for "since the last run".
-func (s *ScheduledRun) sinceNote() string {
-	if s.Since.IsZero() {
+// sinceNote is the run's anchor for "since the last run", read in the same
+// zone and layout as startedNote so the two compare at a glance.
+func (t *Run) sinceNote() string {
+	if t.scheduled.Since.IsZero() {
 		return "This is the schedule's first run."
 	}
-	return "The last run started " + s.Since.Format("2006-01-02 15:04 MST") + "."
+	return "Last run started: " + t.scheduled.Since.In(t.zone()).Format(promptTimeLayout) + "."
 }
 
 // scheduledResearchNote tells the rounds that offer tools not to write the
