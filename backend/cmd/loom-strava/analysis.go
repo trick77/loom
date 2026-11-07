@@ -162,6 +162,12 @@ func storedFrom(m rideMetrics, start time.Time) storedMetrics {
 	put("hr_20m_w", m.HR20mW)
 	put("ef", m.EF)
 	put("decoupling", m.Decoupling)
+	// Always stored, 0 too: an absent key then means "stored before it",
+	// which the baseline leaves empty instead of bumping entryRev (that
+	// would make hr_zones read every activity's streams again).
+	if m.Samples > 0 {
+		put("not_recorded_s", float64(m.UnrecordedS))
+	}
 	return sm
 }
 
@@ -1205,7 +1211,8 @@ func analysisFiles(d detailedActivity, s series, whole rideMetrics, cl []climb, 
 			t.row(strconv.FormatInt(x.ID, 10), x.localStart().Format("2006-01-02"), x.Name, x.SportType, boolCell(i == 0), boolCell(e.sameRoute),
 				cell(x.Distance/1000, 2), intCell(x.MovingTime), cell(x.AverageSpeed*3.6, 1), cell(x.TotalElevationGain, 0),
 				cell(e.val("np", a.FTP), 0), cell(e.val("tss", a.FTP), 0), cell(e.val("ef", a.FTP), 2), cell(e.val("decoupling", a.FTP), 1),
-				cell(e.val("mm_1200", a.FTP), 0), cell(e.val("avg_hr", a.FTP), 0))
+				cell(e.val("mm_1200", a.FTP), 0), cell(e.val("avg_hr", a.FTP), 0),
+				intCell(x.ElapsedTime), cell(e.val("not_recorded_s", a.FTP), 0))
 		}
 		files = append(files, t.file(fmt.Sprintf("strava_%d_baseline.csv", d.ID)))
 		if f, ok := sameRouteCSV(d.ID, c); ok {

@@ -18,9 +18,9 @@ const (
 	hdrStreams    = "elapsed_s,distance_km,lat,lng,altitude_m,speed_kmh,hr,cadence,watts,grade_pct,temp_c,moving,power_zone,hr_zone"
 	hdrClimbs     = "n,from_km,to_km,len_km,gain_m,grade_pct,secs,vam,avg_w,wkg,avg_hr"
 	hdrPowerCurve = "duration_s,this_w,window_best_w,window_median_w"
-	hdrBaseline   = "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr"
+	hdrBaseline   = "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_s,not_recorded_s"
 	hdrWeeks      = "week_start,iso_week,sport_type,count,distance_km,moving_s,gain_m,tss"
-	hdrActivities = "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score"
+	hdrActivities = "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score,elapsed_s"
 	// hdrSameRoutePrefix is followed by one gap_s_<YYYY-MM-DD> column per
 	// earlier ride.
 	hdrSameRoutePrefix = "distance_km"
@@ -229,14 +229,35 @@ func (w *weekTable) file() mcpserver.File {
 	return t.file("strava_weeks.csv")
 }
 
-// fileNames is the one line naming the attached files.
+// fileNames is the line naming the attached files, then what their time
+// columns mean: a model read elapsed_s as a per-row duration, summed it per
+// zone and then took it for milliseconds.
 func fileNames(files []mcpserver.File) string {
 	if len(files) == 0 {
 		return ""
 	}
 	names := make([]string, 0, len(files))
+	var notes []string
+	streams, perActivity := false, false
 	for _, f := range files {
 		names = append(names, fmt.Sprintf("%s (%d rows)", f.Name, max(0, strings.Count(f.Text, "\n")-1)))
+		switch {
+		case strings.HasSuffix(f.Name, "_streams.csv"):
+			streams = true
+		case strings.HasSuffix(f.Name, "_baseline.csv"), f.Name == "strava_activities.csv":
+			perActivity = true
+		}
 	}
-	return "attached for run_python: " + strings.Join(names, ", ") + "\n"
+	if streams {
+		notes = append(notes, fmt.Sprintf("streams: one row per %d s of recording (coarser on a long one: see elapsed_s steps); elapsed_s is seconds since the start, "+
+			"a jump in it is a pause with no rows; moving is 0/1; time in a zone or moving = its rows × the step, never a sum of elapsed_s", streamStepS))
+	}
+	if perActivity {
+		notes = append(notes, "per activity: moving_s and elapsed_s are Strava's; not_recorded_s is the clock the recording skipped (pause, auto-pause, dropout), empty when not read")
+	}
+	out := "attached for run_python: " + strings.Join(names, ", ") + "\n"
+	for _, n := range notes {
+		out += "  " + n + "\n"
+	}
+	return out
 }

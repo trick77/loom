@@ -104,9 +104,9 @@ func TestAnalysis_comparison(t *testing.T) {
 	if hdrStreams != "elapsed_s,distance_km,lat,lng,altitude_m,speed_kmh,hr,cadence,watts,grade_pct,temp_c,moving,power_zone,hr_zone" ||
 		hdrClimbs != "n,from_km,to_km,len_km,gain_m,grade_pct,secs,vam,avg_w,wkg,avg_hr" ||
 		hdrPowerCurve != "duration_s,this_w,window_best_w,window_median_w" ||
-		hdrBaseline != "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr" ||
+		hdrBaseline != "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_s,not_recorded_s" ||
 		hdrWeeks != "week_start,iso_week,sport_type,count,distance_km,moving_s,gain_m,tss" ||
-		hdrActivities != "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score" {
+		hdrActivities != "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score,elapsed_s" {
 		t.Error("a CSV header drifted from the chart module's contract")
 	}
 	base := strings.Split(strings.TrimSpace(r.file("strava_1001_baseline.csv")), "\n")
@@ -432,8 +432,9 @@ func TestListActivities(t *testing.T) {
 	if !strings.Contains(r.Text, "attached for run_python: strava_activities.csv (30 rows), strava_weeks.csv") {
 		t.Errorf("files line:\n%s", r.Text)
 	}
-	if first, _, _ := strings.Cut(r.file("strava_activities.csv"), "\n"); first != hdrActivities {
-		t.Errorf("activities header %q", first)
+	acts := strings.Split(strings.TrimSpace(r.file("strava_activities.csv")), "\n")
+	if acts[0] != hdrActivities || !strings.HasSuffix(acts[1], ",1600") {
+		t.Errorf("activities header %q, first row %q: want elapsed_s 1600 last", acts[0], acts[1])
 	}
 
 	// A filter reads on to the end (the second page): two calls in all.
@@ -574,6 +575,18 @@ func TestAnalysis_paused(t *testing.T) {
 	r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`)
 	if r.IsError || !strings.Contains(r.Text, "not recorded 5:00 (gaps over 10 s: watch paused, auto-pause or a dropout; not in stopped)") {
 		t.Errorf("pause not reported:\n%s", r.Text)
+	}
+	// The files carry it too, and say what their time columns mean: a model
+	// summed elapsed_s per zone, then took it for milliseconds.
+	base := strings.Split(strings.TrimSpace(r.file("strava_1001_baseline.csv")), "\n")
+	if len(base) < 2 || !strings.HasSuffix(base[1], ",1600,300") {
+		t.Errorf("baseline row lacks elapsed_s 1600, not_recorded_s 300: %v", base)
+	}
+	for _, want := range []string{"elapsed_s is seconds since the start, a jump in it is a pause with no rows", "never a sum of elapsed_s",
+		"not_recorded_s is the clock the recording skipped"} {
+		if !strings.Contains(r.Text, want) {
+			t.Errorf("attach line lacks %q:\n%s", want, r.Text)
+		}
 	}
 	// A section across the pause gives its clock time too.
 	r = callTool(t, h, userA, "activity_analysis", `{"id":1001,"from_km":1,"to_km":9}`)
