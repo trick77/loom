@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Start the backend (with built-in Tavily web search) for UI development,
+# Start the backend (with its sidecars) for UI development,
 # WITHOUT building the embedded frontend. Run the UI separately with Vite/HMR:
 #
 #   ./scripts/dev-backend.sh                 # backend on http://localhost:8080

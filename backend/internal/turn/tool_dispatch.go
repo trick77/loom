@@ -52,7 +52,6 @@ func (s *Engine) runToolCallWith(ctx context.Context, call llm.ToolCall, extra m
 	if s.mcp == nil {
 		return toolRun{arguments: arguments, err: fmt.Errorf("unknown tool %q", call.Function.Name)}
 	}
-	maps.Copy(arguments, s.toolPolicy(call.Function.Name).fixedArgs)
 	callCtx, cancel := context.WithTimeout(ctx, s.toolCallDuration(call.Function.Name))
 	defer cancel()
 	sent := arguments
@@ -549,7 +548,7 @@ func parseToolArguments(raw string) (map[string]any, error) {
 	if args == nil {
 		// A literal `null` (or a JSON null the provider emits for absent args)
 		// unmarshals to a nil map with no error; return an empty map so callers can
-		// safely read and write entries (e.g. injecting include_favicon).
+		// safely read and write entries (e.g. a scheduled run's clamp).
 		return map[string]any{}, nil
 	}
 	return args, nil

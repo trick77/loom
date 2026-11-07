@@ -438,6 +438,22 @@ func (s *Service) HasTool(name string) bool {
 	return ok
 }
 
+// Answered reports whether the server answered discovery (or a refresh since),
+// tools or not: a server up with no tools is not one that is down.
+func (s *Service) Answered(server string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, srv := range s.servers {
+		if srv.name == server {
+			return srv.client != nil
+		}
+	}
+	return false
+}
+
 // ToolTitle returns the server's human-readable name for an exposed tool, or
 // "" when the server gave none (the UI then describes the call itself).
 func (s *Service) ToolTitle(name string) string {

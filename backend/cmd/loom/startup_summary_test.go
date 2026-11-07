@@ -60,7 +60,7 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 	assertCapability(t, items, "chat", "disabled", "BACKEND_CHAT_MODEL")
 	assertCapability(t, items, "embeddings", "disabled", "BACKEND_EMBED_MODEL")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
-	assertCapability(t, items, "Tavily web search", "disabled", "BACKEND_TAVILY_API_KEY")
+	assertCapability(t, items, "Web search", "disabled", "BACKEND_SEARCH_URL")
 	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_URL")
 	assertCapability(t, items, "document generation", "enabled", "tools=5")
 	assertCapability(t, items, "artifacts", "enabled", "users_dir=/data/users")
@@ -84,6 +84,26 @@ func TestStartupCapabilitiesImageServerFromFile(t *testing.T) {
 	assertCapability(t, items, "Image generation", "disabled", `lacks "artifacts": true`)
 }
 
+// The search sidecar answers without a provider key but serves no tool: say
+// so, not "not answering".
+func TestStartupCapabilitiesSearch(t *testing.T) {
+	sidecar := mcp.Config{Servers: map[string]mcp.ServerConfig{mcp.SearchServer: mcp.SearchServerConfig("http://search:8030", "t")}}
+	items := startupCapabilities(config.Config{}, sidecar, startupRuntime{SearchToolUp: true, SearchServerUp: true})
+	assertCapability(t, items, "Web search", "enabled", "loom-search sidecar")
+	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{SearchServerUp: true})
+	assertCapability(t, items, "Web search", "disabled", "serves no web tool")
+	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{})
+	assertCapability(t, items, "Web search", "configured", "not answering yet")
+
+	file := mcp.Config{Servers: map[string]mcp.ServerConfig{
+		mcp.SearchServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://my-search:8080/mcp"},
+	}}
+	items = startupCapabilities(config.Config{}, file, startupRuntime{SearchToolUp: true})
+	assertCapability(t, items, "Web search", "enabled", "mcp.json server search")
+	items = startupCapabilities(config.Config{}, file, startupRuntime{})
+	assertCapability(t, items, "Web search", "configured", "not answering yet")
+}
+
 func TestStartupCapabilitiesSandboxConfigured(t *testing.T) {
 	items := startupCapabilities(config.Config{SandboxURL: "http://sandbox:8070", SandboxTimeout: time.Minute}, mcp.Config{}, startupRuntime{})
 	assertCapability(t, items, "Python sandbox", "configured", "url=http://sandbox:8070 timeout=1m0s")
@@ -101,18 +121,18 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 		EmbedModel:   rag.EmbedModel{ID: llmwiretest.EmbedModel},
 		TikaURL:      "http://tika:9998",
 		UsersDir:     "/data/users",
-		TavilyAPIKey: "tavily-key",
 		ChatLogDir:   "logs/llm-responses",
 	}, mcp.Config{Servers: map[string]mcp.ServerConfig{
 		"fetch":            {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
 		mcp.ImagegenServer: mcp.ImagegenServerConfig("http://imagegen:8040", "token"),
-	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3, ImageToolUp: true})
+		mcp.SearchServer:   mcp.SearchServerConfig("http://search:8030", "token"),
+	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3, ImageToolUp: true, SearchToolUp: true, SearchServerUp: true})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
 	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)
 	assertCapability(t, items, "embeddings", "enabled", "model="+llmwiretest.EmbedModel)
-	assertCapability(t, items, "MCP tools", "enabled", "servers=2 discovered_tools=3")
-	assertCapability(t, items, "Tavily web search", "enabled", "source=env")
+	assertCapability(t, items, "MCP tools", "enabled", "servers=3 discovered_tools=3")
+	assertCapability(t, items, "Web search", "enabled", "loom-search sidecar")
 	assertCapability(t, items, "Image generation", "enabled", "loom-imagegen sidecar")
 	assertCapability(t, items, "LLM response logging", "enabled", "logs/llm-responses")
 }

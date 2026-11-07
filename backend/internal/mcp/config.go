@@ -3,7 +3,6 @@ package mcp
 
 import (
 	"context"
-	"net/url"
 	"strings"
 
 	"github.com/trick77/loom/internal/classifier"
@@ -17,15 +16,6 @@ const (
 	// TransportInProcess routes a server to an in-process Client implemented in
 	// Go, with no network or subprocess. Used by the built-in fetch tool.
 	TransportInProcess = "in-process"
-	// defaultTavilyURL is the hosted Tavily MCP endpoint used by the built-in
-	// Tavily web-search adapter when BACKEND_TAVILY_URL is unset.
-	defaultTavilyURL = "https://mcp.tavily.com/mcp/"
-	// TavilySearchToolName is the server-side name of Tavily's web search tool.
-	// It is the only tool the built-in adapter exposes; Tavily's other tools
-	// (extract/map/crawl) are filtered out via the ServerConfig.Tools allowlist.
-	// Exported so call sites can derive the exposed tool name via ExposedToolName
-	// instead of duplicating the literal.
-	TavilySearchToolName = "tavily_search"
 )
 
 // Config is the runtime MCP server configuration built from first-class app settings.
@@ -138,36 +128,6 @@ func SplitExposedToolName(name string) (string, string, bool) {
 		return "", "", false
 	}
 	return server, tool, true
-}
-
-// TavilyServerConfig builds the synthetic MCP server config for Loom's
-// built-in Tavily web search. Auth uses Tavily's documented query parameter
-// (?tavilyApiKey=...), so the key lives in the URL and must be scrubbed from any
-// error before it is logged (see scrubURLError in client.go). The Tools
-// allowlist restricts the exposed surface to the search tool only.
-func TavilyServerConfig(baseURL, apiKey string) ServerConfig {
-	if strings.TrimSpace(baseURL) == "" {
-		baseURL = defaultTavilyURL
-	}
-	cfg := ServerConfig{
-		Transport: TransportStreamableHTTP,
-		Tools:     []string{TavilySearchToolName},
-	}
-	if u, err := url.Parse(baseURL); err == nil {
-		q := u.Query()
-		q.Set("tavilyApiKey", apiKey)
-		u.RawQuery = q.Encode()
-		cfg.URL = u.String()
-		return cfg
-	}
-	// A malformed base URL still carries the key so the failure surfaces as an
-	// HTTP error rather than silently dropping auth.
-	sep := "?"
-	if strings.Contains(baseURL, "?") {
-		sep = "&"
-	}
-	cfg.URL = baseURL + sep + "tavilyApiKey=" + url.QueryEscape(apiKey)
-	return cfg
 }
 
 // FetchServerConfig builds the config for the built-in fetch tool. Fetch runs

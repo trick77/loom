@@ -291,7 +291,8 @@ func TestStartToolRuns(t *testing.T) {
 	fetch := func(url string) llm.ToolCall {
 		return llm.ToolCall{Function: llm.ToolCallFunction{Name: fetchToolName, Arguments: fmt.Sprintf(`{"url":%q}`, url)}}
 	}
-	search := llm.ToolCall{Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}
+	// A tool loom does not know: stateful as far as loom can tell.
+	search := llm.ToolCall{Function: llm.ToolCallFunction{Name: "other__lookup", Arguments: `{}`}}
 
 	t.Run("a lone eligible call stays on the sequential path", func(t *testing.T) {
 		srv := &Engine{mcp: fakeMCPService{Result: "ok"}}

@@ -82,25 +82,38 @@ func TestToolConfigForConfigWiresPDFExtractorIntoFetch(t *testing.T) {
 	}
 }
 
-func TestToolConfigForConfigAddsBuiltInTavily(t *testing.T) {
-	cfg := config.Config{
-		TavilyURL:    "https://mcp.tavily.com/mcp/",
-		TavilyAPIKey: "secret",
+// The search sidecar is a best-effort built-in: a dead one costs web search,
+// never boot.
+func TestToolConfigForConfigAddsSearchSidecar(t *testing.T) {
+	tc, err := toolConfigForConfig(config.Config{SearchURL: "http://search:8030", SearchToken: strings.Repeat("t", 32)}, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
+	sc, ok := tc.FileServers.Servers[mcp.SearchServer]
+	if !ok || !sc.BuiltIn || sc.URL != "http://search:8030/mcp" || sc.Headers["Authorization"] != "Bearer "+strings.Repeat("t", 32) {
+		t.Fatalf("search = %+v (present %v)", sc, ok)
+	}
+	if _, required := tc.Required.Servers[mcp.SearchServer]; required {
+		t.Fatal("search sidecar must not be required")
+	}
+	if tc.Required.Servers["fetch"].Transport != mcp.TransportInProcess {
+		t.Fatalf("fetch config = %#v, want in-process transport", tc.Required.Servers["fetch"])
+	}
+	if _, ok := mustToolConfig(t, config.Config{}).Servers[mcp.SearchServer]; ok {
+		t.Fatal("search registered without its URL")
+	}
+}
 
-	got := mustToolConfig(t, cfg)
-	if got.Servers["fetch"].Transport != mcp.TransportInProcess {
-		t.Fatalf("fetch config = %#v, want in-process transport", got.Servers["fetch"])
+// An upgraded install that still sets the Tavily key, but no sidecar, is told
+// where web search went.
+func TestWarnOrphanedSearchKey(t *testing.T) {
+	key := func(string) string { return "set" }
+	none := func(string) string { return "" }
+	if !warnOrphanedSearchKey(config.Config{}, key) {
+		t.Error("orphaned key not reported")
 	}
-	tavily := got.Servers["tavily"]
-	if tavily.Transport != mcp.TransportStreamableHTTP {
-		t.Fatalf("tavily transport = %q, want streamable-http", tavily.Transport)
-	}
-	if !strings.Contains(tavily.URL, "tavilyApiKey=secret") {
-		t.Fatalf("tavily URL = %q, want embedded tavilyApiKey", tavily.URL)
-	}
-	if len(tavily.Tools) != 1 || tavily.Tools[0] != "tavily_search" {
-		t.Fatalf("tavily tools = %#v, want [tavily_search]", tavily.Tools)
+	if warnOrphanedSearchKey(config.Config{SearchURL: "http://search:8030"}, key) || warnOrphanedSearchKey(config.Config{}, none) {
+		t.Error("warned without cause")
 	}
 }
 
@@ -125,22 +138,6 @@ func TestWarnOrphanedImageKey(t *testing.T) {
 	}
 	if warnOrphanedImageKey(config.Config{ImageGenURL: "http://imagegen:8040"}, key) || warnOrphanedImageKey(config.Config{}, none) {
 		t.Error("warned without cause")
-	}
-}
-
-func TestToolConfigForConfigLeavesTavilyDisabledWhenKeyIsEmpty(t *testing.T) {
-	got := mustToolConfig(t, config.Config{TavilyURL: "https://mcp.tavily.com/mcp/"})
-	if _, exists := got.Servers["tavily"]; exists {
-		t.Fatalf("tavily server exists when BACKEND_TAVILY_API_KEY is empty: %#v", got.Servers["tavily"])
-	}
-}
-
-func TestTavilyConfiguredDetectsEnv(t *testing.T) {
-	if tavilyConfigured(config.Config{}) {
-		t.Fatal("tavilyConfigured() = true without API key, want false")
-	}
-	if !tavilyConfigured(config.Config{TavilyAPIKey: "secret"}) {
-		t.Fatal("tavilyConfigured() = false with API key, want true")
 	}
 }
 

@@ -26,7 +26,7 @@ func TestTurnDefersDefaultToolCallsBeyondCap(t *testing.T) {
 	// Round 1 batches one search past the default per-round cap; round 2 concludes.
 	round1 := make([]llm.ToolCall, maxToolCallsPerRound+1)
 	for i := range round1 {
-		round1[i] = llm.ToolCall{ID: "call_search", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}
+		round1[i] = llm.ToolCall{ID: "call_search", Function: llm.ToolCallFunction{Name: "other__lookup", Arguments: `{}`}}
 	}
 	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
 		{ToolCalls: round1},
@@ -36,7 +36,8 @@ func TestTurnDefersDefaultToolCallsBeyondCap(t *testing.T) {
 	out := runStoredTurn(t, Config{
 		LLM: llmClient,
 		MCP: fakeMCPService{
-			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}},
+			// A tool loom does not know: the default cap, run one at a time.
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "other__lookup"}}},
 			CallFunc: func(_ context.Context, name string, _ map[string]any) (string, error) {
 				calls[name]++
 				return "search result", nil
@@ -48,8 +49,8 @@ func TestTurnDefersDefaultToolCallsBeyondCap(t *testing.T) {
 	if out.err != nil || strings.Contains(body, "too many tool calls") {
 		t.Fatalf("turn must not abort on tool-call overflow: err=%v\n%s", out.err, body)
 	}
-	if calls["search__web"] != maxToolCallsPerRound {
-		t.Fatalf("search__web executed %d times, want %d (one deferred)", calls["search__web"], maxToolCallsPerRound)
+	if calls["other__lookup"] != maxToolCallsPerRound {
+		t.Fatalf("other__lookup executed %d times, want %d (one deferred)", calls["other__lookup"], maxToolCallsPerRound)
 	}
 	if !strings.Contains(body, "Deferred:") {
 		t.Fatalf("SSE body missing deferred tool result:\n%s", body)

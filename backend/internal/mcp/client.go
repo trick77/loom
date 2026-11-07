@@ -341,7 +341,7 @@ func (c *remoteClient) Close() error { return nil }
 
 // callWithSession initializes the session if needed and issues the request. If
 // the server rejects it with an expired/invalid session, it re-initializes once
-// and retries — Streamable HTTP servers (e.g. Tavily) expire idle sessions, and
+// and retries — Streamable HTTP servers may expire idle sessions, and
 // the session established at startup discovery would otherwise stay stale.
 func (c *remoteClient) callWithSession(ctx context.Context, method string, params map[string]any, out any) error {
 	if err := c.initialize(ctx); err != nil {
@@ -578,7 +578,7 @@ func (cfg ServerConfig) toolAllowed(name string) bool {
 
 // scrubURLError redacts credentials from *url.Error values before they
 // propagate into logs, upstream error messages, or the /mcp status panel: the
-// query string (which may carry secrets such as Tavily's ?tavilyApiKey=) and any
+// query string (which may carry secrets such as an mcp.json URL's ?apiKey=) and any
 // userinfo (user:pass@host in a configured server URL).
 func scrubURLError(err error) error {
 	var urlErr *url.Error

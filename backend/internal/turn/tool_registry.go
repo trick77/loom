@@ -50,9 +50,6 @@ type toolSpec struct {
 	// What follows is particular to an MCP tool loom knows by name (the web
 	// tools, web_tools.go); nil or zero leaves the generic behaviour.
 
-	// fixedArgs are set on every call (a server's opt-in the model need not
-	// know about).
-	fixedArgs map[string]any
 	// relabel cites a result in the tool's own way; it gets the result's
 	// structuredContent.sources and decides (fetch uses them when sent, the
 	// browser keeps its navigate/snapshot pairing either way). nil: the
@@ -63,7 +60,7 @@ type toolSpec struct {
 	// scheduledClamp lowers the sizes a scheduled run's call asks for.
 	scheduledClamp func(args map[string]any)
 	// scheduledLimited counts the call against a scheduled run's paid-search
-	// limit (scheduledTavilyCalls).
+	// limit (scheduledSearchCalls).
 	scheduledLimited bool
 	// observe describes a finished call for a scheduled run's report.
 	observe func(arguments map[string]any, sources []mcp.Source) ToolObservation

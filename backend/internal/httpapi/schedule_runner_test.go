@@ -25,7 +25,7 @@ func fetchCall(id, url string) llm.ToolCall {
 
 func webTools() []llm.Tool {
 	var tools []llm.Tool
-	for _, name := range []string{"fetch__fetch", "tavily__tavily_search", "context7__docs"} {
+	for _, name := range []string{"fetch__fetch", "search__web", "context7__docs"} {
 		tools = append(tools, llm.Tool{Type: "function", Function: llm.ToolFunction{Name: name, Parameters: map[string]any{"type": "object"}}})
 	}
 	return tools
@@ -96,7 +96,7 @@ func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 		offered = append(offered, tool.Function.Name)
 	}
 	slices.Sort(offered)
-	if strings.Join(offered, ",") != "context7__docs,fetch__fetch,tavily__tavily_search" {
+	if strings.Join(offered, ",") != "context7__docs,fetch__fetch,search__web" {
 		t.Fatalf("offered tools = %v", offered)
 	}
 	if !strings.Contains(client.Histories[0][0].Content, "running a scheduled task") {
@@ -678,8 +678,8 @@ func TestScheduledRunBoundsItsTools(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
 	search := func(id string) llm.ToolCall {
-		return llm.ToolCall{ID: id, Type: "function", Function: llm.ToolCallFunction{Name: "tavily__tavily_search",
-			Arguments: `{"query":"films ` + id + `","max_results":10,"search_depth":"advanced","include_raw_content":true}`}}
+		return llm.ToolCall{ID: id, Type: "function", Function: llm.ToolCallFunction{Name: "search__web",
+			Arguments: `{"query":"films ` + id + `","max_results":10,"depth":"advanced"}`}}
 	}
 	var round1, round2 []llm.ToolCall
 	round1 = append(round1, llm.ToolCall{ID: "f1", Type: "function", Function: llm.ToolCallFunction{Name: "fetch__fetch",
@@ -704,12 +704,12 @@ func TestScheduledRunBoundsItsTools(t *testing.T) {
 	deps.LLM, deps.MCP = client, mcp
 	newServer(deps).runSchedule(ctx, newRunnerSchedule(t, f), timedRun)
 
-	if n := len(calls["tavily__tavily_search"]); n != 10 {
-		t.Fatalf("tavily calls = %d, want the run's limit of 10", n)
+	if n := len(calls["search__web"]); n != 10 {
+		t.Fatalf("search calls = %d, want the run's limit of 10", n)
 	}
-	for _, args := range calls["tavily__tavily_search"] {
-		if args["max_results"] != float64(5) || args["search_depth"] != "basic" || args["include_raw_content"] != nil {
-			t.Fatalf("search args = %v, want 5 basic results without raw content", args)
+	for _, args := range calls["search__web"] {
+		if args["max_results"] != float64(5) || args["depth"] != "basic" {
+			t.Fatalf("search args = %v, want 5 basic results", args)
 		}
 	}
 	for _, args := range calls["fetch__fetch"] {

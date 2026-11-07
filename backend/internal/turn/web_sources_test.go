@@ -54,72 +54,6 @@ func TestNormalizeURLDedupe(t *testing.T) {
 	}
 }
 
-func TestRelabelTavilyText(t *testing.T) {
-	// The shape the Tavily MCP server emits (formatResults).
-	raw := strings.Join([]string{
-		"Answer: TrueFoundry and Modal are ML platforms.",
-		"",
-		"Detailed Results:",
-		"",
-		"Title: TrueFoundry | ML Platform",
-		"URL: https://truefoundry.com",
-		"Content: TrueFoundry lets teams deploy models on Kubernetes.",
-		"",
-		"Title: Modal Docs",
-		"URL: https://modal.com/docs",
-		"Content: Modal runs Python serverlessly.",
-	}, "\n")
-
-	reg := newWebSourceRegistryAfter(0)
-	out := relabelTavilyResult(raw, reg)
-
-	if !strings.Contains(out, "[1] Title: TrueFoundry") {
-		t.Errorf("expected [1] marker on first result, got:\n%s", out)
-	}
-	if !strings.Contains(out, "[2] Title: Modal") {
-		t.Errorf("expected [2] marker on second result, got:\n%s", out)
-	}
-	if reg.len() != 2 {
-		t.Fatalf("expected 2 registered sources, got %d", reg.len())
-	}
-	if reg.all()[0].Label != "Truefoundry" || reg.all()[0].Index != 1 {
-		t.Errorf("source 1 = %+v, want Truefoundry/1", reg.all()[0])
-	}
-	if reg.all()[1].Label != "Modal" || reg.all()[1].URL != "https://modal.com/docs" {
-		t.Errorf("source 2 = %+v", reg.all()[1])
-	}
-}
-
-func TestRelabelTavilyJSONFallback(t *testing.T) {
-	raw := `{"results":[{"title":"TrueFoundry","url":"https://truefoundry.com"},{"title":"Modal","url":"https://modal.com"}]}`
-	reg := newWebSourceRegistryAfter(0)
-	out := relabelTavilyResult(raw, reg)
-	if reg.len() != 2 {
-		t.Fatalf("expected 2 sources from JSON, got %d", reg.len())
-	}
-	if !strings.Contains(out, "[1] TrueFoundry — https://truefoundry.com") {
-		t.Errorf("expected numbered list from JSON, got:\n%s", out)
-	}
-}
-
-func TestRelabelTavilyURLSweepFallback(t *testing.T) {
-	raw := "Some unstructured blob mentioning https://truefoundry.com and https://modal.com/docs here."
-	reg := newWebSourceRegistryAfter(0)
-	out := relabelTavilyResult(raw, reg)
-	if reg.len() != 2 {
-		t.Fatalf("expected 2 swept sources, got %d", reg.len())
-	}
-	if !strings.Contains(out, "Web sources (cite with [n]):") {
-		t.Errorf("expected source list, got:\n%s", out)
-	}
-	// The index must lead, not trail: capToolOutput trims this result to 32 KB
-	// *after* relabeling, so a trailing index is exactly what an oversized sweep
-	// loses — stranding every marker in the note.
-	if !strings.HasPrefix(out, "Web sources (cite with [n]):") {
-		t.Errorf("source index must be prepended so the output cap cannot cut it, got:\n%s", out)
-	}
-}
-
 // The web_sources SSE snapshot is re-sent after every tool round rather than only
 // when the source count grows, because a second tool can enrich an already-known
 // URL in place. This pins the reason: the citation payload changes while len() does
@@ -131,7 +65,7 @@ func TestWebSourceCitationsReflectBackfillWithoutLengthChange(t *testing.T) {
 	before := webSourceCitations(reg.all())
 	lenBefore := reg.len()
 
-	// Tavily later returns the same page with full detail.
+	// A search later returns the same page with full detail.
 	reg.addDetailed("https://truefoundry.com/blog", "Serving LLMs", "A guide.", "https://truefoundry.com/fav.ico")
 
 	if reg.len() != lenBefore {
@@ -205,32 +139,6 @@ func TestWebSourceCitations(t *testing.T) {
 	}
 }
 
-func TestRelabelTavilyTextCapturesSidebarFields(t *testing.T) {
-	raw := strings.Join([]string{
-		"Detailed Results:",
-		"",
-		"Title: TrueFoundry | ML Platform",
-		"URL: https://truefoundry.com",
-		"Content: TrueFoundry lets teams deploy models on Kubernetes.",
-		"Favicon: https://truefoundry.com/favicon.ico",
-	}, "\n")
-	reg := newWebSourceRegistryAfter(0)
-	relabelTavilyResult(raw, reg)
-	if reg.len() != 1 {
-		t.Fatalf("expected 1 source, got %d", reg.len())
-	}
-	src := reg.all()[0]
-	if src.Title != "TrueFoundry | ML Platform" {
-		t.Errorf("title = %q", src.Title)
-	}
-	if src.Snippet != "TrueFoundry lets teams deploy models on Kubernetes." {
-		t.Errorf("snippet = %q", src.Snippet)
-	}
-	if src.Favicon != "https://truefoundry.com/favicon.ico" {
-		t.Errorf("favicon = %q", src.Favicon)
-	}
-}
-
 func TestFetchSourceCapturesSnippet(t *testing.T) {
 	srv := &Engine{}
 	reg := newWebSourceRegistryAfter(0)
@@ -245,8 +153,8 @@ func TestFetchSourceCapturesSnippet(t *testing.T) {
 }
 
 func TestParseToolArgumentsNullIsWritableMap(t *testing.T) {
-	// A literal JSON null must yield a non-nil, writable map (Tavily's favicon
-	// injection writes into it), not a nil map that panics on assignment.
+	// A literal JSON null must yield a non-nil, writable map (a scheduled
+	// run's clamp writes into it), not a nil map that panics on assignment.
 	for _, raw := range []string{"null", "", "  "} {
 		args, err := parseToolArguments(raw)
 		if err != nil {
@@ -255,13 +163,13 @@ func TestParseToolArgumentsNullIsWritableMap(t *testing.T) {
 		if args == nil {
 			t.Fatalf("parseToolArguments(%q) returned nil map", raw)
 		}
-		args["include_favicon"] = true // must not panic
+		args["depth"] = "basic" // must not panic
 	}
 }
 
 func TestAddDetailedBackfillsEmptyFields(t *testing.T) {
 	reg := newWebSourceRegistryAfter(0)
-	// First seen with no detail (e.g. a bare fetch), then again with details (Tavily).
+	// First seen with no detail (e.g. a bare fetch), then again with details (a search).
 	reg.addDetailed("https://modal.com/docs", "", "", "")
 	reg.addDetailed("https://modal.com/docs#frag", "Modal Docs", "Run Python serverlessly", "https://modal.com/fav.ico")
 	if reg.len() != 1 {
