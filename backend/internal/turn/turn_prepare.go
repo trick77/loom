@@ -114,9 +114,12 @@ type PrepareInput struct {
 // turnPlan is the assembled prompt and the routing decisions the assistant
 // loop runs with.
 type turnPlan struct {
-	history          []llm.Message
-	imageRoute       imageRouting
-	gate             toolGate
+	history    []llm.Message
+	imageRoute imageRouting
+	gate       toolGate
+	// mcpTools is the turn's offeredMCPTools: the tool guidance and the
+	// loop's offer read this one list.
+	mcpTools         []llm.Tool
 	editSource       *editImageSource
 	knowledgeSources []Citation
 	// sourceCount is how many [n] markers the attached and knowledge documents
@@ -300,10 +303,11 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 
 	gate := newToolGate(category, turnCategory, t.userMessage.Content)
 	gate.sandbox = sandboxOn
+	mcpTools := t.e.offeredMCPTools(t.user, gate)
 	fileToolGuidance := ""
 	// A scheduled run has no file tools to guide, nor has a turn the gate or
 	// a sidecar that is down leaves without them.
-	if !scheduled && t.e.offersDocumentTools(t.user, gate) {
+	if !scheduled && t.e.offersDocumentTools(mcpTools) {
 		fileToolGuidance = fileToolGuardrailPrompt
 	}
 	if len(knowledgeSources) > 0 {
@@ -319,7 +323,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		finalContext, userContext = userContext, ""
 	}
 	history := buildLLMHistory(t.user, t.now(), promptBlocks{
-		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(t.user, gate)),
+		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(mcpTools)),
 		schedule:     scheduleBlock,
 		classifier:   classifier.Block(category),
 		user:         userContext,
@@ -373,6 +377,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		history:          history,
 		imageRoute:       imageRoute,
 		gate:             gate,
+		mcpTools:         mcpTools,
 		editSource:       editSource,
 		knowledgeSources: knowledgeSources,
 		sourceCount:      docIdx.count(),

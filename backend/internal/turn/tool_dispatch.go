@@ -335,10 +335,10 @@ func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName str
 // use. gate is a widen-only signal, so gating can only omit tools the turn is
 // unlikely to need — never one the model has already been told to use. Called
 // once per turn (not per round); the trimmed set is reused across all tool
-// rounds. It also returns the offered built-ins by name, the only way dispatch
-// runs a built-in (see executeBuiltInTool). A name both claim stays the
-// built-in's.
-func (s *Engine) offerTools(user auth.User, thread chat.Thread, gate toolGate) ([]llm.Tool, map[string]*toolSpec) {
+// rounds. mcpTools is the turn's offeredMCPTools, built once in Prepare. It
+// also returns the offered built-ins by name, the only way dispatch runs a
+// built-in (see executeBuiltInTool). A name both claim stays the built-in's.
+func (s *Engine) offerTools(thread chat.Thread, gate toolGate, mcpTools []llm.Tool) ([]llm.Tool, map[string]*toolSpec) {
 	tools := []llm.Tool(nil)
 	builtIns := map[string]*toolSpec{}
 	names := map[string]string{}
@@ -358,7 +358,7 @@ func (s *Engine) offerTools(user auth.User, thread chat.Thread, gate toolGate) (
 		builtIns[tool.Function.Name] = spec
 		tools = append(tools, tool)
 	}
-	for _, tool := range s.offeredMCPTools(user, gate) {
+	for _, tool := range mcpTools {
 		if owner, exists := names[tool.Function.Name]; exists {
 			slog.Warn("skipping duplicate MCP tool name", "tool", tool.Function.Name, "existing", owner)
 			continue
@@ -375,13 +375,17 @@ func (s *Engine) offerTools(user auth.User, thread chat.Thread, gate toolGate) (
 // -> "coding") is offered only when its category is active for this turn.
 // With no category signal at all (widenAll) every server is offered, so a
 // legacy empty-category thread never loses tools it had before gating. A
-// server limited to some accounts is left out for everyone else.
+// server limited to some accounts is left out for everyone else. A turn
+// builds it once (turnPlan.mcpTools): the prompt's tool guidance and the
+// offer read the same list.
 func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 	if s.mcp == nil {
 		return nil
 	}
-	candidates := s.mcp.Tools()
-	if !gate.widenAll() {
+	var candidates []llm.Tool
+	if gate.widenAll() {
+		candidates = s.mcp.Tools()
+	} else {
 		candidates = s.mcp.ToolsFor(gate.activeCategories())
 	}
 	out := make([]llm.Tool, 0, len(candidates))
@@ -411,10 +415,10 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 	return out
 }
 
-// offersDocumentTools reports whether the turn gets a document tool: the
-// file-tool guidance may name them only then.
-func (s *Engine) offersDocumentTools(user auth.User, gate toolGate) bool {
-	return slices.ContainsFunc(s.offeredMCPTools(user, gate), func(tool llm.Tool) bool {
+// offersDocumentTools reports whether the turn's MCP tools hold a document
+// tool: the file-tool guidance may name them only then.
+func (s *Engine) offersDocumentTools(mcpTools []llm.Tool) bool {
+	return slices.ContainsFunc(mcpTools, func(tool llm.Tool) bool {
 		return s.toolPolicy(tool.Function.Name).documentGenerator
 	})
 }
@@ -435,10 +439,10 @@ const mcpCitationOverride = "When one of these tools' results carries Source lin
 // the turn offers, so a server can say when its tools apply (peeq: which
 // channels to search unprompted). It travels with the tools like the other
 // tool guidance and is empty when no offered server gave instructions.
-func (s *Engine) mcpServerGuidance(user auth.User, gate toolGate) string {
+func (s *Engine) mcpServerGuidance(mcpTools []llm.Tool) string {
 	seen := map[string]bool{}
 	var blocks []string
-	for _, tool := range s.offeredMCPTools(user, gate) {
+	for _, tool := range mcpTools {
 		server, _, ok := mcp.SplitExposedToolName(tool.Function.Name)
 		if !ok || seen[server] {
 			continue

@@ -81,7 +81,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		defer func() { out = dropAnswerImages(out) }()
 	}
 	history := t.plan.history
-	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
+	tools, offered := t.e.offerTools(t.thread, t.plan.gate, t.plan.mcpTools)
 	tools, t.offered = t.allowTools(tools, offered)
 	t.offeredDocTools = map[string]bool{}
 	for _, tool := range tools {
