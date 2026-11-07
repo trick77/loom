@@ -51,11 +51,20 @@ func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	if call.Function.Name == tavilySearchExposedName {
 		arguments["include_favicon"] = true
 	}
-	callCtx, cancel := context.WithTimeout(ctx, maxToolCallDuration)
+	callCtx, cancel := context.WithTimeout(ctx, s.toolCallDuration(call.Function.Name))
 	defer cancel()
 	start := time.Now()
 	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, arguments)
 	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files, images: result.Images, droppedImages: result.DroppedImages, err: err, durationMS: time.Since(start).Milliseconds()}
+}
+
+// toolCallDuration bounds one MCP call: a server that returns artifacts
+// renders and sends them, which takes far longer than a text tool.
+func (s *Engine) toolCallDuration(name string) time.Duration {
+	if s.mcp != nil && s.mcp.MakesArtifacts(name) {
+		return mcp.ArtifactCallTimeout
+	}
+	return maxToolCallDuration
 }
 
 // finishToolCall turns a finished run into the tool result the model sees
@@ -73,6 +82,11 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 		// An image-only result: the note is the whole result, so a failed
 		// store reads as a failure (toolFailedPrefix), not a blank success.
 		return strings.TrimLeft(note, "\n"), created
+	}
+	// The result keeps its size cap, and the note (what exists for the user)
+	// is what survives: the text gives way.
+	if room := maxToolResultContentBytes - len(note); len(output) > room {
+		output = truncateBytesOnRuneBoundary(output, max(room, 0))
 	}
 	return output + note, created
 }

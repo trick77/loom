@@ -70,6 +70,37 @@ func TestTurnKeepsMCPToolImagesAsArtifacts(t *testing.T) {
 	}
 }
 
+// A server that returns artifacts gets the long call deadline.
+func TestToolCallDurationForArtifactServers(t *testing.T) {
+	e := &Engine{mcp: fakeMCPService{Artifacts: map[string]bool{"pics": true}}}
+	if got := e.toolCallDuration("pics__draw"); got != mcp.ArtifactCallTimeout {
+		t.Errorf("artifact tool: %v", got)
+	}
+	if got := e.toolCallDuration("web__search"); got != maxToolCallDuration {
+		t.Errorf("text tool: %v", got)
+	}
+}
+
+// The note survives a result at the size cap; the text gives way.
+func TestImageNoteSurvivesFullTextResult(t *testing.T) {
+	out, llmClient := imageToolTurn(t, Config{
+		MCP: fakeMCPService{
+			ToolList: []llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "pics__draw"}}},
+			Result:   strings.Repeat("x", maxToolResultContentBytes),
+			Images:   []mcp.Image{{Filename: "cat", MimeType: "image/png", Extension: "png", Data: pngImage(64)}},
+		},
+		Artifacts: fakeArtifactStore{},
+		UsersDir:  t.TempDir(),
+	})
+	if out.err != nil {
+		t.Fatalf("turn: %v", out.err)
+	}
+	toolMsg := llmClient.Histories[1][len(llmClient.Histories[1])-1].Content
+	if len(toolMsg) > maxToolResultContentBytes || !strings.HasSuffix(toolMsg, "created image artifact cat.png (64 bytes)") {
+		t.Errorf("tool result %d bytes, ends %q", len(toolMsg), toolMsg[max(0, len(toolMsg)-60):])
+	}
+}
+
 // Images mcp refused are named to the model, so it does not claim them.
 func TestTurnNotesRefusedToolImages(t *testing.T) {
 	out, llmClient := imageToolTurn(t, Config{

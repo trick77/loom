@@ -579,6 +579,43 @@ func TestStdioClientRecoversFromOversizedReply(t *testing.T) {
 	}
 }
 
+// A server that makes artifacts may answer with a large line; afterwards the
+// grown buffer is let go and the same process keeps answering.
+func TestStdioArtifactServerTakesLargeReply(t *testing.T) {
+	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
+		runMCPTestHelper(t)
+		return
+	}
+	c := NewStdioClient("local", ServerConfig{
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestStdioArtifactServerTakesLargeReply"},
+		Env:       map[string]string{"BACKEND_MCP_TEST_HELPER": "1"},
+		Artifacts: true,
+	})
+	defer c.Close()
+	got, err := c.CallTool(context.Background(), "echo", map[string]any{"text": "huge"})
+	if err != nil || len(got.Text) == 0 {
+		t.Fatalf("CallTool(huge) = %d bytes, %v", len(got.Text), err)
+	}
+	client := c.(*stdioClient)
+	client.mu.Lock()
+	cmd, buffered := client.cmd, client.scanner.Bytes()
+	client.mu.Unlock()
+	if len(buffered) != 0 {
+		t.Errorf("scanner still holds %d bytes after the large reply", len(buffered))
+	}
+	if got, err := c.CallTool(context.Background(), "echo", map[string]any{"text": "hi"}); err != nil || got.Text != "echo result" {
+		t.Fatalf("CallTool() after large reply = %q, %v", got.Text, err)
+	}
+	client.mu.Lock()
+	same := client.cmd == cmd
+	client.mu.Unlock()
+	if !same {
+		t.Error("the process was restarted after a reply within the cap")
+	}
+}
+
 // The per-server allowlist applied to HTTP servers only; a stdio server
 // exposed every tool it advertised.
 func TestStdioClientAllowlistFiltersTools(t *testing.T) {

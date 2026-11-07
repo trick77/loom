@@ -101,6 +101,9 @@ type ToolService interface {
 	// CallToolResult is CallTool plus the structured sources the result cited.
 	CallToolResult(context.Context, string, map[string]any) (mcp.CallResult, error)
 	HasTool(string) bool
+	// MakesArtifacts reports whether a tool's server may return artifacts,
+	// whose calls run far longer than a text tool's.
+	MakesArtifacts(string) bool
 	// ToolAllowed reports whether a loom account may use a tool: a server can
 	// be limited to some accounts (see mcp.Principal).
 	ToolAllowed(user mcp.Principal, name string) bool

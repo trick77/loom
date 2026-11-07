@@ -5,8 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // pngBytes is a PNG signature plus padding: enough for content sniffing.
@@ -75,6 +78,52 @@ func TestToolImagesLargeResponseOnlyForArtifactServers(t *testing.T) {
 	}
 	if len(got.Images) != 1 || len(got.Images[0].Data) != 6<<20 {
 		t.Fatalf("images = %d", len(got.Images))
+	}
+}
+
+// An SSE reply cut off by the cap names the cap, like a JSON one.
+func TestSSEReplyOverCapNamesIt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"x\":\""))
+		_, _ = w.Write(bytes.Repeat([]byte("a"), 5<<20))
+		_, _ = w.Write([]byte("\"}}\n\n"))
+	}))
+	t.Cleanup(server.Close)
+	resp, err := server.Client().Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if _, err := decodeRPCResponse(resp, 1, maxRPCResponseBytes); err == nil || !strings.Contains(err.Error(), "larger than 4 MiB") {
+		t.Fatalf("err = %v, want the 4 MiB cap named", err)
+	}
+}
+
+// A JSON reply followed by stray bytes still decodes, as before the cap.
+func TestJSONReplyToleratesTrailingBytes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{}} trailing`))
+	}))
+	t.Cleanup(server.Close)
+	resp, err := server.Client().Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if got, err := decodeRPCResponse(resp, 1, maxRPCResponseBytes); err != nil || got.ID != 1 {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+}
+
+// A server that makes artifacts gets a client timeout long enough to render
+// and send an image; others keep the shared client's.
+func TestArtifactServerGetsLongerTimeout(t *testing.T) {
+	shared := &http.Client{Timeout: 15 * time.Second}
+	art := NewRemoteClient("img", ServerConfig{URL: "http://x", Artifacts: true}, shared).(*remoteClient)
+	plain := NewRemoteClient("web", ServerConfig{URL: "http://x"}, shared).(*remoteClient)
+	if art.httpClient.Timeout != ArtifactCallTimeout || plain.httpClient != shared || shared.Timeout != 15*time.Second {
+		t.Fatalf("artifact timeout %v, plain shares client %v, shared %v", art.httpClient.Timeout, plain.httpClient == shared, shared.Timeout)
 	}
 }
 

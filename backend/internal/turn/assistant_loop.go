@@ -300,11 +300,6 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 						artifacts = append(artifacts, response)
 						b.addArtifact(response)
 					}
-					// An MCP tool's artifacts are images: they count against
-					// the one image a turn makes, like generate_image's.
-					if len(created) > 0 {
-						imageGenerated = true
-					}
 				}
 			}
 			if err := t.stream.SendJSON("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {
