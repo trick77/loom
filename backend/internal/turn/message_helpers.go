@@ -3,7 +3,10 @@ package turn
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"net/url"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -188,56 +191,101 @@ func buildHistory(systemContent string, messages []chat.Message, newUserMessage 
 			if strings.TrimSpace(message.Content) == "" {
 				continue
 			}
-			content := message.Content
-			if message.Role == chat.RoleAssistant {
-				content += replayedSources(message.Citations)
-			}
-			history = append(history, llm.Message{Role: string(message.Role), Content: content})
+			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
 		}
 	}
-	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content})
+	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content + earlierSourcesNote(messages)})
 }
 
-// maxReplayedSources bounds the sources one earlier answer carries into later
-// turns: every turn of the thread pays for them.
-const maxReplayedSources = 10
+// Bounds of earlierSourcesNote: the whole note, not per answer, so a long
+// thread does not grow every request; titles and URLs come from untrusted
+// pages and tool results.
+const (
+	maxEarlierSources     = 20
+	maxEarlierTitleRunes  = 80
+	maxEarlierSourceBytes = 300
+)
 
-// replayedSources is the line an earlier answer's web sources add to it in
-// the history: tool rows are not replayed, so without it the model only sees
-// "[1]" and, needing what stood behind it (an activity id in a source URL),
-// made one up. A row's citations never change, so the line keeps the cached
-// prompt prefix stable. Document citations stay out (no URL, no id).
-func replayedSources(raw json.RawMessage) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var cites []Citation
-	if err := json.Unmarshal(raw, &cites); err != nil {
-		return ""
-	}
-	var parts []string
-	for _, c := range cites {
-		if c.URL == "" {
+var citedMarker = regexp.MustCompile(`\[(\d+)\]`)
+
+// earlierSourcesNote names the links behind the thread's earlier answers on
+// the new message. Tool rows are not replayed, so a later turn saw only "[1]"
+// and, needing the id in that source's URL, had nothing to go on. It sits on
+// the new message, not in the answers: inside them it would read as the
+// model's own habit (lists and raw URLs its answers must not have), its [n]
+// would clash with this turn's numbering, and the cached prefix stays as it
+// was. Newest answer first, its cited sources before the rest, each URL once
+// (a turn split by a queued message stores its sources on both rows). Only
+// http(s) links: a data: URI or other scheme is no link to act on. Document
+// citations stay out (no URL; the documents are read again by retrieval).
+func earlierSourcesNote(messages []chat.Message) string {
+	seen := map[string]bool{}
+	var lines []string
+	for i := len(messages) - 1; i >= 0 && len(lines) < maxEarlierSources; i-- {
+		m := messages[i]
+		if m.Role != chat.RoleAssistant || len(m.Citations) == 0 {
 			continue
 		}
-		if len(parts) == maxReplayedSources {
-			break
+		var cites []Citation
+		if err := json.Unmarshal(m.Citations, &cites); err != nil {
+			continue
 		}
-		title := c.Title
-		if title == "" {
-			title = c.Filename
+		cited := map[int]bool{}
+		for _, g := range citedMarker.FindAllStringSubmatch(m.Content, -1) {
+			if n, err := strconv.Atoi(g[1]); err == nil {
+				cited[n] = true
+			}
 		}
-		title = strings.Join(strings.Fields(title), " ")
-		part := fmt.Sprintf("[%d] ", c.Index)
-		if title != "" {
-			part += title + " "
+		slices.SortStableFunc(cites, func(a, b Citation) int {
+			switch {
+			case cited[a.Index] == cited[b.Index]:
+				return 0
+			case cited[a.Index]:
+				return -1
+			}
+			return 1
+		})
+		for _, c := range cites {
+			if len(lines) == maxEarlierSources {
+				break
+			}
+			if seen[c.URL] || !replayableURL(c.URL) {
+				continue
+			}
+			seen[c.URL] = true
+			lines = append(lines, "- "+sourceTitle(c)+c.URL)
 		}
-		parts = append(parts, part+c.URL)
 	}
-	if len(parts) == 0 {
+	if len(lines) == 0 {
 		return ""
 	}
-	return "\n\n(sources of this answer: " + strings.Join(parts, " · ") + ")"
+	return "\n\n[Links behind earlier answers in this thread, newest first, for the ids and pages they name. They are not numbered sources of this turn: never cite them as [n].\n" +
+		strings.Join(lines, "\n") + "]"
+}
+
+func replayableURL(raw string) bool {
+	if raw == "" || len(raw) > maxEarlierSourceBytes {
+		return false
+	}
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+// sourceTitle is "<title>: " on one line, cut short and without brackets
+// that could close the note, or "" when the source has none.
+func sourceTitle(c Citation) string {
+	title := c.Title
+	if title == "" {
+		title = c.Filename
+	}
+	title = strings.NewReplacer("[", "(", "]", ")").Replace(strings.Join(strings.Fields(title), " "))
+	if r := []rune(title); len(r) > maxEarlierTitleRunes {
+		title = string(r[:maxEarlierTitleRunes]) + "…"
+	}
+	if title == "" {
+		return ""
+	}
+	return title + ": "
 }
 
 // incognitoSystemPrompt is the system prompt for a tool-free incognito turn. Unlike

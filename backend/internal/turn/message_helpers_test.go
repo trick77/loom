@@ -154,33 +154,66 @@ func TestBuildHistoryDropsToolMessages(t *testing.T) {
 	}
 }
 
-// An answer's web sources go along with its prose in later turns: without
-// them the model, needing the activity behind "[1]", made up its id.
-func TestBuildHistoryReplaysSources(t *testing.T) {
-	var many []Citation
-	for i := 1; i <= maxReplayedSources+2; i++ {
-		many = append(many, Citation{Index: i, URL: fmt.Sprintf("https://example.com/%d", i), Title: fmt.Sprintf("Page %d", i)})
+// The links behind earlier answers ride on the new message: tool rows are
+// not replayed, so the id in a source's URL was otherwise gone.
+func TestBuildHistoryNotesEarlierSources(t *testing.T) {
+	cites := func(cs ...Citation) json.RawMessage {
+		b, _ := json.Marshal(cs)
+		return b
 	}
-	manyJSON, _ := json.Marshal(many)
+	older := cites(
+		Citation{Index: 1, URL: "https://example.com/item/42", Title: "Morning\nloop"},
+		Citation{DocumentID: "d1", Filename: "plan.pdf"},
+		Citation{Index: 2, URL: "data:image/png;base64,AAAA"},
+		Citation{Index: 3, URL: "https://example.com/" + strings.Repeat("x", maxEarlierSourceBytes)},
+		Citation{Index: 4, URL: "https://example.com/t", Title: strings.Repeat("é", maxEarlierTitleRunes+5) + "]"},
+	)
+	// Split by a queued message: the final row repeats the segment's sources.
+	segment := cites(Citation{Index: 1, URL: "https://example.com/a"})
+	var many []Citation
+	for i := 1; i <= maxEarlierSources+5; i++ {
+		many = append(many, Citation{Index: i, URL: fmt.Sprintf("https://example.com/p/%d", i)})
+	}
+	final := cites(append([]Citation{{Index: 1, URL: "https://example.com/a"}}, many...)...)
 	history := buildHistory("sys", []chat.Message{
 		{Role: chat.RoleUser, Content: "q"},
-		{Role: chat.RoleAssistant, Content: "Your run [1].", Citations: json.RawMessage(
-			`[{"index":1,"url":"https://www.strava.com/activities/20897368757","title":"Seckle\nloop","filename":"Strava"},` +
-				`{"documentId":"d1","filename":"plan.pdf","snippet":"x"}]`)},
+		{Role: chat.RoleAssistant, Content: "Your run [1].", Citations: older},
 		{Role: chat.RoleUser, Content: "q2"},
-		{Role: chat.RoleAssistant, Content: "Lots.", Citations: manyJSON},
-		{Role: chat.RoleAssistant, Content: "None.", Citations: json.RawMessage(`[]`)},
+		{Role: chat.RoleAssistant, Content: "Part one [1].", Citations: segment},
+		// The answer cites only [24]: it goes first, past the cap's reach.
+		{Role: chat.RoleAssistant, Content: "See [24].", Citations: final},
 	}, chat.Message{Content: "next"})
-	first := history[2].Content
-	if first != "Your run [1].\n\n(sources of this answer: [1] Seckle loop https://www.strava.com/activities/20897368757)" {
-		t.Errorf("replayed answer: %q", first)
+	if history[2].Content != "Your run [1]." || history[5].Content != "See [24]." {
+		t.Errorf("earlier answers must stay as stored: %q / %q", history[2].Content, history[5].Content)
 	}
-	if got := history[4].Content; !strings.Contains(got, fmt.Sprintf("[%d] Page %d", maxReplayedSources, maxReplayedSources)) ||
-		strings.Contains(got, fmt.Sprintf("Page %d", maxReplayedSources+1)) {
-		t.Errorf("cap: %q", got)
+	note := history[len(history)-1].Content
+	if !strings.HasPrefix(note, "next\n\n[Links behind earlier answers") || !strings.HasSuffix(note, "]") {
+		t.Fatalf("note: %q", note)
 	}
-	if history[5].Content != "None." {
-		t.Errorf("no sources, no line: %q", history[5].Content)
+	lines := strings.Split(note, "\n")[3:]
+	if len(lines) != maxEarlierSources || lines[0] != "- https://example.com/p/24" {
+		t.Errorf("%d lines, first %q: want %d, the cited one first", len(lines), lines[0], maxEarlierSources)
+	}
+	if strings.Count(note, "https://example.com/a\n") != 1 {
+		t.Error("a URL on both rows of a split turn listed twice")
+	}
+	if strings.Contains(note, "example.com/item/42") {
+		t.Error("the cap reached the older answer: it has room only once the newer ones run out")
+	}
+
+	// The older answer alone: one line per usable link, titles cleaned.
+	note = buildHistory("sys", []chat.Message{{Role: chat.RoleAssistant, Content: "Your run [1].", Citations: older}}, chat.Message{Content: "next"})[2].Content
+	if !strings.Contains(note, "\n- Morning loop: https://example.com/item/42\n") {
+		t.Errorf("title on one line: %q", note)
+	}
+	if strings.Contains(note, "data:") || strings.Contains(note, "xxxx") || strings.Contains(note, "plan.pdf") {
+		t.Errorf("data URI, overlong URL or document listed: %q", note)
+	}
+	if !strings.Contains(note, strings.Repeat("é", maxEarlierTitleRunes)+"…: https://example.com/t") {
+		t.Errorf("long title not cut (or its bracket kept): %q", note)
+	}
+	if got := buildHistory("sys", []chat.Message{{Role: chat.RoleAssistant, Content: "a", Citations: json.RawMessage(`[]`)}}, chat.Message{Content: "next"}); got[2].Content != "next" {
+		t.Errorf("no sources, no note: %q", got[2].Content)
 	}
 }
 
