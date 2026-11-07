@@ -46,7 +46,12 @@ recent ride often turns into a closer look, and the raw data is then already the
 time, none after (stored), plus the athlete's zones (cached 1 h, shared with every tool; skipped without HR or
 power). Unasked, so an unstored read stops at half the 15-minute budget like every other cold read; manual entries
 are skipped (no streams). Older activities get it only through `activity_analysis`. Both bucket zones the same way
-and store the activity's metrics, so the two files agree. A failed or missing streams read never fails the activity.
+and store the activity's metrics, so the two files agree. A failed or missing streams read never fails the activity;
+the text then says why there is no file (a model not told assumes one and asks `run_python` for it).
+
+A recording gap over 10 s (watch paused, auto-pause, a dropout: the streams cannot tell which) has no samples, so
+`stopped` (recorded, not moving) never shows it. The analysis reports it apart as `not recorded`; a section gives its
+clock time next to its recorded time.
 
 ## Limits and storage
 

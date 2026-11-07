@@ -329,6 +329,57 @@ func TestBuildSeries_gapsAndNulls(t *testing.T) {
 	}
 }
 
+// A pause leaves no samples, so stopped (recorded, not moving) never sees
+// it: paused is the clock the recording skipped.
+func TestComputeMetrics_paused(t *testing.T) {
+	// 0..599 s running, 120 s paused, 720..1199 s running; 30 s standing
+	// still (recorded) at 300..329.
+	var tm floats
+	for i := range 1200 {
+		if i < 600 || i >= 720 {
+			tm = append(tm, float64(i))
+		}
+	}
+	speed := constant(len(tm), 3)
+	for i := 300; i < 330; i++ {
+		speed[i] = 0
+	}
+	s := buildSeries(streamSet{Time: &struct{ Data floats }{tm}, Velocity: &struct{ Data floats }{speed}})
+	m := computeMetrics(s, 0, s.n, nil, nil)
+	if m.UnrecordedS != 120 || m.StoppedS != 30 || m.MovingS != 1050 {
+		t.Errorf("unrecorded %d, stopped %d, moving %d; want 120, 30, 1050", m.UnrecordedS, m.StoppedS, m.MovingS)
+	}
+	// A section that skips the pause has none, nor one starting right after.
+	if m := computeMetrics(s, 0, 600, nil, nil); m.UnrecordedS != 0 {
+		t.Errorf("section before the pause: unrecorded %d", m.UnrecordedS)
+	}
+	if m := computeMetrics(s, 600, s.n, nil, nil); m.UnrecordedS != 0 {
+		t.Errorf("section from the first sample after the pause: unrecorded %d", m.UnrecordedS)
+	}
+	unrec := func(tm floats) int {
+		s := buildSeries(streamSet{Time: &struct{ Data floats }{tm}, Velocity: &struct{ Data floats }{constant(len(tm), 3)}})
+		return computeMetrics(s, 0, s.n, nil, nil).UnrecordedS
+	}
+	nan := math.NaN()
+	for name, c := range map[string]struct {
+		tm   floats
+		want int
+	}{
+		"filled dropout":           {floats{0, 1, 2, 8, 9}, 0},
+		"null time in a dropout":   {floats{0, 1, nan, 3, 4}, 0},
+		"null time at the start":   {floats{nan, 0, 1, 2}, 0},
+		"duplicates do not cancel": {floats{0, 0, 0, 1, 122, 123}, 120},
+		"null then a pause":        {floats{0, 1, nan, 122, 123}, 120},
+	} {
+		if got := unrec(c.tm); got != c.want {
+			t.Errorf("%s: unrecorded %d, want %d", name, got, c.want)
+		}
+	}
+	if s := buildSeries(streamSet{Time: &struct{ Data floats }{floats{nan, 5, 6}}, Velocity: &struct{ Data floats }{constant(3, 3)}}); s.n != 2 || s.elapsed[0] != 0 {
+		t.Errorf("a null first time must not make elapsed NaN: %v", s.elapsed)
+	}
+}
+
 func TestMedianAndRank(t *testing.T) {
 	near(t, "odd", median([]float64{3, 1, 2}), 2, 0)
 	near(t, "even", median([]float64{4, 1, 3, 2}), 2.5, 0)

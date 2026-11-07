@@ -562,6 +562,26 @@ func TestSimpleTools(t *testing.T) {
 	}
 }
 
+// A paused recording names the gap apart from stopped: a model shown only
+// "stopped 0:07" told a user their 2-minute pause was 7 seconds.
+func TestAnalysis_paused(t *testing.T) {
+	f := newFakeStrava(t)
+	f.addAthlete(1, "Anna", "code-a", 250)
+	ride := synthRide(true) // 5 minutes paused
+	f.addActivity(1, 1001, "Albis loop", "Ride", local(2026, 11, 1, 9), &ride, nil)
+	_, h, _ := newTestService(t, f)
+	connect(t, h, userA, "code-a")
+	r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`)
+	if r.IsError || !strings.Contains(r.Text, "not recorded 5:00 (gaps over 10 s: watch paused, auto-pause or a dropout; not in stopped)") {
+		t.Errorf("pause not reported:\n%s", r.Text)
+	}
+	// A section across the pause gives its clock time too.
+	r = callTool(t, h, userA, "activity_analysis", `{"id":1001,"from_km":1,"to_km":9}`)
+	if r.IsError || !strings.Contains(r.Text, " recorded (") || !strings.Contains(r.Text, " on the clock)") || !strings.Contains(r.Text, "not recorded 5:00") {
+		t.Errorf("section across the pause:\n%s", r.Text)
+	}
+}
+
 // get_activity attaches the streams file of an activity from the last 14
 // days unasked; an older one costs no streams read.
 func TestGetActivity_recentStreams(t *testing.T) {
@@ -596,20 +616,25 @@ func TestGetActivity_recentStreams(t *testing.T) {
 	if r := callTool(t, h, userA, "get_activity", `{"id":1002}`); r.file("strava_1002_streams.csv") == "" {
 		t.Errorf("13 days 23 hours old: no streams file:\n%s", r.Text)
 	}
-	if r := callTool(t, h, userA, "get_activity", `{"id":1003}`); len(r.Files) != 0 || f.count("/activities/1003/streams") != 0 {
-		t.Errorf("past 14 days: %d files, %d streams reads", len(r.Files), f.count("/activities/1003/streams"))
+	// Without the file the model is told why, or it assumes one and asks
+	// run_python for a name that does not exist.
+	if r := callTool(t, h, userA, "get_activity", `{"id":1003}`); len(r.Files) != 0 || f.count("/activities/1003/streams") != 0 ||
+		!strings.Contains(r.Text, "no streams file for run_python: older than 14 days; activity_analysis attaches it if it fits") {
+		t.Errorf("past 14 days: %d files, %d streams reads:\n%s", len(r.Files), f.count("/activities/1003/streams"), r.Text)
 	}
 	// The streams failing or missing never fails the activity itself.
-	for _, id := range []string{"1004", "1005"} {
+	// A failed read fails in activity_analysis too: no pointer there.
+	for id, why := range map[string]string{"1004": "the streams read failed\n", "1005": "none recorded\n"} {
 		r := callTool(t, h, userA, "get_activity", `{"id":`+id+`}`)
-		if r.IsError || len(r.Files) != 0 || !strings.Contains(r.Text, "[1] Activity "+id) {
+		if r.IsError || len(r.Files) != 0 || !strings.Contains(r.Text, "[1] Activity "+id) || !strings.Contains(r.Text, "no streams file for run_python: "+why) {
 			t.Errorf("activity %s: error %v, %d files:\n%s", id, r.IsError, len(r.Files), r.Text)
 		}
 	}
 	// A manual entry has no streams: none asked for.
 	f.addActivity(1, 1006, "Gym", "Workout", local(2026, 11, 2, 18), &ride, map[string]any{"manual": true})
-	if r := callTool(t, h, userA, "get_activity", `{"id":1006}`); len(r.Files) != 0 || f.count("/activities/1006/streams") != 0 {
-		t.Errorf("manual entry: %d files, %d streams reads", len(r.Files), f.count("/activities/1006/streams"))
+	if r := callTool(t, h, userA, "get_activity", `{"id":1006}`); len(r.Files) != 0 || f.count("/activities/1006/streams") != 0 ||
+		!strings.Contains(r.Text, "no streams file for run_python: a manual entry has none") {
+		t.Errorf("manual entry: %d files, %d streams reads:\n%s", len(r.Files), f.count("/activities/1006/streams"), r.Text)
 	}
 	// The same zones as activity_analysis: two files of one name agree.
 	if a := callTool(t, h, userA, "activity_analysis", `{"id":1001}`); a.file("strava_1001_streams.csv") != csv {
@@ -622,8 +647,9 @@ func TestGetActivity_recentStreams(t *testing.T) {
 	f.rateUsed15 = 60
 	f.mu.Unlock()
 	// 1007's own detail read reports the usage before its streams would go.
-	if r := callTool(t, h, userA, "get_activity", `{"id":1007}`); r.IsError || len(r.Files) != 0 || f.count("/activities/1007/streams") != 0 {
-		t.Errorf("past the cold budget: error %v, %d files, %d streams reads", r.IsError, len(r.Files), f.count("/activities/1007/streams"))
+	if r := callTool(t, h, userA, "get_activity", `{"id":1007}`); r.IsError || len(r.Files) != 0 || f.count("/activities/1007/streams") != 0 ||
+		!strings.Contains(r.Text, "no streams file for run_python: the Strava rate budget; activity_analysis attaches it") {
+		t.Errorf("past the cold budget: error %v, %d files, %d streams reads:\n%s", r.IsError, len(r.Files), f.count("/activities/1007/streams"), r.Text)
 	}
 	if r := callTool(t, h, userA, "get_activity", `{"id":1001}`); r.file("strava_1001_streams.csv") == "" {
 		t.Error("kept streams withheld past the cold budget")
