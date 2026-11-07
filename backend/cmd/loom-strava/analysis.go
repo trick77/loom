@@ -519,7 +519,7 @@ func (t *tools) readStreams(ctx context.Context, user string, acts []summaryActi
 		cancel()
 		var rl *rateLimitedError
 		if errors.As(err, &rl) {
-			r.stoppedBy = "the Strava rate budget"
+			r.stoppedBy = reasonRateBudget
 			return r
 		}
 		if err != nil {
@@ -539,11 +539,15 @@ func (t *tools) budgetLeft(ctx context.Context, fetched int) string {
 	return t.svc.spent(ctx)
 }
 
+// reasonRateBudget is spent's answer when Strava's budget, not the clock,
+// stops a cold read.
+const reasonRateBudget = "the Strava rate budget"
+
 // spent says why a cold read (baseline streams, list backfill) must stop:
 // half the 15-minute budget gone, or the tool's time running short.
 func (s *service) spent(ctx context.Context) string {
 	if s.rate.fraction15(s.now()) >= coldBudget {
-		return "the Strava rate budget"
+		return reasonRateBudget
 	}
 	if dl, ok := ctx.Deadline(); ok && time.Until(dl) < minTimeLeft {
 		return "the time limit"
@@ -763,7 +767,12 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if section {
 		fmt.Fprintf(&b, "section km %.1f–%.1f (%s of the whole %s): every number below is the section's; the comparison is the whole activity's\n",
 			s.dist[ia]/1000, s.dist[ib-1]/1000, u.dist(m.DistanceM), u.dist(d.Distance))
-		fmt.Fprintf(&b, "section: %s · %s · elevation gain %s · avg %s\n", u.dist(m.DistanceM), clock(float64(m.Samples)), u.elev(m.GainM), u.tempo(m.AvgSpeed, d.SportType))
+		// Recorded time; the clock the section took also counts its gaps.
+		took := clock(float64(m.Samples)) + " recorded"
+		if m.UnrecordedS > 0 {
+			took += " (" + clock(float64(m.Samples+m.UnrecordedS)) + " on the clock)"
+		}
+		fmt.Fprintf(&b, "section: %s · %s · elevation gain %s · avg %s\n", u.dist(m.DistanceM), took, u.elev(m.GainM), u.tempo(m.AvgSpeed, d.SportType))
 	} else {
 		fmt.Fprintf(&b, "distance %s · moving %s · elapsed %s · elevation %s · avg %s\n", u.dist(d.Distance), clock(float64(d.MovingTime)),
 			clock(float64(d.ElapsedTime)), u.elev(d.TotalElevationGain), u.tempo(d.AverageSpeed, d.SportType))
@@ -809,8 +818,8 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if m.StoppedS > 0 {
 		parts = append(parts, "stopped "+clock(float64(m.StoppedS))+" (recorded, not moving)")
 	}
-	if m.PausedS > 0 {
-		parts = append(parts, "paused "+clock(float64(m.PausedS))+" (recording paused or auto-paused: no data, not in stopped)")
+	if m.UnrecordedS > 0 {
+		parts = append(parts, "not recorded "+clock(float64(m.UnrecordedS))+" (gaps over 10 s: watch paused, auto-pause or a dropout; not in stopped)")
 	}
 	if len(parts) > 0 {
 		b.WriteString(strings.Join(parts, " · ") + "\n")

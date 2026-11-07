@@ -439,22 +439,29 @@ const recentStreamsAge = 14 * 24 * time.Hour
 // like every other cold read: a look over many recent activities must not
 // starve the other users.
 func (t *tools) recentStreams(ctx context.Context, user string, a athlete, d detailedActivity) (mcpserver.File, string) {
-	const later = "; activity_analysis attaches it"
+	// Only where activity_analysis can still read them: not after a failed
+	// read (the same read fails there) or near the deadline (the heavier
+	// call times out).
+	const later = "; activity_analysis attaches it if it fits"
 	if d.Manual {
 		return mcpserver.File{}, "a manual entry has none"
 	}
 	if t.svc.now().Sub(d.utcStart()) > recentStreamsAge {
-		return mcpserver.File{}, "older than 14 days" + later
+		return mcpserver.File{}, fmt.Sprintf("older than %d days", int(recentStreamsAge/(24*time.Hour))) + later
 	}
 	if !t.svc.streamsKept(user, d.ID) {
-		if why := t.svc.spent(ctx); why != "" {
+		switch why := t.svc.spent(ctx); why {
+		case "":
+		case reasonRateBudget:
 			return mcpserver.File{}, why + later
+		default:
+			return mcpserver.File{}, why
 		}
 	}
 	s, err := t.svc.streams(ctx, user, d.ID, false)
 	if err != nil {
 		slog.Warn("strava: streams for get_activity unavailable", "activity", d.ID, "err", err)
-		return mcpserver.File{}, "the streams read failed" + later
+		return mcpserver.File{}, "the streams read failed"
 	}
 	if s.n == 0 {
 		return mcpserver.File{}, "none recorded"

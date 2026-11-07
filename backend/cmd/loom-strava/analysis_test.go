@@ -562,7 +562,7 @@ func TestSimpleTools(t *testing.T) {
 	}
 }
 
-// A paused recording names the pause apart from stopped: a model shown only
+// A paused recording names the gap apart from stopped: a model shown only
 // "stopped 0:07" told a user their 2-minute pause was 7 seconds.
 func TestAnalysis_paused(t *testing.T) {
 	f := newFakeStrava(t)
@@ -572,8 +572,13 @@ func TestAnalysis_paused(t *testing.T) {
 	_, h, _ := newTestService(t, f)
 	connect(t, h, userA, "code-a")
 	r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`)
-	if r.IsError || !strings.Contains(r.Text, "paused 5:00 (recording paused or auto-paused") {
+	if r.IsError || !strings.Contains(r.Text, "not recorded 5:00 (gaps over 10 s: watch paused, auto-pause or a dropout; not in stopped)") {
 		t.Errorf("pause not reported:\n%s", r.Text)
+	}
+	// A section across the pause gives its clock time too.
+	r = callTool(t, h, userA, "activity_analysis", `{"id":1001,"from_km":1,"to_km":9}`)
+	if r.IsError || !strings.Contains(r.Text, " recorded (") || !strings.Contains(r.Text, " on the clock)") || !strings.Contains(r.Text, "not recorded 5:00") {
+		t.Errorf("section across the pause:\n%s", r.Text)
 	}
 }
 
@@ -614,11 +619,12 @@ func TestGetActivity_recentStreams(t *testing.T) {
 	// Without the file the model is told why, or it assumes one and asks
 	// run_python for a name that does not exist.
 	if r := callTool(t, h, userA, "get_activity", `{"id":1003}`); len(r.Files) != 0 || f.count("/activities/1003/streams") != 0 ||
-		!strings.Contains(r.Text, "no streams file for run_python: older than 14 days; activity_analysis attaches it") {
+		!strings.Contains(r.Text, "no streams file for run_python: older than 14 days; activity_analysis attaches it if it fits") {
 		t.Errorf("past 14 days: %d files, %d streams reads:\n%s", len(r.Files), f.count("/activities/1003/streams"), r.Text)
 	}
 	// The streams failing or missing never fails the activity itself.
-	for id, why := range map[string]string{"1004": "the streams read failed", "1005": "none recorded"} {
+	// A failed read fails in activity_analysis too: no pointer there.
+	for id, why := range map[string]string{"1004": "the streams read failed\n", "1005": "none recorded\n"} {
 		r := callTool(t, h, userA, "get_activity", `{"id":`+id+`}`)
 		if r.IsError || len(r.Files) != 0 || !strings.Contains(r.Text, "[1] Activity "+id) || !strings.Contains(r.Text, "no streams file for run_python: "+why) {
 			t.Errorf("activity %s: error %v, %d files:\n%s", id, r.IsError, len(r.Files), r.Text)

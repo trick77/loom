@@ -24,6 +24,9 @@ type series struct {
 	grade   []float64 // %
 	temp    []float64 // °C
 	moving  []bool
+	// skipped is the clock not recorded right before each sample: a gap
+	// longer than maxInterpGap (pause, auto-pause, dropout), else 0.
+	skipped []float64
 }
 
 // maxInterpGap is the longest recording gap filled in; longer is a pause.
@@ -71,9 +74,20 @@ func buildSeries(set streamSet) series {
 	}
 
 	out := map[string][]float64{}
-	var elapsed []float64
+	var elapsed, skipped []float64
 	var moving []bool
-	t0 := tm[0]
+	// The clock starts at the first valid time: a null there would make
+	// every elapsed NaN.
+	t0 := math.NaN()
+	for _, x := range tm {
+		if !math.IsNaN(x) {
+			t0 = x
+			break
+		}
+	}
+	if math.IsNaN(t0) {
+		return series{}
+	}
 	at := func(v []float64, i int) float64 {
 		if i < len(v) {
 			return v[i]
@@ -83,15 +97,17 @@ func buildSeries(set streamSet) series {
 		}
 		return 0
 	}
-	push := func(i int, frac float64, t float64) {
+	// push adds sample i, frac of the way towards sample j.
+	push := func(i, j int, frac, t, skip float64) {
 		elapsed = append(elapsed, t-t0)
+		skipped = append(skipped, skip)
 		for k, v := range in {
 			if v == nil {
 				continue
 			}
 			x := at(v, i)
-			if frac > 0 && i+1 < len(v) {
-				x += (v[i+1] - x) * frac
+			if frac > 0 && j < len(v) {
+				x += (v[j] - x) * frac
 			}
 			out[k] = append(out[k], x)
 		}
@@ -101,21 +117,29 @@ func buildSeries(set streamSet) series {
 		}
 		moving = append(moving, m)
 	}
+	// Gaps are measured between valid times, so a null time sample neither
+	// hides a short dropout from the fill nor counts as a pause.
+	prev := -1
 	for i := range tm {
 		if math.IsNaN(tm[i]) {
 			continue
 		}
-		push(i, 0, tm[i])
-		if i+1 < len(tm) {
-			gap := tm[i+1] - tm[i]
-			if gap > 1 && gap <= maxInterpGap {
+		skip := 0.0
+		if prev >= 0 {
+			gap := tm[i] - tm[prev]
+			switch {
+			case gap > maxInterpGap:
+				skip = gap - 1
+			case gap > 1:
 				for k := 1; k < int(gap); k++ {
-					push(i, float64(k)/gap, tm[i]+float64(k))
+					push(prev, i, float64(k)/gap, tm[prev]+float64(k), 0)
 				}
 			}
 		}
+		push(i, i, 0, tm[i], skip)
+		prev = i
 	}
-	s := series{n: len(elapsed), elapsed: elapsed, moving: moving,
+	s := series{n: len(elapsed), elapsed: elapsed, moving: moving, skipped: skipped,
 		dist: out["dist"], lat: out["lat"], lng: out["lng"], alt: out["alt"], speed: out["speed"], hr: out["hr"],
 		cad: out["cad"], watts: out["watts"], grade: out["grade"], temp: out["temp"]}
 	if s.speed == nil && s.dist != nil {
@@ -194,14 +218,14 @@ func (s series) sub(fromM, toM float64) (int, int) {
 // rideMetrics is everything computed from one stretch of streams. NaN means
 // unknown: the stream is missing or the stretch too short.
 type rideMetrics struct {
-	// StoppedS is recorded time not moving; PausedS the clock the recording
-	// skipped (watch paused, auto-pause): a pause has no samples, so stopped
-	// alone never shows it.
-	Samples, MovingS, StoppedS, PausedS int
-	DistanceM                           float64
-	HasWatts, HasHR                     bool
-	AvgW, MaxW, NP, KJ                  float64
-	AvgHR, MaxHR                        float64
+	// StoppedS is recorded time not moving; UnrecordedS the clock the
+	// recording skipped (watch paused, auto-pause, a dropout: the streams
+	// cannot tell which). A pause has no samples, so stopped never shows it.
+	Samples, MovingS, StoppedS, UnrecordedS int
+	DistanceM                               float64
+	HasWatts, HasHR                         bool
+	AvgW, MaxW, NP, KJ                      float64
+	AvgHR, MaxHR                            float64
 	// HRMax10 and HR20m are the best 10 s and 20 min mean heart rate: the
 	// inputs of hr_zones' max and threshold heart rate. 10 s, not the
 	// single highest sample, so one strap spike does not count.
@@ -242,7 +266,12 @@ func computeMetrics(s series, a, b int, pEdges, hEdges []float64) rideMetrics {
 	}
 	m.MovingS = len(movIdx)
 	m.StoppedS = m.Samples - m.MovingS
-	m.PausedS = max(0, int(math.Round(s.elapsed[b-1]-s.elapsed[a]))+1-m.Samples)
+	// The gap before a's first sample is not this stretch's.
+	var skipped float64
+	for i := a + 1; i < b && i < len(s.skipped); i++ {
+		skipped += s.skipped[i]
+	}
+	m.UnrecordedS = int(math.Round(skipped))
 	if s.dist != nil {
 		m.DistanceM = s.dist[b-1] - s.dist[a]
 	}

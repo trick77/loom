@@ -346,16 +346,37 @@ func TestComputeMetrics_paused(t *testing.T) {
 	}
 	s := buildSeries(streamSet{Time: &struct{ Data floats }{tm}, Velocity: &struct{ Data floats }{speed}})
 	m := computeMetrics(s, 0, s.n, nil, nil)
-	if m.PausedS != 120 || m.StoppedS != 30 || m.MovingS != 1050 {
-		t.Errorf("paused %d, stopped %d, moving %d; want 120, 30, 1050", m.PausedS, m.StoppedS, m.MovingS)
+	if m.UnrecordedS != 120 || m.StoppedS != 30 || m.MovingS != 1050 {
+		t.Errorf("unrecorded %d, stopped %d, moving %d; want 120, 30, 1050", m.UnrecordedS, m.StoppedS, m.MovingS)
 	}
-	// A section that skips the pause has none; a filled dropout is no pause.
-	if m := computeMetrics(s, 0, 600, nil, nil); m.PausedS != 0 {
-		t.Errorf("section before the pause: paused %d", m.PausedS)
+	// A section that skips the pause has none, nor one starting right after.
+	if m := computeMetrics(s, 0, 600, nil, nil); m.UnrecordedS != 0 {
+		t.Errorf("section before the pause: unrecorded %d", m.UnrecordedS)
 	}
-	s = buildSeries(streamSet{Time: &struct{ Data floats }{floats{0, 1, 2, 8, 9}}, Velocity: &struct{ Data floats }{constant(5, 3)}})
-	if m := computeMetrics(s, 0, s.n, nil, nil); m.PausedS != 0 {
-		t.Errorf("an interpolated dropout counted as paused: %d", m.PausedS)
+	if m := computeMetrics(s, 600, s.n, nil, nil); m.UnrecordedS != 0 {
+		t.Errorf("section from the first sample after the pause: unrecorded %d", m.UnrecordedS)
+	}
+	unrec := func(tm floats) int {
+		s := buildSeries(streamSet{Time: &struct{ Data floats }{tm}, Velocity: &struct{ Data floats }{constant(len(tm), 3)}})
+		return computeMetrics(s, 0, s.n, nil, nil).UnrecordedS
+	}
+	nan := math.NaN()
+	for name, c := range map[string]struct {
+		tm   floats
+		want int
+	}{
+		"filled dropout":           {floats{0, 1, 2, 8, 9}, 0},
+		"null time in a dropout":   {floats{0, 1, nan, 3, 4}, 0},
+		"null time at the start":   {floats{nan, 0, 1, 2}, 0},
+		"duplicates do not cancel": {floats{0, 0, 0, 1, 122, 123}, 120},
+		"null then a pause":        {floats{0, 1, nan, 122, 123}, 120},
+	} {
+		if got := unrec(c.tm); got != c.want {
+			t.Errorf("%s: unrecorded %d, want %d", name, got, c.want)
+		}
+	}
+	if s := buildSeries(streamSet{Time: &struct{ Data floats }{floats{nan, 5, 6}}, Velocity: &struct{ Data floats }{constant(3, 3)}}); s.n != 2 || s.elapsed[0] != 0 {
+		t.Errorf("a null first time must not make elapsed NaN: %v", s.elapsed)
 	}
 }
 

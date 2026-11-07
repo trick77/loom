@@ -49,8 +49,9 @@ are skipped (no streams). Older activities get it only through `activity_analysi
 and store the activity's metrics, so the two files agree. A failed or missing streams read never fails the activity;
 the text then says why there is no file (a model not told assumes one and asks `run_python` for it).
 
-A recording gap over 10 s is a pause (watch paused, auto-pause): it has no samples, so `stopped` (recorded, not
-moving) never shows it. The analysis reports it apart as `paused` (the clock the recording skipped).
+A recording gap over 10 s (watch paused, auto-pause, a dropout: the streams cannot tell which) has no samples, so
+`stopped` (recorded, not moving) never shows it. The analysis reports it apart as `not recorded`; a section gives its
+clock time next to its recorded time.
 
 ## Limits and storage
 
