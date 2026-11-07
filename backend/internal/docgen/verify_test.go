@@ -9,16 +9,16 @@ import (
 )
 
 // Gated end-to-end render against a real Gotenberg sidecar, for manual visual
-// inspection. Skipped unless BACKEND_GOTENBERG_URL and OUT_DIR are set, e.g.:
+// inspection. Skipped unless DOCGEN_GOTENBERG_URL and OUT_DIR are set, e.g.:
 //
 //	docker run --rm -p 3000:3000 gotenberg/gotenberg:8
-//	BACKEND_GOTENBERG_URL=http://localhost:3000 OUT_DIR=/tmp \
+//	DOCGEN_GOTENBERG_URL=http://localhost:3000 OUT_DIR=/tmp \
 //	  go test ./internal/docgen -run TestGenerateVerifyPDFs -v
 func TestGenerateVerifyPDFs(t *testing.T) {
-	base := os.Getenv("BACKEND_GOTENBERG_URL")
+	base := os.Getenv("DOCGEN_GOTENBERG_URL")
 	outDir := os.Getenv("OUT_DIR")
 	if base == "" || outDir == "" {
-		t.Skip("set BACKEND_GOTENBERG_URL and OUT_DIR for the e2e render")
+		t.Skip("set DOCGEN_GOTENBERG_URL and OUT_DIR for the e2e render")
 	}
 	gen := NewPDFGenerator(NewGotenbergClient(GotenbergConfig{BaseURL: base}))
 

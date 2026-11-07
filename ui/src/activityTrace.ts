@@ -503,10 +503,18 @@ function generatedToolLabel(name: string, file?: string): string | undefined {
     extension === "pptx"
   )
     return i18n.t("activityTrace.trace.gen.presentation");
-  if (/^(create|generate|render|export)_/i.test(name))
+  // Every tool of the document server makes a file (docs/docgen.md);
+  // create_text_file and the like from before it are loom's own names.
+  if (
+    splitExposedName(name).server === DOCUMENT_SERVER ||
+    /^(create|generate|render|export)_/i.test(name)
+  )
     return i18n.t("activityTrace.trace.gen.file");
   return undefined;
 }
+
+// DOCUMENT_SERVER is the document tools' MCP server (docs/docgen.md).
+const DOCUMENT_SERVER = "docgen";
 
 function looksLikeDomainURL(value: string): boolean {
   return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#]|$)/i.test(
@@ -551,6 +559,7 @@ const KNOWN_TOOL_SOURCES: Record<string, string> = {
   fetch: "sources.fetch",
   obscura: "sources.browser",
   imagegen: "sources.imageGenerator",
+  [DOCUMENT_SERVER]: "sources.files",
   run_python: "sources.python",
   conversation_search: "sources.conversations",
   read_thread: "sources.conversations",
@@ -569,6 +578,7 @@ export function toolSourceLabel(name: string): string {
   const key = KNOWN_TOOL_SOURCES[server] ?? KNOWN_TOOL_SOURCES[name];
   if (key !== undefined) return i18n.t(`activityTrace.${key}`);
   if (server !== "") return server;
+  // Traces stored before the document tools moved to the docgen server.
   if (/^create_/.test(name)) return i18n.t("activityTrace.sources.files");
   return i18n.t("activityTrace.sources.loom");
 }

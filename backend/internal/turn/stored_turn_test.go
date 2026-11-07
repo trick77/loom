@@ -12,8 +12,8 @@ import (
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn/turntest"
 )
 
 // When the model batches more calls of one tool than its per-round cap allows,
@@ -214,12 +214,13 @@ func TestTurnGatesToolsByCategory(t *testing.T) {
 		out := runStoredTurn(t, Config{
 			Artifacts: fakeArtifactStore{},
 			UsersDir:  t.TempDir(),
-			DocTools:  []docgen.Generator{docgen.TextGenerator{}},
 			LLM:       llmClient,
 			MCP: fakeMCPService{
+				Artifacts: turntest.DocgenArtifacts(),
 				ToolList: []llm.Tool{
 					{Type: "function", Function: llm.ToolFunction{Name: "search__web", Description: "Search the web"}},
 					{Type: "function", Function: llm.ToolFunction{Name: "context7__query-docs", Description: "Library docs"}},
+					turntest.DocgenToolDef("create_text_file"),
 				},
 				ToolCategories: map[string][]string{"context7__query-docs": {string(classifier.Coding)}},
 			},
@@ -242,7 +243,7 @@ func TestTurnGatesToolsByCategory(t *testing.T) {
 			}
 		}
 		// Gated groups are withheld.
-		if names["create_text_file"] {
+		if names[turntest.DocgenTool("create_text_file")] {
 			t.Fatalf("general turn should not offer docgen tools; got %v", names)
 		}
 		if names["context7__query-docs"] {
@@ -252,7 +253,7 @@ func TestTurnGatesToolsByCategory(t *testing.T) {
 
 	t.Run("coding turn gets docgen and context7", func(t *testing.T) {
 		names := run(t, string(classifier.Coding), "please help me understand this program")
-		if !names["create_text_file"] {
+		if !names[turntest.DocgenTool("create_text_file")] {
 			t.Fatalf("coding turn should offer docgen tools; got %v", names)
 		}
 		if !names["context7__query-docs"] {

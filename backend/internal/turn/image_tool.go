@@ -132,7 +132,7 @@ func (t *Run) lockImageModel(ctx context.Context, created []artifact.Response) {
 	if model == "" {
 		return
 	}
-	// Like the image itself (keepToolImages), the lock outlives a round cut
+	// Like the image itself (keepToolArtifacts), the lock outlives a round cut
 	// short or a client gone: an image kept without its model lets the next
 	// one change the look.
 	lockCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), artifactPersistTimeout)

@@ -47,8 +47,9 @@ services:
       BACKEND_OBSCURA_MCP_URL: "http://localhost:8090/mcp"
       # Same value as the obscura service's OBSCURA_MCP_TOKEN.
       BACKEND_OBSCURA_MCP_TOKEN: dev-obscura-token-please-change-0123456789
-      # HTML→PDF renderer, published on a localhost port (loom is host-networked here).
-      BACKEND_GOTENBERG_URL: "http://localhost:3000"
+      # Document tools sidecar, published on a localhost port.
+      BACKEND_DOCGEN_URL: "${BACKEND_DOCGEN_URL:-http://localhost:8020}"
+      BACKEND_DOCGEN_TOKEN: dev-docgen-token-please-change-0123456789
       # Python sandbox (run_python), published on a localhost port.
       BACKEND_SANDBOX_URL: "http://localhost:8070"
       # Apple Music sidecar, opt-in: COMPOSE_PROFILES=tunewire,
@@ -84,7 +85,7 @@ services:
     depends_on:
       loom-init:
         condition: service_completed_successfully
-      gotenberg:
+      docgen:
         condition: service_healthy
       obscura:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
@@ -97,8 +98,9 @@ services:
         required: false
 
   gotenberg:
-    # Chromium-based HTML→PDF renderer. Loom is host-networked here, so it is
-    # published on a localhost port and reached via BACKEND_GOTENBERG_URL.
+    # Chromium-based HTML→PDF renderer for the docgen sidecar, which reaches
+    # it on the compose network. Published on a localhost port for
+    # docgen's gated render test (internal/docgen/verify_test.go).
     image: gotenberg/gotenberg:8
     ports:
       - "127.0.0.1:3000:3000"
@@ -216,6 +218,33 @@ services:
       - "127.0.0.1:8030:8030"
     healthcheck:
       test: ["CMD", "/loom-search", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+
+  docgen:
+    # Document tools sidecar, built from source, published on a localhost port.
+    build:
+      context: .
+      dockerfile: docgen/Containerfile
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Same value as loom's BACKEND_DOCGEN_TOKEN above.
+      DOCGEN_TOKEN: dev-docgen-token-please-change-0123456789
+      DOCGEN_GOTENBERG_URL: "http://gotenberg:3000"
+    depends_on:
+      gotenberg:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8020:8020"
+    healthcheck:
+      test: ["CMD", "/loom-docgen", "healthcheck"]
       interval: 60s
       timeout: 5s
       start_period: 30s

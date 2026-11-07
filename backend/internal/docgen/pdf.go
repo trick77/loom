@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
-	"github.com/trick77/loom/internal/artifact"
 )
 
 // pdfRenderer is the subset of GotenbergClient that PDFGenerator needs, so tests
@@ -71,7 +69,7 @@ func (g PDFGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta,
 	if _, err := w.Write(pdf); err != nil {
 		return GeneratedMeta{}, err
 	}
-	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "pdf", MIMEType: artifact.MIMEType("pdf")}, nil
+	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "pdf", MIMEType: MIMEType("pdf")}, nil
 }
 
 // Schema returns the JSON schema for the PDF generation tool.

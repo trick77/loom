@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"log/slog"
@@ -8,6 +9,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/artifact"
 )
@@ -29,15 +31,31 @@ type Source struct {
 }
 
 // CallResult is a tool call's model-facing text plus the sources it cited,
-// the files it handed to run_python and the images loom keeps as artifacts.
+// the files it handed to run_python and the images and documents loom keeps
+// as artifacts.
 type CallResult struct {
-	Text    string
-	Sources []Source
-	Files   []File
-	Images  []Image
-	// DroppedImages counts the image blocks loom refused (type, size, count),
-	// so the model is told rather than claiming a picture that does not exist.
-	DroppedImages int
+	Text      string
+	Sources   []Source
+	Files     []File
+	Images    []Image
+	Documents []Document
+	// DroppedImages and DroppedDocuments count the image blocks and blob
+	// resources loom refused (type, size, count), so the model is told
+	// rather than claiming a file that does not exist.
+	DroppedImages    int
+	DroppedDocuments int
+}
+
+// Document is a file a tool result carried as an MCP blob resource, for loom
+// to keep as an artifact (a generated PDF, spreadsheet, text file). Only a
+// server with ServerConfig.Artifacts gets one through, and only of a type
+// loom generates (documentTypes).
+type Document struct {
+	// Name is the server's plain file name; Extension is its type's, lower
+	// case. The stored type is loom's own for it (artifact.MIMEType).
+	Name      string
+	Extension string
+	Data      []byte
 }
 
 // Image is a picture a tool result carried as MCP image content, for loom to
@@ -67,10 +85,11 @@ type imageMeta struct {
 	DurationMs int64  `json:"duration_ms"`
 }
 
-// maxToolImages caps how many images one tool result may hand on. Together
-// they stay within one artifact's size (artifact.MaxArtifactSizeBytes): the
-// reply cap (maxArtifactRPCBytes) fits that much and no more.
-const maxToolImages = 4
+// maxToolArtifacts caps how many images and documents one tool result may
+// hand on. Together they stay within one artifact's size
+// (artifact.MaxArtifactSizeBytes): the reply cap (maxArtifactRPCBytes) fits
+// that much and no more.
+const maxToolArtifacts = 4
 
 // File is data a tool result carried as an MCP embedded resource, for
 // run_python to read during the running turn. Never shown, never part of the
@@ -107,55 +126,78 @@ type toolResource struct {
 	URI      string `json:"uri"`
 	MimeType string `json:"mimeType"`
 	Text     string `json:"text"`
+	// Blob is a binary resource's bytes, base64.
+	Blob string `json:"blob"`
 }
 
 // toCallResult flattens a decoded tools/call result. A structuredContent that
 // is not an object with a sources or images array is ignored: the 2026-07-28
 // revision allows any JSON value there, and only this shape means something to
-// loom. images keeps the image blocks; false drops them (a server without
-// ServerConfig.Artifacts).
-func (r callToolResult) toCallResult(images bool) CallResult {
+// loom. artifacts keeps the image blocks and blob resources; false drops them
+// (a server without ServerConfig.Artifacts).
+func (r callToolResult) toCallResult(artifacts bool) CallResult {
 	out := CallResult{Text: toolContentText(r.Content), Sources: structuredSources(r.StructuredContent), Files: toolFiles(r.Content)}
-	if images {
-		out.Images, out.DroppedImages = toolImages(r.Content, structuredImageMeta(r.StructuredContent), artifact.MaxArtifactSizeBytes)
+	if artifacts {
+		kept := toolArtifacts(r.Content, structuredImageMeta(r.StructuredContent), artifact.MaxArtifactSizeBytes)
+		out.Images, out.Documents, out.DroppedImages, out.DroppedDocuments = kept.images, kept.documents, kept.droppedImages, kept.droppedDocuments
 	}
 	return out
 }
 
-// toolImages decodes the image blocks loom keeps: an accepted raster type
-// whose bytes are that type, at most limit bytes decoded for all of them
-// together, at most maxToolImages. It also counts the blocks it refused.
-// meta[i] describes the i-th image block, kept or not, so a dropped block
-// never shifts its details onto the next one.
-func toolImages(content []toolContent, meta []imageMeta, limit int) ([]Image, int) {
-	var out []Image
-	dropped, block, total := 0, -1, 0
+// keptArtifacts is what toolArtifacts keeps of a result, and how much it
+// refused.
+type keptArtifacts struct {
+	images                          []Image
+	documents                       []Document
+	droppedImages, droppedDocuments int
+}
+
+// toolArtifacts decodes the image blocks and blob resources loom keeps, in
+// content order: each of a type it accepts whose bytes are that type, at most
+// limit bytes decoded for all of them together, at most maxToolArtifacts.
+// It also counts the ones it refused. meta[i] describes the i-th image block,
+// kept or not, so a dropped block never shifts its details onto the next one.
+func toolArtifacts(content []toolContent, meta []imageMeta, limit int) keptArtifacts {
+	var out keptArtifacts
+	block, total := -1, 0
+	full := func() bool { return len(out.images)+len(out.documents) == maxToolArtifacts }
 	for _, item := range content {
-		if item.Type != "image" {
-			continue
+		switch {
+		case item.Type == "image":
+			block++
+			img, ok := Image{}, false
+			if !full() {
+				img, ok = decodeToolImage(item, limit-total)
+			}
+			if !ok {
+				out.droppedImages++
+				continue
+			}
+			total += len(img.Data)
+			if block < len(meta) {
+				m := meta[block]
+				img.Filename, img.Model, img.Provider = baseName(m.Filename), m.Model, m.Provider
+				img.Width, img.Height, img.DurationMs = m.Width, m.Height, m.DurationMs
+			}
+			out.images = append(out.images, img)
+		case item.Type == "resource" && item.Resource != nil && item.Resource.Blob != "":
+			doc, ok := Document{}, false
+			if !full() {
+				doc, ok = decodeToolDocument(*item.Resource, limit-total)
+			}
+			if !ok {
+				out.droppedDocuments++
+				continue
+			}
+			total += len(doc.Data)
+			out.documents = append(out.documents, doc)
 		}
-		block++
-		if len(out) == maxToolImages {
-			dropped++
-			continue
-		}
-		img, ok := decodeToolImage(item, limit-total)
-		if !ok {
-			dropped++
-			continue
-		}
-		total += len(img.Data)
-		if block < len(meta) {
-			m := meta[block]
-			img.Filename, img.Model, img.Provider = baseName(m.Filename), m.Model, m.Provider
-			img.Width, img.Height, img.DurationMs = m.Width, m.Height, m.DurationMs
-		}
-		out = append(out, img)
 	}
-	if dropped > 0 {
-		slog.Warn("MCP image content dropped", "dropped", dropped, "kept", len(out))
+	if out.droppedImages > 0 || out.droppedDocuments > 0 {
+		slog.Warn("MCP artifact content dropped", "dropped_images", out.droppedImages, "dropped_documents", out.droppedDocuments,
+			"kept_images", len(out.images), "kept_documents", len(out.documents))
 	}
-	return out, dropped
+	return out
 }
 
 // decodeToolImage returns an image block as an Image when its type is an
@@ -163,14 +205,66 @@ func toolImages(content []toolContent, meta []imageMeta, limit int) ([]Image, in
 // it fits limit and its bytes sniff as that type: a server cannot store HTML
 // under image/png.
 func decodeToolImage(item toolContent, limit int) (Image, bool) {
-	if item.Data == "" || base64.StdEncoding.DecodedLen(len(item.Data)) > limit+2 {
-		return Image{}, false
-	}
-	data, err := base64.StdEncoding.DecodeString(item.Data)
-	if err != nil {
+	data, ok := decodeBase64(item.Data, limit)
+	if !ok {
 		return Image{}, false
 	}
 	return checkImage(item.MimeType, data, limit)
+}
+
+// decodeBase64 decodes standard base64 of at most limit bytes; a longer one
+// is refused before it is decoded.
+func decodeBase64(encoded string, limit int) ([]byte, bool) {
+	if encoded == "" || base64.StdEncoding.DecodedLen(len(encoded)) > limit+2 {
+		return nil, false
+	}
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(data) > limit {
+		return nil, false
+	}
+	return data, true
+}
+
+// documentTypes are the documents loom keeps from a blob resource, by
+// extension: the formats loom's document tools generate (docs/docgen.md;
+// loom-docgen's tests hold them to docgen.Extensions), each with the check
+// its bytes must pass. A server cannot store HTML under a PDF name, nor a
+// binary as text.
+var documentTypes = map[string]func([]byte) bool{
+	"pdf":  hasPrefix("%PDF-"),
+	"docx": hasPrefix("PK\x03\x04"),
+	"xlsx": hasPrefix("PK\x03\x04"),
+	"pptx": hasPrefix("PK\x03\x04"),
+	"txt":  isText, "md": isText, "csv": isText, "json": isText, "html": isText,
+	"xml": isText, "yaml": isText, "yml": isText, "log": isText,
+}
+
+func hasPrefix(magic string) func([]byte) bool {
+	return func(data []byte) bool { return bytes.HasPrefix(data, []byte(magic)) }
+}
+
+// isText accepts UTF-8 without NUL bytes.
+func isText(data []byte) bool {
+	return utf8.Valid(data) && bytes.IndexByte(data, 0) < 0
+}
+
+// decodeToolDocument returns a blob resource as a Document when its name's
+// extension is a document type, it fits limit and its bytes pass the type's
+// check. The resource's own mimeType decides nothing: loom stores the file
+// under its type for the extension (artifact.MIMEType), so a server that
+// spells a type differently (application/yaml, octet-stream) loses nothing.
+func decodeToolDocument(res toolResource, limit int) (Document, bool) {
+	name := baseName(strings.TrimPrefix(res.URI, "file://"))
+	ext := strings.ToLower(strings.TrimPrefix(path.Ext(name), "."))
+	check, ok := documentTypes[ext]
+	if !ok {
+		return Document{}, false
+	}
+	data, ok := decodeBase64(res.Blob, limit)
+	if !ok || !check(data) {
+		return Document{}, false
+	}
+	return Document{Name: name, Extension: ext, Data: data}, true
 }
 
 // checkImage is the one gate every image passes before it can become an

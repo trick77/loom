@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/config"
+	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 )
 
@@ -114,6 +115,49 @@ func TestWarnOrphanedSearchKey(t *testing.T) {
 	}
 	if warnOrphanedSearchKey(config.Config{SearchURL: "http://search:8030"}, key) || warnOrphanedSearchKey(config.Config{}, none) {
 		t.Error("warned without cause")
+	}
+}
+
+// The docgen sidecar is a best-effort built-in that may make artifacts.
+func TestToolConfigForConfigAddsDocgenSidecar(t *testing.T) {
+	tc, err := toolConfigForConfig(config.Config{DocgenURL: "http://docgen:8020/", DocgenToken: strings.Repeat("t", 32)}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, ok := tc.FileServers.Servers[mcp.DocgenServer]
+	if !ok || !sc.BuiltIn || !sc.Artifacts || sc.URL != "http://docgen:8020/mcp" || sc.Headers["Authorization"] != "Bearer "+strings.Repeat("t", 32) {
+		t.Fatalf("docgen = %+v (present %v)", sc, ok)
+	}
+	if _, required := tc.Required.Servers[mcp.DocgenServer]; required {
+		t.Fatal("docgen sidecar must not be required")
+	}
+	if _, ok := mustToolConfig(t, config.Config{}).Servers[mcp.DocgenServer]; ok {
+		t.Fatal("docgen registered without its URL")
+	}
+}
+
+// An install run without compose that still names Gotenberg, but no
+// sidecar, is told where the document tools went.
+func TestWarnOrphanedGotenbergURL(t *testing.T) {
+	url := func(string) string { return "http://gotenberg:3000" }
+	none := func(string) string { return "" }
+	if !warnOrphanedGotenbergURL(config.Config{}, url) {
+		t.Error("orphaned URL not reported")
+	}
+	if warnOrphanedGotenbergURL(config.Config{DocgenURL: "http://docgen:8020"}, url) || warnOrphanedGotenbergURL(config.Config{}, none) {
+		t.Error("warned without cause")
+	}
+}
+
+func TestServerToolCount(t *testing.T) {
+	tools := []llm.Tool{
+		{Function: llm.ToolFunction{Name: "docgen__create_pdf_file"}},
+		{Function: llm.ToolFunction{Name: "docgen__create_text_file"}},
+		{Function: llm.ToolFunction{Name: "search__web"}},
+		{Function: llm.ToolFunction{Name: "create_pdf_file"}},
+	}
+	if got := serverToolCount(tools, mcp.DocgenServer); got != 2 {
+		t.Fatalf("count = %d, want 2", got)
 	}
 }
 

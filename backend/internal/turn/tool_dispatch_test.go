@@ -11,7 +11,6 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 )
@@ -66,18 +65,15 @@ func TestRunToolCallWithoutMCPServiceFailsTheCall(t *testing.T) {
 }
 
 func TestExecuteBuiltInToolFollowsWhatWasOffered(t *testing.T) {
-	docgenOn := newToolGate(string(classifier.Coding), "", "")
-	docgenOff := newToolGate(string(classifier.General), string(classifier.General), "just chatting")
+	// read_project_threads is offered in a project thread only.
+	project := "p1"
+	inProject, outside := chat.Thread{ID: "t1", ProjectID: &project}, chat.Thread{ID: "t1"}
+	gate := newToolGate(string(classifier.General), "", "")
 	call := func(name string) llm.ToolCall {
-		return llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: `{"prompt":"a cat"}`}}
+		return llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: `{}`}}
 	}
-	newEngine := func(gen *recordingDocGen, mcpNames ...string) *Engine {
-		e := &Engine{
-			artifacts: fakeArtifactStore{},
-			usersDir:  t.TempDir(),
-			thread:    &fakeThreadStore{},
-			docTools:  []docgen.Generator{gen},
-		}
+	newEngine := func(mcpNames ...string) *Engine {
+		e := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), thread: &fakeThreadStore{}}
 		var tools []llm.Tool
 		for _, name := range mcpNames {
 			tools = append(tools, llm.Tool{Type: "function", Function: llm.ToolFunction{Name: name}})
@@ -87,32 +83,23 @@ func TestExecuteBuiltInToolFollowsWhatWasOffered(t *testing.T) {
 	}
 
 	t.Run("MCP tool of a gated-off built-in's name reaches MCP", func(t *testing.T) {
-		gen := &recordingDocGen{name: "create_text_file"}
-		e := newEngine(gen, "create_text_file")
-		_, _, handled := offeredRun(e, chat.Thread{}, docgenOff).executeBuiltInTool(context.Background(), call("create_text_file"))
-		if handled || gen.calls != 0 {
-			t.Fatalf("handled=%v generator calls=%d, want the call left to MCP", handled, gen.calls)
+		e := newEngine(ProjectThreadsToolName)
+		if _, _, handled := offeredRun(e, outside, gate).executeBuiltInTool(context.Background(), call(ProjectThreadsToolName)); handled {
+			t.Fatal("handled, want the call left to MCP")
 		}
 	})
 	t.Run("built-in wins over an MCP tool of its name", func(t *testing.T) {
-		gen := &recordingDocGen{name: "create_text_file"}
-		e := newEngine(gen, "create_text_file")
-		_, _, handled := offeredRun(e, chat.Thread{}, docgenOn).executeBuiltInTool(context.Background(), call("create_text_file"))
-		if !handled || gen.calls != 1 {
-			t.Fatalf("handled=%v generator calls=%d, want the built-in run", handled, gen.calls)
+		e := newEngine(ProjectThreadsToolName)
+		if _, _, handled := offeredRun(e, inProject, gate).executeBuiltInTool(context.Background(), call(ProjectThreadsToolName)); !handled {
+			t.Fatal("not handled, want the built-in run")
 		}
 	})
 	t.Run("built-in never offered is not dispatched", func(t *testing.T) {
-		gen := &recordingDocGen{name: "create_text_file"}
-		e := newEngine(gen)
-		run := offeredRun(e, chat.Thread{}, docgenOff)
-		for _, name := range []string{"create_text_file", sandboxToolName, ProjectThreadsToolName} {
+		run := offeredRun(newEngine(), outside, gate)
+		for _, name := range []string{sandboxToolName, ProjectThreadsToolName, "docgen__create_text_file"} {
 			if _, _, handled := run.executeBuiltInTool(context.Background(), call(name)); handled {
 				t.Errorf("%s: handled, want it left to MCP", name)
 			}
-		}
-		if gen.calls != 0 {
-			t.Fatalf("generator calls = %d, want 0", gen.calls)
 		}
 	})
 }
@@ -127,28 +114,25 @@ func TestAvailableToolsSkipsMCPDuplicateOfBuiltInTool(t *testing.T) {
 	srv := &Engine{
 		artifacts: fakeArtifactStore{},
 		usersDir:  t.TempDir(),
-		docTools:  []docgen.Generator{docgen.TextGenerator{}},
 		mcp: fakeMCPService{ToolList: []llm.Tool{
-			{Type: "function", Function: llm.ToolFunction{Name: "create_text_file"}},
+			{Type: "function", Function: llm.ToolFunction{Name: conversationSearchToolName}},
 			{Type: "function", Function: llm.ToolFunction{Name: "search__web"}},
 		}},
 	}
 
-	// Gate with the coding category so the docgen tools are offered (this test is
-	// about de-duping an MCP tool against a built-in, not about gating).
 	tools := srv.availableTools(chat.Thread{}, newToolGate(string(classifier.Coding), "", ""))
 
 	var builtInCount, searchCount int
 	for _, tool := range tools {
 		switch tool.Function.Name {
-		case "create_text_file":
+		case conversationSearchToolName:
 			builtInCount++
 		case "search__web":
 			searchCount++
 		}
 	}
 	if builtInCount != 1 || searchCount != 1 {
-		t.Fatalf("tool counts create_text_file=%d search__web=%d, want 1 and 1", builtInCount, searchCount)
+		t.Fatalf("tool counts %s=%d search__web=%d, want 1 and 1", conversationSearchToolName, builtInCount, searchCount)
 	}
 }
 

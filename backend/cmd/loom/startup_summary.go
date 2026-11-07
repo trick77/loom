@@ -11,7 +11,8 @@ import (
 )
 
 type startupRuntime struct {
-	DocToolCount        int
+	// DocgenToolCount is how many document tools discovery found.
+	DocgenToolCount     int
 	DiscoveredToolCount int
 	// ImageToolUp: discovery found the image tool (a best-effort sidecar may
 	// be configured and still not answering).
@@ -47,7 +48,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		embeddingsCapability(cfg),
 		tikaCapability(cfg),
 		artifactCapability(cfg),
-		docgenCapability(runtime),
+		docgenCapability(mcpConfig, runtime),
 		mcpCapability(mcpConfig, runtime),
 		mcpFileCapability(cfg),
 		searchCapability(mcpConfig, runtime),
@@ -88,14 +89,31 @@ func tikaCapability(cfg config.Config) startupCapability {
 	return startupCapability{Name: "document extraction", Status: "enabled", Detail: "url=" + cfg.TikaURL}
 }
 
-// config.Load requires an absolute BACKEND_USERS_DIR, so artifacts and the
-// document tools are always on.
+// config.Load requires an absolute BACKEND_USERS_DIR, so artifacts are
+// always on.
 func artifactCapability(cfg config.Config) startupCapability {
 	return startupCapability{Name: "artifacts", Status: "enabled", Detail: "users_dir=" + cfg.UsersDir}
 }
 
-func docgenCapability(runtime startupRuntime) startupCapability {
-	return startupCapability{Name: "document generation", Status: "enabled", Detail: fmt.Sprintf("tools=%d", runtime.DocToolCount)}
+// docgenCapability says who serves the document tools: the loom-docgen
+// sidecar, or an mcp.json server named docgen that replaces it, and how many
+// tools discovery found.
+func docgenCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
+	server, ok := mcpConfig.Servers[mcp.DocgenServer]
+	who := "mcp.json server " + mcp.DocgenServer
+	if server.BuiltIn {
+		who = "loom-docgen sidecar"
+	}
+	switch {
+	case !ok:
+		return startupCapability{Name: "document generation", Status: "disabled", Detail: "set BACKEND_DOCGEN_URL (loom-docgen sidecar)"}
+	case !server.Artifacts:
+		// Every file it returned would be dropped.
+		return startupCapability{Name: "document generation", Status: "disabled", Detail: who + " lacks \"artifacts\": true"}
+	case runtime.DocgenToolCount == 0:
+		return startupCapability{Name: "document generation", Status: "configured", Detail: who + " not answering yet; offered once it does"}
+	}
+	return startupCapability{Name: "document generation", Status: "enabled", Detail: fmt.Sprintf("%s tools=%d", who, runtime.DocgenToolCount)}
 }
 
 func mcpCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapability {

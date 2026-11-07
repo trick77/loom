@@ -218,6 +218,8 @@ describe("tool call descriptions and labels", () => {
     expect(toolSourceLabel("run_python")).toBe("Python sandbox");
     expect(toolSourceLabel("conversation_search")).toBe("Your conversations");
     expect(toolSourceLabel("create_pdf_file")).toBe("File generator");
+    expect(toolSourceLabel("docgen__create_pdf_file")).toBe("File generator");
+    expect(toolSourceLabel("docgen__create_text_file")).toBe("File generator");
     expect(toolSourceLabel("generate_image")).toBe("Image generator");
     expect(toolSourceLabel("imagegen__generate")).toBe("Image generator");
     expect(toolSourceLabel("forget_user_directive")).toBe("Memory");

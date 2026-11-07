@@ -168,22 +168,30 @@ const scheduledResearchNote = "While tools are offered, only research: once you 
 
 // allowTools keeps the tools a scheduled run may use: every MCP tool the
 // user may use (offerTools already left out other accounts' servers), never a
-// built-in, so no memory, file, sandbox or schedule tool, and never the image
-// tool (an unattended run researches, it does not spend on pictures). It
-// records them for dispatch and returns no built-ins to offer. Any other turn
-// keeps all of them.
+// built-in, so no memory, sandbox or schedule tool, and never the image or a
+// document tool (an unattended run researches, it does not spend on pictures
+// or make files). It records them for dispatch and returns no built-ins to
+// offer. Any other turn keeps all of them.
 func (t *Run) allowTools(tools []llm.Tool, builtIns map[string]*toolSpec) ([]llm.Tool, map[string]*toolSpec) {
 	if t.scheduled == nil {
 		return tools, builtIns
 	}
 	tools = slices.DeleteFunc(tools, func(tool llm.Tool) bool {
-		return builtIns[tool.Function.Name] != nil || t.e.toolPolicy(tool.Function.Name).imageGenerator
+		policy := t.e.toolPolicy(tool.Function.Name)
+		return builtIns[tool.Function.Name] != nil || policy.imageGenerator || policy.documentGenerator
 	})
 	t.scheduledTools = make(map[string]bool, len(tools))
 	for _, tool := range tools {
 		t.scheduledTools[tool.Function.Name] = true
 	}
 	return tools, map[string]*toolSpec{}
+}
+
+// docToolDenied reports whether a call names a document tool this turn was
+// not offered: the gate (no file wanted, nowhere to store it) holds at call
+// time too, whatever the model names.
+func (t *Run) docToolDenied(name string) bool {
+	return t.e.toolPolicy(name).documentGenerator && !t.offeredDocTools[name]
 }
 
 // scheduledDenies reports whether a scheduled run refuses a tool call: one

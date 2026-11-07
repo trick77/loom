@@ -13,7 +13,6 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/schedule"
@@ -44,7 +43,6 @@ type Deps struct {
 	Documents DocumentService
 	LLM       ChatClient
 	MCP       ToolService
-	DocTools  []docgen.Generator
 	// Sandbox runs run_python; nil keeps the tool off.
 	Sandbox SandboxRunner
 	// AppleMusic is the loom-tunewire sidecar's token routes; nil hides the
@@ -364,7 +362,6 @@ func newServer(d Deps) *server {
 		Documents:                  d.Documents,
 		LLM:                        d.LLM,
 		MCP:                        d.MCP,
-		DocTools:                   d.DocTools,
 		Sandbox:                    d.Sandbox,
 		UsersDir:                   d.UsersDir,
 		KnowledgeInlineTokenBudget: d.KnowledgeInlineTokenBudget,
