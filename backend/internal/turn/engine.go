@@ -7,7 +7,6 @@ import (
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/docgen"
 )
 
 // Engine runs chat turns: it holds what a turn reads and writes, and nothing
@@ -19,7 +18,6 @@ type Engine struct {
 	documents DocumentService
 	llm       ChatClient
 	mcp       ToolService
-	docTools  []docgen.Generator
 	sandbox   SandboxRunner
 	usersDir  string
 	// knowledgeInlineTokenBudget bounds the full-document knowledge injected
@@ -54,7 +52,6 @@ type Config struct {
 	Documents DocumentService
 	LLM       ChatClient
 	MCP       ToolService
-	DocTools  []docgen.Generator
 	// Sandbox runs run_python; nil keeps the tool off.
 	Sandbox  SandboxRunner
 	UsersDir string
@@ -93,7 +90,6 @@ func New(c Config) *Engine {
 		documents:                  c.Documents,
 		llm:                        c.LLM,
 		mcp:                        c.MCP,
-		docTools:                   c.DocTools,
 		sandbox:                    c.Sandbox,
 		usersDir:                   c.UsersDir,
 		knowledgeInlineTokenBudget: c.KnowledgeInlineTokenBudget,

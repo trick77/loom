@@ -4,8 +4,6 @@ import (
 	"errors"
 	"io"
 	"strings"
-
-	"github.com/trick77/loom/internal/artifact"
 )
 
 // DOCXGenerator generates DOCX documents from plain text.
@@ -55,7 +53,7 @@ func (g DOCXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta
 	if err := writeZipPackage(w, files); err != nil {
 		return GeneratedMeta{}, err
 	}
-	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "docx", MIMEType: artifact.MIMEType("docx")}, nil
+	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "docx", MIMEType: MIMEType("docx")}, nil
 }
 
 func docxDocumentXML(content string) string {

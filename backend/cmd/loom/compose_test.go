@@ -92,6 +92,44 @@ func TestComposePassesSearchEnv(t *testing.T) {
 	}
 }
 
+// The docgen sidecar is always on: loom waits for it and gets its address;
+// Gotenberg is the sidecar's, never loom's.
+func TestComposePassesDocgenEnv(t *testing.T) {
+	for path, want := range map[string][]string{
+		"../../../compose.yaml":     {`BACKEND_DOCGEN_URL: "${BACKEND_DOCGEN_URL:-http://docgen:8020}"`, `DOCGEN_TOKEN: "${BACKEND_DOCGEN_TOKEN:-}"`},
+		"../../../compose.dev.yaml": {`BACKEND_DOCGEN_URL: "${BACKEND_DOCGEN_URL:-http://localhost:8020}"`, `DOCGEN_TOKEN: dev-docgen-token-please-change-0123456789`},
+	} {
+		t.Run(path, func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			compose := string(data)
+			for _, w := range append(want, `DOCGEN_GOTENBERG_URL: "http://gotenberg:3000"`) {
+				if !strings.Contains(compose, w) {
+					t.Fatalf("%s lacks %s", path, w)
+				}
+			}
+			dependsOn := regexp.MustCompile(`(?m)^      docgen:\n(?:\s*#.*\n)*        condition: service_healthy\n(        required: false\n)?`).FindStringSubmatch(compose)
+			if dependsOn == nil || dependsOn[1] != "" {
+				t.Fatalf("%s: loom must depend on a healthy docgen service", path)
+			}
+			service := composeService(t, compose, "docgen")
+			for _, w := range []string{`user: "65532:65532"`, "read_only: true", "cap_drop: [ALL]", "no-new-privileges:true", `"/loom-docgen", "healthcheck"`, "gotenberg:\n        condition: service_healthy"} {
+				if !strings.Contains(service, w) {
+					t.Fatalf("%s docgen service lacks %s", path, w)
+				}
+			}
+			if strings.Contains(service, "profiles:") {
+				t.Fatalf("%s: the docgen service must not sit behind a profile", path)
+			}
+			if strings.Contains(compose, "BACKEND_GOTENBERG_URL") {
+				t.Fatalf("%s still sets BACKEND_GOTENBERG_URL", path)
+			}
+		})
+	}
+}
+
 // readsImageRefFromEnv reports whether a file reads a container-image ref from
 // the environment, which production must not do. It is a substring scan over
 // "BACKEND_IMAGE" and friends, so it also catches names not invented yet — but

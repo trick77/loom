@@ -7,7 +7,6 @@ import (
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 )
@@ -46,6 +45,14 @@ type toolSpec struct {
 	// imageGenerator marks the image tool: an image turn forces it, a turn
 	// makes one image, loom fills its loomArgs and locks the thread's model.
 	imageGenerator bool
+	// documentGenerator marks a document tool (docs/docgen.md). Their schemas
+	// are the biggest chunk on offer, so the gate offers them only when the
+	// turn's category or wording plausibly wants a downloadable file
+	// (toolGate.docgenEnabled), and only where files can be stored. Its
+	// argument can be a whole document, so it is long-running: the LLM
+	// client widens its budgets while it is on offer (llm.Tool.LongRunning).
+	// A scheduled run never gets one.
+	documentGenerator bool
 
 	// What follows is particular to an MCP tool loom knows by name (the web
 	// tools, web_tools.go); nil or zero leaves the generic behaviour.
@@ -75,7 +82,7 @@ type usageCounter struct {
 
 type toolRunFunc func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response)
 
-// coreTools are offered ahead of the generated-file tools, in this order.
+// coreTools are offered first, in this order.
 var coreTools = []toolSpec{
 	{
 		// The cross-thread summarizer reads the other threads in the same
@@ -210,41 +217,13 @@ func indexTools(tools []toolSpec) map[string]*toolSpec {
 	return byName
 }
 
-// docToolSpec offers a file generator. They are the biggest built-in schema
-// chunk, so the gate offers them only when the turn's category or wording
-// plausibly wants a downloadable file. Its argument can be a whole document, so
-// it is long-running: the LLM client widens its budgets while it is on offer
-// (see llm.Tool.LongRunning).
-func docToolSpec(gen docgen.Generator) toolSpec {
-	return toolSpec{
-		name: gen.ToolName(),
-		schema: func() llm.Tool {
-			s := gen.Schema()
-			tool := toolFromSchema(s.Name, s.Description, s.Parameters)
-			tool.LongRunning = true
-			return tool
-		},
-		offered: func(e *Engine, _ chat.Thread, gate toolGate) bool {
-			return e.canStoreArtifacts() && gate.docgenEnabled()
-		},
-		run: func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response) {
-			output, resp := t.runDocGenerator(ctx, call, gen)
-			return output, oneArtifact(resp)
-		},
-	}
-}
-
 // registry returns this engine's built-ins in offer order, and by name every
 // spec loom knows: those built-ins, then the MCP policies. It is built once,
 // on first use, so an Engine literal works like one from New; so is each
 // built-in's definition. On a duplicate name the first spec wins.
 func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 	s.toolsOnce.Do(func() {
-		tools := slices.Concat(coreTools, scheduleToolSpecs)
-		for _, gen := range s.docTools {
-			tools = append(tools, docToolSpec(gen))
-		}
-		tools = append(tools, sandboxToolSpec)
+		tools := slices.Concat(coreTools, scheduleToolSpecs, []toolSpec{sandboxToolSpec})
 		for i := range tools {
 			tools[i].tool = tools[i].schema()
 		}
@@ -254,7 +233,7 @@ func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 }
 
 // canStoreArtifacts reports whether generated files have somewhere to go;
-// the file, image and sandbox tools are offered only then.
+// the document, image and sandbox tools are offered only then.
 func (s *Engine) canStoreArtifacts() bool {
 	return s.artifacts != nil && strings.TrimSpace(s.usersDir) != ""
 }
@@ -268,17 +247,5 @@ func withArgs(run func(ctx context.Context, t *Run, args map[string]any) string)
 			return capToolOutput("tool failed: invalid arguments: " + err.Error()), nil
 		}
 		return run(ctx, t, args), nil
-	}
-}
-
-// toolFromSchema builds the function tool a leaf package's schema describes.
-func toolFromSchema(name, description string, parameters map[string]any) llm.Tool {
-	return llm.Tool{
-		Type: "function",
-		Function: llm.ToolFunction{
-			Name:        name,
-			Description: description,
-			Parameters:  parameters,
-		},
 	}
 }

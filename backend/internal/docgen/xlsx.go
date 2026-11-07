@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf16"
-
-	"github.com/trick77/loom/internal/artifact"
 )
 
 const (
@@ -95,7 +93,7 @@ func (g XLSXGenerator) Generate(req GenerateRequest, w io.Writer) (GeneratedMeta
 	if err := writeZipPackage(w, files); err != nil {
 		return GeneratedMeta{}, err
 	}
-	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "xlsx", MIMEType: artifact.MIMEType("xlsx")}, nil
+	return GeneratedMeta{DisplayFilename: req.Filename, Extension: "xlsx", MIMEType: MIMEType("xlsx")}, nil
 }
 
 // xlsxSheetXML renders the worksheet with the header row frozen. dimension,

@@ -83,6 +83,12 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	history := t.plan.history
 	tools, offered := t.e.offerTools(t.user, t.thread, t.plan.gate)
 	tools, t.offered = t.allowTools(tools, offered)
+	t.offeredDocTools = map[string]bool{}
+	for _, tool := range tools {
+		if t.e.toolPolicy(tool.Function.Name).documentGenerator {
+			t.offeredDocTools[tool.Function.Name] = true
+		}
+	}
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(history), inferenceWithPurpose(t.inference, "chat", 1), nil)
@@ -189,7 +195,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			break
 		}
 		// Log every tool call's argument size so document payloads are measurable in
-		// retrospect instead of guessed at: a create_*_file call serializes the whole
+		// retrospect instead of guessed at: a document tool call serializes the whole
 		// file into its argument JSON, so arg_bytes ≈ document size. Pair this with
 		// completion_tokens from the matching "llm inference completed" line (same
 		// thread_id + round) to read the size in tokens — the unit the completion-token
@@ -239,7 +245,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			perToolCount[call.Function.Name]++
 			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
 			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), call.Function.Name)
-			if t.scheduledDenies(call.Function.Name) {
+			if t.scheduledDenies(call.Function.Name) || t.docToolDenied(call.Function.Name) {
 				denied[i] = true
 			}
 			capped[i] = !deferred[i] && !denied[i] && t.searchCapped(call.Function.Name)

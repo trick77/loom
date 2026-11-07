@@ -4,11 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/classifier"
-	"github.com/trick77/loom/internal/docgen"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn/turntest"
 )
 
 func TestToolGateDocgenEnabled(t *testing.T) {
@@ -90,36 +89,48 @@ func TestCategoryGrantsCodingDocs(t *testing.T) {
 }
 
 // TestAvailableToolsGatesDocgen verifies the end-to-end effect on the offered
-// tool set: docgen schemas are withheld for a plain category and present once the
-// gate enables them.
+// tool set: the document tools (any tool of the docgen server) are withheld
+// for a plain category and present, long-running, once the gate enables them,
+// and only where files can be stored and the server may make them.
 func TestAvailableToolsGatesDocgen(t *testing.T) {
-	srv := &Engine{
-		artifacts: fakeArtifactStore{},
-		usersDir:  t.TempDir(),
-		docTools:  []docgen.Generator{docgen.TextGenerator{}},
-		mcp:       fakeMCPService{},
+	docTools := fakeMCPService{
+		ToolList:  []llm.Tool{turntest.DocgenToolDef("create_text_file"), turntest.DocgenToolDef("create_new_format")},
+		Artifacts: turntest.DocgenArtifacts(),
 	}
+	srv := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), mcp: docTools}
 
-	hasCreateText := func(gate toolGate) bool {
-		for _, tool := range srv.availableTools(chat.Thread{}, gate) {
-			if tool.Function.Name == "create_text_file" {
-				return true
+	offered := func(e *Engine, gate toolGate) []llm.Tool {
+		var out []llm.Tool
+		for _, tool := range e.availableTools(chat.Thread{}, gate) {
+			if strings.HasPrefix(tool.Function.Name, "docgen__") {
+				out = append(out, tool)
 			}
 		}
-		return false
+		return out
 	}
 
-	if hasCreateText(newToolGate(string(classifier.General), string(classifier.General), "just chatting")) {
-		t.Fatal("docgen tools should be gated off for a general chit-chat turn")
+	if got := offered(srv, newToolGate(string(classifier.General), string(classifier.General), "just chatting")); len(got) != 0 {
+		t.Fatalf("docgen tools should be gated off for a general chit-chat turn: %v", got)
 	}
-	if !hasCreateText(newToolGate(string(classifier.General), "", "save this as a pdf")) {
-		t.Fatal("docgen tools should be present once the message asks for a file")
+	for name, gate := range map[string]toolGate{
+		"file asked for":      newToolGate(string(classifier.General), "", "save this as a pdf"),
+		"document category":   newToolGate(string(classifier.WritingEditing), "", "draft a memo"),
+		"no category (widen)": newToolGate("", "", "anything"),
+	} {
+		got := offered(srv, gate)
+		if len(got) != 2 || !got[0].LongRunning || !got[1].LongRunning {
+			t.Fatalf("%s: offered %+v, want both docgen tools, long-running", name, got)
+		}
 	}
-	if !hasCreateText(newToolGate(string(classifier.WritingEditing), "", "draft a memo")) {
-		t.Fatal("docgen tools should be present for a document-producing category")
+	nowhere := &Engine{mcp: docTools}
+	if got := offered(nowhere, newToolGate("", "", "anything")); len(got) != 0 {
+		t.Fatalf("docgen tools offered without artifact storage: %v", got)
 	}
-	if !hasCreateText(newToolGate("", "", "anything")) {
-		t.Fatal("docgen tools should be present when there is no category signal (widen-all)")
+	// An mcp.json docgen without "artifacts": every file would be dropped.
+	docTools.Artifacts = nil
+	noArtifacts := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), mcp: docTools}
+	if got := offered(noArtifacts, newToolGate("", "", "anything")); len(got) != 0 {
+		t.Fatalf("docgen tools offered from a server without artifacts: %v", got)
 	}
 }
 
@@ -165,32 +176,41 @@ func TestAvailableToolsGatesCategoryTaggedMCP(t *testing.T) {
 	}
 }
 
-// TestFileToolGuardrailTracksDocgenGating locks in the prompt<->tools consistency:
-// the create_*_file guidance must appear in the system prompt only on turns where
-// the docgen tools are actually offered. Naming a gated-out tool would invite the
-// model to call a tool whose schema it never received.
-func TestFileToolGuardrailTracksDocgenGating(t *testing.T) {
-	user := auth.User{ID: "u1", ResponseLanguage: "en"}
-	newMsg := chat.Message{Role: chat.RoleUser, Content: "hello"}
-
-	guidanceFor := func(gate toolGate) string {
-		if gate.docgenEnabled() {
-			return fileToolGuardrailPrompt
+// TestFileToolGuardrailTracksOfferedDocumentTools locks in the prompt<->tools
+// consistency through a whole turn: the file-tool guidance is in the system
+// prompt only when a document tool is actually offered. Naming one the gate
+// left out, or whose sidecar is down, would invite the model to call a tool
+// whose schema it never received.
+func TestFileToolGuardrailTracksOfferedDocumentTools(t *testing.T) {
+	systemPrompt := func(t *testing.T, category, content string, tools ...llm.Tool) string {
+		t.Helper()
+		llmClient := &fakeToolChatClient{ClassifyResult: category, TitleResult: "T", Results: []llm.StreamResult{{Content: "ok"}}}
+		out := runStoredTurn(t, Config{
+			Artifacts: fakeArtifactStore{},
+			UsersDir:  t.TempDir(),
+			LLM:       llmClient,
+			MCP: fakeMCPService{
+				ToolList:  append([]llm.Tool{{Type: "function", Function: llm.ToolFunction{Name: "search__web"}}}, tools...),
+				Artifacts: turntest.DocgenArtifacts(),
+			},
+		}, &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: chat.DefaultThreadTitle}}, content)
+		if out.err != nil || len(llmClient.Histories) == 0 {
+			t.Fatalf("turn: %v, %d rounds; body=%s", out.err, len(llmClient.Histories), out.body)
 		}
-		return ""
+		return llmClient.Histories[0][0].Content
 	}
-	systemPrompt := func(gate toolGate) string {
-		history := buildLLMHistory(user, promptBlocks{toolGuidance: guidanceFor(gate)}, nil, newMsg)
-		return history[0].Content
-	}
+	doc := turntest.DocgenToolDef("create_pdf_file")
 
-	if strings.Contains(systemPrompt(newToolGate(string(classifier.General), string(classifier.General), "just chatting")), "create_pdf_file") {
+	if !strings.Contains(systemPrompt(t, string(classifier.Coding), "help me", doc), fileToolGuardrailPrompt) {
+		t.Fatal("file-tool guardrail should be present when a document tool is offered")
+	}
+	if !strings.Contains(fileToolGuardrailPrompt, "docgen__*") {
+		t.Fatalf("guardrail names no document tool: %q", fileToolGuardrailPrompt)
+	}
+	if strings.Contains(systemPrompt(t, string(classifier.General), "just chatting", doc), fileToolGuardrailPrompt) {
 		t.Fatal("file-tool guardrail should be absent when docgen is gated off")
 	}
-	if !strings.Contains(systemPrompt(newToolGate(string(classifier.Coding), "", "help me")), "create_pdf_file") {
-		t.Fatal("file-tool guardrail should be present when docgen is offered")
-	}
-	if !strings.Contains(systemPrompt(newToolGate(string(classifier.General), "", "export this as a pdf")), "create_pdf_file") {
-		t.Fatal("file-tool guardrail should be present once a file is requested via escalation")
+	if strings.Contains(systemPrompt(t, string(classifier.Coding), "help me"), fileToolGuardrailPrompt) {
+		t.Fatal("file-tool guardrail should be absent while no document tool is served")
 	}
 }

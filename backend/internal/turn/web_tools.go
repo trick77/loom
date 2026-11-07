@@ -84,8 +84,11 @@ var webToolPolicies = []toolSpec{
 // serverPolicies hold what applies to every tool of a server that has no
 // policy of its own. A search server's other tools (an mcp.json "search" may
 // add extract or crawl) cost like its search: a scheduled run counts them too.
+// Every tool of the document server makes a document, whatever its name
+// (docs/docgen.md).
 var serverPolicies = map[string]*toolSpec{
 	mcp.SearchServer: {scheduledLimited: true},
+	mcp.DocgenServer: {documentGenerator: true},
 }
 
 // The browser (obscura, a third-party server) sends no sources: navigate

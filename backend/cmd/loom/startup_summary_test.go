@@ -55,14 +55,14 @@ func TestStartupCapabilitiesDefaultDisabledFeatures(t *testing.T) {
 		TikaURL:      "http://tika:9998",
 		ChatMissing:  "BACKEND_CHAT_MODEL",
 		EmbedMissing: "BACKEND_EMBED_MODEL",
-	}, mcp.Config{}, startupRuntime{DocToolCount: 5})
+	}, mcp.Config{}, startupRuntime{})
 
 	assertCapability(t, items, "chat", "disabled", "BACKEND_CHAT_MODEL")
 	assertCapability(t, items, "embeddings", "disabled", "BACKEND_EMBED_MODEL")
 	assertCapability(t, items, "MCP tools", "disabled", "no configured MCP servers")
 	assertCapability(t, items, "Web search", "disabled", "BACKEND_SEARCH_URL")
 	assertCapability(t, items, "Image generation", "disabled", "BACKEND_IMAGE_GEN_URL")
-	assertCapability(t, items, "document generation", "enabled", "tools=5")
+	assertCapability(t, items, "document generation", "disabled", "BACKEND_DOCGEN_URL")
 	assertCapability(t, items, "artifacts", "enabled", "users_dir=/data/users")
 	assertCapability(t, items, "Python sandbox", "disabled", "BACKEND_SANDBOX_URL")
 }
@@ -104,6 +104,25 @@ func TestStartupCapabilitiesSearch(t *testing.T) {
 	assertCapability(t, items, "Web search", "configured", "not answering yet")
 }
 
+// Who serves the document tools, how many answered, and an mcp.json server
+// whose files would all be dropped.
+func TestStartupCapabilitiesDocgen(t *testing.T) {
+	sidecar := mcp.Config{Servers: map[string]mcp.ServerConfig{mcp.DocgenServer: mcp.DocgenServerConfig("http://docgen:8020", "t")}}
+	items := startupCapabilities(config.Config{}, sidecar, startupRuntime{DocgenToolCount: 5})
+	assertCapability(t, items, "document generation", "enabled", "loom-docgen sidecar tools=5")
+	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{})
+	assertCapability(t, items, "document generation", "configured", "not answering yet")
+
+	file := mcp.Config{Servers: map[string]mcp.ServerConfig{
+		mcp.DocgenServer: {Transport: mcp.TransportStreamableHTTP, URL: "http://my-docs:8080/mcp", Artifacts: true},
+	}}
+	items = startupCapabilities(config.Config{}, file, startupRuntime{DocgenToolCount: 2})
+	assertCapability(t, items, "document generation", "enabled", "mcp.json server docgen tools=2")
+	file.Servers[mcp.DocgenServer] = mcp.ServerConfig{Transport: mcp.TransportStreamableHTTP, URL: "http://my-docs:8080/mcp"}
+	items = startupCapabilities(config.Config{}, file, startupRuntime{DocgenToolCount: 2})
+	assertCapability(t, items, "document generation", "disabled", `lacks "artifacts": true`)
+}
+
 func TestStartupCapabilitiesSandboxConfigured(t *testing.T) {
 	items := startupCapabilities(config.Config{SandboxURL: "http://sandbox:8070", SandboxTimeout: time.Minute}, mcp.Config{}, startupRuntime{})
 	assertCapability(t, items, "Python sandbox", "configured", "url=http://sandbox:8070 timeout=1m0s")
@@ -126,7 +145,7 @@ func TestStartupCapabilitiesEnabledByConfig(t *testing.T) {
 		"fetch":            {Transport: mcp.TransportStreamableHTTP, URL: "http://fetch:8080/mcp"},
 		mcp.ImagegenServer: mcp.ImagegenServerConfig("http://imagegen:8040", "token"),
 		mcp.SearchServer:   mcp.SearchServerConfig("http://search:8030", "token"),
-	}}, startupRuntime{DocToolCount: 5, DiscoveredToolCount: 3, ImageToolUp: true, SearchToolUp: true, SearchServerUp: true})
+	}}, startupRuntime{DiscoveredToolCount: 3, ImageToolUp: true, SearchToolUp: true, SearchServerUp: true})
 
 	assertCapability(t, items, "auth", "dev", "local loopback only")
 	assertCapability(t, items, "chat", "enabled", "model="+llmwiretest.ChatModel)

@@ -120,9 +120,14 @@ type Config struct {
 	// the URL.
 	SearchURL   string
 	SearchToken string
+	// DocgenURL is the loom-docgen sidecar (docs/docgen.md); empty keeps the
+	// document tools off unless an mcp.json server named docgen serves them.
+	// DocgenToken is its DOCGEN_TOKEN (sidecar.TokenProblem), required with
+	// the URL.
+	DocgenURL   string
+	DocgenToken string
 
 	TikaURL       string
-	GotenbergURL  string // Gotenberg (Chromium) sidecar for HTML→PDF rendering
 	ObscuraMCPURL string
 	// ObscuraMCPToken is the sidecar's OBSCURA_MCP_TOKEN, sent as a bearer
 	// token; required with ObscuraMCPURL (minObscuraMCPToken).
@@ -285,9 +290,10 @@ func Load() (Config, error) {
 		ImageGenURL:             r.String("BACKEND_IMAGE_GEN_URL", ""),
 		ImageGenToken:           r.String("BACKEND_IMAGE_GEN_TOKEN", ""),
 		TikaURL:                 r.String("BACKEND_TIKA_URL", "http://tika:9998"),
-		GotenbergURL:            r.String("BACKEND_GOTENBERG_URL", "http://gotenberg:3000"),
 		SearchURL:               optional(r, "BACKEND_SEARCH_URL", ""),
 		SearchToken:             r.String("BACKEND_SEARCH_TOKEN", ""),
+		DocgenURL:               optional(r, "BACKEND_DOCGEN_URL", ""),
+		DocgenToken:             r.String("BACKEND_DOCGEN_TOKEN", ""),
 		ObscuraMCPURL:           r.String("BACKEND_OBSCURA_MCP_URL", ""),
 		ObscuraMCPToken:         r.String("BACKEND_OBSCURA_MCP_TOKEN", ""),
 		TunewireURL:             r.String("BACKEND_TUNEWIRE_URL", ""),
@@ -366,6 +372,9 @@ func Load() (Config, error) {
 		r.Fail("%s", msg)
 	}
 	if msg := searchProblem(cfg); msg != "" {
+		r.Fail("%s", msg)
+	}
+	if msg := docgenProblem(cfg); msg != "" {
 		r.Fail("%s", msg)
 	}
 	if msg := stravaProblem(cfg); msg != "" {
@@ -552,6 +561,22 @@ func searchProblem(cfg Config) string {
 	// so it names the sidecar and the way out.
 	if msg := sidecar.TokenProblem("BACKEND_SEARCH_TOKEN", cfg.SearchToken); msg != "" {
 		return msg + ": web search runs in the loom-search sidecar, which shares it and refuses to start without it (docs/search.md)"
+	}
+	return ""
+}
+
+// docgenProblem says what is wrong with a configured docgen sidecar, by the
+// rule searchProblem follows.
+func docgenProblem(cfg Config) string {
+	if strings.TrimSpace(cfg.DocgenURL) == "" {
+		return ""
+	}
+	if !isAbsoluteHTTPURL(cfg.DocgenURL) {
+		return "BACKEND_DOCGEN_URL must be an absolute http(s) URL"
+	}
+	// compose sets the URL by default: an upgraded install meets this first.
+	if msg := sidecar.TokenProblem("BACKEND_DOCGEN_TOKEN", cfg.DocgenToken); msg != "" {
+		return msg + ": the document tools run in the loom-docgen sidecar, which shares it and refuses to start without it (docs/docgen.md)"
 	}
 	return ""
 }

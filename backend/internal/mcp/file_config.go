@@ -36,7 +36,7 @@ type fileServer struct {
 	Users userList `json:"users"`
 	// TrustInstructions lets the server's instructions into the system prompt.
 	TrustInstructions bool `json:"trustInstructions"`
-	// Artifacts lets the server's image results become artifacts.
+	// Artifacts lets the server's images and documents become artifacts.
 	Artifacts bool `json:"artifacts"`
 }
 
