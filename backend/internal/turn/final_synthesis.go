@@ -48,15 +48,13 @@ func buildFinalSynthesisHistory(history []llm.Message, baseLen, notesBudgetToken
 	instruction := "Using the research notes above, write your complete final answer now, in the user's language. Do not call any tools."
 	// Restate the citation rule here. It is also in the system prompt, but that sits
 	// far up the history while the notes block is this turn's immediate context —
-	// and this turn produces most answers that follow a research round. Worded to
-	// match loomSystemPrompt and kept language-neutral (the answer may be DE/FR/IT).
+	// and this turn produces most answers that follow a research round. The
+	// marker rule is loomSystemPrompt's own, kept language-neutral (the answer may
+	// be DE/FR/IT).
 	if len(sources) > 0 {
-		instruction += " The sources are labeled with bracketed numbers like [1] or [2]." +
-			" Whenever a sentence in your answer draws on one of these sources, append its marker" +
-			" at the end of that sentence — [1], or several like [1][3]. The web sources listed above" +
-			" continue one numbering sequence that starts with the user's uploaded documents earlier in" +
-			" this conversation; cite those by their own numbers in exactly the same way. Use only" +
-			" numbers that were given to you as a numbered source; never invent a citation number." +
+		instruction += " The sources are labeled with bracketed numbers like [1] or [2]. " + citationMarkerRule +
+			" The web sources listed above continue one numbering sequence that starts with the user's" +
+			" uploaded documents earlier in this conversation; cite those by their own numbers in exactly the same way." +
 			// Left to itself the model closes with its own "Sources:" list of bare URLs.
 			// The interface already renders every cited source as a numbered, linked list
 			// under the answer, so that block is pure duplication — and a wall of raw

@@ -245,6 +245,20 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 	}
 }
 
+// streamsKept says whether id's streams answer without a Strava read: in
+// memory (a 404 included) or on disk.
+func (s *service) streamsKept(user string, id int64) bool {
+	if _, ok := s.cache(user).streams.get(kindStreams+"/"+strconv.FormatInt(id, 10), s.now()); ok {
+		return true
+	}
+	p, err := s.store.bodyPath(user, id, kindStreams)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(p)
+	return err == nil
+}
+
 // storedAny says whether any answer of the activity is on disk.
 func (s *service) storedAny(user string, id int64) bool {
 	for _, k := range []string{kindDetail, kindStreams, kindZones} {
