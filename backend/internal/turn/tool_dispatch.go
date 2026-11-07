@@ -8,6 +8,7 @@ import (
 	"maps"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/auth"
@@ -161,7 +162,8 @@ const (
 // (a later file of the same name replaces the earlier one) and returns the
 // line that tells the model their names; "" when there are none or this turn
 // does not offer run_python (a scheduled run, the sidecar down). They are
-// never persisted, shown, or put into the prompt.
+// never persisted or shown; of their content only a CSV's header line
+// (csvColumns) reaches the prompt.
 func (t *Run) keepToolFiles(files []mcp.File) string {
 	if len(files) == 0 || t.offered[sandboxToolName] == nil {
 		return ""
@@ -191,20 +193,50 @@ const maxColumnsBytes = 300
 
 // csvColumns is " (columns: …)" from a CSV file's header line, "" for any
 // other file: a model that does not see them guesses (it once asked for
-// "time" in a file whose column is elapsed_s). Only the header, never a row.
+// "time" in a file whose column is elapsed_s). Only a line that reads as a
+// header (every field has a letter) goes: a headerless file's first line is
+// data, which stays out of the prompt. Brackets are swapped so the header
+// cannot close the bracketed line it sits in.
 func csvColumns(f mcp.File) string {
-	if f.MimeType != "text/csv" && !strings.HasSuffix(strings.ToLower(f.Name), ".csv") {
+	mt, _, _ := strings.Cut(strings.ToLower(f.MimeType), ";")
+	if strings.TrimSpace(mt) != "text/csv" && !strings.HasSuffix(strings.ToLower(f.Name), ".csv") {
 		return ""
 	}
 	head, _, _ := strings.Cut(string(f.Data[:min(len(f.Data), maxColumnsBytes+1)]), "\n")
 	head = strings.TrimSpace(strings.TrimPrefix(head, string(rune(0xFEFF)))) // a UTF-8 BOM
-	if head == "" {
+	cut := len(head) > maxColumnsBytes
+	if cut {
+		head = head[:maxColumnsBytes]
+	}
+	head = strings.ToValidUTF8(head, "")
+	if head == "" || !headerLike(head, cut) {
 		return ""
 	}
-	if len(head) > maxColumnsBytes {
-		head = strings.ToValidUTF8(head[:maxColumnsBytes], "") + "…"
+	head = strings.NewReplacer("[", "(", "]", ")").Replace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, head))
+	if cut {
+		head += "…"
 	}
 	return " (columns: " + head + ")"
+}
+
+// headerLike: every comma-separated field holds a letter (a data row has
+// numbers and dates). The last field of a cut line may be partial.
+func headerLike(line string, cut bool) bool {
+	fields := strings.Split(line, ",")
+	if cut && len(fields) > 1 {
+		fields = fields[:len(fields)-1]
+	}
+	for _, f := range fields {
+		if !strings.ContainsFunc(f, unicode.IsLetter) {
+			return false
+		}
+	}
+	return true
 }
 
 // keepToolArtifacts stores the images and documents a tool returned as the

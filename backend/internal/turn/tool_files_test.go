@@ -117,23 +117,58 @@ func TestTurnMountsToolFilesTheCodeNames(t *testing.T) {
 	}
 }
 
-func TestWithCodeNamedToolFiles(t *testing.T) {
-	tf := map[string]mcp.File{}
-	for i := range maxSandboxInputFiles + 2 {
-		n := string(rune('a'+i)) + ".csv"
-		tf[n] = mcp.File{Name: n}
+func TestCodeNamedToolFiles(t *testing.T) {
+	tf := map[string]mcp.File{"a.csv": {}, "data.csv": {}, "x.csv": {}, "y.csv": {}}
+	got := codeNamedToolFiles(`pd.read_csv("in/data.csv"); open('/work/in/y.csv'); f"in/x.csv.bak"; "main/x.csv"`, tf)
+	if strings.Join(got, ",") != "data.csv,y.csv" {
+		t.Errorf("got %v: a.csv is inside data.csv, x.csv only inside longer names", got)
 	}
-	code := "abcdefghijklmnop .csv a.csv b.csv c.csv d.csv e.csv f.csv g.csv h.csv i.csv j.csv k.csv l.csv"
-	got, _ := withCodeNamedToolFiles(nil, code, tf).([]any)
-	if len(got) != maxSandboxInputFiles {
-		t.Errorf("added past the per-call cap: %d", len(got))
+	if codeNamedToolFiles("print(1)", tf) != nil {
+		t.Error("no path in the code, none added")
 	}
-	// A malformed files argument is left for sandboxFiles to refuse.
-	if s, ok := withCodeNamedToolFiles("x.csv", code, tf).(string); !ok || s != "x.csv" {
-		t.Error("malformed files rewritten")
+}
+
+// A file the code names but the model did not ask for never fails the call:
+// past a cap it is left out.
+func TestSandboxFilesCodeNamedWithinCaps(t *testing.T) {
+	f := newSandboxFixture(t)
+	big := mcp.File{Name: "big.csv", Data: make([]byte, maxSandboxInputBytes)}
+	tf := map[string]mcp.File{"big.csv": big, "s.csv": {Name: "s.csv", Data: []byte("a\n")}}
+	files, msg := f.srv.sandboxFiles(t.Context(), testUser.ID, f.thread, []any{"s.csv"}, "open('in/big.csv'); open('in/s.csv')", tf)
+	if msg != "" || len(files) != 1 || files[0].Name != "s.csv" {
+		t.Errorf("over the byte cap: %q %v", msg, files)
 	}
-	if withCodeNamedToolFiles(nil, "print(1)", tf) != nil {
-		t.Error("no name in the code: files stays absent")
+	if _, msg := f.srv.sandboxFiles(t.Context(), testUser.ID, f.thread, "s.csv", "", tf); !strings.Contains(msg, "files must be an array") {
+		t.Errorf("malformed files: %q", msg)
+	}
+}
+
+func TestMissingInputHint(t *testing.T) {
+	tf := map[string]mcp.File{"strava_1_streams.csv": {}}
+	res := sandbox.Result{ExitCode: 1, Stderr: "FileNotFoundError: [Errno 2] No such file or directory: 'in/strava_1.csv'"}
+	if got := missingInputHint(res, nil, tf); !strings.Contains(got, "in/ holds only the files named in files") || !strings.Contains(got, "strava_1_streams.csv") {
+		t.Errorf("hint: %q", got)
+	}
+	res.ExitCode = 0
+	if missingInputHint(res, nil, tf) != "" {
+		t.Error("a run that worked gets no hint")
+	}
+}
+
+func TestCSVColumns(t *testing.T) {
+	for _, c := range []struct {
+		f    mcp.File
+		want string
+	}{
+		{mcp.File{Name: "s", MimeType: "text/csv; charset=utf-8", Data: []byte("elapsed_s,hr\n0,120\n")}, " (columns: elapsed_s,hr)"},
+		{mcp.File{Name: "s.csv", Data: []byte("2026-11-01,42.1,198\n")}, ""}, // no header: data stays out
+		{mcp.File{Name: "s.csv", Data: []byte("a],[b\n")}, " (columns: a),(b)"},
+		{mcp.File{Name: "s.csv", Data: []byte("H\xf6he,km\n")}, " (columns: Hhe,km)"},
+		{mcp.File{Name: "s.png", MimeType: "image/png", Data: []byte("x,y\n")}, ""},
+	} {
+		if got := csvColumns(c.f); got != c.want {
+			t.Errorf("%q: got %q, want %q", c.f.Data, got, c.want)
+		}
 	}
 }
 
