@@ -28,6 +28,27 @@ func AllowedImageFormat(filename string) (mime string, ext string, ok bool) {
 	return mime, strings.TrimPrefix(dotExt, "."), ok
 }
 
+// CanonicalImageMIME maps an image type to the accepted canonical type and
+// the extension (no dot) it is stored under, forgiving case, parameters and
+// the common non-standard "image/jpg". ok is false for any other type.
+func CanonicalImageMIME(mimeType string) (mime string, ext string, ok bool) {
+	m := strings.ToLower(strings.TrimSpace(mimeType))
+	if i := strings.IndexByte(m, ';'); i >= 0 {
+		m = strings.TrimSpace(m[:i])
+	}
+	switch m {
+	case "image/png":
+		return m, "png", true
+	case "image/jpeg", "image/jpg":
+		return "image/jpeg", "jpg", true
+	case "image/webp":
+		return m, "webp", true
+	case "image/gif":
+		return m, "gif", true
+	}
+	return "", "", false
+}
+
 // AllowedImageMIME reports whether a client-provided Content-Type names one of
 // the accepted image types (ignoring any parameters such as "; charset").
 func AllowedImageMIME(mimeType string) bool {

@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/loomuser"
 )
 
@@ -24,18 +25,35 @@ const (
 	defaultHTTPTimeout  = 15 * time.Second
 	maxRPCResponseBytes = 4 << 20
 	maxToolOutputBytes  = 32 << 10
-	// maxArtifactRPCBytes fits one largest image (maxToolImageBytes) as
+	// maxArtifactRPCBytes fits one artifact's worth of images
+	// (artifact.MaxArtifactSizeBytes, all images of a reply together) as
 	// base64, plus the rest of the reply.
-	maxArtifactRPCBytes = maxToolImageBytes/3*4 + 2<<20
+	maxArtifactRPCBytes = artifact.MaxArtifactSizeBytes/3*4 + 2<<20
+	// maxStdioLineBytes is a stdio server's reply line without artifacts.
+	maxStdioLineBytes = 1 << 20
 )
 
-// maxResponseBytes is the largest reply loom reads from the server: room for
-// an image only when the server may make artifacts.
+// maxResponseBytes is the largest reply loom reads from an HTTP server: room
+// for images only when the server may make artifacts.
 func (cfg ServerConfig) maxResponseBytes() int {
 	if cfg.Artifacts {
 		return maxArtifactRPCBytes
 	}
 	return maxRPCResponseBytes
+}
+
+// maxLineBytes is maxResponseBytes for a stdio server, whose reply is one line.
+func (cfg ServerConfig) maxLineBytes() int {
+	if cfg.Artifacts {
+		return maxArtifactRPCBytes
+	}
+	return maxStdioLineBytes
+}
+
+// errReplyTooLarge names the cap a reply ran into, instead of the JSON
+// decoder's bare "unexpected EOF" on a cut-off body.
+func errReplyTooLarge(limit int) error {
+	return fmt.Errorf("MCP reply larger than %d MiB", limit>>20)
 }
 
 // Tool is an MCP tool exposed to the model, with its server name prefix and description.
@@ -436,12 +454,19 @@ func (c *remoteClient) call(ctx context.Context, method string, params map[strin
 // decodeRPCResponse reads a JSON-RPC reply from either a bare JSON body or a
 // text/event-stream body, returning the response whose id matches the request.
 func decodeRPCResponse(resp *http.Response, id int64, limit int) (rpcResponse, error) {
-	limited := io.LimitReader(resp.Body, int64(limit))
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
-		return decodeSSEResponse(limited, id, limit)
+		return decodeSSEResponse(io.LimitReader(resp.Body, int64(limit)), id, limit)
+	}
+	// One byte past the cap tells a reply that was cut off from one that fit.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
+	if err != nil {
+		return rpcResponse{}, err
+	}
+	if len(body) > limit {
+		return rpcResponse{}, errReplyTooLarge(limit)
 	}
 	var rpcResp rpcResponse
-	if err := json.NewDecoder(limited).Decode(&rpcResp); err != nil {
+	if err := json.Unmarshal(body, &rpcResp); err != nil {
 		return rpcResponse{}, err
 	}
 	return rpcResp, nil
@@ -452,32 +477,36 @@ func decodeRPCResponse(resp *http.Response, id int64, limit int) (rpcResponse, e
 func decodeSSEResponse(r io.Reader, id int64, limit int) (rpcResponse, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), limit)
-	var data strings.Builder
+	// Bytes, not a string: an image reply is tens of MiB, and every
+	// conversion would copy it once more.
+	var data bytes.Buffer
 	flush := func() (rpcResponse, bool) {
 		if data.Len() == 0 {
 			return rpcResponse{}, false
 		}
-		raw := data.String()
-		data.Reset()
+		defer data.Reset()
 		var rpcResp rpcResponse
-		if err := json.Unmarshal([]byte(raw), &rpcResp); err != nil {
+		if err := json.Unmarshal(data.Bytes(), &rpcResp); err != nil {
 			return rpcResponse{}, false
 		}
 		return rpcResp, rpcResp.ID == id
 	}
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
+		line := scanner.Bytes()
+		if len(line) == 0 {
 			if rpcResp, ok := flush(); ok {
 				return rpcResp, nil
 			}
 			continue
 		}
-		if value, found := strings.CutPrefix(line, "data:"); found {
-			data.WriteString(strings.TrimPrefix(value, " "))
+		if value, found := bytes.CutPrefix(line, []byte("data:")); found {
+			data.Write(bytes.TrimPrefix(value, []byte(" ")))
 		}
 	}
 	if err := scanner.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return rpcResponse{}, errReplyTooLarge(limit)
+		}
 		return rpcResponse{}, err
 	}
 	if rpcResp, ok := flush(); ok {
@@ -697,8 +726,8 @@ func (c *stdioClient) start(ctx context.Context) error {
 	c.cmd = cmd
 	c.stdin = stdin
 	c.scanner = bufio.NewScanner(stdout)
-	// One reply is one line, so a server with artifacts needs room for an image.
-	c.scanner.Buffer(make([]byte, 0, 64*1024), max(1<<20, c.cfg.maxResponseBytes()))
+	// One reply is one line, so a server with artifacts needs room for images.
+	c.scanner.Buffer(make([]byte, 0, 64*1024), c.cfg.maxLineBytes())
 	return nil
 }
 
@@ -754,7 +783,14 @@ func (c *stdioClient) doCall(method string, params any, out any) error {
 		}
 		return json.Unmarshal(resp.Result, out)
 	}
+	// A stopped scanner never reads again (a line past the cap, or the process
+	// gone): drop the process so the next call starts a fresh one instead of
+	// failing until loom restarts.
+	_ = c.Close()
 	if err := scanner.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			return errReplyTooLarge(c.cfg.maxLineBytes())
+		}
 		return err
 	}
 	return io.ErrUnexpectedEOF

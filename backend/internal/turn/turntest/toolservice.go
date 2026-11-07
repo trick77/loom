@@ -26,6 +26,8 @@ type ToolService struct {
 	Files []mcp.File
 	// Images are the artifact images every successful call returns.
 	Images []mcp.Image
+	// DroppedImages is the refused image count every successful call returns.
+	DroppedImages int
 	// Users limits a server (by name) to these loom user ids, mirroring a
 	// mcp.ServerConfig users allowlist; a server absent here is open.
 	Users map[string][]string
@@ -110,7 +112,7 @@ func (f ToolService) CallToolResult(ctx context.Context, name string, args map[s
 	if err != nil {
 		return mcp.CallResult{}, err
 	}
-	return mcp.CallResult{Text: text, Sources: f.Sources, Files: f.Files, Images: f.Images}, nil
+	return mcp.CallResult{Text: text, Sources: f.Sources, Files: f.Files, Images: f.Images, DroppedImages: f.DroppedImages}, nil
 }
 
 // ToolAllowed implements turn.ToolService.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -53,7 +54,7 @@ func TestToolImagesOnlyFromArtifactServers(t *testing.T) {
 		t.Fatalf("server with artifacts: %#v, want one image", got)
 	}
 	img := got.Images[0]
-	if img.MimeType != "image/png" || img.Extension() != "png" || !bytes.Equal(img.Data, pngBytes(64)) ||
+	if img.MimeType != "image/png" || img.Extension != "png" || !bytes.Equal(img.Data, pngBytes(64)) ||
 		img.Filename != "cat" || img.Model != "m1" || img.Provider != "p1" || img.Width != 640 || img.Height != 480 || img.DurationMs != 1234 {
 		t.Fatalf("image = %+v", img)
 	}
@@ -64,8 +65,8 @@ func TestToolImagesOnlyFromArtifactServers(t *testing.T) {
 func TestToolImagesLargeResponseOnlyForArtifactServers(t *testing.T) {
 	url := imageServer(t, pngBytes(6<<20))
 	plain := NewRemoteClient("img", ServerConfig{Transport: TransportStreamableHTTP, URL: url}, nil)
-	if _, err := plain.CallTool(context.Background(), "search", nil); err == nil {
-		t.Fatal("server without artifacts: 8 MiB response accepted, want the 4 MiB cap")
+	if _, err := plain.CallTool(context.Background(), "search", nil); err == nil || !strings.Contains(err.Error(), "larger than 4 MiB") {
+		t.Fatalf("server without artifacts: err %v, want the 4 MiB cap named", err)
 	}
 	trusted := NewRemoteClient("img", ServerConfig{Transport: TransportStreamableHTTP, URL: url, Artifacts: true}, nil)
 	got, err := trusted.CallTool(context.Background(), "search", nil)
@@ -88,8 +89,18 @@ func TestToolImagesRejectUnsafeOrBroken(t *testing.T) {
 		"jpeg bytes labelled as png": {Type: "image", MimeType: "image/png", Data: base64.StdEncoding.EncodeToString([]byte("\xff\xd8\xff\xe0\x00\x10JFIF\x00"))},
 	}
 	for name, item := range cases {
-		if got := toolImages([]toolContent{item}, nil, 1024); len(got) != 0 {
-			t.Errorf("%s: kept %+v", name, got)
+		if got, dropped := toolImages([]toolContent{item}, nil, 1024); len(got) != 0 || dropped != 1 {
+			t.Errorf("%s: kept %+v, dropped %d", name, got, dropped)
+		}
+	}
+}
+
+func TestToolImagesForgiveTypeSpelling(t *testing.T) {
+	jpeg := base64.StdEncoding.EncodeToString([]byte("\xff\xd8\xff\xe0\x00\x10JFIF\x00"))
+	for _, declared := range []string{"image/jpg", "IMAGE/JPEG", "image/jpeg; q=1"} {
+		got, _ := toolImages([]toolContent{{Type: "image", MimeType: declared, Data: jpeg}}, nil, 1024)
+		if len(got) != 1 || got[0].MimeType != "image/jpeg" || got[0].Extension != "jpg" {
+			t.Errorf("%q: %+v", declared, got)
 		}
 	}
 }
@@ -103,12 +114,30 @@ func TestToolImagesCappedAndMetaByPosition(t *testing.T) {
 	}
 	// A dropped block keeps its slot: meta[i] belongs to the i-th image block.
 	content[0].MimeType = "image/svg+xml"
-	got := toolImages(content, meta, 1024)
-	if len(got) != maxToolImages {
-		t.Fatalf("%d images, want %d", len(got), maxToolImages)
+	meta[1].Filename = "/tmp/out/b.png"
+	got, dropped := toolImages(content, meta, 1024)
+	if len(got) != maxToolImages || dropped != 2 {
+		t.Fatalf("%d images, %d dropped, want %d and 2", len(got), dropped, maxToolImages)
 	}
-	if got[0].Filename != "b" {
-		t.Errorf("first kept image named %q, want b (meta by block position)", got[0].Filename)
+	if got[0].Filename != "b.png" {
+		t.Errorf("first kept image named %q, want b.png (meta by block position, path stripped)", got[0].Filename)
+	}
+}
+
+// The size limit holds for a reply's images together, not each alone.
+func TestToolImagesShareOneSizeLimit(t *testing.T) {
+	block := toolContent{Type: "image", MimeType: "image/png", Data: base64.StdEncoding.EncodeToString(pngBytes(600))}
+	got, dropped := toolImages([]toolContent{block, block}, nil, 1024)
+	if len(got) != 1 || dropped != 1 {
+		t.Fatalf("kept %d, dropped %d, want 1 and 1", len(got), dropped)
+	}
+}
+
+func TestBaseName(t *testing.T) {
+	for in, want := range map[string]string{"cat": "cat", " /a/b/cat.png ": "cat.png", `C:\out\cat.png`: "cat.png", "..": "", "/": "", "": ""} {
+		if got := baseName(in); got != want {
+			t.Errorf("baseName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

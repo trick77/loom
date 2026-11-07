@@ -3,9 +3,13 @@ package mcp
 import (
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
+
+	"github.com/trick77/loom/internal/artifact"
 )
 
 // maxStructuredSources caps how many sources one tool result may contribute, so
@@ -31,6 +35,9 @@ type CallResult struct {
 	Sources []Source
 	Files   []File
 	Images  []Image
+	// DroppedImages counts the image blocks loom refused (type, size, count),
+	// so the model is told rather than claiming a picture that does not exist.
+	DroppedImages int
 }
 
 // Image is a picture a tool result carried as MCP image content, for loom to
@@ -38,19 +45,16 @@ type CallResult struct {
 // through. The rest is display detail from structuredContent.images, matched
 // by position: images[i] describes the result's i-th image block.
 type Image struct {
-	Filename   string
+	Filename string
+	// MimeType is canonical (artifact.CanonicalImageMIME); Extension matches it.
 	MimeType   string
+	Extension  string
 	Data       []byte
 	Model      string
 	Provider   string
 	Width      int
 	Height     int
 	DurationMs int64
-}
-
-// Extension is the file extension (no dot) the image's type is stored under.
-func (i Image) Extension() string {
-	return toolImageTypes[i.MimeType]
 }
 
 // imageMeta is one entry of structuredContent.images.
@@ -63,17 +67,10 @@ type imageMeta struct {
 	DurationMs int64  `json:"duration_ms"`
 }
 
-const (
-	// maxToolImages caps how many images one tool result may hand on.
-	maxToolImages = 4
-	// maxToolImageBytes is the largest image kept, decoded: the artifact
-	// size limit (artifact.MaxArtifactSizeBytes).
-	maxToolImageBytes = 25 << 20
-)
-
-// toolImageTypes are the raster types loom keeps, with their extension. SVG
-// is left out on purpose: it is a document that can carry script.
-var toolImageTypes = map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
+// maxToolImages caps how many images one tool result may hand on. Together
+// they stay within one artifact's size (artifact.MaxArtifactSizeBytes): the
+// reply cap (maxArtifactRPCBytes) fits that much and no more.
+const maxToolImages = 4
 
 // File is data a tool result carried as an MCP embedded resource, for
 // run_python to read during the running turn. Never shown, never part of the
@@ -120,53 +117,71 @@ type toolResource struct {
 func (r callToolResult) toCallResult(images bool) CallResult {
 	out := CallResult{Text: toolContentText(r.Content), Sources: structuredSources(r.StructuredContent), Files: toolFiles(r.Content)}
 	if images {
-		out.Images = toolImages(r.Content, structuredImageMeta(r.StructuredContent), maxToolImageBytes)
+		out.Images, out.DroppedImages = toolImages(r.Content, structuredImageMeta(r.StructuredContent), artifact.MaxArtifactSizeBytes)
 	}
 	return out
 }
 
-// toolImages decodes the image blocks loom keeps: an allowed raster type
-// whose bytes are that type, at most limit bytes decoded, at most
-// maxToolImages per result. meta[i] describes the i-th image block, kept or
-// not, so a dropped block never shifts its details onto the next one.
-func toolImages(content []toolContent, meta []imageMeta, limit int) []Image {
+// toolImages decodes the image blocks loom keeps: an accepted raster type
+// whose bytes are that type, at most limit bytes decoded for all of them
+// together, at most maxToolImages. It also counts the blocks it refused.
+// meta[i] describes the i-th image block, kept or not, so a dropped block
+// never shifts its details onto the next one.
+func toolImages(content []toolContent, meta []imageMeta, limit int) ([]Image, int) {
 	var out []Image
-	block := -1
+	dropped, block, total := 0, -1, 0
 	for _, item := range content {
 		if item.Type != "image" {
 			continue
 		}
 		block++
 		if len(out) == maxToolImages {
-			break
-		}
-		data, ok := decodeToolImage(item, limit)
-		if !ok {
+			dropped++
 			continue
 		}
-		img := Image{MimeType: item.MimeType, Data: data}
+		img, ok := decodeToolImage(item, limit-total)
+		if !ok {
+			dropped++
+			continue
+		}
+		total += len(img.Data)
 		if block < len(meta) {
 			m := meta[block]
-			img.Filename, img.Model, img.Provider = strings.TrimSpace(m.Filename), m.Model, m.Provider
+			img.Filename, img.Model, img.Provider = baseName(m.Filename), m.Model, m.Provider
 			img.Width, img.Height, img.DurationMs = m.Width, m.Height, m.DurationMs
 		}
 		out = append(out, img)
 	}
-	return out
+	if dropped > 0 {
+		slog.Warn("MCP image content dropped", "dropped", dropped, "kept", len(out))
+	}
+	return out, dropped
 }
 
-// decodeToolImage returns an image block's bytes when its type is an allowed
-// raster type, they fit limit and they sniff as the declared type: a server
-// cannot store HTML under image/png.
-func decodeToolImage(item toolContent, limit int) ([]byte, bool) {
-	if _, ok := toolImageTypes[item.MimeType]; !ok || item.Data == "" || base64.StdEncoding.DecodedLen(len(item.Data)) > limit+2 {
-		return nil, false
+// decodeToolImage returns an image block as an Image when its type is an
+// accepted raster type (SVG is not: it is a document that can carry script),
+// it fits limit and its bytes sniff as that type: a server cannot store HTML
+// under image/png.
+func decodeToolImage(item toolContent, limit int) (Image, bool) {
+	mime, ext, ok := artifact.CanonicalImageMIME(item.MimeType)
+	if !ok || item.Data == "" || base64.StdEncoding.DecodedLen(len(item.Data)) > limit+2 {
+		return Image{}, false
 	}
 	data, err := base64.StdEncoding.DecodeString(item.Data)
-	if err != nil || len(data) == 0 || len(data) > limit || http.DetectContentType(data) != item.MimeType {
-		return nil, false
+	if err != nil || len(data) == 0 || len(data) > limit || http.DetectContentType(data) != mime {
+		return Image{}, false
 	}
-	return data, true
+	return Image{MimeType: mime, Extension: ext, Data: data}, true
+}
+
+// baseName keeps only the last element of a server's file name: a server
+// that reports the path it wrote ("/tmp/out/cat.png") still names the file.
+func baseName(name string) string {
+	name = path.Base(strings.ReplaceAll(strings.TrimSpace(name), `\`, "/"))
+	if name == "." || name == "/" || name == ".." {
+		return ""
+	}
+	return name
 }
 
 func structuredImageMeta(raw json.RawMessage) []imageMeta {

@@ -23,14 +23,16 @@ import (
 // toolRun is the outcome of an MCP tool call's network half: everything
 // finishToolCall needs to account for the call and label its result.
 type toolRun struct {
-	arguments  map[string]any
-	argsErr    error
-	output     string
-	sources    []mcp.Source
-	files      []mcp.File
-	images     []mcp.Image
-	err        error
-	durationMS int64
+	arguments map[string]any
+	argsErr   error
+	output    string
+	sources   []mcp.Source
+	files     []mcp.File
+	images    []mcp.Image
+	// droppedImages counts the image blocks mcp refused.
+	droppedImages int
+	err           error
+	durationMS    int64
 }
 
 // runToolCall performs the MCP call itself. It touches no per-turn state, so a
@@ -53,7 +55,7 @@ func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	defer cancel()
 	start := time.Now()
 	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, arguments)
-	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files, images: result.Images, err: err, durationMS: time.Since(start).Milliseconds()}
+	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files, images: result.Images, droppedImages: result.DroppedImages, err: err, durationMS: time.Since(start).Milliseconds()}
 }
 
 // finishToolCall turns a finished run into the tool result the model sees
@@ -66,7 +68,12 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 	if run.err != nil || run.argsErr != nil {
 		return output, nil
 	}
-	note, created := t.keepToolImages(ctx, call.Function.Name, run.images)
+	note, created := t.keepToolImages(ctx, call.Function.Name, run.images, run.droppedImages)
+	if strings.TrimSpace(output) == "" {
+		// An image-only result: the note is the whole result, so a failed
+		// store reads as a failure (toolFailedPrefix), not a blank success.
+		return strings.TrimLeft(note, "\n"), created
+	}
 	return output + note, created
 }
 
@@ -154,45 +161,53 @@ func (t *Run) keepToolFiles(files []mcp.File) string {
 // It returns the lines that tell the model what was kept (never the bytes)
 // and the artifacts made. mcp lets images through only from a server allowed
 // to make artifacts (mcp.ServerConfig.Artifacts).
-func (t *Run) keepToolImages(ctx context.Context, toolName string, images []mcp.Image) (string, []artifact.Response) {
+func (t *Run) keepToolImages(ctx context.Context, toolName string, images []mcp.Image, dropped int) (string, []artifact.Response) {
+	var lines strings.Builder
+	if dropped > 0 {
+		fmt.Fprintf(&lines, "\n\n[%d image(s) the tool returned were refused (type, size or count): they do not exist for the user]", dropped)
+	}
 	if len(images) == 0 {
-		return "", nil
+		return lines.String(), nil
 	}
 	if !t.e.canStoreArtifacts() {
-		return fmt.Sprintf("\n\n[%d image(s) could not be kept: this loom stores no files]", len(images)), nil
+		fmt.Fprintf(&lines, "\n\n[%d image(s) could not be kept: this loom stores no files]", len(images))
+		return lines.String(), nil
 	}
-	var lines strings.Builder
+	// The image is already here: a round cut short (a scheduled run's soft
+	// deadline) or a client gone must not lose it between call and insert.
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), artifactPersistTimeout)
+	defer cancel()
 	var created []artifact.Response
 	for _, img := range images {
-		if len(img.Data) > artifact.MaxArtifactSizeBytes {
-			lines.WriteString("\n\ntool failed: returned image is too large")
-			continue
-		}
 		name := img.Filename
 		if name == "" {
 			name = "image"
 		}
-		stored, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
+		stored, err := t.e.persistArtifactBytes(persistCtx, t.user, t.thread, artifactSpec{
 			DisplayFilename: name,
-			Extension:       img.Extension(),
+			Extension:       img.Extension,
 			MIMEType:        img.MimeType,
 			Data:            img.Data,
 			Thumbnail:       true,
 		})
 		if err != nil {
 			slog.Warn("tool image not stored", "tool", toolName, "thread_id", t.thread.ID, "err", err)
-			lines.WriteString("\n\ntool failed: " + err.Error())
+			lines.WriteString("\n\n" + toolFailedPrefix + ": " + err.Error())
 			continue
 		}
 		response := stored.Response()
 		response.Model, response.Provider = img.Model, img.Provider
 		response.Width, response.Height, response.DurationMs = img.Width, img.Height, img.DurationMs
+		usage.Record(t.e.usage, "image_gen", func() error { return t.e.usage.IncImageGen(persistCtx, t.user.ID) })
 		_ = t.stream.SendJSON("artifact", response)
 		created = append(created, response)
 		fmt.Fprintf(&lines, "\n\ncreated image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes)
 	}
 	return capToolOutput(lines.String()), created
 }
+
+// artifactPersistTimeout bounds storing a tool's images once the call is done.
+const artifactPersistTimeout = time.Minute
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at
 // once: enough to turn a dozen pasted links from a serial wait into a short

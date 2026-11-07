@@ -509,6 +509,12 @@ func runMCPTestHelper(t *testing.T) {
 					time.Sleep(10 * time.Second)
 					continue
 				}
+				if inner, ok := args["arguments"].(map[string]any); ok && inner["text"] == "huge" {
+					_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{
+						"content": []map[string]any{{"type": "text", "text": strings.Repeat("x", 2<<20)}},
+					}})
+					continue
+				}
 			}
 			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{
 				"content": []map[string]any{{"type": "text", "text": "echo result"}},
@@ -547,6 +553,29 @@ func TestStdioClientReinitializesAfterCancel(t *testing.T) {
 	}
 	if len(tools) != 1 || tools[0].Name != "local__echo" {
 		t.Fatalf("tools after cancel = %#v", tools)
+	}
+}
+
+// A reply line past the cap stops the scanner for good: the client must drop
+// the process so the next call starts a fresh one, not fail until restart.
+func TestStdioClientRecoversFromOversizedReply(t *testing.T) {
+	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
+		runMCPTestHelper(t)
+		return
+	}
+	client := NewStdioClient("local", ServerConfig{
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestStdioClientRecoversFromOversizedReply"},
+		Env:       map[string]string{"BACKEND_MCP_TEST_HELPER": "1"},
+	})
+	defer client.Close()
+	if _, err := client.CallTool(context.Background(), "echo", map[string]any{"text": "huge"}); err == nil || !strings.Contains(err.Error(), "larger than 1 MiB") {
+		t.Fatalf("CallTool(huge) error = %v, want the 1 MiB cap named", err)
+	}
+	got, err := client.CallTool(context.Background(), "echo", map[string]any{"text": "hi"})
+	if err != nil || got.Text != "echo result" {
+		t.Fatalf("CallTool() after oversized reply = %q, %v", got.Text, err)
 	}
 }
 
