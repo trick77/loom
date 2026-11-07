@@ -28,6 +28,7 @@ type toolRun struct {
 	output     string
 	sources    []mcp.Source
 	files      []mcp.File
+	images     []mcp.Image
 	err        error
 	durationMS int64
 }
@@ -52,14 +53,24 @@ func (s *Engine) runToolCall(ctx context.Context, call llm.ToolCall) toolRun {
 	defer cancel()
 	start := time.Now()
 	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, arguments)
-	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files, err: err, durationMS: time.Since(start).Milliseconds()}
+	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files, images: result.Images, err: err, durationMS: time.Since(start).Milliseconds()}
 }
 
-// finishToolCall turns a finished run into the tool result the model sees:
-// the obscura fallback for a failed fetch, the usage count, and the [n] source
-// labels. It writes to the source registry and the shared obscura browser, so
-// it runs one call at a time, in the order the model issued the calls.
-func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) string {
+// finishToolCall turns a finished run into the tool result the model sees
+// and the artifacts its images became: the obscura fallback for a failed
+// fetch, the usage count, and the [n] source labels. It writes to the source
+// registry and the shared obscura browser, so it runs one call at a time, in
+// the order the model issued the calls.
+func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) (string, []artifact.Response) {
+	output := t.finishToolText(ctx, call, round, reg, run)
+	if run.err != nil || run.argsErr != nil {
+		return output, nil
+	}
+	note, created := t.keepToolImages(ctx, call.Function.Name, run.images)
+	return output + note, created
+}
+
+func (t *Run) finishToolText(ctx context.Context, call llm.ToolCall, round int, reg *webSourceRegistry, run toolRun) string {
 	args := summarizeForLog(call.Function.Arguments)
 	if run.argsErr != nil {
 		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", run.argsErr)
@@ -136,6 +147,51 @@ func (t *Run) keepToolFiles(files []mcp.File) string {
 		return ""
 	}
 	return "\n\n[run_python can read these files in this turn only (in a later turn, call this tool again first): " + strings.Join(kept, ", ") + "]"
+}
+
+// keepToolImages stores the images a tool returned as the turn's artifacts
+// and streams each to the browser, the way a built-in generator's files go.
+// It returns the lines that tell the model what was kept (never the bytes)
+// and the artifacts made. mcp lets images through only from a server allowed
+// to make artifacts (mcp.ServerConfig.Artifacts).
+func (t *Run) keepToolImages(ctx context.Context, toolName string, images []mcp.Image) (string, []artifact.Response) {
+	if len(images) == 0 {
+		return "", nil
+	}
+	if !t.e.canStoreArtifacts() {
+		return fmt.Sprintf("\n\n[%d image(s) could not be kept: this loom stores no files]", len(images)), nil
+	}
+	var lines strings.Builder
+	var created []artifact.Response
+	for _, img := range images {
+		if len(img.Data) > artifact.MaxArtifactSizeBytes {
+			lines.WriteString("\n\ntool failed: returned image is too large")
+			continue
+		}
+		name := img.Filename
+		if name == "" {
+			name = "image"
+		}
+		stored, err := t.e.persistArtifactBytes(ctx, t.user, t.thread, artifactSpec{
+			DisplayFilename: name,
+			Extension:       img.Extension(),
+			MIMEType:        img.MimeType,
+			Data:            img.Data,
+			Thumbnail:       true,
+		})
+		if err != nil {
+			slog.Warn("tool image not stored", "tool", toolName, "thread_id", t.thread.ID, "err", err)
+			lines.WriteString("\n\ntool failed: " + err.Error())
+			continue
+		}
+		response := stored.Response()
+		response.Model, response.Provider = img.Model, img.Provider
+		response.Width, response.Height, response.DurationMs = img.Width, img.Height, img.DurationMs
+		_ = t.stream.SendJSON("artifact", response)
+		created = append(created, response)
+		fmt.Fprintf(&lines, "\n\ncreated image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes)
+	}
+	return capToolOutput(lines.String()), created
 }
 
 // concurrentToolRuns bounds how many of a round's web reads are in flight at

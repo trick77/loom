@@ -74,7 +74,7 @@ func TestRemoteClientListsAndCallsTools(t *testing.T) {
 		t.Fatalf("CallTool() error: %v", err)
 	}
 	if got.Text != "result text" {
-		t.Fatalf("CallTool() = %q, want result text", got)
+		t.Fatalf("CallTool() = %q, want result text", got.Text)
 	}
 	if !reflect.DeepEqual(methods, []string{"server/discover", "initialize", "tools/list", "tools/call"}) {
 		t.Fatalf("methods = %#v", methods)
@@ -141,7 +141,7 @@ func TestRemoteClientHandlesStreamableHTTPSessionAndSSE(t *testing.T) {
 		t.Fatalf("CallTool() error: %v", err)
 	}
 	if got.Text != "result text" {
-		t.Fatalf("CallTool() = %q, want result text", got)
+		t.Fatalf("CallTool() = %q, want result text", got.Text)
 	}
 }
 
@@ -226,7 +226,7 @@ func TestStdioClientListsTools(t *testing.T) {
 		t.Fatalf("CallTool() error: %v", err)
 	}
 	if got.Text != "echo result" {
-		t.Fatalf("CallTool() = %q, want echo result", got)
+		t.Fatalf("CallTool() = %q, want echo result", got.Text)
 	}
 }
 
@@ -341,7 +341,7 @@ func TestRemoteClientReinitializesOnExpiredSession(t *testing.T) {
 		t.Fatalf("CallTool() error: %v", err)
 	}
 	if got.Text != "ok" {
-		t.Fatalf("CallTool() = %q, want ok", got)
+		t.Fatalf("CallTool() = %q, want ok", got.Text)
 	}
 	mu.Lock()
 	defer mu.Unlock()

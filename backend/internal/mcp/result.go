@@ -1,7 +1,9 @@
 package mcp
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"net/http"
 	"regexp"
 	"strings"
 )
@@ -22,13 +24,56 @@ type Source struct {
 	Image   string `json:"image"`
 }
 
-// CallResult is a tool call's model-facing text plus the sources it cited and
-// the files it handed to run_python.
+// CallResult is a tool call's model-facing text plus the sources it cited,
+// the files it handed to run_python and the images loom keeps as artifacts.
 type CallResult struct {
 	Text    string
 	Sources []Source
 	Files   []File
+	Images  []Image
 }
+
+// Image is a picture a tool result carried as MCP image content, for loom to
+// keep as an artifact. Only a server with ServerConfig.Artifacts gets one
+// through. The rest is display detail from structuredContent.images, matched
+// by position: images[i] describes the result's i-th image block.
+type Image struct {
+	Filename   string
+	MimeType   string
+	Data       []byte
+	Model      string
+	Provider   string
+	Width      int
+	Height     int
+	DurationMs int64
+}
+
+// Extension is the file extension (no dot) the image's type is stored under.
+func (i Image) Extension() string {
+	return toolImageTypes[i.MimeType]
+}
+
+// imageMeta is one entry of structuredContent.images.
+type imageMeta struct {
+	Filename   string `json:"filename"`
+	Model      string `json:"model"`
+	Provider   string `json:"provider"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
+const (
+	// maxToolImages caps how many images one tool result may hand on.
+	maxToolImages = 4
+	// maxToolImageBytes is the largest image kept, decoded: the artifact
+	// size limit (artifact.MaxArtifactSizeBytes).
+	maxToolImageBytes = 25 << 20
+)
+
+// toolImageTypes are the raster types loom keeps, with their extension. SVG
+// is left out on purpose: it is a document that can carry script.
+var toolImageTypes = map[string]string{"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
 
 // File is data a tool result carried as an MCP embedded resource, for
 // run_python to read during the running turn. Never shown, never part of the
@@ -56,6 +101,9 @@ type toolContent struct {
 	Type     string        `json:"type"`
 	Text     string        `json:"text"`
 	Resource *toolResource `json:"resource"`
+	// Data and MimeType belong to an image block: base64 and its type.
+	Data     string `json:"data"`
+	MimeType string `json:"mimeType"`
 }
 
 type toolResource struct {
@@ -65,10 +113,73 @@ type toolResource struct {
 }
 
 // toCallResult flattens a decoded tools/call result. A structuredContent that
-// is not an object with a sources array is ignored: the 2026-07-28 revision
-// allows any JSON value there, and only this one shape means something to loom.
-func (r callToolResult) toCallResult() CallResult {
-	return CallResult{Text: toolContentText(r.Content), Sources: structuredSources(r.StructuredContent), Files: toolFiles(r.Content)}
+// is not an object with a sources or images array is ignored: the 2026-07-28
+// revision allows any JSON value there, and only this shape means something to
+// loom. images keeps the image blocks; false drops them (a server without
+// ServerConfig.Artifacts).
+func (r callToolResult) toCallResult(images bool) CallResult {
+	out := CallResult{Text: toolContentText(r.Content), Sources: structuredSources(r.StructuredContent), Files: toolFiles(r.Content)}
+	if images {
+		out.Images = toolImages(r.Content, structuredImageMeta(r.StructuredContent), maxToolImageBytes)
+	}
+	return out
+}
+
+// toolImages decodes the image blocks loom keeps: an allowed raster type
+// whose bytes are that type, at most limit bytes decoded, at most
+// maxToolImages per result. meta[i] describes the i-th image block, kept or
+// not, so a dropped block never shifts its details onto the next one.
+func toolImages(content []toolContent, meta []imageMeta, limit int) []Image {
+	var out []Image
+	block := -1
+	for _, item := range content {
+		if item.Type != "image" {
+			continue
+		}
+		block++
+		if len(out) == maxToolImages {
+			break
+		}
+		data, ok := decodeToolImage(item, limit)
+		if !ok {
+			continue
+		}
+		img := Image{MimeType: item.MimeType, Data: data}
+		if block < len(meta) {
+			m := meta[block]
+			img.Filename, img.Model, img.Provider = strings.TrimSpace(m.Filename), m.Model, m.Provider
+			img.Width, img.Height, img.DurationMs = m.Width, m.Height, m.DurationMs
+		}
+		out = append(out, img)
+	}
+	return out
+}
+
+// decodeToolImage returns an image block's bytes when its type is an allowed
+// raster type, they fit limit and they sniff as the declared type: a server
+// cannot store HTML under image/png.
+func decodeToolImage(item toolContent, limit int) ([]byte, bool) {
+	if _, ok := toolImageTypes[item.MimeType]; !ok || item.Data == "" || base64.StdEncoding.DecodedLen(len(item.Data)) > limit+2 {
+		return nil, false
+	}
+	data, err := base64.StdEncoding.DecodeString(item.Data)
+	if err != nil || len(data) == 0 || len(data) > limit || http.DetectContentType(data) != item.MimeType {
+		return nil, false
+	}
+	return data, true
+}
+
+func structuredImageMeta(raw json.RawMessage) []imageMeta {
+	if len(raw) == 0 {
+		return nil
+	}
+	var payload struct {
+		Images []imageMeta `json:"images"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	return payload.Images
 }
 
 // toolFiles keeps the text resources run_python can use: CSV or JSON, under

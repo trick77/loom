@@ -73,6 +73,11 @@ type ServerConfig struct {
 	// prompt while its tools are offered. Off by default: a third-party server
 	// could change them at any refresh.
 	TrustInstructions bool `json:"trustInstructions"`
+	// Artifacts lets the server's image results become artifacts in the
+	// caller's volume, and its replies grow to fit one (maxArtifactRPCBytes).
+	// Off by default: a server that is not asked to make files cannot write
+	// into anyone's volume or make loom buffer a large reply.
+	Artifacts bool `json:"artifacts"`
 	// BuiltIn marks one of loom's own servers that is discovered best-effort
 	// (a sidecar loom must boot without): status labels it built-in, not
 	// file-defined.

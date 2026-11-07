@@ -288,10 +288,18 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 					if len(created) > 0 && call.Function.Name == imagegen.ToolName {
 						imageGenerated = true
 					}
-				} else if runs[i] != nil {
-					output = t.finishToolCall(toolsCtx, call, round, reg, <-runs[i])
 				} else {
-					output = t.finishToolCall(toolsCtx, call, round, reg, t.e.runToolCall(toolsCtx, call))
+					var run toolRun
+					if runs[i] != nil {
+						run = <-runs[i]
+					} else {
+						run = t.e.runToolCall(toolsCtx, call)
+					}
+					output, created = t.finishToolCall(toolsCtx, call, round, reg, run)
+					for _, response := range created {
+						artifacts = append(artifacts, response)
+						b.addArtifact(response)
+					}
 				}
 			}
 			if err := t.stream.SendJSON("tool_result", ToolResultResponse{ID: call.ID, Name: call.Function.Name, Content: output}); err != nil {

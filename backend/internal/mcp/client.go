@@ -24,7 +24,19 @@ const (
 	defaultHTTPTimeout  = 15 * time.Second
 	maxRPCResponseBytes = 4 << 20
 	maxToolOutputBytes  = 32 << 10
+	// maxArtifactRPCBytes fits one largest image (maxToolImageBytes) as
+	// base64, plus the rest of the reply.
+	maxArtifactRPCBytes = maxToolImageBytes/3*4 + 2<<20
 )
+
+// maxResponseBytes is the largest reply loom reads from the server: room for
+// an image only when the server may make artifacts.
+func (cfg ServerConfig) maxResponseBytes() int {
+	if cfg.Artifacts {
+		return maxArtifactRPCBytes
+	}
+	return maxRPCResponseBytes
+}
 
 // Tool is an MCP tool exposed to the model, with its server name prefix and description.
 type Tool struct {
@@ -230,7 +242,7 @@ func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[
 	if result.IsError {
 		return CallResult{}, fmt.Errorf("MCP tool %q returned an error: %s", name, toolContentText(result.Content))
 	}
-	return result.toCallResult(), nil
+	return result.toCallResult(c.cfg.Artifacts), nil
 }
 
 // Instructions returns the server's guidance for the model, from the last
@@ -408,7 +420,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params map[strin
 		bytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return &mcpStatusError{method: method, status: resp.StatusCode, body: strings.TrimSpace(string(bytes))}
 	}
-	rpcResp, err := decodeRPCResponse(resp, id)
+	rpcResp, err := decodeRPCResponse(resp, id, c.cfg.maxResponseBytes())
 	if err != nil {
 		return err
 	}
@@ -423,10 +435,10 @@ func (c *remoteClient) call(ctx context.Context, method string, params map[strin
 
 // decodeRPCResponse reads a JSON-RPC reply from either a bare JSON body or a
 // text/event-stream body, returning the response whose id matches the request.
-func decodeRPCResponse(resp *http.Response, id int64) (rpcResponse, error) {
-	limited := io.LimitReader(resp.Body, maxRPCResponseBytes)
+func decodeRPCResponse(resp *http.Response, id int64, limit int) (rpcResponse, error) {
+	limited := io.LimitReader(resp.Body, int64(limit))
 	if strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream") {
-		return decodeSSEResponse(limited, id)
+		return decodeSSEResponse(limited, id, limit)
 	}
 	var rpcResp rpcResponse
 	if err := json.NewDecoder(limited).Decode(&rpcResp); err != nil {
@@ -437,9 +449,9 @@ func decodeRPCResponse(resp *http.Response, id int64) (rpcResponse, error) {
 
 // decodeSSEResponse scans an SSE stream and returns the first JSON-RPC message
 // whose id matches the request, skipping unrelated events such as notifications.
-func decodeSSEResponse(r io.Reader, id int64) (rpcResponse, error) {
+func decodeSSEResponse(r io.Reader, id int64, limit int) (rpcResponse, error) {
 	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxRPCResponseBytes)
+	scanner.Buffer(make([]byte, 0, 64*1024), limit)
 	var data strings.Builder
 	flush := func() (rpcResponse, bool) {
 		if data.Len() == 0 {
@@ -603,7 +615,7 @@ func (c *stdioClient) CallTool(ctx context.Context, name string, arguments map[s
 	if result.IsError {
 		return CallResult{}, fmt.Errorf("MCP tool %q returned an error: %s", name, toolContentText(result.Content))
 	}
-	return result.toCallResult(), nil
+	return result.toCallResult(c.cfg.Artifacts), nil
 }
 
 func (c *stdioClient) Close() error {
@@ -685,7 +697,8 @@ func (c *stdioClient) start(ctx context.Context) error {
 	c.cmd = cmd
 	c.stdin = stdin
 	c.scanner = bufio.NewScanner(stdout)
-	c.scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// One reply is one line, so a server with artifacts needs room for an image.
+	c.scanner.Buffer(make([]byte, 0, 64*1024), max(1<<20, c.cfg.maxResponseBytes()))
 	return nil
 }
 
