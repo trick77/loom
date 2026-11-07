@@ -1,8 +1,11 @@
-// Package sidecar is loom's client plumbing for its per-user sidecars'
-// connection routes (tunewire, strava): every request names the signed-in
-// loom user (loomuser.Header) and carries loom's bearer token; failures
-// come back as *Error with the sidecar's code, so the settings page can word
-// them without the sidecar's own text.
+// Package sidecar is what loom and its sidecars share: the token rule
+// (TokenProblem), the sidecar's bearer-token root (Handler), and loom's
+// client plumbing for the per-user sidecars' connection routes (tunewire,
+// strava): every request names the signed-in loom user (loomuser.Header)
+// and carries loom's bearer token; failures come back as *Error with the
+// sidecar's code, so the settings page can word them without the sidecar's
+// own text. Every sidecar image copies this package, so it imports nothing
+// of loom but loomuser (TestImportsNoOtherLoomPackage).
 package sidecar
 
 import (

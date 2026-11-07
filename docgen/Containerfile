@@ -9,7 +9,7 @@ COPY backend/cmd/loom-docgen/ ./cmd/loom-docgen/
 # The generators and the Gotenberg client, with their embedded fonts
 # (internal/docgen/assets). The MCP server is github.com/trick77/toolkit's.
 COPY backend/internal/docgen/ ./internal/docgen/
-# The token rule loom checks its side with.
+# The token rule loom checks its side with and the bearer-token root.
 COPY backend/internal/sidecar/ ./internal/sidecar/
 COPY backend/internal/loomuser/ ./internal/loomuser/
 # ship release passes the release version. go build fetches only the modules

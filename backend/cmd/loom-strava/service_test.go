@@ -162,6 +162,7 @@ func TestRateBook(t *testing.T) {
 func TestRoutes_auth(t *testing.T) {
 	f := newFakeStrava(t)
 	_, h, _ := newTestService(t, f)
+	// Every route behind the token (the token rules: sidecar.TestHandler).
 	for _, r := range [][2]string{{"GET", "/status"}, {"GET", "/authorize"}, {"PUT", "/connection"}, {"DELETE", "/connection"}, {"POST", "/mcp"}} {
 		req := httptest.NewRequest(r[0], r[1], nil)
 		req.Header.Set("X-Loom-User", userA)
@@ -169,12 +170,6 @@ func TestRoutes_auth(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("%v without bearer: %d", r, rec.Code)
-		}
-		req.Header.Set("Authorization", "Bearer wrong-token-wrong-token-wrong-token")
-		rec = httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		if rec.Code != http.StatusUnauthorized {
-			t.Errorf("%v wrong bearer: %d", r, rec.Code)
 		}
 	}
 	for _, r := range [][2]string{{"GET", "/status"}, {"GET", "/authorize"}, {"PUT", "/connection"}, {"DELETE", "/connection"}} {
@@ -196,20 +191,6 @@ func TestRoutes_auth(t *testing.T) {
 	}
 	if r := callTool(t, h, "", "profile", `{}`); !r.IsError {
 		t.Errorf("tool call without a user: %+v", r)
-	}
-	// kit's probe: loopback only, so a caller across the network gets 404.
-	if code, _ := request(t, h, "GET", "/healthz", userA, ""); code != http.StatusNotFound {
-		t.Errorf("healthz from afar: %d", code)
-	}
-	srv := httptest.NewServer(h)
-	defer srv.Close()
-	resp, err := srv.Client().Get(srv.URL + "/healthz")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("healthz over loopback: %d", resp.StatusCode)
 	}
 }
 

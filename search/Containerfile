@@ -6,8 +6,8 @@ FROM golang:1.27-alpine AS build
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 COPY backend/cmd/loom-search/ ./cmd/loom-search/
-# The token rule loom checks its side with. The MCP server is
-# github.com/trick77/toolkit's.
+# The token rule loom checks its side with and the bearer-token root. The MCP
+# server is github.com/trick77/toolkit's.
 COPY backend/internal/sidecar/ ./internal/sidecar/
 COPY backend/internal/loomuser/ ./internal/loomuser/
 # ship release passes the release version. go build fetches only the modules

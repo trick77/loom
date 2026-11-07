@@ -12,7 +12,7 @@ COPY backend/cmd/loom-imagegen/ ./cmd/loom-imagegen/
 COPY backend/internal/imagegen/ ./internal/imagegen/
 COPY backend/internal/imagescale/ ./internal/imagescale/
 COPY backend/internal/inference/ ./internal/inference/
-# The token rule loom checks its side with.
+# The token rule loom checks its side with and the bearer-token root.
 COPY backend/internal/sidecar/ ./internal/sidecar/
 COPY backend/internal/loomuser/ ./internal/loomuser/
 # ship release passes the release version. go build fetches only the modules
