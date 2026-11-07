@@ -53,6 +53,11 @@ A recording gap over 10 s (watch paused, auto-pause, a dropout: the streams cann
 `stopped` (recorded, not moving) never shows it. The analysis reports it apart as `not recorded`; a section gives its
 clock time next to its recorded time.
 
+A gap still covers ground: on resume the next point is where the walk ended, so distance and climb jump with no time.
+Strava's splits and a climb read across one look like a fast, steep run (a 20 % ramp walked with the watch paused read as
+"the hardest km, +42 m"). So `get_activity` and `activity_analysis` list every gap (where, how long, distance and climb
+covered), climbs give their untimed part and a VAM of the recorded part only, and per-km rows flag a gap in them.
+
 ## Limits and storage
 
 Strava allows 100 reads per 15 minutes and 1000 a day, per app. The sidecar reads the rate headers and refuses past

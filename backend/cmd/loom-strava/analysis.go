@@ -162,9 +162,10 @@ func storedFrom(m rideMetrics, start time.Time) storedMetrics {
 	put("hr_20m_w", m.HR20mW)
 	put("ef", m.EF)
 	put("decoupling", m.Decoupling)
-	// Always stored, 0 too: an absent key then means "stored before it",
-	// which the baseline leaves empty instead of bumping entryRev (that
-	// would make hr_zones read every activity's streams again).
+	// Stored whenever there are samples, 0 too: an absent key means "stored
+	// before it" or "no streams", both left empty in the baseline. No
+	// entryRev bump: that would make hr_zones read every activity's streams
+	// again for a column nothing re-reads.
 	if m.Samples > 0 {
 		put("not_recorded_s", float64(m.UnrecordedS))
 	}
@@ -830,6 +831,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if len(parts) > 0 {
 		b.WriteString(strings.Join(parts, " · ") + "\n")
 	}
+	b.WriteString(gapsText(gaps(s, ia, ib), u))
 	if m.HasPowerZones && m.MovingS > 0 {
 		b.WriteString("time in power zones Z1..Z5+ (30 s power): " + zoneText(m.PowerZoneS) + "\n")
 	}
@@ -882,6 +884,10 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 			if finite(c.AvgHR) {
 				fmt.Fprintf(&b, " · HR %.0f", c.AvgHR)
 			}
+			if c.UntimedS > 0 {
+				fmt.Fprintf(&b, " · %s of it not recorded (%s, %s covered with the recording off: likely walked or stopped, not run; time and VAM are the recorded part's)",
+					clock(c.UntimedS), shortDist(c.UntimedDistM, u), u.elev(c.UntimedGainM))
+			}
 			b.WriteByte('\n')
 		}
 	}
@@ -904,10 +910,14 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		if paceSport(d.SportType) {
 			speedHead = "pace"
 		}
-		fmt.Fprintf(&b, "\nper %s (%s | time | %s | W | bpm | rpm | alt | grade):\n", unit, u.splitName(), speedHead)
+		fmt.Fprintf(&b, "\nper %s (%s | time | %s | W | bpm | rpm | alt | grade), time recorded only; a row with a gap says so:\n", unit, u.splitName(), speedHead)
 		for i, r := range rows {
-			line := fmt.Sprintf("%s | %s | %s | %s | %s | %s | %s | %s\n", u.distNum(r.ToM), clock(r.Secs), tempoShort(r.SpeedMS, d.SportType, u),
-				num(r.W, 0), num(r.HR, 0), num(r.Cad, 0), elevShort(r.AltM, u), num(r.GradePct, 1))
+			gapNote := ""
+			if r.UntimedS > 0 {
+				gapNote = fmt.Sprintf(" | + %s not recorded, %s of the climb in it", clock(r.UntimedS), u.elev(r.UntimedGainM))
+			}
+			line := fmt.Sprintf("%s | %s | %s | %s | %s | %s | %s | %s%s\n", u.distNum(r.ToM), clock(r.Secs), tempoShort(r.SpeedMS, d.SportType, u),
+				num(r.W, 0), num(r.HR, 0), num(r.Cad, 0), elevShort(r.AltM, u), num(r.GradePct, 1), gapNote)
 			if b.Len()+len(line) > textBudget {
 				fmt.Fprintf(&b, "… %d more rows in the streams file\n", len(rows)-i)
 				break
@@ -916,9 +926,48 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		}
 	}
 
-	files := analysisFiles(d, s, whole, cl, cmp, a, pE, hE)
+	files := analysisFiles(d, s, whole, this, cl, cmp, a, pE, hE)
 	b.WriteString(fileNames(files))
 	return mcpserver.Result{Text: b.String(), Sources: sources, Files: files}
+}
+
+// gapsText lists where the recording was off and what was covered then:
+// splits, climbs and paces that span one count its distance and climb
+// without its time. "" without gaps.
+func gapsText(gs []gap, u units) string {
+	if len(gs) == 0 {
+		return ""
+	}
+	items := make([]string, 0, min(len(gs), maxGapsShown)+1)
+	for i, g := range gs {
+		if i == maxGapsShown {
+			items = append(items, fmt.Sprintf("… %d more", len(gs)-maxGapsShown))
+			break
+		}
+		item := clock(g.Secs)
+		if finite(g.AtM) {
+			item = u.splitName() + " " + u.distNum(g.AtM) + " · " + item
+		}
+		if finite(g.DistM) && g.DistM > 0 {
+			item += " · " + shortDist(g.DistM, u)
+			if finite(g.GainM) && math.Abs(g.GainM) >= 1 {
+				item += " " + signed(g.GainM, u)
+			}
+			item += " covered"
+		}
+		items = append(items, item)
+	}
+	return "recording off (paused, auto-pause or a dropout; what was covered then was likely walked or stood, not run, and has no time: a split or climb across one is not a run effort): " +
+		strings.Join(items, " | ") + "\n"
+}
+
+// shortDist is a distance under a kilometre (mile) in metres (feet): a
+// 150 m stretch must not read 0.1 km.
+func shortDist(m float64, u units) string {
+	if m < u.splitM() {
+		return u.elev(m)
+	}
+	return u.dist(m)
 }
 
 func tempoShort(ms float64, sport string, u units) string {
@@ -1181,7 +1230,9 @@ func lastFinite(v []float64) float64 {
 
 // analysisFiles builds the CSV files, the streams first and as fine as the
 // 3 MiB of one result allow.
-func analysisFiles(d detailedActivity, s series, whole rideMetrics, cl []climb, c *comparison, a athlete, pE, hE []float64) []mcpserver.File {
+// this is the activity's own stored entry (zonePick.this): built once, so
+// its baseline row is the entry that was stored.
+func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedMetrics, cl []climb, c *comparison, a athlete, pE, hE []float64) []mcpserver.File {
 	var files []mcpserver.File
 	if len(cl) > 0 {
 		t := newCSV(hdrClimbs)
@@ -1205,7 +1256,7 @@ func analysisFiles(d detailedActivity, s series, whole rideMetrics, cl []climb, 
 			files = append(files, t.file(fmt.Sprintf("strava_%d_power_curve.csv", d.ID)))
 		}
 		t := newCSV(hdrBaseline)
-		entries := append([]baseEntry{{act: d.summaryActivity, sm: storedFrom(whole, d.localStart()), known: true}}, c.entries...)
+		entries := append([]baseEntry{{act: d.summaryActivity, sm: this, known: true}}, c.entries...)
 		for i, e := range entries {
 			x := e.act
 			t.row(strconv.FormatInt(x.ID, 10), x.localStart().Format("2006-01-02"), x.Name, x.SportType, boolCell(i == 0), boolCell(e.sameRoute),

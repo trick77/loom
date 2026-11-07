@@ -415,9 +415,16 @@ func (t *tools) getActivity(ctx context.Context, raw json.RawMessage) mcpserver.
 		t.svc.forget(user, id)
 		t.svc.markRefreshed(user, id)
 	}
-	text := describeActivity(d, unitsOf(a))
+	u := unitsOf(a)
+	text := describeActivity(d, u)
 	var files []mcpserver.File
-	if f, why := t.recentStreams(ctx, user, a, d); why == "" {
+	s, f, why := t.recentStreams(ctx, user, a, d)
+	// Strava's splits count a pause's distance and climb without its time:
+	// read alone, a walked ramp is the hardest km run.
+	if g := gapsText(gaps(s, 0, s.n), u); g != "" {
+		text += "\n" + g + "Strava's splits above leave each gap's time out of their pace.\n"
+	}
+	if why == "" {
 		files = []mcpserver.File{f}
 		text += "\n" + fileNames(files)
 	} else {
@@ -432,39 +439,40 @@ func (t *tools) getActivity(ctx context.Context, raw json.RawMessage) mcpserver.
 // raw data at hand. Older ones only through activity_analysis.
 const recentStreamsAge = 14 * 24 * time.Hour
 
-// recentStreams is d's streams file when d started within recentStreamsAge,
-// else why not, for the model: older, a manual entry, the read failed or was
-// not worth the budget. The activity itself is answered either way.
-// Unasked, so a read that costs Strava stops at half the 15-minute budget,
-// like every other cold read: a look over many recent activities must not
-// starve the other users.
-func (t *tools) recentStreams(ctx context.Context, user string, a athlete, d detailedActivity) (mcpserver.File, string) {
+// recentStreams is d's streams (and their file) when d started within
+// recentStreamsAge, else why not, for the model: older, a manual entry, the
+// read failed or was not worth the budget. The activity itself is answered
+// either way. Unasked, so a read that costs Strava stops at half the
+// 15-minute budget, like every other cold read: a look over many recent
+// activities must not starve the other users. The series is empty when
+// there is none.
+func (t *tools) recentStreams(ctx context.Context, user string, a athlete, d detailedActivity) (series, mcpserver.File, string) {
 	// Only where activity_analysis can still read them: not after a failed
 	// read (the same read fails there) or near the deadline (the heavier
 	// call times out).
 	const later = "; activity_analysis attaches it if it fits"
 	if d.Manual {
-		return mcpserver.File{}, "a manual entry has none"
+		return series{}, mcpserver.File{}, "a manual entry has none"
 	}
 	if t.svc.now().Sub(d.utcStart()) > recentStreamsAge {
-		return mcpserver.File{}, fmt.Sprintf("older than %d days", int(recentStreamsAge/(24*time.Hour))) + later
+		return series{}, mcpserver.File{}, fmt.Sprintf("older than %d days", int(recentStreamsAge/(24*time.Hour))) + later
 	}
 	if !t.svc.streamsKept(user, d.ID) {
 		switch why := t.svc.spent(ctx); why {
 		case "":
 		case reasonRateBudget:
-			return mcpserver.File{}, why + later
+			return series{}, mcpserver.File{}, why + later
 		default:
-			return mcpserver.File{}, why
+			return series{}, mcpserver.File{}, why
 		}
 	}
 	s, err := t.svc.streams(ctx, user, d.ID, false)
 	if err != nil {
 		slog.Warn("strava: streams for get_activity unavailable", "activity", d.ID, "err", err)
-		return mcpserver.File{}, "the streams read failed"
+		return series{}, mcpserver.File{}, "the streams read failed"
 	}
 	if s.n == 0 {
-		return mcpserver.File{}, "none recorded"
+		return s, mcpserver.File{}, "none recorded"
 	}
 	var pE, hE []float64
 	// Neither zone column fills without power or heart rate: no zones read.
@@ -473,9 +481,9 @@ func (t *tools) recentStreams(ctx context.Context, user string, a athlete, d det
 		pE, hE = zp.pE, zp.hE
 	}
 	if f, ok := streamsCSV(d.ID, s, pE, hE, maxFilesBytes); ok {
-		return f, ""
+		return s, f, ""
 	}
-	return mcpserver.File{}, "too long to attach"
+	return s, mcpserver.File{}, "too long to attach"
 }
 
 // ownActivity reads an activity and makes sure it is the user's own: the

@@ -189,6 +189,10 @@ def build(d):
     base.append({"activity_id": 1, "date": "2026-11-01", "name": "Albis loop", "sport_type": "Ride", "is_this": 1,
                  "same_route": 0, **metrics(ride)})
     bdf = pd.DataFrame(base).sort_values("date")
+    # The tool's last two columns: Strava's total clock and the part not recorded.
+    bdf["not_recorded_s"] = (bdf["activity_id"] % 3) * 120
+    bdf["elapsed_time_s"] = bdf["moving_s"] + bdf["not_recorded_s"] + 60
+    bdf = bdf[[c for c in bdf.columns if c not in ("elapsed_time_s", "not_recorded_s")] + ["elapsed_time_s", "not_recorded_s"]]
     bdf.to_csv(p["baseline"], index=False)
 
     this_mm = mean_max(ride.watts.values)
@@ -224,8 +228,10 @@ def build(d):
     al["weighted_w"] = al.get("np_w")
     al["kj"] = al["avg_w"] * al["moving_s"] / 1000
     al["suffer_score"] = al["moving_s"] / 60
+    al["elapsed_time_s"] = al["moving_s"] + 90
     al = al.reindex(columns=["activity_id", "date", "name", "sport_type", "trainer", "distance_km", "moving_s",
-                             "gain_m", "avg_kmh", "avg_hr", "avg_w", "weighted_w", "kj", "suffer_score"])
+                             "gain_m", "avg_kmh", "avg_hr", "avg_w", "weighted_w", "kj", "suffer_score",
+                             "elapsed_time_s"])
     al.sort_values("date").round(2).to_csv(p["activities"], index=False)
     return p
 
