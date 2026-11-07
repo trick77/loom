@@ -147,14 +147,20 @@ func (c *fetchClient) CallTool(ctx context.Context, _ string, arguments map[stri
 	// fetchBrowserFallback), except for a failed PDF extraction, which is
 	// marked so the fallback skips it.
 	out, err := webfetch.Fetch(ctx, url, c.options(arguments))
+	return fetchResult(url, out, err)
+}
+
+// fetchResult is a fetch's outcome as a tool result. The page cites itself,
+// as any server's result would (structuredContent.sources), its text the
+// source's snippet; a failure cites nothing, a failed PDF extraction is
+// marked for the fallback to skip.
+func fetchResult(url, out string, err error) (CallResult, error) {
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "Failed to extract PDF") {
 			err = PDFExtractionError{Err: err}
 		}
 		return CallResult{Text: out}, err
 	}
-	// The page cites itself, as any server's result would
-	// (structuredContent.sources); its text is the source's snippet.
 	return CallResult{Text: out, Sources: []Source{{URL: strings.TrimSpace(url), Snippet: out}}}, nil
 }
 

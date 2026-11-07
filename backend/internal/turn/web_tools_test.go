@@ -19,7 +19,7 @@ func TestRelabelPrefersStructuredSources(t *testing.T) {
 	}
 	reg = newWebSourceRegistryAfter(0)
 	got = e.relabelWebToolOutput(fetchToolName, args, "page text", nil, reg)
-	if !strings.HasPrefix(got, "Web source [1]: https://a.example/page") || reg.len() != 1 {
+	if !strings.HasPrefix(got, "Source [1]: https://a.example/page") || reg.len() != 1 {
 		t.Errorf("by url: %q", got)
 	}
 	// A tool loom does not know, without sources, is left alone.
@@ -33,6 +33,33 @@ func TestStructuredSourceHeader(t *testing.T) {
 	got := relabelStructuredSources("x", []mcp.Source{{URL: "https://a.example", Title: "A"}, {URL: "https://b.example"}}, newWebSourceRegistryAfter(0))
 	if !strings.Contains(got, "Source [1]: A — https://a.example\n") || !strings.Contains(got, "Source [2]: https://b.example\n") {
 		t.Errorf("header: %q", got)
+	}
+}
+
+// Every tool of the tavily server counts against a scheduled run's paid-search
+// limit, not only its search: an mcp.json "tavily" may add extract or crawl.
+func TestTavilyServerToolsAllCountForScheduledRuns(t *testing.T) {
+	e := &Engine{}
+	for _, name := range []string{tavilySearchExposedName, "tavily__tavily_extract", "tavily__tavily_crawl"} {
+		if !e.toolPolicy(name).scheduledLimited {
+			t.Errorf("%s not limited", name)
+		}
+	}
+	if e.toolPolicy("other__search").scheduledLimited {
+		t.Error("another server's tool limited")
+	}
+}
+
+// The browser's own relabel runs even when its result carries sources, so
+// its navigate/snapshot pairing never goes stale.
+func TestBrowserRelabelKeepsPairingWithSources(t *testing.T) {
+	e := &Engine{}
+	reg := newWebSourceRegistryAfter(0)
+	_ = e.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://a.example"}, "ok", nil, reg)
+	_ = e.relabelWebToolOutput(obscuraNavigateToolName, map[string]any{"url": "https://b.example"}, "ok", []mcp.Source{{URL: "https://b.example"}}, reg)
+	got := e.relabelWebToolOutput(obscuraSnapshotToolName, nil, "page b", nil, reg)
+	if !strings.HasPrefix(got, "Source [2]: https://b.example") {
+		t.Errorf("snapshot labelled %q, want page b's marker", got)
 	}
 }
 

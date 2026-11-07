@@ -58,7 +58,12 @@ var webToolPolicies = []toolSpec{
 		counts:     &usageCounter{"web_search", UsageStore.IncWebSearch},
 		// Each result's favicon, for the sources sidebar, whatever the model asked.
 		fixedArgs: map[string]any{"include_favicon": true},
-		relabel: func(_ map[string]any, output string, reg *webSourceRegistry) string {
+		// Tavily's hosted server sends text; a server that sends structured
+		// sources is cited by them.
+		relabel: func(_ map[string]any, output string, sources []mcp.Source, reg *webSourceRegistry) string {
+			if len(sources) > 0 {
+				return relabelStructuredSources(output, sources, reg)
+			}
 			return relabelTavilyResult(output, reg)
 		},
 		scheduledLimited: true,
@@ -89,36 +94,54 @@ var webToolPolicies = []toolSpec{
 	{name: obscuraSnapshotToolName, capPerRound: cheapToolCallsPerRound, relabel: relabelBrowserSnapshot},
 }
 
+// serverPolicies hold what applies to every tool of a server that has no
+// policy of its own. Tavily's other tools (an mcp.json "tavily" may expose
+// extract, crawl, map) cost like its search: a scheduled run counts them too.
+var serverPolicies = map[string]*toolSpec{
+	tavilyServerName: {scheduledLimited: true},
+}
+
+// The browser (obscura, a third-party server) sends no sources: navigate
+// names the page, snapshot returns its text. These two relabels pair them,
+// keeping the navigated page in reg.browserPage for the turn. They always
+// run for these tools, so the pairing never goes stale.
+
 // relabelBrowserNavigate registers the navigated page as a source and keeps
-// its header for the snapshot that follows (the call that returns the text).
-func relabelBrowserNavigate(arguments map[string]any, output string, reg *webSourceRegistry) string {
+// it for the snapshot that follows (the call that returns the text).
+func relabelBrowserNavigate(arguments map[string]any, output string, _ []mcp.Source, reg *webSourceRegistry) string {
+	reg.browserPage = browserPage{}
 	if strings.HasPrefix(output, toolFailedPrefix) {
-		// Nothing was delivered: register no source, and disarm the header so
-		// the next snapshot is not labelled with the previously navigated page.
-		reg.obscuraNavHd = ""
-		reg.obscuraNavID = 0
+		// Nothing was delivered: no source, and the next snapshot is not
+		// labelled with an earlier page.
 		return output
 	}
 	out := prependURLSource(argURL(arguments), output, reg)
 	if idx, ok := reg.add(argURL(arguments)); ok {
-		reg.obscuraNavHd = fmt.Sprintf("Web source [%d]: %s", idx, strings.TrimSpace(argURL(arguments)))
-		reg.obscuraNavID = idx
+		reg.browserPage = browserPage{header: fmt.Sprintf("Source [%d]: %s", idx, strings.TrimSpace(argURL(arguments))), index: idx}
 	}
 	return out
 }
 
 // relabelBrowserSnapshot gives a snapshot the navigated page's marker and
 // backfills that source's snippet from the rendered text.
-func relabelBrowserSnapshot(_ map[string]any, output string, reg *webSourceRegistry) string {
-	if reg.obscuraNavHd == "" {
+func relabelBrowserSnapshot(_ map[string]any, output string, _ []mcp.Source, reg *webSourceRegistry) string {
+	page := reg.browserPage
+	if page.header == "" {
 		return output
 	}
-	if pos := reg.obscuraNavID - reg.offset - 1; pos >= 0 && pos < len(reg.sources) {
+	if pos := page.index - reg.offset - 1; pos >= 0 && pos < len(reg.sources) {
 		if src := &reg.sources[pos]; src.Snippet == "" {
 			src.Snippet = snippetFromText(output)
 		}
 	}
-	return reg.obscuraNavHd + "\n\n" + output
+	return page.header + "\n\n" + output
+}
+
+// browserPage is the page the browser last navigated to in this turn: its
+// header and source index, for the snapshot's citation.
+type browserPage struct {
+	header string
+	index  int
 }
 
 // fetchBrowserFallback retries a failed fetch in obscura's headless browser

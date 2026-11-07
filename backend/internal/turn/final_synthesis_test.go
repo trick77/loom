@@ -37,7 +37,7 @@ func TestCollectToolNotes_capKeepsHeadAndValidUTF8(t *testing.T) {
 		t.Fatalf("collectToolNotes produced invalid UTF-8 at a mid-rune cut: %q", got)
 	}
 	// The head is kept now, not the tail: a web note leads with its
-	// "Web source [n]: url" header, and losing that strands the citation marker.
+	// "Source [n]: url" header, and losing that strands the citation marker.
 	if !strings.HasPrefix(big, strings.TrimSuffix(got, truncationMarker)) {
 		t.Fatalf("result is not a head slice of the source: %q", got)
 	}
@@ -52,7 +52,7 @@ func TestCollectToolNotes_overBudgetKeepsEverySourceHeader(t *testing.T) {
 		rounds = append(rounds, llm.Message{
 			Role:       "tool",
 			ToolCallID: "c",
-			Content: "Web source [" + itoa(i) + "]: https://example.com/" + itoa(i) +
+			Content: "Source [" + itoa(i) + "]: https://example.com/" + itoa(i) +
 				"\n\n" + strings.Repeat("filler ", 400),
 		})
 	}
@@ -60,7 +60,7 @@ func TestCollectToolNotes_overBudgetKeepsEverySourceHeader(t *testing.T) {
 	got := collectToolNotes(rounds, 1200)
 
 	for i := 1; i <= 6; i++ {
-		marker := "Web source [" + itoa(i) + "]"
+		marker := "Source [" + itoa(i) + "]"
 		if !strings.Contains(got, marker) {
 			t.Errorf("note %d was dropped entirely; %q missing from the folded notes", i, marker)
 		}
@@ -74,8 +74,8 @@ func TestCollectToolNotes_overBudgetKeepsEverySourceHeader(t *testing.T) {
 // A note under its fair share must not be padded or cut, and its surplus should
 // let a larger sibling keep more than a flat 1/n slice.
 func TestCollectToolNotes_smallNotesSurviveIntactAndDonateSurplus(t *testing.T) {
-	small := "Web source [1]: https://a.example\n\nshort"
-	big := "Web source [2]: https://b.example\n\n" + strings.Repeat("x", 2000)
+	small := "Source [1]: https://a.example\n\nshort"
+	big := "Source [2]: https://b.example\n\n" + strings.Repeat("x", 2000)
 	rounds := []llm.Message{
 		{Role: "tool", ToolCallID: "c1", Content: small},
 		{Role: "tool", ToolCallID: "c2", Content: big},
@@ -87,7 +87,7 @@ func TestCollectToolNotes_smallNotesSurviveIntactAndDonateSurplus(t *testing.T) 
 		t.Errorf("the small note was truncated despite fitting its share: %q", got)
 	}
 	// Flat share would be 500; the small note donates its unused ~460 bytes.
-	bigPart := got[strings.Index(got, "Web source [2]"):]
+	bigPart := got[strings.Index(got, "Source [2]"):]
 	if len(bigPart) <= 520 {
 		t.Errorf("big note kept %d bytes, want > 520 (surplus from the small note was not donated)", len(bigPart))
 	}
@@ -116,7 +116,7 @@ func TestBuildFinalSynthesisHistory_carriesCitationRuleAndSourceIndex(t *testing
 		{Role: "system", Content: "sys"},
 		{Role: "user", Content: "question"},
 		{Role: "assistant", ToolCalls: []llm.ToolCall{{ID: "c1"}}},
-		{Role: "tool", ToolCallID: "c1", Content: "Web source [1]: https://a.example\n\nnote body"},
+		{Role: "tool", ToolCallID: "c1", Content: "Source [1]: https://a.example\n\nnote body"},
 	}
 	sources := []webSource{{Index: 1, URL: "https://a.example", Label: "A"}}
 
