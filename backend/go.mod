@@ -9,7 +9,7 @@ require (
 	github.com/trick77/ship/kit v0.18.0
 	github.com/trick77/ship/kit/auth v0.3.2
 	github.com/trick77/toolkit v0.3.2
-	github.com/yuin/goldmark v1.8.6
+	github.com/yuin/goldmark v1.8.7
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	golang.org/x/image v0.47.0
 	golang.org/x/net v0.62.0
@@ -23,7 +23,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.5 // indirect
 	github.com/coreos/go-oidc/v3 v3.21.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.12.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.7 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.8 // indirect
 	github.com/ncruces/julianday v1.0.0 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
