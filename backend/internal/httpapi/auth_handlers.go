@@ -83,11 +83,13 @@ type meResponse struct {
 	AppleMusic bool `json:"appleMusic"`
 	// Strava shows the settings section for the Strava connection.
 	Strava bool `json:"strava"`
+	// Push shows the settings section for notifications on this device.
+	Push bool `json:"push"`
 }
 
 // me is user's profile with the features they may see.
 func (s *server) me(user auth.User) meResponse {
-	return meResponse{User: user, AppleMusic: s.appleMusicAllowed(user), Strava: s.stravaAllowed(user)}
+	return meResponse{User: user, AppleMusic: s.appleMusicAllowed(user), Strava: s.stravaAllowed(user), Push: s.pushEnabled()}
 }
 
 // updateMeRequest is the body of PATCH /api/me. responseLanguage is the coupled

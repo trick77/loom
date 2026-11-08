@@ -283,6 +283,15 @@ func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 	}
 }
 
+func TestPushSubject(t *testing.T) {
+	if got := pushSubject("https://loom.example.com"); got != "https://loom.example.com" {
+		t.Errorf("https: %q", got)
+	}
+	if got := pushSubject("http://127.0.0.1:8080"); got != "mailto:loom@localhost" {
+		t.Errorf("dev: %q", got)
+	}
+}
+
 func TestToolConfigForConfigStravaIsBestEffortAndPerUser(t *testing.T) {
 	const token = "strava-token-0123456789abcdef012345"
 	got, err := toolConfigForConfig(config.Config{StravaURL: "http://strava:8050", StravaToken: token, StravaUsers: []string{"usr_1"}}, nil)

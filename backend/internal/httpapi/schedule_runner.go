@@ -564,6 +564,7 @@ func (s *server) notify(ctx context.Context, userID string, n schedule.Notificat
 	if err := s.schedules.CreateNotification(ctx, userID, n); err != nil {
 		slog.Warn("create notification failed", "err", err)
 	}
+	s.pushNotification(ctx, userID, n)
 }
 
 // scheduleNamer names a schedule from its prompt with the title generator.

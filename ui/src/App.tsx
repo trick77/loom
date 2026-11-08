@@ -17,6 +17,11 @@ import {
   type User,
 } from "./api";
 import { applyUserLanguage, seedLanguageFor } from "./i18n";
+import {
+  forgetPushOnSignOut,
+  listenForPushNavigation,
+  syncPush,
+} from "./pushDevice";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
 
@@ -32,6 +37,8 @@ export default function App() {
     Math.floor(Math.random() * taglines.length),
   );
   const tagline = taglines[taglineIndex] ?? taglines[0];
+
+  useEffect(() => listenForPushNavigation(), []);
 
   useEffect(() => {
     let active = true;
@@ -54,6 +61,7 @@ export default function App() {
           setUser(currentUser);
         }
         setStatus(currentUser ? "ready" : "signed-out");
+        if (currentUser?.push) void syncPush(currentUser.id);
       })
       .catch(() => {
         if (!active) return;
@@ -65,6 +73,7 @@ export default function App() {
   }, []);
 
   async function handleLogout() {
+    await forgetPushOnSignOut();
     try {
       const redirectUrl = await logout();
       window.location.assign(redirectUrl);

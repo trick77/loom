@@ -5,15 +5,16 @@ import type { StravaOutcome } from "../api";
 import { Icon, type IconName } from "../chat/Icon";
 import { AppleMusicIcon, StravaIcon } from "../chat/icons";
 import { AppleMusicPanel } from "./AppleMusicPanel";
+import { PushPanel } from "./PushPanel";
 import { SharedChatsPanel } from "./SharedChatsPanel";
 import { StravaPanel } from "./StravaPanel";
 import { UsagePanel } from "./UsagePanel";
 import { useEscapeKey } from "../chat/useEscapeKey";
 
-type SettingsSection = "usage" | "shares" | "appleMusic" | "strava";
+type SettingsSection = "usage" | "shares" | "push" | "appleMusic" | "strava";
 
 // Feature sections show only to users the server allows them (`/api/me`).
-type Feature = "appleMusic" | "strava";
+type Feature = "push" | "appleMusic" | "strava";
 
 const navIcon = (name: IconName) => (
   <Icon name={name} size="18px" className="shrink-0" />
@@ -27,6 +28,12 @@ const SECTIONS: {
 }[] = [
   { id: "usage", labelKey: "settings.usage", mark: navIcon("sliders") },
   { id: "shares", labelKey: "settings.sharedChats", mark: navIcon("upload") },
+  {
+    id: "push",
+    labelKey: "settings.push.title",
+    mark: navIcon("bell"),
+    feature: "push",
+  },
   {
     id: "appleMusic",
     labelKey: "settings.appleMusic.title",
@@ -51,15 +58,23 @@ export function SettingsModal({
   onClose,
   appleMusic = false,
   strava = false,
+  pushUserID = null,
   stravaOutcome = null,
 }: {
   onClose(): void;
   appleMusic?: boolean;
   strava?: boolean;
+  // pushUserID is the signed-in user when the server can push; null hides
+  // the section.
+  pushUserID?: string | null;
   stravaOutcome?: StravaOutcome | null;
 }) {
   const { t } = useTranslation();
-  const allowed: Record<Feature, boolean> = { appleMusic, strava };
+  const allowed: Record<Feature, boolean> = {
+    appleMusic,
+    strava,
+    push: pushUserID !== null,
+  };
   const sections = SECTIONS.filter(
     (entry) => entry.feature === undefined || allowed[entry.feature],
   );
@@ -113,6 +128,9 @@ export function SettingsModal({
           </button>
           {section === "usage" && <UsagePanel />}
           {section === "shares" && <SharedChatsPanel />}
+          {section === "push" && pushUserID !== null && (
+            <PushPanel userID={pushUserID} />
+          )}
           {section === "appleMusic" && <AppleMusicPanel />}
           {section === "strava" && <StravaPanel outcome={stravaOutcome} />}
         </div>

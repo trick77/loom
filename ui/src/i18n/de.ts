@@ -583,6 +583,40 @@ export const de = {
       privacy:
         "Nur du siehst deine Aktivitäten. Die Tokens von Strava bleiben auf dem Server und werden nie angezeigt; Trennen widerruft sie bei Strava und löscht, was loom gespeichert hat.",
     },
+    push: {
+      title: "Push-Benachrichtigungen",
+      description:
+        "Erhalte auf diesem Gerät eine Benachrichtigung, wenn eine geplante Aufgabe etwas Neues findet. Jedes Gerät schaltest du einzeln ein.",
+      on: "Auf diesem Gerät eingeschaltet.",
+      off: "Auf diesem Gerät ausgeschaltet.",
+      enable: "Auf diesem Gerät einschalten",
+      disable: "Ausschalten",
+      test: "Test senden",
+      testTitle: "loom",
+      testBody: "Benachrichtigungen funktionieren auf diesem Gerät.",
+      testSent:
+        "Test gesendet. Er sollte in wenigen Sekunden auf diesem Gerät erscheinen.",
+      needsInstall:
+        "Auf iPhone und iPad gibt es Benachrichtigungen nur für Apps auf dem Home-Bildschirm: tippe in Safari auf Teilen → Zum Home-Bildschirm, öffne loom von dort und schalte sie hier ein.",
+      unsupported: "Dieser Browser kann keine Benachrichtigungen empfangen.",
+      blocked:
+        "Benachrichtigungen für loom sind in den Einstellungen dieses Browsers oder Geräts blockiert. Erlaube sie dort und lade loom neu.",
+      notAllowed:
+        "Benachrichtigungen wurden nicht erlaubt. Tippe noch einmal auf den Knopf und wähle Erlauben.",
+      loadFailed:
+        "Der Status der Benachrichtigungen konnte nicht geladen werden.",
+      enableFailed:
+        "Benachrichtigungen liessen sich nicht einschalten. Versuche es noch einmal.",
+      disableFailed: "Ausschalten hat nicht geklappt. Versuche es noch einmal.",
+      testFailed:
+        "Der Test konnte nicht gesendet werden. Versuche es noch einmal.",
+      testRefused:
+        "Der Push-Dienst hat den Test abgelehnt. Schalte die Benachrichtigungen aus und wieder ein.",
+      testGone:
+        "Dieses Gerät ist nicht mehr angemeldet. Schalte die Benachrichtigungen aus und wieder ein.",
+      privacy:
+        "Titel und Anfang der Antwort erscheinen auf dem Sperrbildschirm. Beim Abmelden schaltet loom die Benachrichtigungen auf diesem Gerät aus.",
+    },
   },
   chats: {
     title: "Threads",

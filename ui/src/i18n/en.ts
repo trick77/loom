@@ -567,6 +567,36 @@ export const en = {
       privacy:
         "Only you see your activities. Strava’s tokens stay on the server and are never shown; Disconnect revokes them at Strava and deletes what loom kept.",
     },
+    push: {
+      title: "Push notifications",
+      description:
+        "Get a notification on this device when a scheduled task finds something new. Each device is turned on on its own.",
+      on: "On for this device.",
+      off: "Off for this device.",
+      enable: "Turn on for this device",
+      disable: "Turn off",
+      test: "Send test",
+      testTitle: "loom",
+      testBody: "Notifications work on this device.",
+      testSent: "Test sent. It should show up on this device in a few seconds.",
+      needsInstall:
+        "On iPhone and iPad, notifications only work for apps on the Home Screen: in Safari tap Share → Add to Home Screen, open loom from there and turn them on here.",
+      unsupported: "This browser can’t receive notifications.",
+      blocked:
+        "Notifications for loom are blocked in this browser’s or device’s settings. Allow them there and reload loom.",
+      notAllowed:
+        "Notifications weren’t allowed. Tap the button again and choose Allow.",
+      loadFailed: "Failed to load the notification status.",
+      enableFailed: "Couldn’t turn notifications on. Try again.",
+      disableFailed: "Couldn’t turn them off. Try again.",
+      testFailed: "Couldn’t send the test. Try again.",
+      testRefused:
+        "The push service refused the test. Turn notifications off and on again.",
+      testGone:
+        "This device is no longer subscribed. Turn notifications off and on again.",
+      privacy:
+        "The title and the start of the answer show on the lock screen. Signing out turns notifications off on this device.",
+    },
   },
   chats: {
     title: "Threads",
