@@ -7,7 +7,7 @@ require (
 	github.com/asg017/sqlite-vec-go-bindings v0.1.7-alpha.2
 	github.com/ncruces/go-sqlite3 v0.23.3
 	github.com/trick77/ship/kit v0.18.0
-	github.com/trick77/ship/kit/auth v0.3.2
+	github.com/trick77/ship/kit/auth v0.4.0
 	github.com/trick77/toolkit v0.3.2
 	github.com/yuin/goldmark v1.8.6
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
