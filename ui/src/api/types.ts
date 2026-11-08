@@ -13,6 +13,8 @@ export type User = {
   appleMusic?: boolean;
   // True only for users the server allows the Strava settings section.
   strava?: boolean;
+  // True when the server can push notifications to this user's devices.
+  push?: boolean;
 };
 
 export type Project = {

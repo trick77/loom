@@ -17,6 +17,7 @@ import {
   type User,
 } from "./api";
 import { applyUserLanguage, seedLanguageFor } from "./i18n";
+import { forgetPushOnSignOut, syncPush } from "./pushDevice";
 
 type Status = "loading" | "signed-out" | "ready" | "error";
 
@@ -54,6 +55,7 @@ export default function App() {
           setUser(currentUser);
         }
         setStatus(currentUser ? "ready" : "signed-out");
+        if (currentUser?.push) void syncPush();
       })
       .catch(() => {
         if (!active) return;
@@ -65,6 +67,7 @@ export default function App() {
   }, []);
 
   async function handleLogout() {
+    await forgetPushOnSignOut();
     try {
       const redirectUrl = await logout();
       window.location.assign(redirectUrl);

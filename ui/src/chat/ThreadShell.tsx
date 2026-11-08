@@ -1976,6 +1976,7 @@ export function ThreadShell({
             onClose={closeSettings}
             appleMusic={user.appleMusic === true}
             strava={user.strava === true}
+            push={user.push === true}
             stravaOutcome={stravaOutcome}
           />
         </Suspense>

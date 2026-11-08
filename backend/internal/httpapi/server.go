@@ -18,6 +18,7 @@ import (
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/loom/internal/usage"
+	"github.com/trick77/loom/internal/webpush"
 	"github.com/trick77/loom/web"
 	kitauth "github.com/trick77/ship/kit/auth"
 	"github.com/trick77/ship/kit/httpx"
@@ -83,6 +84,10 @@ type Deps struct {
 	// intervals and a run's findings. Both nil keep scheduled tasks off.
 	Schedules   *schedule.Store
 	ScheduleLLM ScheduleLLM
+	// Push delivers notifications to the users' devices (Web Push) into the
+	// subscriptions PushStore keeps. Either nil keeps push off.
+	Push      PushSender
+	PushStore *webpush.Store
 }
 
 // ScheduleLLM is the model work scheduled tasks need beyond a chat turn;
@@ -128,6 +133,9 @@ type server struct {
 	scheduleSvc *schedule.Service
 	scheduleLLM ScheduleLLM
 	runs        *scheduleRuns
+	// push and pushStore are nil while push notifications are off.
+	push      PushSender
+	pushStore *webpush.Store
 	// timezones holds each user's browser timezone, by user id.
 	timezones sync.Map
 	// now is the clock scheduled runs read; nil is time.Now. runTimeout and
@@ -338,6 +346,8 @@ func newServer(d Deps) *server {
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
 		publicURL:             d.PublicURL,
 		indexHTML:             d.IndexHTML,
+		push:                  d.Push,
+		pushStore:             d.PushStore,
 	}
 	if s.indexHTML == nil {
 		s.indexHTML = web.IndexHTML
@@ -460,6 +470,10 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("GET /api/schedules/{scheduleID}/runs", s.requireAuth(http.HandlerFunc(s.handleListScheduleRuns)))
 	mux.Handle("GET /api/schedules/{scheduleID}/memory", s.requireAuth(http.HandlerFunc(s.handleGetScheduleMemory)))
 	mux.Handle("DELETE /api/schedules/{scheduleID}/memory/{kind}", s.requireAuth(http.HandlerFunc(s.handleDeleteScheduleMemory)))
+	mux.Handle("GET /api/push", s.requireAuth(http.HandlerFunc(s.handlePushConfig)))
+	mux.Handle("PUT /api/push/subscription", s.requireAuth(http.HandlerFunc(s.handlePushSubscribe)))
+	mux.Handle("DELETE /api/push/subscription", s.requireAuth(http.HandlerFunc(s.handlePushUnsubscribe)))
+	mux.Handle("POST /api/push/test", s.requireAuth(http.HandlerFunc(s.handlePushTest)))
 	mux.Handle("GET /api/notifications", s.requireAuth(http.HandlerFunc(s.handleListNotifications)))
 	mux.Handle("GET /api/notifications/unread", s.requireAuth(http.HandlerFunc(s.handleUnreadNotifications)))
 	mux.Handle("POST /api/notifications/read-all", s.requireAuth(http.HandlerFunc(s.handleReadAllNotifications)))

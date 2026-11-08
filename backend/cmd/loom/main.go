@@ -37,6 +37,7 @@ import (
 	"github.com/trick77/loom/internal/strava"
 	"github.com/trick77/loom/internal/tunewire"
 	"github.com/trick77/loom/internal/usage"
+	"github.com/trick77/loom/internal/webpush"
 	"github.com/trick77/loom/web"
 )
 
@@ -262,6 +263,13 @@ func runServer() error {
 	if llmClient != nil {
 		deps.Schedules = schedule.NewStore(db)
 		deps.ScheduleLLM = llmClient
+		// Push carries the schedules' notifications to the users' devices.
+		vapid, err := webpush.DeriveVAPID(cfg.SessionSecret, pushSubject(cfg.PublicURL))
+		if err != nil {
+			return fmt.Errorf("web push key: %w", err)
+		}
+		deps.Push = webpush.NewSender(vapid)
+		deps.PushStore = webpush.NewStore(db)
 	}
 	handler, memoryWorker, scheduleWorker := httpapi.NewWithWorkers(deps)
 
@@ -445,6 +453,15 @@ const (
 	// stravaServer is the loom-strava sidecar's tools (strava__…).
 	stravaServer = "strava"
 )
+
+// pushSubject is the contact the push services see: the public URL, or in
+// dev (plain http, which Apple refuses as a subject) a mailto: placeholder.
+func pushSubject(publicURL string) string {
+	if strings.HasPrefix(publicURL, "https://") {
+		return publicURL
+	}
+	return "mailto:loom@localhost"
+}
 
 // stravaService is the strava sidecar's connection routes for the settings
 // page; nil (section hidden) when the sidecar is off. Like appleMusicService,

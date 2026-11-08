@@ -32,6 +32,19 @@ describe("SettingsModal", () => {
     expect(await screen.findByText("Not connected yet.")).toBeInTheDocument();
   });
 
+  it("shows Push notifications only when the server can push", () => {
+    const { unmount } = render(<SettingsModal onClose={() => {}} />);
+    expect(
+      screen.queryByRole("button", { name: "Push notifications" }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    render(<SettingsModal onClose={() => {}} push />);
+    expect(
+      screen.getByRole("button", { name: "Push notifications" }),
+    ).toBeInTheDocument();
+  });
+
   it("marks Apple Music and Strava with their brand, the rest from the icon font", () => {
     render(<SettingsModal onClose={() => {}} appleMusic strava />);
 
