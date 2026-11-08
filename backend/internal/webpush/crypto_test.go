@@ -201,6 +201,9 @@ func TestValidEndpoint(t *testing.T) {
 		"https://fcm.googleapis.com",
 		"https://google.com.evil.example/x",
 		"https://notgoogle.com/x",
+		"https://script.google.com/macros/s/abc/exec",
+		"https://jmt17.google.com.evil.example/x",
+		"https://xjmt17.google.com/x",
 	} {
 		if err := ValidEndpoint(bad); err == nil {
 			t.Errorf("%q accepted", bad)

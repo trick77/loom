@@ -601,6 +601,8 @@ export const de = {
       unsupported: "Dieser Browser kann keine Benachrichtigungen empfangen.",
       blocked:
         "Benachrichtigungen für loom sind in den Einstellungen dieses Browsers oder Geräts blockiert. Erlaube sie dort und lade loom neu.",
+      notAllowed:
+        "Benachrichtigungen wurden nicht erlaubt. Tippe noch einmal auf den Knopf und wähle Erlauben.",
       loadFailed:
         "Der Status der Benachrichtigungen konnte nicht geladen werden.",
       enableFailed:

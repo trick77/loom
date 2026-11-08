@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -166,10 +167,12 @@ var pushHosts = []string{
 	".push.apple.com",            // Safari, iOS home-screen apps
 	".push.services.mozilla.com", // Firefox
 	".notify.windows.com",        // Edge
-	// Chrome's newer endpoints (jmt17.google.com/fcm/send/…, seen 2026-11
-	// from Chrome for Testing): public Google hosts, never an internal one.
-	".google.com",
 }
+
+// fcmShard is Chrome's newer endpoint host (jmt17.google.com/fcm/send/…,
+// seen 2026-11). Not all of .google.com: script.google.com would let a user
+// point loom at their own Apps Script.
+var fcmShard = regexp.MustCompile(`^jmt\d+\.google\.com$`)
 
 // ValidEndpoint reports why loom would not post to endpoint, nil when it would.
 func ValidEndpoint(endpoint string) error {
@@ -184,6 +187,9 @@ func ValidEndpoint(endpoint string) error {
 		return errors.New("endpoint has no path")
 	}
 	host := strings.ToLower(u.Hostname())
+	if fcmShard.MatchString(host) {
+		return nil
+	}
 	for _, h := range pushHosts {
 		if host == h || (strings.HasPrefix(h, ".") && strings.HasSuffix(host, h)) {
 			return nil

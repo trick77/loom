@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/schedule"
@@ -30,8 +31,10 @@ const (
 	maxPushBody  = 300
 )
 
-// pushFanoutTimeout bounds one notification's delivery to all devices.
-const pushFanoutTimeout = time.Minute
+// pushDeviceTimeout bounds one device's delivery. Devices are sent to side by
+// side, each on its own clock: one hanging push service must not cost the
+// others their notification.
+const pushDeviceTimeout = 20 * time.Second
 
 // pushPayload is what the service worker (ui/public/sw.js) shows.
 type pushPayload struct {
@@ -62,14 +65,11 @@ func (s *server) handlePushConfig(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"publicKey": s.push.PublicKey()})
 }
 
-// subscriptionBody is PushSubscription.toJSON().
+// subscriptionBody is PushSubscription.toJSON(). It is decoded leniently: the
+// spec types keys as a record, and a browser may add fields.
 type subscriptionBody struct {
-	Endpoint       string   `json:"endpoint"`
-	ExpirationTime *float64 `json:"expirationTime"`
-	Keys           struct {
-		P256dh string `json:"p256dh"`
-		Auth   string `json:"auth"`
-	} `json:"keys"`
+	Endpoint string            `json:"endpoint"`
+	Keys     map[string]string `json:"keys"`
 }
 
 func (s *server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -78,20 +78,23 @@ func (s *server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body subscriptionBody
-	if err := decodeJSONBodyLimit(w, r, &body, maxPushBodyBytes); err != nil {
-		writeDecodeError(w, err)
+	if !httpx.DecodeJSON(w, r, &body, maxPushBodyBytes) {
 		return
 	}
-	sub := webpush.Subscription{Endpoint: body.Endpoint, P256dh: body.Keys.P256dh, Auth: body.Keys.Auth}
+	sub := webpush.Subscription{Endpoint: body.Endpoint, P256dh: body.Keys["p256dh"], Auth: body.Keys["auth"]}
 	if err := sub.Validate(); err != nil {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	if err := s.pushStore.Save(r.Context(), userID, sub, truncateRunes(r.UserAgent(), 200)); err != nil {
+	err := s.pushStore.Save(r.Context(), userID, sub, truncateRunes(r.UserAgent(), 200), s.push.PublicKey())
+	switch {
+	case errors.Is(err, webpush.ErrTaken):
+		httpx.WriteError(w, http.StatusConflict, "this endpoint belongs to another account")
+	case err != nil:
 		serverError(w, r, err, "push store failed")
-		return
+	default:
+		w.WriteHeader(http.StatusNoContent)
 	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
@@ -102,8 +105,7 @@ func (s *server) handlePushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Endpoint string `json:"endpoint"`
 	}
-	if err := decodeJSONBodyLimit(w, r, &body, maxPushBodyBytes); err != nil {
-		writeDecodeError(w, err)
+	if !httpx.DecodeJSON(w, r, &body, maxPushBodyBytes) {
 		return
 	}
 	if _, err := s.pushStore.Delete(r.Context(), userID, body.Endpoint); err != nil {
@@ -125,8 +127,7 @@ func (s *server) handlePushTest(w http.ResponseWriter, r *http.Request) {
 		Title    string `json:"title"`
 		Body     string `json:"body"`
 	}
-	if err := decodeJSONBodyLimit(w, r, &body, maxPushBodyBytes); err != nil {
-		writeDecodeError(w, err)
+	if !httpx.DecodeJSON(w, r, &body, maxPushBodyBytes) {
 		return
 	}
 	subs, err := s.pushStore.List(r.Context(), userID)
@@ -154,17 +155,23 @@ func (s *server) handlePushTest(w http.ResponseWriter, r *http.Request) {
 }
 
 // pushTo sends one payload to one device: a gone subscription is dropped, an
-// accepted one marked.
+// accepted one marked. A row made with an older VAPID key (a rotated session
+// secret) cannot be delivered and counts as gone; the browser subscribes anew
+// on its next visit.
 func (s *server) pushTo(ctx context.Context, userID string, sub webpush.Stored, p pushPayload) error {
-	p.Title, p.Body = truncateRunes(p.Title, maxPushTitle), truncateRunes(p.Body, maxPushBody)
-	payload, err := json.Marshal(p)
-	if err != nil {
-		return err
+	err := webpush.ErrGone
+	if sub.VAPIDKey == s.push.PublicKey() {
+		p.Title, p.Body = truncateRunes(p.Title, maxPushTitle), truncateRunes(p.Body, maxPushBody)
+		payload, merr := json.Marshal(p)
+		if merr != nil {
+			return merr
+		}
+		err = s.push.Send(ctx, sub.Subscription, webpush.Message{Payload: payload})
 	}
-	err = s.push.Send(ctx, sub.Subscription, webpush.Message{Payload: payload})
 	store := context.WithoutCancel(ctx)
 	switch {
 	case errors.Is(err, webpush.ErrGone):
+		slog.Info("dropping gone push subscription", "stale_key", sub.VAPIDKey != s.push.PublicKey())
 		if _, derr := s.pushStore.Delete(store, userID, sub.Endpoint); derr != nil {
 			slog.Warn("drop gone push subscription failed", "err", derr)
 		}
@@ -188,25 +195,32 @@ func (s *server) pushNotification(ctx context.Context, userID string, n schedule
 		p.Tag = "schedule-" + *n.ScheduleID
 	}
 	s.background.Spawn(context.WithoutCancel(ctx), "push:"+userID, func(ctx context.Context) {
-		ctx, cancel := context.WithTimeout(ctx, pushFanoutTimeout)
-		defer cancel()
 		subs, err := s.pushStore.List(ctx, userID)
 		if err != nil {
 			slog.Warn("list push subscriptions failed", "err", err)
 			return
 		}
+		var wg sync.WaitGroup
 		for _, sub := range subs {
-			if err := s.pushTo(ctx, userID, sub, p); err != nil && !errors.Is(err, webpush.ErrGone) {
-				slog.Warn("push notification failed", "err", err)
-			}
+			wg.Go(func() {
+				ctx, cancel := context.WithTimeout(ctx, pushDeviceTimeout)
+				defer cancel()
+				if err := s.pushTo(ctx, userID, sub, p); err != nil && !errors.Is(err, webpush.ErrGone) {
+					slog.Warn("push notification failed", "err", err)
+				}
+			})
 		}
+		wg.Wait()
 	})
 }
 
-// pushURL is the page a tap on the notification opens: the run's thread, else
-// the schedule.
+// pushURL is the page a tap on the notification opens, the same one the inbox
+// opens: a disabled schedule's page (to enable it again), else the run's
+// thread, else the schedule.
 func pushURL(n schedule.Notification) string {
 	switch {
+	case n.Kind == schedule.KindScheduleDisabled && n.ScheduleID != nil:
+		return "/schedules/" + url.PathEscape(*n.ScheduleID)
 	case n.ThreadID != nil:
 		return "/thread/" + url.PathEscape(*n.ThreadID)
 	case n.ScheduleID != nil:

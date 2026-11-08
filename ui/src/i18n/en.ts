@@ -584,6 +584,8 @@ export const en = {
       unsupported: "This browser can’t receive notifications.",
       blocked:
         "Notifications for loom are blocked in this browser’s or device’s settings. Allow them there and reload loom.",
+      notAllowed:
+        "Notifications weren’t allowed. Tap the button again and choose Allow.",
       loadFailed: "Failed to load the notification status.",
       enableFailed: "Couldn’t turn notifications on. Try again.",
       disableFailed: "Couldn’t turn them off. Try again.",

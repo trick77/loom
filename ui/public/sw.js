@@ -38,45 +38,59 @@ self.addEventListener("push", (event) => {
   );
 });
 
+// A tap focuses an open loom tab and asks it to route there itself
+// (src/pushDevice.ts listenForPushNavigation): a navigate() would reload the
+// SPA and lose a draft or a streaming answer. No loom tab: open one.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = new URL(
-    samePath(event.notification.data && event.notification.data.url),
-    self.location.origin,
-  ).href;
+  const path = samePath(event.notification.data && event.notification.data.url);
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({
         type: "window",
         includeUncontrolled: true,
       });
-      for (const client of windows) {
-        if (new URL(client.url).origin !== self.location.origin) continue;
-        try {
-          await client.focus();
-          await client.navigate(target);
-          return;
-        } catch {
-          // An uncontrolled window cannot be navigated: open a new one.
-        }
+      const tab = windows.find(
+        (client) => new URL(client.url).origin === self.location.origin,
+      );
+      if (tab) {
+        await tab.focus();
+        tab.postMessage({ type: "loom:navigate", url: path });
+        return;
       }
-      await self.clients.openWindow(target);
+      await self.clients.openWindow(new URL(path, self.location.origin).href);
     })(),
   );
 });
 
-// The browser renewed the subscription: hand the new one to the server.
+// The browser renewed or dropped the subscription: hand the current one to
+// the server. Chrome often fires this without oldSubscription; the key then
+// comes from the server.
 self.addEventListener("pushsubscriptionchange", (event) => {
-  const options = event.oldSubscription && event.oldSubscription.options;
-  if (!options) return;
   event.waitUntil(
-    self.registration.pushManager.subscribe(options).then((sub) =>
-      fetch("/api/push/subscription", {
+    (async () => {
+      let sub = event.newSubscription;
+      if (!sub) {
+        let options = event.oldSubscription && event.oldSubscription.options;
+        if (!options || !options.applicationServerKey) {
+          const response = await fetch("/api/push", {
+            credentials: "same-origin",
+          });
+          if (!response.ok) return;
+          const { publicKey } = await response.json();
+          options = {
+            userVisibleOnly: true,
+            applicationServerKey: publicKey,
+          };
+        }
+        sub = await self.registration.pushManager.subscribe(options);
+      }
+      await fetch("/api/push/subscription", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
         body: JSON.stringify(sub.toJSON()),
-      }),
-    ),
+      });
+    })(),
   );
 });

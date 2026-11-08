@@ -6,6 +6,7 @@ import {
   base64UrlToBytes,
   enablePush,
   forgetPushOnSignOut,
+  listenForPushNavigation,
   pushSupport,
   syncPush,
 } from "./pushDevice";
@@ -144,6 +145,21 @@ describe("pushDevice", () => {
     expect(existing.unsubscribe).toHaveBeenCalled();
   });
 
+  it("unsubscribes the browser even when the server refuses", async () => {
+    const existing = fakeSub(
+      "https://web.push.apple.com/old",
+      base64UrlToBytes(KEY),
+    );
+    installBrowser(existing);
+    vi.spyOn(api, "deletePushSubscription").mockRejectedValue(
+      new api.AuthExpiredError(),
+    );
+
+    await forgetPushOnSignOut();
+
+    expect(existing.unsubscribe).toHaveBeenCalled();
+  });
+
   it("does not hold up sign-out when the server hangs", async () => {
     vi.useFakeTimers();
     try {
@@ -158,6 +174,39 @@ describe("pushDevice", () => {
       await expect(done).resolves.toBeUndefined();
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("routes a tapped notification without reloading", () => {
+    const target = new EventTarget();
+    vi.stubGlobal("navigator", {
+      serviceWorker: {
+        addEventListener: target.addEventListener.bind(target),
+        removeEventListener: target.removeEventListener.bind(target),
+      },
+    });
+    const popstate = vi.fn();
+    window.addEventListener("popstate", popstate);
+    const stop = listenForPushNavigation();
+    try {
+      target.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "loom:navigate", url: "//evil.example/x" },
+        }),
+      );
+      expect(popstate).not.toHaveBeenCalled();
+
+      target.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "loom:navigate", url: "/schedules/abc" },
+        }),
+      );
+      expect(window.location.pathname).toBe("/schedules/abc");
+      expect(popstate).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+      window.removeEventListener("popstate", popstate);
+      window.history.replaceState({}, "", "/");
     }
   });
 

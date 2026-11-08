@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -142,6 +143,21 @@ func TestPushSubscribeRefusesBadSubscriptions(t *testing.T) {
 	}
 }
 
+func TestPushSubscribeToleratesExtraFieldsAndRefusesATakenEndpoint(t *testing.T) {
+	f := newPushFixture(t, &fakePush{})
+	p256dh, auth := browserKeys(t)
+	body := fmt.Sprintf(`{"endpoint":"https://web.push.apple.com/x","expirationTime":null,"vendor":1,"keys":{"p256dh":%q,"auth":%q,"future":"y"}}`, p256dh, auth)
+	if rec := f.do(t, http.MethodPut, "/api/push/subscription", body); rec.Code != http.StatusNoContent {
+		t.Fatalf("subscribe with extra fields = %d %s", rec.Code, rec.Body)
+	}
+	if err := webpush.NewStore(f.db).Save(context.Background(), f.otherUID, webpush.Subscription{Endpoint: "https://web.push.apple.com/theirs", P256dh: "p", Auth: "a"}, "", "BPUBLIC"); err != nil {
+		t.Fatal(err)
+	}
+	if rec := f.do(t, http.MethodPut, "/api/push/subscription", subscribeBody(t, "https://web.push.apple.com/theirs")); rec.Code != http.StatusConflict {
+		t.Fatalf("taking another user's endpoint = %d %s", rec.Code, rec.Body)
+	}
+}
+
 func TestPushTestGoesToThisDeviceOnly(t *testing.T) {
 	push := &fakePush{}
 	f := newPushFixture(t, push)
@@ -160,7 +176,7 @@ func TestPushTestGoesToThisDeviceOnly(t *testing.T) {
 		t.Errorf("payload %+v", p)
 	}
 	// Another user's endpoint is not this user's device.
-	if err := webpush.NewStore(f.db).Save(context.Background(), f.otherUID, webpush.Subscription{Endpoint: "https://web.push.apple.com/theirs", P256dh: "p", Auth: "a"}, ""); err != nil {
+	if err := webpush.NewStore(f.db).Save(context.Background(), f.otherUID, webpush.Subscription{Endpoint: "https://web.push.apple.com/theirs", P256dh: "p", Auth: "a"}, "", "BPUBLIC"); err != nil {
 		t.Fatal(err)
 	}
 	if rec := f.do(t, http.MethodPost, "/api/push/test", `{"endpoint":"https://web.push.apple.com/theirs","title":"x","body":"y"}`); rec.Code != http.StatusNotFound {
@@ -192,11 +208,14 @@ func TestNotifyPushesToEveryDeviceAndDropsGoneOnes(t *testing.T) {
 	ctx := context.Background()
 	phone, laptop := "https://web.push.apple.com/phone", "https://fcm.googleapis.com/fcm/send/laptop"
 	for _, e := range []string{phone, laptop} {
-		if err := st.Save(ctx, testUser.ID, webpush.Subscription{Endpoint: e, P256dh: "p", Auth: "a"}, ""); err != nil {
+		if err := st.Save(ctx, testUser.ID, webpush.Subscription{Endpoint: e, P256dh: "p", Auth: "a"}, "", "BPUBLIC"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	_ = st.Save(ctx, f.otherUID, webpush.Subscription{Endpoint: "https://web.push.apple.com/theirs", P256dh: "p", Auth: "a"}, "")
+	_ = st.Save(ctx, f.otherUID, webpush.Subscription{Endpoint: "https://web.push.apple.com/theirs", P256dh: "p", Auth: "a"}, "", "BPUBLIC")
+	// Subscribed before the session secret was rotated: never sent, dropped.
+	stale := "https://web.push.apple.com/stale"
+	_ = st.Save(ctx, testUser.ID, webpush.Subscription{Endpoint: stale, P256dh: "p", Auth: "a"}, "", "BOLDKEY")
 	push.gone = map[string]bool{laptop: true}
 
 	s := newServer(f.deps)
@@ -213,7 +232,7 @@ func TestNotifyPushesToEveryDeviceAndDropsGoneOnes(t *testing.T) {
 		}
 	}
 	got := push.sentTo()
-	if len(got) != 2 {
+	if len(got) != 2 || slices.Contains(got, stale) {
 		t.Fatalf("sent to %v", got)
 	}
 	p := push.sent[0].payload
@@ -244,6 +263,8 @@ func TestPushURLForANotification(t *testing.T) {
 		want string
 	}{
 		{schedule.Notification{ThreadID: &tid, ScheduleID: &sid}, "/thread/t%2F1"},
+		// Like the inbox: a disabled schedule opens where it can be enabled.
+		{schedule.Notification{Kind: schedule.KindScheduleDisabled, ThreadID: &tid, ScheduleID: &sid}, "/schedules/s%201"},
 		{schedule.Notification{ScheduleID: &sid}, "/schedules/s%201"},
 		{schedule.Notification{}, "/"},
 	} {

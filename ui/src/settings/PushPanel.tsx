@@ -17,7 +17,11 @@ const buttonClass =
   "inline-flex shrink-0 items-center gap-1.5 rounded-ui border border-border px-2.5 py-1 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
 function failureKey(err: unknown, fallbackKey: string): string {
-  if (err instanceof PushPermissionError) return "settings.push.blocked";
+  // A dismissed prompt ("default") is not a block: another tap asks again.
+  if (err instanceof PushPermissionError)
+    return err.permission === "denied"
+      ? "settings.push.blocked"
+      : "settings.push.notAllowed";
   if (err instanceof PushTestError)
     return err.status === 502
       ? "settings.push.testRefused"
@@ -94,8 +98,13 @@ export function PushPanel() {
     void run(
       "disable",
       async () => {
-        await disablePush();
-        setEndpoint(null);
+        try {
+          await disablePush();
+        } finally {
+          // The browser may be off even when the server did not answer.
+          const sub = await currentPushSubscription().catch(() => null);
+          setEndpoint(sub?.endpoint ?? null);
+        }
       },
       "settings.push.disableFailed",
     );

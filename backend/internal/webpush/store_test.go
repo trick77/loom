@@ -3,6 +3,7 @@ package webpush_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -47,10 +48,10 @@ func endpoints(t *testing.T, st *webpush.Store, userID string) []string {
 func TestStoreIsScopedByUser(t *testing.T) {
 	ctx := context.Background()
 	st := webpush.NewStore(openDB(t))
-	if err := st.Save(ctx, "u1", sub(1), "iPhone"); err != nil {
+	if err := st.Save(ctx, "u1", sub(1), "iPhone", "K"); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Save(ctx, "u2", sub(2), "Mac"); err != nil {
+	if err := st.Save(ctx, "u2", sub(2), "Mac", "K"); err != nil {
 		t.Fatal(err)
 	}
 	if got := endpoints(t, st, "u1"); len(got) != 1 || got[0] != sub(1).Endpoint {
@@ -67,22 +68,41 @@ func TestStoreIsScopedByUser(t *testing.T) {
 	}
 }
 
-// The endpoint is one browser profile: signing in as someone else moves it.
-func TestSaveMovesAnEndpointToTheNewUserAndRenewsKeys(t *testing.T) {
+// The endpoint is one browser profile: the same browser signed in as someone
+// else (same keys) moves it to them.
+func TestSaveMovesAnEndpointWithItsOwnKeys(t *testing.T) {
 	ctx := context.Background()
 	st := webpush.NewStore(openDB(t))
-	_ = st.Save(ctx, "u1", sub(1), "iPhone")
-	renewed := sub(1)
-	renewed.P256dh, renewed.Auth = "p2", "a2"
-	if err := st.Save(ctx, "u2", renewed, "iPhone"); err != nil {
+	_ = st.Save(ctx, "u1", sub(1), "iPhone", "K")
+	if err := st.Save(ctx, "u2", sub(1), "iPhone", "K2"); err != nil {
 		t.Fatal(err)
 	}
 	if got := endpoints(t, st, "u1"); len(got) != 0 {
 		t.Errorf("u1 keeps %v", got)
 	}
 	list, _ := st.List(ctx, "u2")
-	if len(list) != 1 || list[0].P256dh != "p2" || list[0].Auth != "a2" {
+	if len(list) != 1 || list[0].VAPIDKey != "K2" {
 		t.Errorf("u2 has %+v", list)
+	}
+}
+
+// Knowing another user's endpoint is not owning it: other keys are refused.
+func TestSaveRefusesAnotherUsersEndpointWithOtherKeys(t *testing.T) {
+	ctx := context.Background()
+	st := webpush.NewStore(openDB(t))
+	_ = st.Save(ctx, "u1", sub(1), "iPhone", "K")
+	stolen := sub(1)
+	stolen.P256dh, stolen.Auth = "p2", "a2"
+	if err := st.Save(ctx, "u2", stolen, "", "K"); !errors.Is(err, webpush.ErrTaken) {
+		t.Fatalf("err %v, want ErrTaken", err)
+	}
+	list, _ := st.List(ctx, "u1")
+	if len(list) != 1 || list[0].P256dh != "p" || list[0].Auth != "a" {
+		t.Errorf("u1's row changed: %+v", list)
+	}
+	// Its own user renews the keys freely.
+	if err := st.Save(ctx, "u1", stolen, "", "K"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -90,7 +110,7 @@ func TestSaveKeepsTheNewestPerUser(t *testing.T) {
 	ctx := context.Background()
 	st := webpush.NewStore(openDB(t))
 	for i := range webpush.MaxSubscriptions + 2 {
-		if err := st.Save(ctx, "u1", sub(i), ""); err != nil {
+		if err := st.Save(ctx, "u1", sub(i), "", "K"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -108,7 +128,7 @@ func TestSaveKeepsTheNewestPerUser(t *testing.T) {
 func TestMarkSent(t *testing.T) {
 	ctx := context.Background()
 	st := webpush.NewStore(openDB(t))
-	_ = st.Save(ctx, "u1", sub(1), "")
+	_ = st.Save(ctx, "u1", sub(1), "", "K")
 	at := time.Date(2026, 11, 8, 7, 0, 0, 0, time.UTC)
 	if err := st.MarkSent(ctx, "u2", sub(1).Endpoint, at); err != nil {
 		t.Fatal(err)

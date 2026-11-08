@@ -3,6 +3,7 @@ package webpush
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,11 +13,16 @@ import (
 // MaxSubscriptions bounds a user's devices: every notification goes to each.
 const MaxSubscriptions = 10
 
+// ErrTaken is an endpoint another user holds, offered with other keys: only
+// the browser that owns the subscription (it knows the auth secret) moves it.
+var ErrTaken = errors.New("push endpoint belongs to another user")
+
 // Stored is a saved subscription.
 type Stored struct {
 	Subscription
 	ID            string
 	UserAgent     string
+	VAPIDKey      string
 	LastSuccessAt *time.Time
 }
 
@@ -26,23 +32,32 @@ type Store struct{ db *sql.DB }
 // NewStore keeps the subscriptions in db.
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
-// Save adds or renews sub for userID and drops the user's oldest past
-// MaxSubscriptions.
-func (st *Store) Save(ctx context.Context, userID string, sub Subscription, userAgent string) error {
+// Save adds or renews sub for userID, made with vapidKey, and drops the
+// user's oldest past MaxSubscriptions. The same browser signed in as someone
+// else re-saves its own keys and so moves the row; anyone else gets ErrTaken.
+func (st *Store) Save(ctx context.Context, userID string, sub Subscription, userAgent, vapidKey string) error {
 	tx, err := st.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("save push subscription: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, user_agent)
-VALUES (?, ?, ?, ?, ?, ?)
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, user_agent, vapid_key)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(endpoint) DO UPDATE SET
     user_id = excluded.user_id, p256dh = excluded.p256dh, auth = excluded.auth,
-    user_agent = excluded.user_agent, updated_at = datetime('now'),
-    last_success_at = CASE WHEN push_subscriptions.user_id = excluded.user_id THEN push_subscriptions.last_success_at END`,
-		sqlutil.NewID(), userID, sub.Endpoint, sub.P256dh, sub.Auth, userAgent); err != nil {
+    user_agent = excluded.user_agent, vapid_key = excluded.vapid_key, updated_at = datetime('now'),
+    last_success_at = CASE WHEN push_subscriptions.user_id = excluded.user_id THEN push_subscriptions.last_success_at END
+WHERE push_subscriptions.user_id = excluded.user_id
+   OR (push_subscriptions.p256dh = excluded.p256dh AND push_subscriptions.auth = excluded.auth)`,
+		sqlutil.NewID(), userID, sub.Endpoint, sub.P256dh, sub.Auth, userAgent, vapidKey)
+	if err != nil {
 		return fmt.Errorf("save push subscription: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("save push subscription: %w", err)
+	} else if n == 0 {
+		return ErrTaken
 	}
 	if _, err := tx.ExecContext(ctx, `
 DELETE FROM push_subscriptions WHERE user_id = ? AND id NOT IN (
@@ -66,7 +81,7 @@ func (st *Store) Delete(ctx context.Context, userID, endpoint string) (bool, err
 // List returns the user's subscriptions, most recently saved first.
 func (st *Store) List(ctx context.Context, userID string) ([]Stored, error) {
 	rows, err := st.db.QueryContext(ctx, `
-SELECT id, endpoint, p256dh, auth, user_agent, last_success_at FROM push_subscriptions
+SELECT id, endpoint, p256dh, auth, user_agent, vapid_key, last_success_at FROM push_subscriptions
 WHERE user_id = ? ORDER BY updated_at DESC, rowid DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list push subscriptions: %w", err)
@@ -76,7 +91,7 @@ WHERE user_id = ? ORDER BY updated_at DESC, rowid DESC`, userID)
 	for rows.Next() {
 		var s Stored
 		var last sql.NullString
-		if err := rows.Scan(&s.ID, &s.Endpoint, &s.P256dh, &s.Auth, &s.UserAgent, &last); err != nil {
+		if err := rows.Scan(&s.ID, &s.Endpoint, &s.P256dh, &s.Auth, &s.UserAgent, &s.VAPIDKey, &last); err != nil {
 			return nil, fmt.Errorf("scan push subscription: %w", err)
 		}
 		if last.Valid {

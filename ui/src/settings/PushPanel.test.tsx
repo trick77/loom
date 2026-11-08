@@ -37,7 +37,9 @@ describe("PushPanel", () => {
   });
 
   it("sends a localized test to this device and turns off", async () => {
-    vi.spyOn(device, "currentPushSubscription").mockResolvedValue(sub);
+    vi.spyOn(device, "currentPushSubscription")
+      .mockResolvedValueOnce(sub)
+      .mockResolvedValue(null);
     const test = vi.spyOn(api, "sendTestPush").mockResolvedValue();
     const disable = vi.spyOn(device, "disablePush").mockResolvedValue();
     render(<PushPanel />);
@@ -82,6 +84,37 @@ describe("PushPanel", () => {
     expect(
       screen.queryByRole("button", { name: "Turn on for this device" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("lets a dismissed prompt be asked again", async () => {
+    vi.spyOn(device, "currentPushSubscription").mockResolvedValue(null);
+    vi.spyOn(device, "enablePush").mockRejectedValue(
+      new device.PushPermissionError("default"),
+    );
+    render(<PushPanel />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Turn on for this device" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Notifications weren’t allowed.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Turn on for this device" }),
+    ).toBeEnabled();
+  });
+
+  it("shows the device as off when the server misses the turn-off", async () => {
+    const current = vi
+      .spyOn(device, "currentPushSubscription")
+      .mockResolvedValueOnce(sub)
+      .mockResolvedValue(null);
+    vi.spyOn(device, "disablePush").mockRejectedValue(new Error("offline"));
+    render(<PushPanel />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Turn off" }));
+    expect(await screen.findByText("Off for this device.")).toBeInTheDocument();
+    expect(current).toHaveBeenCalledTimes(2);
   });
 
   it("asks iPhone users to add loom to the Home Screen first", () => {

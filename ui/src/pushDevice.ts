@@ -98,11 +98,34 @@ export async function enablePush(publicKey: string): Promise<PushSubscription> {
   return subscribe(publicKey);
 }
 
+// disablePush unsubscribes the browser first, whatever the server then
+// answers: an expired session, a network error or a hang must not leave the
+// device subscribed (the next person at a shared device would see the
+// previous user's pushes). A row the server keeps dies at its next push.
 export async function disablePush(): Promise<void> {
   const sub = await currentPushSubscription();
   if (!sub) return;
-  await deletePushSubscription(sub.endpoint);
+  const endpoint = sub.endpoint;
   await sub.unsubscribe();
+  await deletePushSubscription(endpoint);
+}
+
+// listenForPushNavigation routes this tab where a tapped notification points
+// (public/sw.js posts {type: "loom:navigate", url}), through the router's own
+// popstate path: no reload. Returns the unsubscribe.
+export function listenForPushNavigation(): () => void {
+  if (!("serviceWorker" in navigator)) return () => {};
+  const onMessage = (event: MessageEvent) => {
+    const data = event.data as { type?: unknown; url?: unknown } | null;
+    if (data?.type !== "loom:navigate" || typeof data.url !== "string") return;
+    if (!data.url.startsWith("/") || data.url.startsWith("//")) return;
+    if (window.location.pathname !== data.url)
+      window.history.pushState({}, "", data.url);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+  navigator.serviceWorker.addEventListener("message", onMessage);
+  return () =>
+    navigator.serviceWorker.removeEventListener("message", onMessage);
 }
 
 // syncPush re-saves this browser's subscription on each visit, so the server
