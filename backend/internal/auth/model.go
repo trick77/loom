@@ -1,9 +1,6 @@
 package auth
 
-import (
-	"context"
-	"database/sql"
-)
+import "context"
 
 // Role is the app-local authorization role mapped from OIDC groups.
 type Role string
@@ -19,6 +16,8 @@ const (
 const DevAdminGroup = "loom-dev-admin"
 
 // User is Loom's app-local user profile.
+//
+// Table: users
 type User struct {
 	ID               string `json:"id"`
 	OIDCSubject      string `json:"-"`
@@ -30,6 +29,8 @@ type User struct {
 }
 
 // Claims contains the verified OIDC identity fields Loom needs.
+//
+// Table: -
 type Claims struct {
 	Subject  string
 	Username string
@@ -50,11 +51,4 @@ const userContextKey contextKey = "loom_user"
 func UserFromContext(ctx context.Context) (User, bool) {
 	user, ok := ctx.Value(userContextKey).(User)
 	return user, ok
-}
-
-// DBTX is the subset of *sql.DB used by auth stores.
-type DBTX interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
-	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...any) *sql.Row
 }

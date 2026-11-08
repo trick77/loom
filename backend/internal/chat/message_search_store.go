@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/trick77/loom/internal/sqlutil"
 )
@@ -14,21 +13,6 @@ import (
 // when the caller passes a non-positive limit. Kept small: the results feed a
 // tool result that competes with the model's context budget.
 const defaultMessageSearchLimit = 8
-
-// MessageSearchHit is one full-text match: the matching user/assistant message
-// plus the thread it belongs to. Hits are ordered by FTS5 bm25 relevance (most
-// relevant first); ProjectID is nil for a project-less thread. Snippet is a
-// match-centered excerpt (FTS5 snippet()), so a hit deep inside a long message
-// still shows the relevant region rather than just the message's opening.
-type MessageSearchHit struct {
-	MessageID   string
-	ThreadID    string
-	ThreadTitle string
-	ProjectID   *string
-	Role        Role
-	Snippet     string
-	CreatedAt   time.Time
-}
 
 // defaultThreadContentSearchLimit caps how many threads SearchThreadsByContent
 // returns when the caller passes a non-positive limit. Larger than the LLM

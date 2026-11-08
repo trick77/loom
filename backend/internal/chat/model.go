@@ -48,6 +48,8 @@ const (
 )
 
 // Project groups related chat threads for one user.
+//
+// Table: projects
 type Project struct {
 	ID                         string     `json:"id"`
 	UserID                     string     `json:"-"`
@@ -72,6 +74,8 @@ type Project struct {
 // ProjectMemory is a compact, auto-generated summary of a project's chats that
 // is injected into every chat in the project so sibling chats share context.
 // It is re-summarized (not appended) so it stays small and bounded.
+//
+// Table: project_memory
 type ProjectMemory struct {
 	ProjectID string `json:"projectId"`
 	Content   string `json:"content"`
@@ -105,6 +109,8 @@ const MaxUserDirectiveLength = 1000
 // observations) directives are authoritative commands the user dictates in chat,
 // managed by the assistant via tools, stored row-per-entry, and shown read-only
 // in the UI.
+//
+// Table: user_directives
 type UserDirective struct {
 	ID        string    `json:"id"`
 	UserID    string    `json:"-"`
@@ -115,6 +121,8 @@ type UserDirective struct {
 }
 
 // Thread is a single chat conversation.
+//
+// Table: threads
 type Thread struct {
 	ID        string  `json:"id"`
 	UserID    string  `json:"-"`
@@ -150,6 +158,8 @@ type Thread struct {
 }
 
 // Message is one item in a thread transcript.
+//
+// Table: messages
 type Message struct {
 	ID               string          `json:"id"`
 	ThreadID         string          `json:"threadId"`
@@ -214,6 +224,8 @@ func IsEmptyJSON(raw json.RawMessage) bool {
 // the persisted, serialized shape stored in Message.Attachments. DownloadURL is
 // computed at send time (deterministic from the artifact id) for images; it is
 // empty for documents, which have no download endpoint yet.
+//
+// Table: -
 type MessageAttachment struct {
 	// Kind is "image" or "document".
 	Kind        string `json:"kind"`
@@ -241,6 +253,8 @@ const (
 // collapsed into a "Pasted" chip. It is the persisted, serialized shape stored in
 // Message.PastedTexts. Text is the full pasted content (also folded into
 // Message.Content for the model); LineCount drives the chip's aria-label.
+//
+// Table: -
 type MessagePastedText struct {
 	Text      string `json:"text"`
 	LineCount int    `json:"lineCount"`
@@ -249,6 +263,8 @@ type MessagePastedText struct {
 // MessageTokenUsage carries token counts and cost information recorded for a
 // single message (one model generation turn, which may involve multiple API calls).
 // It is the input to AddMessageWithUsage and related methods.
+//
+// Table: -
 type MessageTokenUsage struct {
 	PromptTokens     *int
 	CompletionTokens *int
@@ -267,6 +283,8 @@ type MessageTokenUsage struct {
 }
 
 // CreateProjectInput holds the fields for creating a new project.
+//
+// Table: -
 type CreateProjectInput struct {
 	Name        string
 	Description string
@@ -274,6 +292,8 @@ type CreateProjectInput struct {
 
 // UpdateProjectInput holds the optional fields for updating a project. A nil
 // pointer means the field is not being changed.
+//
+// Table: -
 type UpdateProjectInput struct {
 	Name        *string
 	Description *string
@@ -281,6 +301,8 @@ type UpdateProjectInput struct {
 
 // CreateThreadInput holds the fields for creating a new thread within an
 // optional project.
+//
+// Table: -
 type CreateThreadInput struct {
 	ProjectID *string
 	Title     string
@@ -292,6 +314,8 @@ type CreateThreadInput struct {
 // ProjectIDUpdate encodes the semantics of updating a thread's project
 // association: Set indicates whether the project is being changed, and Value is
 // the new project id (nil means removing the project association).
+//
+// Table: -
 type ProjectIDUpdate struct {
 	Set   bool
 	Value *string
@@ -299,6 +323,8 @@ type ProjectIDUpdate struct {
 
 // UpdateThreadInput holds the optional fields for updating a thread. A nil
 // pointer means the field is not being changed.
+//
+// Table: -
 type UpdateThreadInput struct {
 	Title *string
 	// Category, when non-nil, sets the thread's prompt-classifier label. A nil
@@ -308,6 +334,8 @@ type UpdateThreadInput struct {
 }
 
 // ListThreadsOptions specifies filters and pagination for thread listing.
+//
+// Table: -
 type ListThreadsOptions struct {
 	ProjectID       *string
 	ProjectlessOnly bool
@@ -325,6 +353,8 @@ type ListThreadsOptions struct {
 // frozen snapshot or rotating ShareID. Snapshot is the sanitized JSON blob served
 // to anonymous viewers; ArtifactIDs is the allowlist of generated-artifact ids the
 // public artifact endpoints may serve for this share.
+//
+// Table: shared_threads
 type Share struct {
 	ID          string
 	ShareID     string
@@ -340,6 +370,8 @@ type Share struct {
 }
 
 // CreateShareInput holds the fields for creating a public share link for a thread.
+//
+// Table: -
 type CreateShareInput struct {
 	ShareID     string
 	ThreadID    string
@@ -349,8 +381,99 @@ type CreateShareInput struct {
 }
 
 // UpdateShareInput holds the fields for updating an existing public share.
+//
+// Table: -
 type UpdateShareInput struct {
 	Title       string
 	Snapshot    json.RawMessage
 	ArtifactIDs []string
+}
+
+// MessageSearchHit is one full-text match: the matching user/assistant message
+// plus the thread it belongs to. Hits are ordered by FTS5 bm25 relevance (most
+// relevant first); ProjectID is nil for a project-less thread. Snippet is a
+// match-centered excerpt (FTS5 snippet()), so a hit deep inside a long message
+// still shows the relevant region rather than just the message's opening.
+//
+// Table: messages
+type MessageSearchHit struct {
+	MessageID   string
+	ThreadID    string
+	ThreadTitle string
+	ProjectID   *string
+	Role        Role
+	Snippet     string
+	CreatedAt   time.Time
+}
+
+// UserFact is one active fact about the user.
+//
+// Table: user_facts
+type UserFact struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"-"`
+	Category  string    `json:"category"`
+	Content   string    `json:"content"`
+	Durable   bool      `json:"durable"`
+	Origin    string    `json:"-"`
+	FirstSeen time.Time `json:"firstSeen"`
+	LastSeen  time.Time `json:"lastSeen"`
+}
+
+// Bucket computes a fact's time bucket at now: long-term when durable,
+// otherwise by how long ago it was last seen.
+func (f UserFact) Bucket(now time.Time) UserFactBucket {
+	if f.Durable {
+		return BucketLongTerm
+	}
+	age := now.Sub(f.LastSeen)
+	switch {
+	case age < topOfMindAge:
+		return BucketTopOfMind
+	case age < recentAge:
+		return BucketRecent
+	default:
+		return BucketEarlier
+	}
+}
+
+// UserFactCursor is a user's refresh position: the last message folded in,
+// ordered by (created_at, id), plus when the last refresh and consolidation ran.
+//
+// Table: user_fact_cursor
+type UserFactCursor struct {
+	LastCreatedAt      string
+	LastMessageID      string
+	LastRefreshAt      *time.Time
+	LastConsolidatedAt *time.Time
+}
+
+// QueuedMessage is a message the user sent while a turn was running on the
+// thread, waiting to be picked up by that turn.
+//
+// Table: queued_messages
+type QueuedMessage struct {
+	ID       string `json:"id"`
+	ThreadID string `json:"threadId"`
+	Content  string `json:"content"`
+	// PastedTexts are the collapsed paste blocks, as on Message.
+	PastedTexts     json.RawMessage `json:"pastedTexts"`
+	ClientMessageID string          `json:"clientMessageId"`
+	CreatedAt       time.Time       `json:"createdAt"`
+}
+
+// QueuedThread names a thread that has queued messages.
+//
+// Table: -
+type QueuedThread struct {
+	UserID   string
+	ThreadID string
+}
+
+// ThreadRef names one user's thread.
+//
+// Table: threads
+type ThreadRef struct {
+	UserID   string
+	ThreadID string
 }

@@ -10,24 +10,6 @@ import (
 	"github.com/trick77/loom/internal/sqlutil"
 )
 
-// QueuedMessage is a message the user sent while a turn was running on the
-// thread, waiting to be picked up by that turn.
-type QueuedMessage struct {
-	ID       string `json:"id"`
-	ThreadID string `json:"threadId"`
-	Content  string `json:"content"`
-	// PastedTexts are the collapsed paste blocks, as on Message.
-	PastedTexts     json.RawMessage `json:"pastedTexts"`
-	ClientMessageID string          `json:"clientMessageId"`
-	CreatedAt       time.Time       `json:"createdAt"`
-}
-
-// QueuedThread names a thread that has queued messages.
-type QueuedThread struct {
-	UserID   string
-	ThreadID string
-}
-
 const queuedColumns = "id, thread_id, content, pasted_texts, client_message_id, created_at"
 
 // EnqueueMessage stores a message for the thread's running turn. The content

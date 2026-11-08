@@ -9,6 +9,8 @@ const (
 )
 
 // Artifact represents a file uploaded or generated in the context of a chat thread or project.
+//
+// Table: artifacts
 type Artifact struct {
 	ID              string    `json:"id"`
 	UserID          string    `json:"-"`
@@ -70,6 +72,8 @@ const (
 )
 
 // ListOptions specifies filtering and pagination parameters for artifact lists.
+//
+// Table: -
 type ListOptions struct {
 	Search string
 	Type   ListType
@@ -82,6 +86,8 @@ type ListOptions struct {
 }
 
 // OutputRequest specifies parameters for resolving an artifact's storage path.
+//
+// Table: -
 type OutputRequest struct {
 	UsersDir        string
 	UserID          string
@@ -92,6 +98,8 @@ type OutputRequest struct {
 }
 
 // OutputPath contains the paths and metadata for an artifact's storage location.
+//
+// Table: -
 type OutputPath struct {
 	AbsPath         string
 	VolumeRelPath   string

@@ -17,15 +17,6 @@ const MaxSubscriptions = 10
 // the browser that owns the subscription (it knows the auth secret) moves it.
 var ErrTaken = errors.New("push endpoint belongs to another user")
 
-// Stored is a saved subscription.
-type Stored struct {
-	Subscription
-	ID            string
-	UserAgent     string
-	VAPIDKey      string
-	LastSuccessAt *time.Time
-}
-
 // Store keeps the browsers' subscriptions.
 type Store struct{ db *sql.DB }
 
