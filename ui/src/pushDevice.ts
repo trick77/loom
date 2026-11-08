@@ -86,16 +86,56 @@ async function subscribe(publicKey: string): Promise<PushSubscription> {
     userVisibleOnly: true,
     applicationServerKey: base64UrlToBytes(publicKey),
   });
-  await savePushSubscription(sub.toJSON());
+  await savePushSubscription(sub.toJSON(), publicKey);
   return sub;
+}
+
+// OWNER_KEY remembers which loom user turned push on in this browser. A visit
+// re-saves the subscription only for that user: a session that expired
+// without a sign-out must not hand the device's pushes to whoever signs in
+// next.
+const OWNER_KEY = "loom.push.owner";
+
+function readOwner(): string | null {
+  try {
+    return window.localStorage.getItem(OWNER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeOwner(userID: string | null): void {
+  try {
+    if (userID === null) window.localStorage.removeItem(OWNER_KEY);
+    else window.localStorage.setItem(OWNER_KEY, userID);
+  } catch {
+    // No storage: a later visit treats the device as not owned and turns it
+    // off, the safe side.
+  }
 }
 
 // enablePush asks for the permission first, before any await: Safari grants
 // the prompt only inside the tap that asked for it.
-export async function enablePush(publicKey: string): Promise<PushSubscription> {
+export async function enablePush(
+  publicKey: string,
+  userID: string,
+): Promise<PushSubscription> {
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new PushPermissionError(permission);
-  return subscribe(publicKey);
+  const sub = await subscribe(publicKey);
+  writeOwner(userID);
+  return sub;
+}
+
+// unsubscribeBrowser stops this browser's pushes and returns the endpoint it
+// had, null when it had none.
+async function unsubscribeBrowser(): Promise<string | null> {
+  const sub = await currentPushSubscription();
+  writeOwner(null);
+  if (!sub) return null;
+  const endpoint = sub.endpoint;
+  await sub.unsubscribe();
+  return endpoint;
 }
 
 // disablePush unsubscribes the browser first, whatever the server then
@@ -103,11 +143,8 @@ export async function enablePush(publicKey: string): Promise<PushSubscription> {
 // device subscribed (the next person at a shared device would see the
 // previous user's pushes). A row the server keeps dies at its next push.
 export async function disablePush(): Promise<void> {
-  const sub = await currentPushSubscription();
-  if (!sub) return;
-  const endpoint = sub.endpoint;
-  await sub.unsubscribe();
-  await deletePushSubscription(endpoint);
+  const endpoint = await unsubscribeBrowser();
+  if (endpoint !== null) await deletePushSubscription(endpoint);
 }
 
 // listenForPushNavigation routes this tab where a tapped notification points
@@ -129,12 +166,17 @@ export function listenForPushNavigation(): () => void {
 }
 
 // syncPush re-saves this browser's subscription on each visit, so the server
-// follows a renewed endpoint or key and the user signed in now. Best effort.
-export async function syncPush(): Promise<void> {
+// follows a renewed endpoint or key. Only for the user who turned it on: for
+// anyone else the browser is unsubscribed instead. Best effort.
+export async function syncPush(userID: string): Promise<void> {
   try {
     if (pushSupport() !== "supported" || Notification.permission !== "granted")
       return;
     if (!(await currentPushSubscription())) return;
+    if (readOwner() !== userID) {
+      await unsubscribeBrowser();
+      return;
+    }
     const { publicKey } = await getPushConfig();
     await subscribe(publicKey);
   } catch {
@@ -142,23 +184,38 @@ export async function syncPush(): Promise<void> {
   }
 }
 
-// forgetPushOnSignOut stops this device's pushes before a sign-out: the next
-// person at a shared device must not see the previous user's notifications.
-// It waits at most a few seconds: a hanging request must not block sign-out.
-export async function forgetPushOnSignOut(): Promise<void> {
+// within resolves when work settles or after ms, whichever comes first; it
+// never rejects.
+async function within(work: Promise<unknown>, ms: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      disablePush(),
+      work.catch(() => {}),
       new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, SIGN_OUT_WAIT_MS);
+        timer = setTimeout(resolve, ms);
       }),
     ]);
-  } catch {
-    // Sign-out goes ahead regardless.
   } finally {
     clearTimeout(timer);
   }
 }
 
-const SIGN_OUT_WAIT_MS = 3000;
+// forgetPushOnSignOut stops this device's pushes before a sign-out: the next
+// person at a shared device must not see the previous user's notifications.
+// The browser's own unsubscribe gets the longer wait, the part that protects
+// the device; the server's DELETE a short one (a row it keeps dies at its
+// next push). A hang must not block sign-out.
+export async function forgetPushOnSignOut(): Promise<void> {
+  let endpoint: string | null = null;
+  await within(
+    unsubscribeBrowser().then((e) => {
+      endpoint = e;
+    }),
+    UNSUBSCRIBE_WAIT_MS,
+  );
+  if (endpoint !== null)
+    await within(deletePushSubscription(endpoint), DELETE_WAIT_MS);
+}
+
+const UNSUBSCRIBE_WAIT_MS = 10_000;
+const DELETE_WAIT_MS = 3000;

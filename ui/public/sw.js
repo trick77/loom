@@ -1,7 +1,7 @@
 // loom's service worker. It shows the Web Push messages the server sends
 // (backend/internal/httpapi/push_handlers.go: {title, body, url, tag}) and
 // opens a notification's page on a tap. It caches nothing.
-/* global self, URL, fetch */
+/* global self, URL, fetch, btoa */
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) =>
@@ -50,9 +50,14 @@ self.addEventListener("notificationclick", (event) => {
         type: "window",
         includeUncontrolled: true,
       });
-      const tab = windows.find(
+      const loom = windows.filter(
         (client) => new URL(client.url).origin === self.location.origin,
       );
+      // The tab the user is looking at, not just the first one listed.
+      const tab =
+        loom.find((client) => client.focused) ||
+        loom.find((client) => client.visibilityState === "visible") ||
+        loom[0];
       if (tab) {
         await tab.focus();
         tab.postMessage({ type: "loom:navigate", url: path });
@@ -63,33 +68,41 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
+function base64Url(buffer) {
+  let raw = "";
+  for (const b of new Uint8Array(buffer)) raw += String.fromCharCode(b);
+  return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
 // The browser renewed or dropped the subscription: hand the current one to
-// the server. Chrome often fires this without oldSubscription; the key then
-// comes from the server.
+// the server, with the key it was made with. A new one is always made with
+// loom's current key (an old subscription's options may hold a key a rotated
+// session secret retired).
 self.addEventListener("pushsubscriptionchange", (event) => {
   event.waitUntil(
     (async () => {
       let sub = event.newSubscription;
-      if (!sub) {
-        let options = event.oldSubscription && event.oldSubscription.options;
-        if (!options || !options.applicationServerKey) {
-          const response = await fetch("/api/push", {
-            credentials: "same-origin",
-          });
-          if (!response.ok) return;
-          const { publicKey } = await response.json();
-          options = {
-            userVisibleOnly: true,
-            applicationServerKey: publicKey,
-          };
-        }
-        sub = await self.registration.pushManager.subscribe(options);
+      let key =
+        sub && sub.options.applicationServerKey
+          ? base64Url(sub.options.applicationServerKey)
+          : null;
+      if (!sub || !key) {
+        const response = await fetch("/api/push", {
+          credentials: "same-origin",
+        });
+        if (!response.ok) return;
+        key = (await response.json()).publicKey;
+        if (sub) await sub.unsubscribe();
+        sub = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key,
+        });
       }
       await fetch("/api/push/subscription", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify(sub.toJSON()),
+        body: JSON.stringify({ ...sub.toJSON(), applicationServerKey: key }),
       });
     })(),
   );

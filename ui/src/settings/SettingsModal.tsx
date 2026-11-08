@@ -58,17 +58,23 @@ export function SettingsModal({
   onClose,
   appleMusic = false,
   strava = false,
-  push = false,
+  pushUserID = null,
   stravaOutcome = null,
 }: {
   onClose(): void;
   appleMusic?: boolean;
   strava?: boolean;
-  push?: boolean;
+  // pushUserID is the signed-in user when the server can push; null hides
+  // the section.
+  pushUserID?: string | null;
   stravaOutcome?: StravaOutcome | null;
 }) {
   const { t } = useTranslation();
-  const allowed: Record<Feature, boolean> = { appleMusic, strava, push };
+  const allowed: Record<Feature, boolean> = {
+    appleMusic,
+    strava,
+    push: pushUserID !== null,
+  };
   const sections = SECTIONS.filter(
     (entry) => entry.feature === undefined || allowed[entry.feature],
   );
@@ -122,7 +128,9 @@ export function SettingsModal({
           </button>
           {section === "usage" && <UsagePanel />}
           {section === "shares" && <SharedChatsPanel />}
-          {section === "push" && <PushPanel />}
+          {section === "push" && pushUserID !== null && (
+            <PushPanel userID={pushUserID} />
+          )}
           {section === "appleMusic" && <AppleMusicPanel />}
           {section === "strava" && <StravaPanel outcome={stravaOutcome} />}
         </div>

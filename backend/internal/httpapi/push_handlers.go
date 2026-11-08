@@ -65,11 +65,16 @@ func (s *server) handlePushConfig(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]string{"publicKey": s.push.PublicKey()})
 }
 
-// subscriptionBody is PushSubscription.toJSON(). It is decoded leniently: the
-// spec types keys as a record, and a browser may add fields.
+// subscriptionBody is PushSubscription.toJSON() plus the key the browser
+// subscribed with. It is decoded leniently: the spec types keys as a record,
+// and a browser may add fields.
 type subscriptionBody struct {
 	Endpoint string            `json:"endpoint"`
 	Keys     map[string]string `json:"keys"`
+	// ApplicationServerKey is the VAPID key the subscription was made with
+	// (base64url). The row records it, not loom's current key: one made with
+	// an older key can never be delivered, and pushTo drops it.
+	ApplicationServerKey string `json:"applicationServerKey"`
 }
 
 func (s *server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +91,11 @@ func (s *server) handlePushSubscribe(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	err := s.pushStore.Save(r.Context(), userID, sub, truncateRunes(r.UserAgent(), 200), s.push.PublicKey())
+	if body.ApplicationServerKey == "" {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, "applicationServerKey is required")
+		return
+	}
+	err := s.pushStore.Save(r.Context(), userID, sub, truncateRunes(r.UserAgent(), 200), truncateRunes(body.ApplicationServerKey, 200))
 	switch {
 	case errors.Is(err, webpush.ErrTaken):
 		httpx.WriteError(w, http.StatusConflict, "this endpoint belongs to another account")
@@ -172,7 +181,7 @@ func (s *server) pushTo(ctx context.Context, userID string, sub webpush.Stored, 
 	switch {
 	case errors.Is(err, webpush.ErrGone):
 		slog.Info("dropping gone push subscription", "stale_key", sub.VAPIDKey != s.push.PublicKey())
-		if _, derr := s.pushStore.Delete(store, userID, sub.Endpoint); derr != nil {
+		if derr := s.pushStore.DeleteGone(store, userID, sub.Subscription); derr != nil {
 			slog.Warn("drop gone push subscription failed", "err", derr)
 		}
 	case err == nil:

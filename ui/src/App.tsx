@@ -61,7 +61,7 @@ export default function App() {
           setUser(currentUser);
         }
         setStatus(currentUser ? "ready" : "signed-out");
-        if (currentUser?.push) void syncPush();
+        if (currentUser?.push) void syncPush(currentUser.id);
       })
       .catch(() => {
         if (!active) return;

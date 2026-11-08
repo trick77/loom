@@ -61,7 +61,10 @@ function installBrowser(existing: FakeSub | null, permission = "granted") {
 }
 
 describe("pushDevice", () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    window.localStorage.clear();
+  });
   afterEach(() => vi.unstubAllGlobals());
 
   it("decodes base64url keys", () => {
@@ -73,7 +76,7 @@ describe("pushDevice", () => {
     const pm = installBrowser(null);
     const save = vi.spyOn(api, "savePushSubscription").mockResolvedValue();
 
-    const sub = await enablePush(KEY);
+    const sub = await enablePush(KEY, "user_1");
 
     expect(sub.endpoint).toBe("https://web.push.apple.com/new");
     expect(pm.subscribe).toHaveBeenCalledWith(
@@ -81,15 +84,20 @@ describe("pushDevice", () => {
     );
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ endpoint: "https://web.push.apple.com/new" }),
+      KEY,
     );
+    expect(window.localStorage.getItem("loom.push.owner")).toBe("user_1");
   });
 
   it("refuses without the permission", async () => {
     installBrowser(null, "denied");
-    await expect(enablePush(KEY)).rejects.toBeInstanceOf(PushPermissionError);
+    await expect(enablePush(KEY, "user_1")).rejects.toBeInstanceOf(
+      PushPermissionError,
+    );
   });
 
   it("re-saves an existing subscription on a visit", async () => {
+    window.localStorage.setItem("loom.push.owner", "user_1");
     const existing = fakeSub(
       "https://web.push.apple.com/old",
       base64UrlToBytes(KEY),
@@ -98,15 +106,33 @@ describe("pushDevice", () => {
     vi.spyOn(api, "getPushConfig").mockResolvedValue({ publicKey: KEY });
     const save = vi.spyOn(api, "savePushSubscription").mockResolvedValue();
 
-    await syncPush();
+    await syncPush("user_1");
 
     expect(pm.subscribe).not.toHaveBeenCalled();
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ endpoint: "https://web.push.apple.com/old" }),
+      KEY,
     );
   });
 
+  it("hands nobody else's pushes to the user signed in now", async () => {
+    window.localStorage.setItem("loom.push.owner", "user_1");
+    const existing = fakeSub(
+      "https://web.push.apple.com/old",
+      base64UrlToBytes(KEY),
+    );
+    installBrowser(existing);
+    const save = vi.spyOn(api, "savePushSubscription").mockResolvedValue();
+
+    await syncPush("user_2");
+
+    expect(save).not.toHaveBeenCalled();
+    expect(existing.unsubscribe).toHaveBeenCalled();
+    expect(window.localStorage.getItem("loom.push.owner")).toBeNull();
+  });
+
   it("renews a subscription made with an older key", async () => {
+    window.localStorage.setItem("loom.push.owner", "user_1");
     const existing = fakeSub(
       "https://web.push.apple.com/old",
       new Uint8Array([4, 9, 9]),
@@ -115,19 +141,20 @@ describe("pushDevice", () => {
     vi.spyOn(api, "getPushConfig").mockResolvedValue({ publicKey: KEY });
     const save = vi.spyOn(api, "savePushSubscription").mockResolvedValue();
 
-    await syncPush();
+    await syncPush("user_1");
 
     expect(existing.unsubscribe).toHaveBeenCalled();
     expect(pm.subscribe).toHaveBeenCalled();
     expect(save).toHaveBeenCalledWith(
       expect.objectContaining({ endpoint: "https://web.push.apple.com/new" }),
+      KEY,
     );
   });
 
   it("does nothing on a visit without a subscription", async () => {
     installBrowser(null);
     const config = vi.spyOn(api, "getPushConfig");
-    await syncPush();
+    await syncPush("user_1");
     expect(config).not.toHaveBeenCalled();
   });
 

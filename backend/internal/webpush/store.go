@@ -78,6 +78,18 @@ func (st *Store) Delete(ctx context.Context, userID, endpoint string) (bool, err
 	return n > 0, err
 }
 
+// DeleteGone removes the user's subscription only while it still holds sub's
+// keys: a browser that renewed it meanwhile (same endpoint, new keys) keeps
+// the renewed row.
+func (st *Store) DeleteGone(ctx context.Context, userID string, sub Subscription) error {
+	if _, err := st.db.ExecContext(ctx, `
+DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ? AND p256dh = ? AND auth = ?`,
+		userID, sub.Endpoint, sub.P256dh, sub.Auth); err != nil {
+		return fmt.Errorf("delete gone push subscription: %w", err)
+	}
+	return nil
+}
+
 // List returns the user's subscriptions, most recently saved first.
 func (st *Store) List(ctx context.Context, userID string) ([]Stored, error) {
 	rows, err := st.db.QueryContext(ctx, `

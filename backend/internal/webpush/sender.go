@@ -33,21 +33,28 @@ func (s Subscription) Validate() error {
 	if err := ValidEndpoint(s.Endpoint); err != nil {
 		return err
 	}
-	uaPublic, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(s.P256dh, "="))
+	_, _, err := s.keys()
+	return err
+}
+
+// keys decodes the browser's public key and auth secret (base64url, padded
+// or not) and checks their shape.
+func (s Subscription) keys() (uaPublic, authSecret []byte, err error) {
+	uaPublic, err = base64.RawURLEncoding.DecodeString(strings.TrimRight(s.P256dh, "="))
 	if err != nil {
-		return fmt.Errorf("p256dh: %w", err)
+		return nil, nil, fmt.Errorf("p256dh: %w", err)
 	}
 	if _, err := ecdh.P256().NewPublicKey(uaPublic); err != nil {
-		return fmt.Errorf("p256dh: %w", err)
+		return nil, nil, fmt.Errorf("p256dh: %w", err)
 	}
-	auth, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(s.Auth, "="))
+	authSecret, err = base64.RawURLEncoding.DecodeString(strings.TrimRight(s.Auth, "="))
 	if err != nil {
-		return fmt.Errorf("auth: %w", err)
+		return nil, nil, fmt.Errorf("auth: %w", err)
 	}
-	if len(auth) != 16 {
-		return fmt.Errorf("auth is %d bytes, want 16", len(auth))
+	if len(authSecret) != 16 {
+		return nil, nil, fmt.Errorf("auth is %d bytes, want 16", len(authSecret))
 	}
-	return nil
+	return uaPublic, authSecret, nil
 }
 
 // Message is one push. TTL is how long the push service holds it for an
@@ -92,13 +99,9 @@ func (s *Sender) Send(ctx context.Context, sub Subscription, msg Message) error 
 	if err := s.validate(sub.Endpoint); err != nil {
 		return err
 	}
-	uaPublic, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(sub.P256dh, "="))
+	uaPublic, authSecret, err := sub.keys()
 	if err != nil {
-		return fmt.Errorf("p256dh: %w", err)
-	}
-	authSecret, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(sub.Auth, "="))
-	if err != nil {
-		return fmt.Errorf("auth: %w", err)
+		return err
 	}
 	asPriv, err := ecdh.P256().GenerateKey(rand.Reader)
 	if err != nil {

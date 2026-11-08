@@ -31,7 +31,7 @@ function failureKey(err: unknown, fallbackKey: string): string {
 
 // PushPanel turns notifications on or off for this device only: each browser
 // holds its own subscription.
-export function PushPanel() {
+export function PushPanel({ userID }: { userID: string }) {
   const { t } = useTranslation();
   const support = pushSupport();
   const [publicKey, setPublicKey] = useState<string | null>(null);
@@ -87,7 +87,7 @@ export function PushPanel() {
     void run(
       "enable",
       async () => {
-        const sub = await enablePush(publicKey);
+        const sub = await enablePush(publicKey, userID);
         setEndpoint(sub.endpoint);
       },
       "settings.push.enableFailed",

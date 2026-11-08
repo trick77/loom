@@ -82,7 +82,7 @@ func newPushFixture(t *testing.T, push *fakePush) *scheduleFixture {
 
 func subscribeBody(t *testing.T, endpoint string) string {
 	p256dh, auth := browserKeys(t)
-	return fmt.Sprintf(`{"endpoint":%q,"expirationTime":null,"keys":{"p256dh":%q,"auth":%q}}`, endpoint, p256dh, auth)
+	return fmt.Sprintf(`{"endpoint":%q,"expirationTime":null,"applicationServerKey":"BPUBLIC","keys":{"p256dh":%q,"auth":%q}}`, endpoint, p256dh, auth)
 }
 
 func TestPushConfigIsOffWithoutASender(t *testing.T) {
@@ -133,6 +133,7 @@ func TestPushSubscribeRefusesBadSubscriptions(t *testing.T) {
 		"http":          subscribeBody(t, "http://web.push.apple.com/x"),
 		"bad p256dh":    fmt.Sprintf(`{"endpoint":"https://web.push.apple.com/x","keys":{"p256dh":"AAAA","auth":%q}}`, auth),
 		"short auth":    fmt.Sprintf(`{"endpoint":"https://web.push.apple.com/x","keys":{"p256dh":%q,"auth":"AAAA"}}`, p256dh),
+		"no key":        fmt.Sprintf(`{"endpoint":"https://web.push.apple.com/x","keys":{"p256dh":%q,"auth":%q}}`, p256dh, auth),
 	} {
 		if rec := f.do(t, http.MethodPut, "/api/push/subscription", body); rec.Code != http.StatusUnprocessableEntity {
 			t.Errorf("%s: %d %s", name, rec.Code, rec.Body)
@@ -146,7 +147,7 @@ func TestPushSubscribeRefusesBadSubscriptions(t *testing.T) {
 func TestPushSubscribeToleratesExtraFieldsAndRefusesATakenEndpoint(t *testing.T) {
 	f := newPushFixture(t, &fakePush{})
 	p256dh, auth := browserKeys(t)
-	body := fmt.Sprintf(`{"endpoint":"https://web.push.apple.com/x","expirationTime":null,"vendor":1,"keys":{"p256dh":%q,"auth":%q,"future":"y"}}`, p256dh, auth)
+	body := fmt.Sprintf(`{"endpoint":"https://web.push.apple.com/x","expirationTime":null,"vendor":1,"applicationServerKey":"BPUBLIC","keys":{"p256dh":%q,"auth":%q,"future":"y"}}`, p256dh, auth)
 	if rec := f.do(t, http.MethodPut, "/api/push/subscription", body); rec.Code != http.StatusNoContent {
 		t.Fatalf("subscribe with extra fields = %d %s", rec.Code, rec.Body)
 	}
@@ -155,6 +156,26 @@ func TestPushSubscribeToleratesExtraFieldsAndRefusesATakenEndpoint(t *testing.T)
 	}
 	if rec := f.do(t, http.MethodPut, "/api/push/subscription", subscribeBody(t, "https://web.push.apple.com/theirs")); rec.Code != http.StatusConflict {
 		t.Fatalf("taking another user's endpoint = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// A browser that renewed with an old key (a worker resubscribing from its
+// stale options) is recorded with that key, so loom drops it instead of
+// sending into a 403 forever.
+func TestPushSubscribeRecordsTheKeyTheBrowserUsed(t *testing.T) {
+	push := &fakePush{}
+	f := newPushFixture(t, push)
+	p256dh, auth := browserKeys(t)
+	endpoint := "https://web.push.apple.com/old-key"
+	body := fmt.Sprintf(`{"endpoint":%q,"applicationServerKey":"BOLDKEY","keys":{"p256dh":%q,"auth":%q}}`, endpoint, p256dh, auth)
+	if rec := f.do(t, http.MethodPut, "/api/push/subscription", body); rec.Code != http.StatusNoContent {
+		t.Fatalf("subscribe = %d %s", rec.Code, rec.Body)
+	}
+	if rec := f.do(t, http.MethodPost, "/api/push/test", fmt.Sprintf(`{"endpoint":%q,"title":"t","body":"b"}`, endpoint)); rec.Code != http.StatusGone {
+		t.Fatalf("test to an old-key row = %d %s", rec.Code, rec.Body)
+	}
+	if got := push.sentTo(); len(got) != 0 {
+		t.Errorf("sent to %v", got)
 	}
 }
 

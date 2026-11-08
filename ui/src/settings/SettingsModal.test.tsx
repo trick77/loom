@@ -39,7 +39,7 @@ describe("SettingsModal", () => {
     ).not.toBeInTheDocument();
     unmount();
 
-    render(<SettingsModal onClose={() => {}} push />);
+    render(<SettingsModal onClose={() => {}} pushUserID="user_1" />);
     expect(
       screen.getByRole("button", { name: "Push notifications" }),
     ).toBeInTheDocument();

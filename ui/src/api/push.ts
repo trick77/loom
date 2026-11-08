@@ -19,12 +19,16 @@ export function getPushConfig(): Promise<PushConfig> {
   return requestJSON<PushConfig>("/api/push", "push config failed");
 }
 
+// savePushSubscription stores the subscription with the VAPID key it was made
+// with (applicationServerKey): the server keeps rows made with an old key
+// from looking current.
 export async function savePushSubscription(
   subscription: PushSubscriptionJSON,
+  applicationServerKey: string,
 ): Promise<void> {
   await request("/api/push/subscription", "push subscribe failed", {
     method: "PUT",
-    json: subscription,
+    json: { ...subscription, applicationServerKey },
   });
 }
 

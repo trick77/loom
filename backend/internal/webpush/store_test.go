@@ -125,6 +125,28 @@ func TestSaveKeepsTheNewestPerUser(t *testing.T) {
 	}
 }
 
+func TestDeleteGoneSparesARenewedRow(t *testing.T) {
+	ctx := context.Background()
+	st := webpush.NewStore(openDB(t))
+	old := sub(1)
+	_ = st.Save(ctx, "u1", old, "", "K")
+	renewed := sub(1)
+	renewed.P256dh, renewed.Auth = "p2", "a2"
+	_ = st.Save(ctx, "u1", renewed, "", "K")
+	if err := st.DeleteGone(ctx, "u1", old); err != nil {
+		t.Fatal(err)
+	}
+	if got := endpoints(t, st, "u1"); len(got) != 1 {
+		t.Fatalf("renewed row dropped: %v", got)
+	}
+	if err := st.DeleteGone(ctx, "u1", renewed); err != nil {
+		t.Fatal(err)
+	}
+	if got := endpoints(t, st, "u1"); len(got) != 0 {
+		t.Fatalf("gone row kept: %v", got)
+	}
+}
+
 func TestMarkSent(t *testing.T) {
 	ctx := context.Background()
 	st := webpush.NewStore(openDB(t))
