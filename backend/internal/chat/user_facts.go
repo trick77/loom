@@ -64,18 +64,6 @@ const (
 // or content over MaxUserFactLength.
 var ErrUserFactInvalid = errors.New("invalid user fact")
 
-// UserFact is one active fact about the user.
-type UserFact struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"-"`
-	Category  string    `json:"category"`
-	Content   string    `json:"content"`
-	Durable   bool      `json:"durable"`
-	Origin    string    `json:"-"`
-	FirstSeen time.Time `json:"firstSeen"`
-	LastSeen  time.Time `json:"lastSeen"`
-}
-
 // UserFactOp is one change a refresh asks for. Ref names an added fact within
 // the batch so a retire can point SupersededBy at it. Threads are the source
 // threads the op came from; empty means every thread of the batch.
@@ -112,15 +100,6 @@ type UserFactBatch struct {
 	PurgeForgottenBefore *time.Time
 }
 
-// UserFactCursor is a user's refresh position: the last message folded in,
-// ordered by (created_at, id), plus when the last refresh and consolidation ran.
-type UserFactCursor struct {
-	LastCreatedAt      string
-	LastMessageID      string
-	LastRefreshAt      *time.Time
-	LastConsolidatedAt *time.Time
-}
-
 // UserFactApplyResult counts what a batch did.
 type UserFactApplyResult struct {
 	Added, Updated, Reinforced, Retired, Dropped int
@@ -144,23 +123,6 @@ const (
 	topOfMindAge = 30 * 24 * time.Hour
 	recentAge    = 180 * 24 * time.Hour
 )
-
-// Bucket computes a fact's time bucket at now: long-term when durable,
-// otherwise by how long ago it was last seen.
-func (f UserFact) Bucket(now time.Time) UserFactBucket {
-	if f.Durable {
-		return BucketLongTerm
-	}
-	age := now.Sub(f.LastSeen)
-	switch {
-	case age < topOfMindAge:
-		return BucketTopOfMind
-	case age < recentAge:
-		return BucketRecent
-	default:
-		return BucketEarlier
-	}
-}
 
 // SortUserFacts orders facts bucket first (UserFactBuckets order), then
 // category (FactCategories order), newest last_seen first. Render and UI share

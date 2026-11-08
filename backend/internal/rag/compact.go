@@ -10,15 +10,6 @@ import (
 	"time"
 )
 
-// VecCompaction is what one CompactVectors call found and did. Chunks are
-// vec0's storage chunks (vec_chunks_chunks rows), not loom's chunks.
-type VecCompaction struct {
-	Compacted    bool
-	Rows         int64
-	ChunksBefore int64
-	ChunksAfter  int64
-}
-
 // CompactVectors rebuilds vec_chunks when deleted vectors have left it bloated.
 //
 // vec0 never gives space back. A delete clears a validity bit, the storage

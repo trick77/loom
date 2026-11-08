@@ -117,14 +117,6 @@ func (s *Store) MarkRefused(ctx context.Context, chunkIDs []int64) error {
 	return tx.Commit()
 }
 
-// MissingVector is a stored chunk without an embedding.
-type MissingVector struct {
-	ChunkID int64
-	UserID  string
-	Text    string
-	scope   string
-}
-
 // ChunksMissingVectors lists up to limit chunks after afterID that have no row
 // in vec_chunks and were not refused by the model (see MarkRefused), in id
 // order: pass the last id of one page to get the next.

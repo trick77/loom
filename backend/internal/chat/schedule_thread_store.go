@@ -20,12 +20,6 @@ var untouchedRunThread = `t.schedule_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM queued_messages q WHERE q.user_id = t.user_id AND q.thread_id = t.id)
   AND NOT EXISTS (SELECT 1 FROM shared_threads sh WHERE sh.user_id = t.user_id AND sh.thread_id = t.id AND sh.shared = 1)`
 
-// ThreadRef names one user's thread.
-type ThreadRef struct {
-	UserID   string
-	ThreadID string
-}
-
 // ReplaceableScheduleThreads lists the schedule's untouched run threads other
 // than keepThreadID, the run that replaces them.
 func (s *Store) ReplaceableScheduleThreads(ctx context.Context, userID, scheduleID, keepThreadID string) ([]string, error) {
