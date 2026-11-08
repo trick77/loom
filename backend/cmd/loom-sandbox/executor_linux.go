@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -129,7 +130,11 @@ func (e *linuxExecutor) run(ctx context.Context, j job) (runResponse, error) {
 		waitErr = <-done
 	case <-ctx.Done():
 		kill()
-		<-done
+		// Reap the killed child; its "signal: killed" adds nothing to the
+		// cancel.
+		if err := <-done; err != nil {
+			slog.Debug("sandbox job reaped after cancel", "err", err)
+		}
 		return runResponse{}, ctx.Err()
 	}
 	if msg := <-setupMsg; msg != "" {
