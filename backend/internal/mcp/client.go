@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -793,7 +794,11 @@ func (c *stdioClient) call(ctx context.Context, method string, params any, out a
 		return err
 	case <-ctx.Done():
 		_ = c.Close()
-		<-done
+		// Wait for doCall to unwind after the close. Its error is mostly the
+		// closed pipe; the cancel already says why the call ended.
+		if err := <-done; err != nil {
+			slog.Debug("mcp stdio call unwound after cancel", "server", c.serverName, "err", err)
+		}
 		return ctx.Err()
 	}
 }
