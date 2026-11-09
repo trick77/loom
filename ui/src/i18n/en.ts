@@ -928,6 +928,7 @@ export const en = {
       hours: "Rain by hour",
       dry: "No rain expected",
       total: "{{mm}} mm in all, up to {{percent}}% likely",
+      amount: "{{mm}} mm in all",
       chance: "Rain up to {{percent}}% likely",
     },
     conditions: {

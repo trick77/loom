@@ -951,6 +951,7 @@ export const de = {
       hours: "Regen pro Stunde",
       dry: "Kein Regen erwartet",
       total: "{{mm}} mm insgesamt, bis {{percent}} % wahrscheinlich",
+      amount: "{{mm}} mm insgesamt",
       chance: "Regen bis {{percent}} % wahrscheinlich",
     },
     conditions: {

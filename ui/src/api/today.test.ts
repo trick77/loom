@@ -157,6 +157,13 @@ test("getToday reads the weather defensively", async () => {
   await expect(getToday()).resolves.toMatchObject({
     air: { aqi: 30, level: "", pollen: [{ kind: "grass", level: "low" }] },
   });
+  // Only kinds it cannot name: unknown, never "hardly any".
+  stubFetch(
+    Response.json({
+      air: { aqi: 30, pollen: [{ kind: "olive", level: "high" }] },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({ air: { pollen: null } });
   stubFetch(Response.json({ air: { aqi: 30, level: "fair" } }));
   await expect(getToday()).resolves.toMatchObject({
     air: { aqi: 30, level: "fair", pollen: null },

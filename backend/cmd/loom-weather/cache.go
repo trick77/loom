@@ -33,6 +33,17 @@ func newCache[V any](now func() time.Time, limit int) *cache[V] {
 	return &cache[V]{entries: map[string]cacheEntry[V]{}, inflight: map[string]*cacheCall[V]{}, now: now, limit: limit}
 }
 
+// peek returns the kept value for key while it is current, without fetching.
+func (c *cache[V]) peek(key string) (V, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.entries[key]; ok && c.now().Before(e.expires) {
+		return e.value, true
+	}
+	var zero V
+	return zero, false
+}
+
 // get returns the kept value for key, else fetches it once for every caller
 // waiting on key and keeps it until expires(now). The fetch runs detached
 // from any one caller, so a caller that gives up does not fail the others.

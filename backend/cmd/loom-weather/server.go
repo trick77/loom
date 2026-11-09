@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/sidecar"
@@ -87,18 +89,35 @@ type Day struct {
 // current one at the place (earlier ones only cost the model tokens) through
 // at most hourlyDays days, days from today through days. The kept parts hold
 // more; a part kept over midnight starts a day early, dropped here.
+//
+// A day's range is stretched over its kept hours: the days are kept three
+// hours, the hours one, and an hour's temperature must never fall outside
+// the range given for its day.
 func forecastOf(hourly, daily forecastPart, days int, now time.Time) Forecast {
-	current, today, daysEnd := window(now, hourly.Timezone, hourly.UTCOffset, days)
-	_, _, hoursEnd := window(now, hourly.Timezone, hourly.UTCOffset, min(days, hourlyDays))
+	local := placeClock(now, hourly.Timezone, hourly.UTCOffset)
+	current, today := hourStamp(local), local.Format(time.DateOnly)
+	hoursEnd, daysEnd := dateAfter(local, min(days, hourlyDays)), dateAfter(local, days)
 	out := Forecast{Latitude: hourly.Latitude, Longitude: hourly.Longitude, Timezone: hourly.Timezone,
 		Hourly: []Hour{}, Daily: []Day{}, Attribution: attribution}
+	type span struct{ low, high float64 }
+	spans := map[string]span{}
 	for _, h := range hourly.Hourly {
+		if date := h.Time[:min(10, len(h.Time))]; date != "" {
+			s, ok := spans[date]
+			if !ok {
+				s = span{h.Temperature, h.Temperature}
+			}
+			spans[date] = span{min(s.low, h.Temperature), max(s.high, h.Temperature)}
+		}
 		if h.Time >= current && h.Time < hoursEnd {
 			out.Hourly = append(out.Hourly, h)
 		}
 	}
 	for _, d := range daily.Daily {
 		if d.Date >= today && d.Date < daysEnd {
+			if s, ok := spans[d.Date]; ok {
+				d.Low, d.High = min(d.Low, s.low), max(d.High, s.high)
+			}
 			out.Daily = append(out.Daily, d)
 		}
 	}
@@ -244,18 +263,31 @@ type forecastArgs struct {
 	Days      float64  `json:"days"`
 }
 
-// window is a call's cut of a kept part at now, in the place's local times as
-// the provider writes them: the current hour ("2006-01-02T15:04"), today, and
-// the first date past days. The clock comes from the zone, so a part kept
-// over a clock change still reads right; the offset it was fetched with only
-// stands in for a zone this host does not know.
-func window(now time.Time, timezone string, utcOffset, days int) (current, today, end string) {
-	local := now.UTC().Add(time.Duration(utcOffset) * time.Second)
-	if loc, err := time.LoadLocation(timezone); timezone != "" && err == nil {
-		local = now.In(loc)
+// zones keeps the zones placeClock loaded: LoadLocation reads the zone file
+// on every call.
+var zones sync.Map
+
+// placeClock is now at the place, to be compared with its local times as the
+// provider writes them. The clock comes from the zone, so a part kept over a
+// clock change still reads right; the offset it was fetched with only stands
+// in for a zone this host does not know.
+func placeClock(now time.Time, timezone string, utcOffset int) time.Time {
+	if loc, ok := zones.Load(timezone); ok {
+		return now.In(loc.(*time.Location))
 	}
-	return local.Truncate(time.Hour).Format("2006-01-02T15:04"), local.Format(time.DateOnly),
-		local.AddDate(0, 0, days).Format(time.DateOnly)
+	if loc, err := time.LoadLocation(timezone); timezone != "" && err == nil {
+		zones.Store(timezone, loc)
+		return now.In(loc)
+	}
+	return now.UTC().Add(time.Duration(utcOffset) * time.Second)
+}
+
+// hourStamp is the hour local falls in, as the provider writes it.
+func hourStamp(local time.Time) string { return local.Truncate(time.Hour).Format("2006-01-02T15:04") }
+
+// dateAfter is the date days after local's.
+func dateAfter(local time.Time, days int) string {
+	return local.AddDate(0, 0, days).Format(time.DateOnly)
 }
 
 // point is a call's place, zone and days, checked.
@@ -307,27 +339,34 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 	if bad != nil {
 		return *bad
 	}
-	// On a miss both wait together, not one after the other. Each is fetched
-	// a day longer than a call may ask: a part kept past the place's midnight
-	// still holds every day asked.
-	var daily forecastPart
-	var dailyErr error
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		daily, dailyErr = w.daily.get(ctx, p.key, nextThreeHours, func(ctx context.Context) (forecastPart, error) {
+	// Each part is fetched a day longer than a call may ask: a part kept
+	// past the place's midnight still holds every day asked. On a miss both
+	// wait together, not one after the other.
+	getDaily := func() (forecastPart, error) {
+		return w.daily.get(ctx, p.key, nextThreeHours, func(ctx context.Context) (forecastPart, error) {
 			return w.provider.daily(ctx, p.lat, p.lon, p.tz, maxDays+1)
 		})
-	}()
+	}
+	var daily forecastPart
+	var dailyErr error
+	var wg sync.WaitGroup
+	if kept, ok := w.daily.peek(p.key); ok {
+		daily = kept
+	} else {
+		wg.Go(func() { daily, dailyErr = getDaily() })
+	}
 	hourly, err := w.hourly.get(ctx, p.key, nextHour, func(ctx context.Context) (forecastPart, error) {
 		return w.provider.hourly(ctx, p.lat, p.lon, p.tz, hourlyDays+1)
 	})
-	<-done
-	if err == nil {
-		err = dailyErr
-	}
+	wg.Wait()
 	if err != nil {
 		return mcpserver.ErrorResult("forecast failed: " + err.Error())
+	}
+	if dailyErr != nil {
+		// The hours stand on their own: answer them without days rather than
+		// not at all. Not kept, so the next call asks for the days again.
+		slog.Warn("daily forecast failed, answering the hours only", "err", dailyErr)
+		daily = forecastPart{}
 	}
 	forecast := forecastOf(hourly, daily, p.days, w.now())
 	result := jsonResult(forecast)
@@ -361,7 +400,8 @@ func (w *weather) runAirQuality(ctx context.Context, raw json.RawMessage) mcpser
 // its highest index and its pollen as the day's mean, the measure pollen
 // load classes are defined on.
 func airQualityOf(part airPart, days int, now time.Time) AirQuality {
-	current, today, end := window(now, part.Timezone, part.UTCOffset, days)
+	local := placeClock(now, part.Timezone, part.UTCOffset)
+	current, today, end := hourStamp(local), local.Format(time.DateOnly), dateAfter(local, days)
 	out := AirQuality{Latitude: part.Latitude, Longitude: part.Longitude, Timezone: part.Timezone,
 		Hourly: []AirHour{}, Daily: []AirDay{}, Attribution: airAttribution}
 	type sum struct {

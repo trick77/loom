@@ -91,28 +91,44 @@ test("rain: hour by hour, with the total and how likely", () => {
   expect(hours[9]).toHaveAccessibleName("17:00 · 0.4 mm · 70%");
 });
 
-test("rain: a dry stretch says so, chances alone draw by chance", () => {
-  const dry = todayFixture().weather!.rain!.map((hour) => ({
-    ...hour,
-    precipitation: 0,
-  }));
-  const { unmount } = show(todayFixture(), { details: null, rain: dry });
-  next();
-  expect(screen.getByTestId("rain-summary")).toHaveTextContent(
-    "No rain expected",
+test("rain: dry needs no amount and a low chance; each says what it has", () => {
+  const summary = (rain: TodayWeather["rain"]) => {
+    const { unmount } = show(todayFixture(), { details: null, rain });
+    next();
+    const text = screen.getByTestId("rain-summary").textContent;
+    unmount();
+    return text;
+  };
+  const hours = todayFixture().weather!.rain!;
+  // No amount, unlikely: dry.
+  expect(
+    summary(hours.map((h) => ({ ...h, precipitation: 0, probability: 5 }))),
+  ).toBe("No rain expected");
+  // No amount but likely (another model said so): never "no rain".
+  expect(summary(hours.map((h) => ({ ...h, precipitation: 0 })))).toBe(
+    "Rain up to 70% likely",
   );
-  unmount();
-  show(todayFixture(), {
-    details: null,
-    rain: [
+  // Chances alone.
+  expect(
+    summary([
       { time: "08:00", precipitation: null, probability: 10 },
       { time: "09:00", precipitation: null, probability: 40 },
-    ],
-  });
-  next();
-  expect(screen.getByTestId("rain-summary")).toHaveTextContent(
-    "Rain up to 40% likely",
+    ]),
+  ).toBe("Rain up to 40% likely");
+  // Amounts without chances: no "0% likely".
+  expect(summary(hours.map((h) => ({ ...h, probability: null })))).toBe(
+    "2.1 mm in all",
   );
+});
+
+test("a new shown day starts over on the first card", () => {
+  const { rerender } = show(todayFixture());
+  next();
+  next();
+  expect(cardName()).toHaveTextContent("Rain");
+  const tomorrow = tomorrowFixture();
+  rerender(<WeatherTile today={tomorrow} weather={tomorrow.weather!} />);
+  expect(cardName()).toHaveTextContent("Overview");
 });
 
 test("outlook: the days after the shown one", () => {

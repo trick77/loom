@@ -109,9 +109,11 @@ func airReply() string {
 type fakeProvider struct {
 	hourly, daily, air, lookups atomic.Int32
 	status                      int
-	gate                        chan struct{}
-	mu                          sync.Mutex
-	queries                     []string
+	// dailyStatus fails the days alone.
+	dailyStatus int
+	gate        chan struct{}
+	mu          sync.Mutex
+	queries     []string
 }
 
 // query is the provider's last query whose parameters hold part.
@@ -143,6 +145,8 @@ func (f *fakeProvider) server(t *testing.T) *httptest.Server {
 		case r.URL.Path == "/v1/forecast" && r.URL.Query().Has("hourly"):
 			f.hourly.Add(1)
 			_, _ = w.Write([]byte(hourlyReply))
+		case r.URL.Path == "/v1/forecast" && r.URL.Query().Has("daily") && f.dailyStatus != 0:
+			http.Error(w, `{"error":true,"reason":"too many"}`, f.dailyStatus)
 		case r.URL.Path == "/v1/forecast" && r.URL.Query().Has("daily"):
 			f.daily.Add(1)
 			_, _ = w.Write([]byte(dailyReply))
@@ -323,14 +327,51 @@ func TestForecast(t *testing.T) {
 // A part kept over the clock change reads the place's clock from its zone,
 // not from the offset it was fetched with; a zone this host does not know
 // falls back to that offset.
-func TestWindowFollowsTheZone(t *testing.T) {
+func TestPlaceClockFollowsTheZone(t *testing.T) {
 	// 01:30 UTC on 29 March: Zurich went from +1 to +2 at 01:00 UTC.
 	now := time.Date(2026, 3, 29, 1, 30, 0, 0, time.UTC)
-	if current, today, end := window(now, "Europe/Zurich", 3600, 2); current != "2026-03-29T03:00" || today != "2026-03-29" || end != "2026-03-31" {
-		t.Fatalf("zone: %s %s %s", current, today, end)
+	for range 2 { // the second from the kept zone
+		if local := placeClock(now, "Europe/Zurich", 3600); hourStamp(local) != "2026-03-29T03:00" || dateAfter(local, 2) != "2026-03-31" {
+			t.Fatalf("zone: %s", local)
+		}
 	}
-	if current, _, _ := window(now, "Nowhere/Unknown", 3600, 1); current != "2026-03-29T02:00" {
-		t.Fatalf("offset fallback: %s", current)
+	if local := placeClock(now, "Nowhere/Unknown", 3600); hourStamp(local) != "2026-03-29T02:00" {
+		t.Fatalf("offset fallback: %s", local)
+	}
+}
+
+// The days are kept longer than the hours: a day's range takes in its kept
+// hours, so the temperature now never falls outside it.
+func TestForecastDayRangeTakesInItsHours(t *testing.T) {
+	hourly := forecastPart{Timezone: "Europe/Zurich", Hourly: []Hour{
+		{Time: "2026-11-09T07:00", Temperature: 2}, {Time: "2026-11-09T14:00", Temperature: 13.5},
+		{Time: "2026-11-10T08:00", Temperature: 5},
+	}}
+	daily := forecastPart{Daily: []Day{{Date: "2026-11-09", High: 11, Low: 3}, {Date: "2026-11-10", High: 9, Low: 1}}}
+	got := forecastOf(hourly, daily, 2, time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC))
+	if d := got.Daily; len(d) != 2 || d[0].High != 13.5 || d[0].Low != 2 || d[1].High != 9 || d[1].Low != 1 {
+		t.Fatalf("days = %+v", got.Daily)
+	}
+}
+
+// Days the provider will not give cost the days, never the hours.
+func TestForecastWithoutTheDays(t *testing.T) {
+	fake := &fakeProvider{dailyStatus: http.StatusTooManyRequests}
+	at := func() time.Time { return time.Date(2026, 11, 9, 7, 30, 0, 0, time.UTC) }
+	svc := loomService(t, fake.server(t).URL, at)
+	args := map[string]any{"latitude": 47.377, "longitude": 8.542}
+	text, err := svc.CallTool(context.Background(), forecastName, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Forecast
+	if err := json.Unmarshal([]byte(text), &got); err != nil || len(got.Hourly) == 0 || got.Daily == nil || len(got.Daily) != 0 {
+		t.Fatalf("forecast = %s, %v", text, err)
+	}
+	// Not kept: the next call asks for the days again.
+	fake.dailyStatus = 0
+	if _, err := svc.CallTool(context.Background(), forecastName, args); err != nil || fake.daily.Load() != 1 {
+		t.Fatalf("days asked again: %d answered, %v", fake.daily.Load(), err)
 	}
 }
 

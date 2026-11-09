@@ -116,28 +116,36 @@ export function DetailsCard({
 // stub, not a full bar.
 const RAIN_SCALE_MM = 2;
 
+// RAIN_DRY_CHANCE is the chance below which hours with no amount are dry:
+// the chance and the amount come from different models, so "no rain" needs
+// both.
+const RAIN_DRY_CHANCE = 20;
+
 // RainCard is the rain hour by hour: bars by amount, faint where unlikely;
-// by chance alone when the forecast has no amounts.
+// by chance when the forecast has no amounts, or none above 0 mm.
 export function RainCard({ rain }: { rain: TodayRain[] }) {
   const { t, i18n } = useTranslation();
   const lang = i18n.language;
-  const byAmount = rain.some((hour) => hour.precipitation !== null);
   const amounts = rain.map((hour) => hour.precipitation ?? 0);
   const total = amounts.reduce((sum, mm) => sum + mm, 0);
+  const byAmount = total > 0;
+  const hasChance = rain.some((hour) => hour.probability !== null);
   const likeliest = Math.max(0, ...rain.map((hour) => hour.probability ?? 0));
-  const dry = byAmount ? total === 0 : likeliest === 0;
   const scale = Math.max(RAIN_SCALE_MM, ...amounts);
+  const summary = byAmount
+    ? hasChance
+      ? t("today.rain.total", {
+          mm: oneDecimal(total, lang),
+          percent: Math.round(likeliest),
+        })
+      : t("today.rain.amount", { mm: oneDecimal(total, lang) })
+    : likeliest >= RAIN_DRY_CHANCE
+      ? t("today.rain.chance", { percent: Math.round(likeliest) })
+      : t("today.rain.dry");
   return (
     <div className="flex h-full flex-col gap-2">
       <p className="text-[13px] text-ink-soft" data-testid="rain-summary">
-        {dry
-          ? t("today.rain.dry")
-          : byAmount
-            ? t("today.rain.total", {
-                mm: oneDecimal(total, lang),
-                percent: Math.round(likeliest),
-              })
-            : t("today.rain.chance", { percent: Math.round(likeliest) })}
+        {summary}
       </p>
       <ul
         aria-label={t("today.rain.hours")}

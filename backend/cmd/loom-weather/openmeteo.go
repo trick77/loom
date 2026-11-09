@@ -27,7 +27,8 @@ type openMeteo struct {
 // data is shown.
 var attribution = Attribution{Text: "Weather data by Open-Meteo.com", URL: "https://open-meteo.com/"}
 
-// maxProviderBody bounds a reply: three days of hourly values, never megabytes.
+// maxProviderBody bounds a reply. The largest, four days of ten hourly
+// values, is some 20 KiB: a reply near this is not a forecast.
 const maxProviderBody = 1 << 20
 
 // Each request asks at most 10 variables: past that the provider counts one

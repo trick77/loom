@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -576,15 +575,19 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 		temp += (f.Hourly[1].Temperature - temp) * frac
 	}
 	day, ok := dayOf(f, now)
+	ownDay := day
 	if !ok {
-		// A daily list that does not name today: its first day stands in.
+		// A daily list that does not name today: its first day stands in for
+		// the range, never for the details (its UV, rain and sun are another
+		// day's).
 		day, _ = dayOf(f, time.Time{})
+		ownDay = forecastDay{}
 	}
 	out := &todayWeather{
 		Now:         &todayNow{Temperature: math.Round(temp*10) / 10, Code: first.Code},
-		Day:         widen(dayView(day), f.Hourly, now),
+		Day:         dayView(day),
 		Hours:       []todayHour{},
-		Details:     detailsOf(&first, day),
+		Details:     detailsOf(&first, ownDay),
 		Rain:        rainIn(f.Hourly[:min(rainHours, len(f.Hourly))]),
 		Outlook:     outlookAfter(f, now),
 		Attribution: f.Attribution,
@@ -626,7 +629,7 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *to
 		return nil, nil
 	}
 	out := &todayWeather{
-		Day:         widen(dayView(day), f.Hourly, tomorrow),
+		Day:         dayView(day),
 		Hours:       []todayHour{},
 		Details:     detailsOf(nil, day),
 		Rain:        rainIn(f.Hourly[from : to+1]),
@@ -670,19 +673,6 @@ func dayOf(f forecast, date time.Time) (forecastDay, bool) {
 
 func dayView(d forecastDay) todayDay {
 	return todayDay{High: d.High, Low: d.Low, Code: d.Code, PrecipitationProbability: d.PrecipitationProbability}
-}
-
-// widen stretches the day's range over its hours: the days are fetched less
-// often than the hours, and the temperature now must never fall outside the
-// range shown beside it.
-func widen(day todayDay, hours []forecastHour, date time.Time) todayDay {
-	prefix := date.Format(time.DateOnly)
-	for _, h := range hours {
-		if strings.HasPrefix(h.Time, prefix) {
-			day.High, day.Low = max(day.High, h.Temperature), min(day.Low, h.Temperature)
-		}
-	}
-	return day
 }
 
 // detailsOf is the details card: with now (today) the air and wind this

@@ -18,7 +18,7 @@ export const TILE =
 
 type WeatherTileProps = {
   weather: TodayWeather;
-  today: Pick<Today, "day" | "sun" | "warning" | "air">;
+  today: Pick<Today, "date" | "day" | "sun" | "warning" | "air">;
 };
 
 // WeatherTile is the weather's cards to turn through: the sky now (or
@@ -60,7 +60,13 @@ export function WeatherTile({ weather, today }: WeatherTileProps) {
     });
   return (
     <div className={TILE}>
-      <Carousel label={t("today.cards.weather")} slides={slides} />
+      {/* A new shown day starts over on the first card, where its warning
+          is: the 20:00 turn to tomorrow keeps the page open. */}
+      <Carousel
+        key={`${today.date}/${today.day}`}
+        label={t("today.cards.weather")}
+        slides={slides}
+      />
     </div>
   );
 }

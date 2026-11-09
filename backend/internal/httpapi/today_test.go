@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -282,11 +281,6 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	if a := got.Air; a == nil || *a.AQI != 64 || a.Level != "poor" || !a.Max || a.Pollen == nil || len(a.Pollen) != 0 {
 		t.Fatalf("tomorrow's air = %+v", got.Air)
 	}
-	// Its low reaches what the hours say: the days are fetched less often
-	// than the hours, the range never leaves an hour out.
-	if math.Abs(w.Day.Low+2.2) > 1e-9 {
-		t.Fatalf("tomorrow's low = %v, want the coldest hour's -2.2", w.Day.Low)
-	}
 	// It is still raining tonight: that comes first, as tonight's.
 	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "20:00" || got.Warning.Day != dayToday {
 		t.Fatalf("tonight's warning = %+v", got.Warning)
@@ -521,9 +515,13 @@ func TestTodayForecastWarnings(t *testing.T) {
 	if _, w := todayForecast(mk([]int{3, 95}, []float64{2, 3}, 60), now); w == nil || w.Kind != "storm" {
 		t.Fatalf("storm = %+v", w)
 	}
-	// No day matching today: the first one stands in, its range stretched
-	// over today's hours.
-	if weather, _ := todayForecast(mk([]int{3}, []float64{2}, 0), now); weather.Day.High != 2 || weather.Day.Low != -2 || weather.Now.Temperature != 2 {
+	// No day matching today: the first one stands in for the range, never
+	// for the details.
+	stand := mk([]int{3}, []float64{2}, 0)
+	uv := 5.0
+	stand.Daily[0].UVIndexMax = &uv
+	if weather, _ := todayForecast(stand, now); weather.Day.High != 1 || weather.Day.Low != -2 || weather.Now.Temperature != 2 ||
+		weather.Details != nil {
 		t.Fatalf("weather = %+v", weather)
 	}
 	if clock("garbled") != "garbled" {

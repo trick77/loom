@@ -29,7 +29,8 @@ default 2, today first). `daily` covers `days` days, `hourly` the first 3 of the
 Temperatures °C, wind km/h, wind directions degrees (where it blows from; a day's is its dominant one), precipitation
 mm, probabilities and humidity %, times local to `timezone` without an offset, `code` a WMO weather interpretation code.
 Only `time`/`date`, `temperature`/`high`/`low` and `code` are always there: a reader shows what it gets and leaves out
-the rest. `attribution` is the credit the data's licence requires next to the data; the result also cites it as a
+the rest. A day's `high`/`low` take in its hours' temperatures (the two parts are fetched apart). When the days cannot
+be had, `daily` is empty and the hours still answer. `attribution` is the credit the data's licence requires next to the data; the result also cites it as a
 source, so a chat answer carries it.
 
 `geocode` takes `query` (name or postal code, required), `country` (ISO 3166-1 alpha-2) and `language` (ISO 639-1,

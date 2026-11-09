@@ -209,12 +209,18 @@ function normalizeAir(raw: unknown): TodayAir | null {
   const aqi = typeof air.aqi === "number" ? air.aqi : null;
   // Kinds and levels this page has no words for are left out: a newer or
   // other server must not show raw keys.
-  const pollen = Array.isArray(air.pollen)
+  // A list left empty by the filter is unknown, not "hardly any": the
+  // server named a load this page cannot.
+  const known = Array.isArray(air.pollen)
     ? air.pollen.filter(
         (p) =>
           POLLEN_KINDS.includes(p?.kind) && POLLEN_LEVELS.includes(p?.level),
       )
     : null;
+  const pollen =
+    known !== null && known.length === 0 && air.pollen!.length > 0
+      ? null
+      : known;
   if (aqi === null && (pollen === null || pollen.length === 0)) return null;
   return {
     aqi,
