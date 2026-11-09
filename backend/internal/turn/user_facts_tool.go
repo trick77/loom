@@ -14,8 +14,9 @@ import (
 // The fact tools let the model change the user's memory — the facts about who
 // the user is, shown to it every turn under "Personal context about the user" —
 // when the user explicitly asks. The background refresh stays the main way
-// facts are learned; the UI is read-only, so these tools are the only way a
-// user edits or forgets a fact.
+// facts are learned. The UI only adds one (the start page's "where do you
+// live?", POST /api/me/location), so these tools are the only way a user
+// edits or forgets a fact.
 const (
 	addUserFactToolName    = "remember_user_fact"
 	updateUserFactToolName = "update_user_fact"
