@@ -192,8 +192,11 @@ func TestTeaser(t *testing.T) {
 	}
 	// A long line ends at a word, marked as cut.
 	long := schedule.Teaser(strings.Repeat("launch ", 40))
-	if !strings.HasSuffix(long, "launch…") || len([]rune(long)) > 161 {
+	if !strings.HasSuffix(long, "launch…") || len([]rune(long)) > 160 {
 		t.Errorf("long teaser = %q", long)
+	}
+	if got := schedule.PlainLine(strings.Repeat("dune ", 60), 50); !strings.HasSuffix(got, "dune…") || len([]rune(got)) > 50 {
+		t.Errorf("PlainLine cut to 50 = %q", got)
 	}
 }
 
