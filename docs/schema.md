@@ -668,6 +668,7 @@ Go types:
 | `created_at` | TEXT | no | `datetime('now')` |  |
 | `updated_at` | TEXT | no | `datetime('now')` |  |
 | `last_seen_at` | TEXT | yes |  |  |
+| `timezone` | TEXT | no | `''` |  |
 
 Indexes:
 
@@ -1194,6 +1195,7 @@ erDiagram
         TEXT created_at
         TEXT updated_at
         TEXT last_seen_at
+        TEXT timezone
     }
     vec_chunks {
         ANY embedding

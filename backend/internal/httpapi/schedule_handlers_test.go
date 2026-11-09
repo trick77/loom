@@ -316,7 +316,7 @@ func TestRememberTimezone(t *testing.T) {
 		req.Header.Set(timezoneHeader, tz)
 		s.rememberTimezone("u", req)
 	}
-	if got := s.timezoneFor("u"); got != "" {
+	if got := s.timezoneFor(t.Context(), "u"); got != "" {
 		t.Fatalf("a bad timezone was kept: %q", got)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -324,7 +324,7 @@ func TestRememberTimezone(t *testing.T) {
 	if got := s.rememberTimezone("u", req); got != "Europe/Zurich" {
 		t.Fatalf("request zone = %q", got)
 	}
-	if got := s.timezoneFor("u"); got != "Europe/Zurich" {
+	if got := s.timezoneFor(t.Context(), "u"); got != "Europe/Zurich" {
 		t.Fatalf("timezone = %q", got)
 	}
 	// A request's own zone wins over the one kept from another tab; one
@@ -336,6 +336,74 @@ func TestRememberTimezone(t *testing.T) {
 	}
 	if got := s.rememberTimezone("u", httptest.NewRequest(http.MethodGet, "/", nil)); got != "America/New_York" {
 		t.Fatalf("zone without a header = %q", got)
+	}
+}
+
+// tzUsers is a user store that keeps timezones and counts the writes.
+type tzUsers struct {
+	fakeUserStore
+	mu     sync.Mutex
+	zones  map[string]string
+	writes int
+	fail   bool
+}
+
+func (u *tzUsers) Timezone(_ context.Context, id string) (string, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.fail {
+		return "", errors.New("db down")
+	}
+	return u.zones[id], nil
+}
+
+func (u *tzUsers) SetTimezone(_ context.Context, id, tz string) error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.fail {
+		return errors.New("db down")
+	}
+	u.writes++
+	u.zones[id] = tz
+	return nil
+}
+
+func TestRememberTimezoneSurvivesARestart(t *testing.T) {
+	users := &tzUsers{zones: map[string]string{}}
+	s := &server{users: users}
+	for range 3 {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set(timezoneHeader, "Europe/Zurich")
+		s.rememberTimezone("u", req)
+	}
+	if users.writes != 1 {
+		t.Fatalf("writes = %d, want 1: an unchanged zone is not written again", users.writes)
+	}
+
+	restarted := &server{users: users}
+	if got := restarted.timezoneFor(t.Context(), "u"); got != "Europe/Zurich" {
+		t.Fatalf("after a restart timezone = %q, want the kept Europe/Zurich", got)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(timezoneHeader, "Europe/Zurich")
+	restarted.rememberTimezone("u", req)
+	if users.writes != 1 {
+		t.Fatalf("writes = %d, want 1: the zone read back matches", users.writes)
+	}
+}
+
+func TestRememberTimezoneOutlivesAStoreFailure(t *testing.T) {
+	s := &server{users: &tzUsers{zones: map[string]string{}, fail: true}}
+	if got := s.timezoneFor(t.Context(), "u"); got != "" {
+		t.Fatalf("timezone on a failing store = %q, want empty", got)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(timezoneHeader, "Europe/Zurich")
+	if got := s.rememberTimezone("u", req); got != "Europe/Zurich" {
+		t.Fatalf("request zone = %q", got)
+	}
+	if got := s.timezoneFor(t.Context(), "u"); got != "Europe/Zurich" {
+		t.Fatalf("timezone = %q, want the in-memory copy", got)
 	}
 }
 
