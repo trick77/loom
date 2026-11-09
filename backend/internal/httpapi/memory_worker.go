@@ -77,7 +77,7 @@ func (w *MemoryWorker) runOnce(ctx context.Context) {
 		}
 		w.safely("user:"+user.ID, func() { w.refreshUserMemory(ctx, user) })
 		// After the refresh, so a place the user just named is read; facts
-		// unchanged since the last time cost one query.
+		// unchanged since the last time cost two queries.
 		w.safely("location:"+user.ID, func() {
 			if err := s.resolveLocation(ctx, user); err != nil {
 				slog.Warn("memory sweep: deriving the user's location failed", "user_id", user.ID, "err", err)

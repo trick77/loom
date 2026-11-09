@@ -1,8 +1,11 @@
 -- Where the user is, derived from their memory (user_facts) by a gate call and
 -- turned into coordinates by the weather sidecar's lookup: a home place and an
--- optional current one that holds through `until` (a date in the user's zone).
--- Only a town's centre is kept, never a precise position. Nothing is guessed
--- from a timezone or an IP: no fact, no place.
+-- optional current one that holds from `since` through `until` (dates in the
+-- user's zone; a planned trip is kept before it starts). `query` is the name
+-- and country code the place was looked up by: the same fact naming the same
+-- place reuses it without a lookup. Only a town's centre is kept, never a
+-- precise position. Nothing is guessed from a timezone or an IP: no fact, no
+-- place.
 CREATE TABLE user_locations (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     kind TEXT NOT NULL CHECK (kind IN ('home', 'current')),
@@ -12,8 +15,10 @@ CREATE TABLE user_locations (
     latitude REAL NOT NULL,
     longitude REAL NOT NULL,
     timezone TEXT NOT NULL DEFAULT '',
+    since TEXT,
     until TEXT,
     fact_id TEXT,
+    query TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (user_id, kind)
 );
 

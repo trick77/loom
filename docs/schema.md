@@ -648,8 +648,10 @@ Go types:
 | `latitude` | REAL | no |  |  |
 | `longitude` | REAL | no |  |  |
 | `timezone` | TEXT | no | `''` |  |
+| `since` | TEXT | yes |  |  |
 | `until` | TEXT | yes |  |  |
 | `fact_id` | TEXT | yes |  |  |
+| `query` | TEXT | no | `''` |  |
 
 Foreign keys:
 
@@ -1218,8 +1220,10 @@ erDiagram
         REAL latitude
         REAL longitude
         TEXT timezone
+        TEXT since
         TEXT until
         TEXT fact_id
+        TEXT query
     }
     user_usage_totals {
         TEXT user_id PK, FK

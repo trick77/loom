@@ -42,7 +42,9 @@ func (f *fakeLocationLLM) ResolveUserLocation(_ context.Context, facts []llm.Fac
 			out.Home = &llm.PlaceRef{Place: place, FactID: fact.ID}
 		}
 		if rest, ok := strings.CutPrefix(fact.Content, "In "); ok && out.Current == nil {
-			out.Current = &llm.PlaceRef{Place: strings.TrimSuffix(rest, " this week"), Until: f.stayUntil, FactID: fact.ID}
+			// A country the lookup does not find the place in: it retries
+			// without.
+			out.Current = &llm.PlaceRef{Place: strings.TrimSuffix(rest, " this week"), Country: "PT", Until: f.stayUntil, FactID: fact.ID}
 		}
 	}
 	return out, nil
@@ -62,6 +64,10 @@ func (g *geocoder) call(_ context.Context, name string, args map[string]any) (st
 		return "", errors.New("unexpected tool " + name)
 	}
 	q, _ := args["query"].(string)
+	if country, _ := args["country"].(string); country != "" {
+		g.queries = append(g.queries, q+"|"+country)
+		return `{"places":[]}`, nil
+	}
 	g.queries = append(g.queries, q)
 	switch q {
 	case "Zürich":
@@ -140,7 +146,7 @@ func TestResolveLocationFollowsTheFacts(t *testing.T) {
 	if err := f.s.resolveLocation(ctx, user); err != nil {
 		t.Fatal(err)
 	}
-	if f.llm.calls != 2 || strings.Join(f.geo.queries, ",") != "Zürich,Lisbon" {
+	if f.llm.calls != 2 || strings.Join(f.geo.queries, ",") != "Zürich,Lisbon|PT,Lisbon" {
 		t.Fatalf("stay: calls=%d lookups=%v", f.llm.calls, f.geo.queries)
 	}
 	if here, _ := f.s.userPlace(ctx, user); here == nil || here.Name != "Lisbon" || here.Until != "2026-11-15" {
@@ -196,18 +202,41 @@ func TestSetLocation(t *testing.T) {
 		return rec
 	}
 
+	ctx := context.Background()
+	// A stay derived before survives setting the home.
+	stay := &location.Place{Name: "Lisbon", Latitude: 38.7, Longitude: -9.1, Since: "2026-11-01", Until: "2099-01-01"}
+	if err := f.places.Save(ctx, testUser.ID, "old", nil, stay); err != nil {
+		t.Fatal(err)
+	}
 	rec := post(`{"place":"  Zürich "}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("set = %d %s", rec.Code, rec.Body)
 	}
 	var got struct{ Place location.Place }
+	// The answer is the home the user named, not the stay that holds today.
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.Place.Name != "Zürich" || got.Place.Kind != location.KindHome {
 		t.Fatalf("place = %s, %v", rec.Body, err)
 	}
-	// It is a fact in the user's memory, the one source of their place.
-	facts, _ := f.chat.ListActiveUserFacts(context.Background(), testUser.ID)
+	// It is a fact in the user's memory, the one source of their place, and
+	// kept as the home without a model call.
+	facts, _ := f.chat.ListActiveUserFacts(ctx, testUser.ID)
 	if len(facts) != 1 || facts[0].Content != "Lives Zürich, Schweiz" || !facts[0].Durable {
 		t.Fatalf("facts = %+v", facts)
+	}
+	home, current, hash, _ := f.places.Places(ctx, testUser.ID)
+	if home == nil || home.FactID != facts[0].ID || current == nil || current.Name != "Lisbon" || hash != location.HashFacts(facts) || f.llm.calls != 0 {
+		t.Fatalf("kept: home %+v, current %+v, hash %q, calls %d", home, current, hash, f.llm.calls)
+	}
+	// The same place again adds nothing; a move rewrites the home fact.
+	if rec := post(`{"place":"Zürich"}`); rec.Code != http.StatusOK {
+		t.Fatalf("again = %d", rec.Code)
+	}
+	if rec := post(`{"place":"Lisbon"}`); rec.Code != http.StatusOK {
+		t.Fatalf("move = %d", rec.Code)
+	}
+	facts, _ = f.chat.ListActiveUserFacts(ctx, testUser.ID)
+	if len(facts) != 1 || facts[0].Content != "Lives Lisbon, Portugal" {
+		t.Fatalf("after a move facts = %+v", facts)
 	}
 
 	if rec := post(`{"place":"Atlantis"}`); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "not_found") {

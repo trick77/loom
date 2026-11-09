@@ -26,8 +26,11 @@ type LocationLLM interface {
 // geocodeTool turns a place name into a town's centre (docs/weather.md).
 var geocodeTool = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherGeocodeTool)
 
-// locationTimeout bounds one derivation: a gate call and up to two lookups.
+// locationTimeout bounds one derivation: a gate call and a few lookups.
 const locationTimeout = 45 * time.Second
+
+// homeFactPrefix starts the fact the start page writes for "where do you live?".
+const homeFactPrefix = "Lives "
 
 // locationOn reports whether places can be derived: a store, the model, and
 // the weather sidecar's lookup.
@@ -47,7 +50,7 @@ func userToday(user auth.User, now time.Time) string {
 // resolveLocation derives the user's places from their memory when the facts
 // changed since the last time: a fact added, edited, forgotten or seen again
 // on another day all count, whichever path changed it. Unchanged facts cost
-// one query. One derivation per user runs at a time.
+// two queries. One derivation per user runs at a time.
 func (s *server) resolveLocation(ctx context.Context, user auth.User) error {
 	if !s.locationOn() || s.thread == nil {
 		return nil
@@ -61,16 +64,16 @@ func (s *server) resolveLocation(ctx context.Context, user auth.User) error {
 	if err != nil {
 		return err
 	}
-	hash := location.FactsHash(facts)
-	home, current, kept, err := s.locations.Places(ctx, user.ID)
-	if err != nil {
+	hash := location.HashFacts(facts)
+	if kept, err := s.locations.FactsHash(ctx, user.ID); err != nil || kept == hash {
 		return err
-	}
-	if kept == hash {
-		return nil
 	}
 	if len(facts) == 0 {
 		return s.locations.Save(ctx, user.ID, hash, nil, nil)
+	}
+	home, current, _, err := s.locations.Places(ctx, user.ID)
+	if err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, locationTimeout)
 	defer cancel()
@@ -91,29 +94,47 @@ func (s *server) resolveLocation(ctx context.Context, user auth.User) error {
 	return s.locations.Save(ctx, user.ID, hash, newHome, newCurrent)
 }
 
-// placeFor turns a place the facts name into a town's centre. The place kept
-// from the same fact under the same name is reused without a lookup; a name
-// the lookup cannot find is no place.
+// placeFor turns a place the facts name into a town's centre. One kept from
+// the same fact, looked up by the same name and country, is reused without a
+// lookup; a name the lookup cannot find is no place.
 func (s *server) placeFor(ctx context.Context, user auth.User, kind string, ref *llm.PlaceRef, kept *location.Place) (*location.Place, error) {
 	if ref == nil {
 		return nil, nil
 	}
-	if kept != nil && kept.FactID == ref.FactID && strings.EqualFold(kept.Name, ref.Place) {
+	query := placeQuery(ref.Place, ref.Country)
+	if kept != nil && kept.FactID == ref.FactID && kept.Query == query {
 		p := *kept
-		p.Until = ref.Until
+		p.Kind, p.Since, p.Until = kind, ref.Since, ref.Until
 		return &p, nil
 	}
 	p, err := s.geocode(ctx, user, ref.Place, ref.Country)
 	if err != nil || p == nil {
 		return nil, err
 	}
-	p.Kind, p.Until, p.FactID = kind, ref.Until, ref.FactID
+	p.Kind, p.Since, p.Until, p.FactID = kind, ref.Since, ref.Until, ref.FactID
 	return p, nil
 }
 
+// placeQuery is what a place was looked up by.
+func placeQuery(place, country string) string {
+	return strings.ToLower(place) + "|" + strings.ToUpper(country)
+}
+
 // geocode asks the weather sidecar for the place's centre; nil when it knows
-// none of that name.
+// none of that name. A country the model named narrows the lookup; when it
+// finds nothing there, the name alone is looked up.
 func (s *server) geocode(ctx context.Context, user auth.User, query, country string) (*location.Place, error) {
+	p, err := s.lookUp(ctx, user, query, country)
+	if err == nil && p == nil && country != "" {
+		p, err = s.lookUp(ctx, user, query, "")
+	}
+	if p != nil {
+		p.Query = placeQuery(query, country)
+	}
+	return p, err
+}
+
+func (s *server) lookUp(ctx context.Context, user auth.User, query, country string) (*location.Place, error) {
 	args := map[string]any{"query": query, "language": geocodeLanguage(user)}
 	if country != "" {
 		args["country"] = country
@@ -155,9 +176,11 @@ func geocodeLanguage(user auth.User) string {
 // maxLocationBody bounds the place a user types.
 const maxLocationBody = 1 << 10
 
-// handleSetLocation is the start page's "where do you live?": the place is
-// looked up, kept as a fact in the user's memory (the one source of where
-// they are), and the places derived anew from it.
+// handleSetLocation is the start page's "where do you live?". The place is
+// looked up and kept as a fact in the user's memory, the one source of where
+// they are: the fact naming their home so far is rewritten rather than a
+// second one added. The user named it, so it is the home without asking the
+// model; a stay derived before is kept.
 func (s *server) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok {
@@ -178,38 +201,75 @@ func (s *server) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "place is required, at most 100 characters")
 		return
 	}
-	found, err := s.geocode(r.Context(), user, query, "")
+	ctx := r.Context()
+	home, err := s.geocode(ctx, user, query, "")
 	if err != nil {
 		serverError(w, r, err, "look up place failed")
 		return
 	}
-	if found == nil {
+	if home == nil {
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "place not found", "code": "not_found"})
 		return
 	}
-	name := found.Name
-	if found.Country != "" {
-		name += ", " + found.Country
+	release, ok := s.inflight.tryAcquire("location:" + user.ID)
+	if !ok {
+		httpx.WriteError(w, http.StatusConflict, "the location is being updated, try again")
+		return
 	}
-	if _, err := s.thread.AddUserFact(r.Context(), user.ID, "", chat.FactCategoryPersonal, "Lives "+name, true); err != nil {
+	defer release()
+	fact, err := s.rememberHome(ctx, user, home)
+	if err != nil {
 		serverError(w, r, err, "remember place failed")
 		return
 	}
-	if err := s.resolveLocation(context.WithoutCancel(r.Context()), user); err != nil {
-		slog.Warn("derive location after setting it failed", "user_id", user.ID, "err", err)
-	}
-	here, err := s.userPlace(r.Context(), user)
+	_, current, _, err := s.locations.Places(ctx, user.ID)
 	if err != nil {
 		serverError(w, r, err, "read location failed")
 		return
 	}
-	if here == nil {
-		// The model did not read the new fact as a home: keep what the user
-		// chose, on its own fact, rather than leaving them with nothing.
-		found.Kind = location.KindHome
-		here = found
+	facts, err := s.thread.ListActiveUserFacts(ctx, user.ID)
+	if err != nil {
+		serverError(w, r, err, "list user facts failed")
+		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]any{"place": here})
+	home.Kind, home.FactID = location.KindHome, fact.ID
+	if err := s.locations.Save(ctx, user.ID, location.HashFacts(facts), home, current); err != nil {
+		serverError(w, r, err, "save location failed")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"place": home})
+}
+
+// rememberHome keeps the home as a fact: the one naming the home so far is
+// rewritten, an identical one left as it is, else a new one is added.
+func (s *server) rememberHome(ctx context.Context, user auth.User, home *location.Place) (chat.UserFact, error) {
+	name := home.Name
+	if home.Country != "" {
+		name += ", " + home.Country
+	}
+	content := homeFactPrefix + name
+	facts, err := s.thread.ListActiveUserFacts(ctx, user.ID)
+	if err != nil {
+		return chat.UserFact{}, err
+	}
+	kept, _, _, err := s.locations.Places(ctx, user.ID)
+	if err != nil {
+		return chat.UserFact{}, err
+	}
+	for _, f := range facts {
+		if f.Content == content {
+			return f, nil
+		}
+	}
+	for _, f := range facts {
+		if kept != nil && f.ID == kept.FactID {
+			updated, found, err := s.thread.UpdateUserFact(ctx, user.ID, "", f.ID, content)
+			if err != nil || found {
+				return updated, err
+			}
+		}
+	}
+	return s.thread.AddUserFact(ctx, user.ID, "", chat.FactCategoryPersonal, content, true)
 }
 
 // userPlace is where the user is today; nil when no place is known.

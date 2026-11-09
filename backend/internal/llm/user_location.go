@@ -17,7 +17,9 @@ import (
 type PlaceRef struct {
 	Place   string `json:"place"`
 	Country string `json:"country"`
-	// Until is the last day (YYYY-MM-DD) a temporary stay holds; "" for home.
+	// Since and Until are the first and last day (YYYY-MM-DD) a stay holds;
+	// "" for home. Since may lie ahead: a planned trip.
+	Since  string `json:"since"`
 	Until  string `json:"until"`
 	FactID string `json:"fact"`
 }
@@ -30,15 +32,23 @@ type UserLocation struct {
 
 const userLocationMaxCompletionTokens = 400
 
-const userLocationSystemPrompt = `You read the facts known about a user and say where they live and where they are now. Reply with ONLY a JSON object: {"home":{"place":"...","country":"..","fact":"<id>"} or null,"current":{"place":"...","country":"..","until":"YYYY-MM-DD","fact":"<id>"} or null}.
+const userLocationSystemPrompt = `You read the facts known about a user and say where they live and where they stay for a while. Reply with ONLY a JSON object: {"home":{"place":"...","country":"..","fact":"<id>"} or null,"current":{"place":"...","country":"..","since":"YYYY-MM-DD","until":"YYYY-MM-DD","fact":"<id>"} or null}.
 
 - Use only what the facts state. Never guess a place from a language, a job, a team or a timezone.
-- home: where the user lives. place: the town or city as a map search finds it (no street, no district unless it is how the town is named). country: its ISO 3166-1 alpha-2 code when the facts tell or the place makes it unambiguous, else "".
-- current: only when a fact says the user is staying somewhere else for a while (a trip, a stay, a temporary move) and that stay has not ended before today. until: the stay's last day, reckoned from the fact's last_seen date ("this week" seen on a Tuesday ends that Sunday); with no end given, 7 days after last_seen.
+- home: where the user lives. When facts disagree, the one seen last wins. place: the town or city as a map search finds it (no street, no district unless it is how the town is named). country: its ISO 3166-1 alpha-2 code only when the facts state the country, else "".
+- current: only when a fact says the user stays somewhere else for a while (a trip, a stay, a temporary move), ongoing or planned, that has not ended before today. since: its first day; until: its last day, both reckoned from the fact's last_seen date ("this week" seen on a Tuesday runs from that Tuesday to Sunday, "on the 20th for a week" from the 20th to the 26th). Already begun with no start given: since is last_seen. No end given: until is 7 days after since.
 - fact: the id of the fact the place comes from.
 - No place known: null.`
 
 var datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+func validDate(s string) bool {
+	if !datePattern.MatchString(s) {
+		return false
+	}
+	_, err := time.Parse(time.DateOnly, s)
+	return err == nil
+}
 
 // ResolveUserLocation reads home and a current stay from the user's facts.
 // It is a gate call: the answer is a place name and a date, never prose. today
@@ -97,13 +107,10 @@ func parseUserLocation(reply string, facts []FactInput) (UserLocation, bool) {
 			return nil
 		}
 		if !stay {
-			p.Until = ""
+			p.Since, p.Until = "", ""
 			return p
 		}
-		if !datePattern.MatchString(p.Until) {
-			return nil
-		}
-		if _, err := time.Parse(time.DateOnly, p.Until); err != nil {
+		if !validDate(p.Until) || (p.Since != "" && (!validDate(p.Since) || p.Since > p.Until)) {
 			return nil
 		}
 		return p

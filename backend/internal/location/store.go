@@ -31,14 +31,24 @@ func NewStore(db DBTX) *Store {
 	return &Store{db: db}
 }
 
+// FactsHash is the hash of the facts the user's places were derived from; ""
+// when they never were.
+func (s *Store) FactsHash(ctx context.Context, userID string) (string, error) {
+	var hash string
+	if err := s.db.QueryRowContext(ctx, `SELECT facts_hash FROM user_location_state WHERE user_id = ?`, userID).Scan(&hash); err != nil && err != sql.ErrNoRows {
+		return "", fmt.Errorf("read location state: %w", err)
+	}
+	return hash, nil
+}
+
 // Places is the user's places and the hash of the facts they were derived
 // from; "" when they never were.
 func (s *Store) Places(ctx context.Context, userID string) (home, current *Place, factsHash string, err error) {
-	if err := s.db.QueryRowContext(ctx, `SELECT facts_hash FROM user_location_state WHERE user_id = ?`, userID).Scan(&factsHash); err != nil && err != sql.ErrNoRows {
-		return nil, nil, "", fmt.Errorf("read location state: %w", err)
+	if factsHash, err = s.FactsHash(ctx, userID); err != nil {
+		return nil, nil, "", err
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT kind, name, region, country, latitude, longitude, timezone, COALESCE(until, ''), COALESCE(fact_id, '')
+SELECT kind, name, region, country, latitude, longitude, timezone, COALESCE(since, ''), COALESCE(until, ''), COALESCE(fact_id, ''), query
 FROM user_locations WHERE user_id = ?`, userID)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("list places: %w", err)
@@ -46,7 +56,7 @@ FROM user_locations WHERE user_id = ?`, userID)
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var p Place
-		if err := rows.Scan(&p.Kind, &p.Name, &p.Region, &p.Country, &p.Latitude, &p.Longitude, &p.Timezone, &p.Until, &p.FactID); err != nil {
+		if err := rows.Scan(&p.Kind, &p.Name, &p.Region, &p.Country, &p.Latitude, &p.Longitude, &p.Timezone, &p.Since, &p.Until, &p.FactID, &p.Query); err != nil {
 			return nil, nil, "", fmt.Errorf("scan place: %w", err)
 		}
 		switch p.Kind {
@@ -78,9 +88,9 @@ func (s *Store) Save(ctx context.Context, userID, factsHash string, home, curren
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO user_locations (user_id, kind, name, region, country, latitude, longitude, timezone, until, fact_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''))`,
-			userID, kind, p.Name, p.Region, p.Country, p.Latitude, p.Longitude, p.Timezone, p.Until, p.FactID); err != nil {
+INSERT INTO user_locations (user_id, kind, name, region, country, latitude, longitude, timezone, since, until, fact_id, query)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?)`,
+			userID, kind, p.Name, p.Region, p.Country, p.Latitude, p.Longitude, p.Timezone, p.Since, p.Until, p.FactID, p.Query); err != nil {
 			return fmt.Errorf("save places: %s: %w", kind, err)
 		}
 	}
@@ -97,17 +107,20 @@ ON CONFLICT (user_id) DO UPDATE SET facts_hash = excluded.facts_hash, resolved_a
 }
 
 // Here is the place that holds on today (YYYY-MM-DD in the user's zone): the
-// current one until its last day, then home; nil when neither is known.
+// current one from its first through its last day, else home; nil when
+// neither is known.
 func Here(home, current *Place, today string) *Place {
-	if current != nil && (current.Until == "" || current.Until >= today) {
+	if current != nil && (current.Since == "" || current.Since <= today) && (current.Until == "" || current.Until >= today) {
 		return current
 	}
 	return home
 }
 
-// FactsHash fingerprints the facts a place is read from: their ids, text and
-// the day each was last seen (a stay "this week" ends by that day).
-func FactsHash(facts []chat.UserFact) string {
+// HashFacts fingerprints the facts a place is read from: their ids, text and
+// the day each was last seen (a stay "this week" ends by that day). Any fact
+// seen again on a new day re-derives the places: at most one gate call a day
+// for a user who chats, the price of not judging which facts name a place.
+func HashFacts(facts []chat.UserFact) string {
 	h := sha256.New()
 	for _, f := range facts {
 		// A hash never fails a write.
