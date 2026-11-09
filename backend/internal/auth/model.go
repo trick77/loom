@@ -26,6 +26,8 @@ type User struct {
 	DisplayName      string `json:"displayName"`
 	Role             Role   `json:"role"`
 	ResponseLanguage string `json:"responseLanguage"`
+	// Timezone is the IANA zone the user's browser last sent; "" when none.
+	Timezone string `json:"-"`
 }
 
 // Claims contains the verified OIDC identity fields Loom needs.

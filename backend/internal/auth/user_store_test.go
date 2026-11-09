@@ -352,29 +352,28 @@ func TestUserStore_Timezone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tz, err := store.Timezone(ctx, user.ID); err != nil || tz != "" {
-		t.Fatalf("fresh user timezone = %q, %v; want empty", tz, err)
+	if user.Timezone != "" {
+		t.Fatalf("fresh user timezone = %q, want empty", user.Timezone)
 	}
 	if err := store.SetTimezone(ctx, user.ID, "Europe/Zurich"); err != nil {
 		t.Fatal(err)
 	}
-	if tz, err := store.Timezone(ctx, user.ID); err != nil || tz != "Europe/Zurich" {
-		t.Fatalf("timezone = %q, %v", tz, err)
+	found, ok, err := store.FindByID(ctx, user.ID)
+	if err != nil || !ok || found.Timezone != "Europe/Zurich" {
+		t.Fatalf("FindByID = %+v, %v, %v; want the kept zone", found, ok, err)
 	}
-	if tz, err := store.Timezone(ctx, "nobody"); err != nil || tz != "" {
-		t.Fatalf("unknown user timezone = %q, %v; want empty", tz, err)
+	users, err := store.ListUsers(ctx)
+	if err != nil || len(users) != 1 || users[0].Timezone != "Europe/Zurich" {
+		t.Fatalf("ListUsers = %+v, %v", users, err)
 	}
 }
 
-func TestUserStore_TimezoneReportsFailures(t *testing.T) {
+func TestUserStore_SetTimezoneReportsFailures(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	store := NewUserStore(db)
 	if err := db.(*sql.DB).Close(); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := store.Timezone(ctx, "u"); err == nil {
-		t.Fatal("Timezone() on a closed db: error = nil")
 	}
 	if err := store.SetTimezone(ctx, "u", "UTC"); err == nil {
 		t.Fatal("SetTimezone() on a closed db: error = nil")

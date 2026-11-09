@@ -69,7 +69,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	if s.rejectWhileRunning(w, r, user.ID, thread) {
 		return
 	}
-	s.rememberTimezone(user.ID, r)
+	user.Timezone = s.rememberTimezone(r.Context(), user, r)
 	priorMessages, found, err := s.thread.ListMessages(r.Context(), user.ID, threadID)
 	if err != nil {
 		serverError(w, r, err, "list messages failed")
