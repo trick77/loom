@@ -455,3 +455,7 @@ func (f fakeUserStore) UpdateResponseLanguage(context.Context, string, string) e
 func (f fakeUserStore) SetTimezone(context.Context, string, string) error {
 	return nil
 }
+
+func (f fakeUserStore) MarkTodaySeen(context.Context, string, string) (bool, error) {
+	return true, nil
+}

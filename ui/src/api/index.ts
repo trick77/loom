@@ -18,3 +18,4 @@ export * from "./schedules";
 export * from "./appleMusic";
 export * from "./strava";
 export * from "./push";
+export * from "./today";

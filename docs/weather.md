@@ -3,7 +3,8 @@
 loom gets weather through two MCP tools on the server `weather`: `forecast` (`weather__forecast`) and `geocode`
 (`weather__geocode`). The `loom-weather` sidecar (`backend/cmd/loom-weather`, image `loom-weather`) serves them with
 Open-Meteo; an `mcp.json` entry named `weather` replaces the sidecar with any server that answers this contract. loom
-keeps the policy, never the provider: in a chat turn the tools are offered on weather questions only (classifier
+keeps the policy, never the provider: the start page (`GET /api/today`) asks `forecast` for the user's place, which
+`geocode` found from the place their memory names; in a chat turn the tools are offered on weather questions only (classifier
 category `weather`, kept by an `mcp.json` override that sets no categories of its own). The forecast carries no
 "now": a reader takes it from the hourly values.
 

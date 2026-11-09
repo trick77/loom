@@ -10,6 +10,8 @@ import type { PastedText } from "./pastedText";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
 import loomLogo from "../assets/loom-logo.svg";
+import { TodaySection } from "../today/TodaySection";
+import { useToday } from "../today/useToday";
 
 export function StartPanel({
   displayName,
@@ -28,6 +30,8 @@ export function StartPanel({
   onAttachError,
   onRemoveAttachment,
   onEnterIncognito,
+  onOpenThread,
+  onOpenMemory,
 }: {
   displayName: string;
   draft: string;
@@ -45,8 +49,11 @@ export function StartPanel({
   onAttachError(message: string): void;
   onRemoveAttachment(id: string): void;
   onEnterIncognito(): void;
+  onOpenThread(threadID: string): void;
+  onOpenMemory(): void;
 }) {
   const { t } = useTranslation();
+  const today = useToday();
   // No thread exists yet, so uploads are deferred: files are held (see
   // pendingAttachmentNames) and bound to the thread once the first send creates it.
   // Pick the greeting slot once per mount (useState's lazy initialiser runs exactly
@@ -57,6 +64,14 @@ export function StartPanel({
   const greeting = t(`greetings.${greetingPick.key}.${greetingPick.form}`, {
     name: greetingPick.name,
   });
+  // The starters fill the page only when Today has nothing to show: not
+  // while it loads (no flash), but when it failed.
+  const todayState = today.state;
+  const todayQuiet =
+    todayState.status === "error" ||
+    (todayState.status === "ready" &&
+      todayState.today.weather === null &&
+      todayState.today.runs.length === 0);
   return (
     <section className="flex h-svh min-h-0 flex-col">
       <header
@@ -77,7 +92,7 @@ export function StartPanel({
           <Icon name="ghost" size="18px" />
         </button>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] sm:px-8">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] pb-12 sm:px-8">
         <h2 className="ui-greeting-text mb-8 text-center font-serif">
           <img
             src={loomLogo}
@@ -121,8 +136,18 @@ export function StartPanel({
           {/* Hide the generic prompt starters once an attachment is staged (e.g.
               "Use in thread" pre-attaches an artifact) — they don't apply when the
               user is already working from a specific file. */}
-          {draft.trim() === "" && attachments.length === 0 && (
+          {todayQuiet && draft.trim() === "" && attachments.length === 0 && (
             <PromptStarters onPick={onDraftChange} />
+          )}
+          {todayState.status === "ready" && (
+            <TodaySection
+              onMarkAllRead={today.markAllRead}
+              onMarkRead={today.markRead}
+              onOpenMemory={onOpenMemory}
+              onOpenThread={onOpenThread}
+              onReload={() => void today.reload()}
+              today={todayState.today}
+            />
           )}
         </div>
       </div>
