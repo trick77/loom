@@ -17,7 +17,7 @@
 -- trigger is kept as it is. Foreign keys are off for the rebuild, as in 0032
 -- and 0042: DROP TABLE with enforcement on would cascade into every child.
 --
--- messages' search triggers go with its DROP TABLE and come back in 0054:
+-- messages' search triggers go with its DROP TABLE and come back in 0055:
 -- kit runs a no-transaction file statement by statement, split on each
 -- semicolon outside quotes and comments, which cuts a trigger's BEGIN … END
 -- body apart.
@@ -56,12 +56,11 @@ CREATE TABLE users_new (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     last_seen_at TEXT,
-    timezone TEXT NOT NULL DEFAULT '',
-    today_seen_on TEXT NOT NULL DEFAULT ''
+    timezone TEXT NOT NULL DEFAULT ''
 );
 
-INSERT INTO users_new (rowid, id, oidc_subject, username, email, display_name, role, response_language, created_at, updated_at, last_seen_at, timezone, today_seen_on)
-SELECT rowid, id, oidc_subject, username, email, display_name, role, response_language, created_at, updated_at, last_seen_at, timezone, today_seen_on
+INSERT INTO users_new (rowid, id, oidc_subject, username, email, display_name, role, response_language, created_at, updated_at, last_seen_at, timezone)
+SELECT rowid, id, oidc_subject, username, email, display_name, role, response_language, created_at, updated_at, last_seen_at, timezone
 FROM users;
 
 DROP TABLE users;

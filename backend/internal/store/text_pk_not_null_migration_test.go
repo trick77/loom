@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// textKeyTables are the tables 0053 rebuilds and their TEXT primary keys,
+// textKeyTables are the tables 0054 rebuilds and their TEXT primary keys,
 // which SQLite let hold NULL.
 var textKeyTables = map[string]string{
 	"artifacts":           "id",
@@ -31,13 +31,13 @@ var textKeyTables = map[string]string{
 	"users":               "id",
 }
 
-// 0053 rebuilds 17 tables with NOT NULL keys and 0054 restores messages'
-// search triggers. A database at 0052 with rows in every table (and a NULL key
+// 0054 rebuilds 17 tables with NOT NULL keys and 0055 restores messages'
+// search triggers. A database at 0053 with rows in every table (and a NULL key
 // in three) is migrated: every row, rowid, index, trigger and foreign key
 // stays, only the NULL-key rows go, search still finds old and new messages,
 // and a NULL key is now refused.
-func TestMigration0053_textPrimaryKeysNotNull(t *testing.T) {
-	db := openMigratedUpTo(t, filepath.Join(t.TempDir(), "a.db"), "0052_user_today_seen.sql")
+func TestMigration0054_textPrimaryKeysNotNull(t *testing.T) {
+	db := openMigratedUpTo(t, filepath.Join(t.TempDir(), "a.db"), "0053_drop_user_today_seen.sql")
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := db.Exec(query, args...); err != nil {
@@ -94,7 +94,7 @@ func TestMigration0053_textPrimaryKeysNotNull(t *testing.T) {
 	sqlBefore := tableSQL(t, db)
 
 	if err := migrate(db); err != nil {
-		t.Fatalf("apply 0053 and 0054: %v", err)
+		t.Fatalf("apply 0054 and 0055: %v", err)
 	}
 
 	// Only the NULL-key rows went: one message (and its search row), one
@@ -187,6 +187,32 @@ func TestMigration0053_textPrimaryKeysNotNull(t *testing.T) {
 	}
 	if _, err := db.Exec(`INSERT INTO user_directives (id, user_id, content) VALUES ('x', 'missing', 'x')`); err == nil {
 		t.Fatal("directive for a missing user inserted: foreign keys were left off")
+	}
+	// No table keeps a nullable TEXT key, listed above or not (schema_migrations
+	// is kit's runner's).
+	if v := queryStrings(t, db, `SELECT m.name || '.' || p.name FROM sqlite_master m, pragma_table_info(m.name) p
+		WHERE m.type = 'table' AND m.sql NOT LIKE 'CREATE VIRTUAL%' AND m.name NOT LIKE 'message_fts_%'
+		AND m.name NOT LIKE 'vec_chunks_%' AND m.name <> 'schema_migrations' AND p.pk > 0 AND p."notnull" = 0 AND upper(p.type) = 'TEXT'`); len(v) != 0 {
+		t.Fatalf("nullable TEXT keys left: %v", v)
+	}
+}
+
+// A 0.10.0 database (at 0052) with a user's today_seen_on set reaches the end
+// in one run: 0053 drops the column, then 0054 rebuilds users without it.
+func TestMigration0054_fromUserTodaySeen(t *testing.T) {
+	db := openMigratedUpTo(t, filepath.Join(t.TempDir(), "a.db"), "0052_user_today_seen.sql")
+	if _, err := db.Exec(`INSERT INTO users (rowid, id, oidc_subject, username, role, today_seen_on)
+		VALUES (5, 'u', 's', 'u', 'admin', '2026-11-08')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if got := queryStrings(t, db, `SELECT rowid || ':' || id || ':' || username FROM users`); !reflect.DeepEqual(got, []string{"5:u:u"}) {
+		t.Fatalf("users after migrate = %v, want 5:u:u", got)
+	}
+	if got := queryStrings(t, db, `SELECT name FROM pragma_table_info('users') WHERE name = 'today_seen_on'`); len(got) != 0 {
+		t.Fatalf("today_seen_on still there: %v", got)
 	}
 }
 
