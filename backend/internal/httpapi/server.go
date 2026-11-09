@@ -140,8 +140,6 @@ type server struct {
 	// push and pushStore are nil while push notifications are off.
 	push      PushSender
 	pushStore *webpush.Store
-	// timezones holds each user's browser timezone, by user id.
-	timezones sync.Map
 	// now is the clock scheduled runs read; nil is time.Now. runTimeout and
 	// runSoftDeadline replace schedule.RunTimeout and RunSoftDeadline when set
 	// (tests).
@@ -313,7 +311,6 @@ type UserService interface {
 	UpsertFromClaims(context.Context, auth.Claims, string) (auth.User, error)
 	ListUsers(context.Context) ([]auth.User, error)
 	UpdateResponseLanguage(ctx context.Context, id, language string) error
-	Timezone(ctx context.Context, id string) (string, error)
 	SetTimezone(ctx context.Context, id, tz string) error
 }
 

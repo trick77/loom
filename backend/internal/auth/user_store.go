@@ -104,22 +104,9 @@ WHERE id = ?`,
 	return nil
 }
 
-// Timezone returns the IANA timezone kept for the user; "" when none.
-func (s *UserStore) Timezone(ctx context.Context, id string) (string, error) {
-	var tz string
-	err := s.db.QueryRowContext(ctx, `SELECT timezone FROM users WHERE id = ?`, id).Scan(&tz)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("read timezone: %w", err)
-	}
-	return tz, nil
-}
-
 // SetTimezone keeps the IANA timezone the user's browser sent.
 func (s *UserStore) SetTimezone(ctx context.Context, id, tz string) error {
-	if _, err := s.db.ExecContext(ctx, `UPDATE users SET timezone = ? WHERE id = ?`, tz, id); err != nil {
+	if _, err := s.db.ExecContext(ctx, `UPDATE users SET timezone = ?, updated_at = datetime('now') WHERE id = ?`, tz, id); err != nil {
 		return fmt.Errorf("set timezone: %w", err)
 	}
 	return nil
@@ -128,7 +115,7 @@ func (s *UserStore) SetTimezone(ctx context.Context, id, tz string) error {
 // ListUsers returns all app-local users ordered for the admin user list.
 func (s *UserStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, oidc_subject, username, email, display_name, role, response_language
+SELECT id, oidc_subject, username, email, display_name, role, response_language, timezone
 FROM users
 ORDER BY username ASC`)
 	if err != nil {
@@ -139,7 +126,7 @@ ORDER BY username ASC`)
 	var users []User
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage); err != nil {
+		if err := rows.Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage, &user.Timezone); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		users = append(users, user)
@@ -154,11 +141,11 @@ ORDER BY username ASC`)
 func (s *UserStore) FindByID(ctx context.Context, id string) (User, bool, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-SELECT id, oidc_subject, username, email, display_name, role, response_language
+SELECT id, oidc_subject, username, email, display_name, role, response_language, timezone
 FROM users
 WHERE id = ?`,
 		id,
-	).Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage)
+	).Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage, &user.Timezone)
 	if err == nil {
 		return user, true, nil
 	}
@@ -171,11 +158,11 @@ WHERE id = ?`,
 func (s *UserStore) findBySubject(ctx context.Context, subject string) (User, bool, error) {
 	var user User
 	err := s.db.QueryRowContext(ctx, `
-SELECT id, oidc_subject, username, email, display_name, role, response_language
+SELECT id, oidc_subject, username, email, display_name, role, response_language, timezone
 FROM users
 WHERE oidc_subject = ?`,
 		subject,
-	).Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage)
+	).Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage, &user.Timezone)
 	if err == nil {
 		return user, true, nil
 	}
@@ -197,7 +184,7 @@ WHERE oidc_subject = ?`,
 // or several matches fall through to a fresh user, as before.
 func (s *UserStore) adoptByEmail(ctx context.Context, email, subject string) (User, bool, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, oidc_subject, username, email, display_name, role, response_language
+SELECT id, oidc_subject, username, email, display_name, role, response_language, timezone
 FROM users
 WHERE email <> '' AND lower(email) = lower(?)
 LIMIT 2`,
@@ -211,7 +198,7 @@ LIMIT 2`,
 	var matches []User
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage); err != nil {
+		if err := rows.Scan(&user.ID, &user.OIDCSubject, &user.Username, &user.Email, &user.DisplayName, &user.Role, &user.ResponseLanguage, &user.Timezone); err != nil {
 			return User{}, false, fmt.Errorf("scan user by email: %w", err)
 		}
 		matches = append(matches, user)

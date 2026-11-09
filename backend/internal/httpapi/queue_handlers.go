@@ -55,7 +55,7 @@ func (s *server) handleQueueMessage(w http.ResponseWriter, r *http.Request) {
 	} else if s.rejectWhileRunning(w, r, user.ID, thread) {
 		return
 	}
-	s.rememberTimezone(user.ID, r)
+	user.Timezone = s.rememberTimezone(r.Context(), user, r)
 	liveCtx, endLive := s.detachedFromClient(r.Context())
 	streamCtx, cancelStream := context.WithCancelCause(liveCtx)
 	hub := newTurnHub()

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/ship/kit/httpx"
@@ -18,47 +19,34 @@ import (
 // drawn in it and a turn's date reads in it.
 const timezoneHeader = "X-Loom-Timezone"
 
-// rememberTimezone keeps the timezone the user's browser last sent, so a
-// schedule created from chat draws its slot in it and a turn started without
-// a request (queued, handed off) reads its date in it. It returns the
-// request's own zone, else the one kept; "" when neither. A changed zone is
-// written through to the user row so a restart keeps it.
-func (s *server) rememberTimezone(userID string, r *http.Request) string {
-	ctx := r.Context()
+// requestTimezone is the valid IANA zone the request carries, if any.
+func requestTimezone(r *http.Request) (string, bool) {
 	tz := strings.TrimSpace(r.Header.Get(timezoneHeader))
 	if tz == "" || len(tz) > 64 {
-		return s.timezoneFor(ctx, userID)
+		return "", false
 	}
 	if _, err := schedule.LoadLocation(tz); err != nil {
-		return s.timezoneFor(ctx, userID)
+		return "", false
 	}
-	if s.timezoneFor(ctx, userID) == tz {
-		return tz
-	}
-	s.timezones.Store(userID, tz)
-	if s.users != nil {
-		if err := s.users.SetTimezone(ctx, userID, tz); err != nil {
-			slog.Warn("keep timezone", "user_id", userID, "err", err)
-		}
-	}
-	return tz
+	return tz, true
 }
 
-// timezoneFor is the timezone rememberTimezone kept for the user; "" when
-// none, which schedules read as UTC. The in-memory copy fronts the user row.
-func (s *server) timezoneFor(ctx context.Context, userID string) string {
-	if tz, ok := s.timezones.Load(userID); ok {
-		return tz.(string)
+// rememberTimezone keeps the zone the user's browser sent on the user row, so
+// a schedule created from chat draws its slot in it and a turn started
+// without a request (queued, handed off, after a restart) reads its date in
+// it. It returns the request's own zone, else the kept one; "" when neither,
+// which schedules read as UTC. A failed write is retried by the next request:
+// the row, read fresh on every request, still differs.
+func (s *server) rememberTimezone(ctx context.Context, user auth.User, r *http.Request) string {
+	tz, ok := requestTimezone(r)
+	if !ok {
+		return user.Timezone
 	}
-	if s.users == nil {
-		return ""
+	if tz != user.Timezone && s.users != nil {
+		if err := s.users.SetTimezone(ctx, user.ID, tz); err != nil {
+			slog.Warn("keep timezone", "user_id", user.ID, "err", err)
+		}
 	}
-	tz, err := s.users.Timezone(ctx, userID)
-	if err != nil {
-		slog.Warn("read timezone", "user_id", userID, "err", err)
-		return ""
-	}
-	s.timezones.Store(userID, tz)
 	return tz
 }
 

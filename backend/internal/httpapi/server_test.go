@@ -452,10 +452,6 @@ func (f fakeUserStore) UpdateResponseLanguage(context.Context, string, string) e
 	return nil
 }
 
-func (f fakeUserStore) Timezone(context.Context, string) (string, error) {
-	return "", nil
-}
-
 func (f fakeUserStore) SetTimezone(context.Context, string, string) error {
 	return nil
 }
