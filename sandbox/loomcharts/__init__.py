@@ -31,6 +31,16 @@ Charts
     weeks= is the comparison window in weeks (it appears in labels: "6-week best");
     leave it out when the window is not known.
 
+Going out (the outdoor_windows tool's files; a bare name is looked up in in/)
+    outdoor_day(hours, out, windows=None, limits=None, date=None, title=None)
+        a day hour by hour: temperature and sun, rain, wind and gusts against the
+        activity's limits; recommended windows banded, night shaded; date YYYY-MM-DD
+        (default the day asked, from limits)
+    outdoor_compare(hours, out, windows=None, limits=None, title=None)
+        the next two days with daylight left (today and tomorrow) side by side on shared scales
+    outdoor_week(days, out, limits=None, title=None)
+        the week a column a day: high/low, sun hours, rain, strongest wind; best day marked
+
 Own charts
     Plain matplotlib (pyplot) code already draws in the same dark style: it is the
     image's matplotlibrc. Series take the colour cycle (loomcharts.SERIES) in order;
@@ -58,15 +68,27 @@ CSV contract (5 s resample in streams; empty cell = no value)
     strava_activities.csv       activity_id, date, name, sport_type, trainer, distance_km,
                                 moving_s, gain_m, avg_kmh, avg_hr, avg_w, weighted_w, kj,
                                 suffer_score, elapsed_time_s
+    outdoor_hours.csv           time (local, YYYY-MM-DDTHH:MM), daylight (0/1), temp_c, feels_c,
+                                sun_min, rain_mm, rain_pct, wind_kmh, gust_kmh, wind_dir_deg
+                                (where it blows from)
+    outdoor_windows.csv         date, rank (1 = best), from, to (HH:MM), dry (0/1), wind (empty,
+                                windy, strong), sun_min, rain_pct, wind_max_kmh, gust_max_kmh,
+                                wind_from (8-point compass)
+    outdoor_days.csv            date, sunrise, sunset, high_c, low_c, rain_mm, rain_pct, sun_h,
+                                wind_max_kmh, gust_max_kmh, wind_from, rain (dry, showers, wet),
+                                wind, rank
+    outdoor_limits.csv          activity (run, ride), minutes, date (the day asked), wind_kmh,
+                                wind_strong_kmh, gust_kmh, gust_strong_kmh
 """
 
 from ._style import BEST, BG, CONTEXT, INK, INK2, MEDIAN, MUTED, SERIES, THIS, ZONES, apply_style
 from .compare import power_curve, rank_strip, same_route_gap
+from .outdoor import outdoor_compare, outdoor_day, outdoor_week
 from .ride import ride_profile, route_track
 from .volume import activities_summary, weekly_load
 
 __all__ = [
-    "activities_summary", "apply_style", "power_curve", "rank_strip", "ride_profile", "route_track",
-    "same_route_gap", "weekly_load", "BEST", "BG", "CONTEXT", "INK", "INK2", "MEDIAN", "MUTED", "SERIES", "THIS",
-    "ZONES",
+    "activities_summary", "apply_style", "outdoor_compare", "outdoor_day", "outdoor_week", "power_curve",
+    "rank_strip", "ride_profile", "route_track", "same_route_gap", "weekly_load", "BEST", "BG", "CONTEXT", "INK",
+    "INK2", "MEDIAN", "MUTED", "SERIES", "THIS", "ZONES",
 ]

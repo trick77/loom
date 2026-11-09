@@ -306,7 +306,7 @@ def variants(p, d):
                 return fn(*args, **kwargs)
         return call
 
-    return header_only + [
+    return header_only + outdoor_variants(d, full, note) + [
         # Absolute out: the call runs inside d, and --out may give a relative d.
         ("profile_bare_name", in_job_dir(loomcharts.ride_profile),
          ("bare_streams.csv", os.path.join(os.path.abspath(d), "profile_bare.png")), {}, full),
@@ -359,6 +359,94 @@ def variants(p, d):
          {"metric": "avg_hr", "by": "activity"}, 20_000),
         ("activities_nometric", loomcharts.activities_summary, (p["activities"], j("activities_nometric.png")),
          {"metric": "avg_w", "by": "week", "title": "Avg power"}, 15_000),
+    ]
+
+
+def outdoor_files(d):
+    """The outdoor_windows tool's CSVs: today from 08:00 and tomorrow, rain this afternoon, wind tomorrow."""
+    rows = []
+    for i in range(40):
+        t = pd.Timestamp("2026-11-09 08:00") + pd.Timedelta(hours=i)
+        h = t.hour
+        lit = 1 if 7 <= h < 17 else 0
+        wet = t.day == 9 and 13 <= h < 16
+        windy = t.day == 10 and 11 <= h < 16
+        rows.append({
+            "time": t.strftime("%Y-%m-%dT%H:%M"), "daylight": lit,
+            "temp_c": round(4 + 6 * max(0.0, 1 - abs(h - 14) / 7), 1),
+            "feels_c": round(1 + 6 * max(0.0, 1 - abs(h - 14) / 7), 1),
+            "sun_min": (50 if lit and not wet else 0), "rain_mm": (1.2 if wet else 0.0),
+            "rain_pct": (85 if wet else 10), "wind_kmh": (32.0 if windy else 9.0 + h % 4),
+            "gust_kmh": (52.0 if windy else 20.0 + h % 5), "wind_dir_deg": (250 if windy else 200 + 10 * (h % 6)),
+        })
+    p = {k: os.path.join(d, f"outdoor_{k}.csv") for k in ("hours", "windows", "days", "limits")}
+    pd.DataFrame(rows).to_csv(p["hours"], index=False)
+    pd.DataFrame([
+        {"date": "2026-11-09", "rank": 1, "from": "09:00", "to": "11:00", "dry": 1, "wind": "", "sun_min": 100,
+         "rain_pct": 10, "wind_max_kmh": 12, "gust_max_kmh": 24, "wind_from": "SW"},
+        {"date": "2026-11-09", "rank": 2, "from": "16:00", "to": "17:00", "dry": 1, "wind": "", "sun_min": 30,
+         "rain_pct": 10, "wind_max_kmh": 9, "gust_max_kmh": 21, "wind_from": "S"},
+        {"date": "2026-11-10", "rank": 1, "from": "08:15", "to": "10:15", "dry": 1, "wind": "windy", "sun_min": 90,
+         "rain_pct": 10, "wind_max_kmh": 18, "gust_max_kmh": 31, "wind_from": "W"},
+    ]).to_csv(p["windows"], index=False)
+    week = []
+    for i in range(7):
+        date = pd.Timestamp("2026-11-09") + pd.Timedelta(days=i)
+        week.append({"date": date.strftime("%Y-%m-%d"), "sunrise": "07:21", "sunset": "16:59", "high_c": 8 + i % 4,
+                     "low_c": 1 + i % 3, "rain_mm": [3.6, 0.2, 0, 1.4, 0, 6.2, 0][i], "rain_pct": [90, 20, 5, 55, 10, 95, 0][i],
+                     "sun_h": [1, 4, 7, 2, 5, 0, 6][i], "wind_max_kmh": [12, 36, 10, 14, 44, 20, 9][i],
+                     "gust_max_kmh": [25, 58, 22, 28, 70, 40, 18][i], "wind_from": ["S", "W", "NE", "SW", "W", "S", "E"][i],
+                     "rain": ["wet", "dry", "dry", "showers", "dry", "wet", "dry"][i],
+                     "wind": ["", "windy", "", "", "strong", "windy", ""][i], "rank": [6, 3, 1, 5, 4, 7, 2][i]})
+    pd.DataFrame(week).to_csv(p["days"], index=False)
+    pd.DataFrame([{"activity": "ride", "minutes": 120, "date": "2026-11-10", "wind_kmh": 15, "wind_strong_kmh": 39,
+                   "gust_kmh": 30, "gust_strong_kmh": 45}]).to_csv(p["limits"], index=False)
+    return p
+
+
+def outdoor_variants(d, full, note):
+    """The going-out charts, full and with what may be missing left out."""
+    j = lambda name: os.path.join(d, name)  # noqa: E731
+    o = outdoor_files(d)
+    bare = _blank(o["hours"], j("outdoor_hours_bare.csv"), ["feels_c", "sun_min", "rain_pct", "gust_kmh",
+                                                            "wind_dir_deg", "daylight"])
+    pd.read_csv(o["hours"]).head(0).to_csv(j("outdoor_hours_empty.csv"), index=False)
+    pd.read_csv(o["days"]).head(0).to_csv(j("outdoor_days_empty.csv"), index=False)
+    _blank(o["days"], j("outdoor_days_bare.csv"), ["sun_h", "gust_max_kmh", "wind_from", "rain", "wind", "rank"])
+    _blank(o["days"], j("outdoor_days_nolow.csv"), ["low_c"])
+    h = pd.read_csv(o["hours"])
+    stormy = h["time"].str.startswith("2026-11-09")
+    h.loc[stormy, "gust_kmh"] = 70.0
+    h.loc[stormy, "rain_mm"] = 4.5
+    h.to_csv(j("outdoor_hours_storm_today.csv"), index=False)
+    late = pd.read_csv(o["hours"])
+    late[late["time"] >= "2026-11-09T22:00"].to_csv(j("outdoor_hours_late.csv"), index=False)
+    return [
+        ("outdoor_compare_late", loomcharts.outdoor_compare, (j("outdoor_hours_late.csv"), j("outdoor_compare_late.png")),
+         {"windows": o["windows"], "limits": o["limits"]}, 20_000),
+        ("outdoor_day", loomcharts.outdoor_day, (o["hours"], j("outdoor_day.png")),
+         {"windows": o["windows"], "limits": o["limits"]}, full),
+        ("outdoor_day_tomorrow", loomcharts.outdoor_day, (o["hours"], j("outdoor_day_tomorrow.png")),
+         {"windows": o["windows"], "limits": o["limits"], "date": "2026-11-10"}, full),
+        ("outdoor_day_bare", loomcharts.outdoor_day, (bare, j("outdoor_day_bare.png")), {}, 20_000),
+        ("outdoor_day_nodate", loomcharts.outdoor_day, (o["hours"], j("outdoor_day_nodate.png")),
+         {"date": "2027-01-01"}, note),
+        ("outdoor_day_empty", loomcharts.outdoor_day, (j("outdoor_hours_empty.csv"), j("outdoor_day_empty.png")), {},
+         note),
+        ("outdoor_compare", loomcharts.outdoor_compare, (o["hours"], j("outdoor_compare.png")),
+         {"windows": o["windows"], "limits": o["limits"]}, full),
+        ("outdoor_compare_bare", loomcharts.outdoor_compare, (bare, j("outdoor_compare_bare.png")),
+         {"windows": j("does_not_exist.csv")}, 20_000),
+        ("outdoor_compare_storm", loomcharts.outdoor_compare,
+         (j("outdoor_hours_storm_today.csv"), j("outdoor_compare_storm.png")),
+         {"windows": o["windows"], "limits": o["limits"]}, full),
+        ("outdoor_week_nolow", loomcharts.outdoor_week, (j("outdoor_days_nolow.csv"), j("outdoor_week_nolow.png")),
+         {"limits": o["limits"]}, 20_000),
+        ("outdoor_week", loomcharts.outdoor_week, (o["days"], j("outdoor_week.png")), {"limits": o["limits"]}, full),
+        ("outdoor_week_bare", loomcharts.outdoor_week, (j("outdoor_days_bare.csv"), j("outdoor_week_bare.png")), {},
+         20_000),
+        ("outdoor_week_empty", loomcharts.outdoor_week, (j("outdoor_days_empty.csv"), j("outdoor_week_empty.png")),
+         {}, note),
     ]
 
 

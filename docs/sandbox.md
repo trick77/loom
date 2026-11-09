@@ -77,9 +77,9 @@ numpy, pandas, scipy, sympy, matplotlib, openpyxl, python-dateutil, pint, tabula
 hashes in `sandbox/requirements.lock` (regenerate it with the command in `requirements.in`).
 Nothing is installed at run time.
 
-`loomcharts` (`sandbox/loomcharts/`, in site-packages) draws the Strava charts from the attached
-CSVs in loom's dark style, one function per chart (`help(loomcharts)`); its self-test runs in the
-image build.
+`loomcharts` (`sandbox/loomcharts/`, in site-packages) draws the Strava charts and the going-out
+charts (`outdoor_windows`, docs/weather.md) from the attached CSVs in loom's dark style, one function
+per chart (`help(loomcharts)`); its self-test runs in the image build.
 
 That style (`STYLE` in `loomcharts/_style.py`) is also every chart's default: the build writes it
 as `/opt/mplconfig/matplotlibrc`, which each job copies, so hand-written matplotlib charts look the

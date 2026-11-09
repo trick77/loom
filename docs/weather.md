@@ -67,8 +67,8 @@ loom classes the pollen itself (MeteoSwiss load classes; olive has none and is n
 the weather server serves; its calls carry the user like any MCP call. A model
 reading two days of hours proposed times after dark and misread the rain, so loom ranks and the model only words it.
 It plans where the user is (the start page's place) or at a place it looks up with `geocode`, in that place's zone,
-from the same `forecast` (2 days) and `air_quality` calls as the start page: the sidecar's cache, no extra provider call.
-The sun is `internal/sun`.
+from the same `forecast` (7 days) and `air_quality` calls as the start page: the sidecar's cache, no extra provider call.
+The sun is `internal/sun`. `day` is `today`, `tomorrow` or `week` (the next 7 days ranked, not their hours).
 
 - A window lies wholly in daylight: never before sunrise, past sunset or already begun. Starts: the earliest (now,
   on a quarter hour), each full hour, the latest that still ends at sunset. Polar night: none; polar day: all day.
@@ -76,10 +76,26 @@ The sun is `internal/sun`.
   else the two driest.
 - Then sunnier (in quarters of the window; without `sunshineMinutes` the code stands in; an hour already past the
   band's top draws nothing, or a July noon would beat a mild morning), then nearer the feels-like band (run
-  12-20 °C, ride 15-24 °C) and gusts below 40 (run) / 30 km/h (ride, weighed double), then earlier.
+  12-20 °C, ride 15-24 °C) and calmer (km/h past the windy limits, weighed double on a ride; past a strong limit a
+  window sinks below any merely windy one), then earlier.
+- Wind limits (`weather.Limits`, km/h as forecast at 10 m; at body height about a third less in the open), windy /
+  strong: ride wind 15 / 39, gusts 30 / 45; run wind 20 / 39, gusts 40 / 55. A rider feels 10 km/h and works hard
+  at 20 (felt); a runner's cost grows with the square of the wind and barely shows below Beaufort 4 (20); both find
+  Beaufort 6 (39) the edge of bearable. Gusts are the danger on a bike (a side gust throws it across the lane);
+  the DWD calls 63 stormy, the gust limits stay well below. A windy window names the wind, a strong one warns and
+  ranks below every other, sun or not; the week's days use the day's strongest wind, night included.
+- A week day is dry under 0.5 mm and 40 %, wet from 3 mm (or 70 % with 1 mm), showers between; ranked: a day
+  without time for the activity (polar night, too short, today already over) last, then strong wind, then drier,
+  calmer, sunnier, milder (the high stands in for feels-like). Today and tomorrow take their time left and wind
+  from their own windows, so the week never contradicts the day. Times are planned for today and tomorrow only
+  (the hours reach 3 days).
 - A run is 60 minutes, a ride 120 by default. The air is a note on the best window (index from moderate, pollen
   from a moderate load), never a rank: pollen is a day's mean, it cannot tell one hour from another.
 - The forecast's (and the noted air's) `attribution` sources are cited like an MCP result's.
+- With run_python on the turn the result hands it `outdoor_hours/windows/days/limits.csv` (today and tomorrow
+  planned whichever was asked; columns in `sandbox/loomcharts/__init__.py`, a contract with
+  `internal/weather/charts.go`). `loomcharts` draws `outdoor_day`, `outdoor_compare` (today against tomorrow) and
+  `outdoor_week`; the model offers one and draws it when asked.
 
 ## Caching
 
