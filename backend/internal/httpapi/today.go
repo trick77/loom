@@ -71,7 +71,10 @@ type todayResponse struct {
 	Weather     *todayWeather   `json:"weather"`
 	Air         *todayAir       `json:"air"`
 	Warning     *todayWarning   `json:"warning"`
-	Runs        []todayRun      `json:"runs"`
+	// Tonight is what comes before tomorrow's hours; only while the page
+	// shows tomorrow.
+	Tonight *todayWarning `json:"tonight"`
+	Runs    []todayRun    `json:"runs"`
 	// RefreshAt is when the day shown changes next: the page reloads then.
 	RefreshAt *time.Time `json:"refreshAt"`
 }
@@ -188,8 +191,11 @@ type attribution struct {
 type todayWarning struct {
 	Kind string `json:"kind"`
 	From string `json:"from"`
-	// Day is the day From falls on: in the evening a warning may be tonight's.
+	// Day is the day From falls on: today's 12 h may reach into tomorrow,
+	// tonight's into its small hours.
 	Day string `json:"day"`
+	// Chance is the precipitation chance at From; nil for frost.
+	Chance *int `json:"chance"`
 }
 
 type todayRun struct {
@@ -298,7 +304,7 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 		})
 		if f, ok := s.forecastFor(ctx, p, loc); ok {
 			if tomorrow {
-				out.Weather, out.Warning = tomorrowForecast(f, local, shown)
+				out.Weather, out.Warning, out.Tonight = tomorrowForecast(f, local, shown)
 			} else {
 				out.Weather, out.Warning = todayForecast(f, local)
 			}
@@ -599,14 +605,15 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 }
 
 // tomorrowForecast reads tomorrow off the forecast: its high and low, five
-// hours from tomorrowFrom three apart, and a warning from now (local) through
-// tomorrow's daytime, tonight's included. A forecast that does not reach
-// tomorrow, or whose days do not name it, is none: never today's numbers
-// under tomorrow's name.
-func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *todayWarning) {
+// hours from tomorrowFrom three apart, a warning for tomorrow's daytime and
+// one for tonight, from now (local) until tomorrow's hours start. Apart: the
+// page shows tonight on its own, under tomorrow's heading it read as
+// tomorrow's. A forecast that does not reach tomorrow, or whose days do not
+// name it, is none: never today's numbers under tomorrow's name.
+func tomorrowForecast(f forecast, local, tomorrow time.Time) (weather *todayWeather, warning, tonight *todayWarning) {
 	day, ok := dayOf(f, tomorrow)
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	date := tomorrow.Format(time.DateOnly)
 	from, to := -1, -1
@@ -626,7 +633,7 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *to
 		}
 	}
 	if from < 0 || to < from {
-		return nil, nil
+		return nil, nil, nil
 	}
 	out := &todayWeather{
 		Day:         dayView(day),
@@ -639,11 +646,10 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *to
 	for i := from; i <= to && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))
 	}
-	tonight := currentHour(f, local)
-	if tonight < 0 || tonight > from {
-		tonight = from
+	if now := currentHour(f, local); now >= 0 && now < from {
+		tonight = warningIn(f, now, from-1-now, local)
 	}
-	return out, warningIn(f, tonight, to-tonight, local)
+	return out, warningIn(f, from, to-from, local), tonight
 }
 
 // currentHour is the index of the forecast's hour that holds local, or the
@@ -740,7 +746,9 @@ func warningIn(f forecast, start, span int, local time.Time) *todayWarning {
 	for i := start; i < len(f.Hourly) && i <= start+span; i++ {
 		h := f.Hourly[i]
 		if kind := precipitation(h.Code); kind != "" && h.PrecipitationProbability != nil && *h.PrecipitationProbability >= warningRainChance {
-			return at(kind, h.Time)
+			w := at(kind, h.Time)
+			w.Chance = h.PrecipitationProbability
+			return w
 		}
 		if warning == nil && h.Temperature <= 0 {
 			warning = at("frost", h.Time)

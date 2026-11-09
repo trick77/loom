@@ -232,8 +232,13 @@ func TestToday(t *testing.T) {
 		a.Pollen[1] != (todayPollen{Kind: "grass", Level: "low"}) {
 		t.Fatalf("pollen = %+v", a.Pollen)
 	}
-	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "17:00" || got.Warning.Day != dayToday {
+	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "17:00" || got.Warning.Day != dayToday ||
+		got.Warning.Chance == nil || *got.Warning.Chance != 80 {
 		t.Fatalf("warning = %+v", got.Warning)
+	}
+	// Tonight has its own warning only while the page shows tomorrow.
+	if got.Tonight != nil {
+		t.Fatalf("tonight by day = %+v", got.Tonight)
 	}
 	// The page turns to tomorrow at 20:00 at the place.
 	if got.RefreshAt == nil || !got.RefreshAt.Equal(time.Date(2026, 11, 9, 19, 0, 0, 0, time.UTC)) {
@@ -281,9 +286,12 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	if a := got.Air; a == nil || *a.AQI != 64 || a.Level != "poor" || !a.Max || a.Pollen == nil || len(a.Pollen) != 0 {
 		t.Fatalf("tomorrow's air = %+v", got.Air)
 	}
-	// It is still raining tonight: that comes first, as tonight's.
-	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "20:00" || got.Warning.Day != dayToday {
-		t.Fatalf("tonight's warning = %+v", got.Warning)
+	// It is still raining tonight: that is tonight's, apart from tomorrow's.
+	if n := got.Tonight; n == nil || n.Kind != "rain" || n.From != "20:00" || n.Day != dayToday || n.Chance == nil || *n.Chance != 80 {
+		t.Fatalf("tonight's warning = %+v", got.Tonight)
+	}
+	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "10:00" || got.Warning.Day != dayTomorrow {
+		t.Fatalf("tomorrow's warning = %+v", got.Warning)
 	}
 	if s := got.Sun; s == nil || s.Rise == nil || !strings.HasPrefix(*s.Rise, "07:2") || s.Progress != nil || s.DeltaMinutes > -1 {
 		t.Fatalf("tomorrow's sun = %+v", got.Sun)
@@ -292,14 +300,41 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	if got.RefreshAt == nil || !got.RefreshAt.Equal(time.Date(2026, 11, 9, 23, 0, 0, 0, time.UTC)) {
 		t.Fatalf("refreshAt = %v, want midnight in Zurich", got.RefreshAt)
 	}
-	// Late, with tonight dry: tomorrow's rain is the warning.
+	// Late, with tonight dry: no warning for tonight, tomorrow's stays.
 	var f forecast
 	if err := json.Unmarshal([]byte(todayForecastJSON()), &f); err != nil {
 		t.Fatal(err)
 	}
 	zurich, _ := time.LoadLocation("Europe/Zurich")
 	late := time.Date(2026, 11, 9, 23, 10, 0, 0, zurich)
-	if _, w := tomorrowForecast(f, late, late.AddDate(0, 0, 1)); w == nil || w.From != "10:00" || w.Day != dayTomorrow {
+	if _, w, n := tomorrowForecast(f, late, late.AddDate(0, 0, 1)); w == nil || w.From != "10:00" || w.Day != dayTomorrow || n != nil {
+		t.Fatalf("late: tomorrow's warning = %+v, tonight's = %+v", w, n)
+	}
+}
+
+// Tonight ends where tomorrow's hours start: frost at 05:00 is tonight's
+// (with no chance to tell), rain from 06:00 tomorrow's.
+func TestTomorrowWarnsOfTonightApart(t *testing.T) {
+	var f forecast
+	for i := range 20 {
+		at := time.Date(2026, 11, 9, 21+i, 0, 0, 0, time.UTC)
+		temp, code, chance := 3.0, 3, 10
+		if at.Hour() == 5 {
+			temp = -1
+		}
+		if at.Day() == 10 && at.Hour() >= 6 {
+			code, chance = 61, 90
+		}
+		f.Hourly = append(f.Hourly, forecastHour{Time: at.Format("2006-01-02T15:04"), Temperature: temp, Code: code,
+			PrecipitationProbability: &chance})
+	}
+	f.Daily = []forecastDay{{Date: "2026-11-09"}, {Date: "2026-11-10", High: 5, Low: -1, Code: 61}}
+	local := time.Date(2026, 11, 9, 21, 15, 0, 0, time.UTC)
+	_, w, n := tomorrowForecast(f, local, local.AddDate(0, 0, 1))
+	if n == nil || n.Kind != "frost" || n.From != "05:00" || n.Day != dayTomorrow || n.Chance != nil {
+		t.Fatalf("tonight's warning = %+v", n)
+	}
+	if w == nil || w.Kind != "rain" || w.From != "06:00" || w.Day != dayTomorrow || w.Chance == nil || *w.Chance != 90 {
 		t.Fatalf("tomorrow's warning = %+v", w)
 	}
 }
@@ -438,8 +473,8 @@ func TestTomorrowNeedsItsOwnDay(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Daily = f.Daily[:1]
-	if weather, warning := tomorrowForecast(f, time.Date(2026, 11, 9, 19, 0, 0, 0, time.UTC), time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)); weather != nil || warning != nil {
-		t.Fatalf("tomorrow from today's day: %+v, %+v", weather, warning)
+	if weather, warning, tonight := tomorrowForecast(f, time.Date(2026, 11, 9, 19, 0, 0, 0, time.UTC), time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)); weather != nil || warning != nil || tonight != nil {
+		t.Fatalf("tomorrow from today's day: %+v, %+v, %+v", weather, warning, tonight)
 	}
 }
 
@@ -475,8 +510,8 @@ func TestTodayForecastFindsTheCurrentHour(t *testing.T) {
 		t.Fatalf("after the forecast: %+v, %+v", weather, warning)
 	}
 	// A forecast that does not reach tomorrow's daytime has no tomorrow.
-	if weather, warning := tomorrowForecast(f, time.Date(2026, 11, 10, 19, 0, 0, 0, time.UTC), time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)); weather != nil || warning != nil {
-		t.Fatalf("beyond the forecast: %+v, %+v", weather, warning)
+	if weather, warning, tonight := tomorrowForecast(f, time.Date(2026, 11, 10, 19, 0, 0, 0, time.UTC), time.Date(2026, 11, 11, 12, 0, 0, 0, time.UTC)); weather != nil || warning != nil || tonight != nil {
+		t.Fatalf("beyond the forecast: %+v, %+v, %+v", weather, warning, tonight)
 	}
 }
 

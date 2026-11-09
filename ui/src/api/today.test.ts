@@ -25,6 +25,7 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
     weather: null,
     air: null,
     warning: null,
+    tonight: null,
     runs: [],
     refreshAt: null,
   });
@@ -84,18 +85,39 @@ test("getToday keeps a full answer and survives a null one", async () => {
       pollen: [{ kind: "grass", level: "low" }],
       attribution,
     },
-    warning: { kind: "rain", from: "20:00", day: "today" },
+    warning: { kind: "rain", from: "10:00", day: "tomorrow", chance: 80 },
+    tonight: { kind: "rain", from: "20:00", day: "today", chance: 90 },
     runs: [{ id: "n1", threadId: null, title: "t", body: "b", createdAt: "x" }],
     refreshAt: "2026-11-10T00:00:00+01:00",
   };
   stubFetch(Response.json(full));
   await expect(getToday()).resolves.toEqual(full);
-  // A warning without its day is for the shown day.
+  // A warning without its day is for the shown day, tonight's for today;
+  // without a chance it has none.
   stubFetch(
-    Response.json({ ...full, warning: { kind: "rain", from: "09:00" } }),
+    Response.json({
+      ...full,
+      warning: { kind: "rain", from: "09:00" },
+      tonight: { kind: "frost", from: "23:00" },
+    }),
   );
   await expect(getToday()).resolves.toMatchObject({
-    warning: { kind: "rain", from: "09:00", day: "tomorrow" },
+    warning: { kind: "rain", from: "09:00", day: "tomorrow", chance: null },
+    tonight: { kind: "frost", from: "23:00", day: "today", chance: null },
+  });
+  // An older server sends no tonight; a kind without words is no warning.
+  stubFetch(Response.json({ ...full, tonight: undefined }));
+  await expect(getToday()).resolves.toMatchObject({ tonight: null });
+  stubFetch(
+    Response.json({
+      ...full,
+      warning: { kind: "hail", from: "09:00", day: "tomorrow" },
+      tonight: { kind: "rain" },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    warning: null,
+    tonight: null,
   });
   stubFetch(
     Response.json({ ...full, day: "yesterday", refreshAt: 1, warning: null }),

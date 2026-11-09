@@ -135,8 +135,11 @@ export type TodayWarning = {
   kind: "rain" | "snow" | "storm" | "frost";
   /** "HH:MM" */
   from: string;
-  /** The day the warning is for: in the evening it can be for tonight. */
+  /** The day `from` falls on: today's next hours can reach into tomorrow,
+   * tonight's into its small hours. */
   day: "today" | "tomorrow";
+  /** Precipitation chance at `from` in percent; null for frost. */
+  chance: number | null;
 };
 
 export type TodayRun = {
@@ -157,7 +160,11 @@ export type Today = {
   sun: TodaySun | null;
   weather: TodayWeather | null;
   air: TodayAir | null;
+  /** The shown day's warning: tomorrow's covers its daytime only. */
   warning: TodayWarning | null;
+  /** What comes tonight, before tomorrow's hours; the server sends it only
+   * while the shown day is tomorrow. */
+  tonight: TodayWarning | null;
   /** Unread schedule runs, newest first. */
   runs: TodayRun[];
   /** RFC3339: when the shown day changes next (20:00 or midnight). */
@@ -238,13 +245,33 @@ function nonEmpty<T>(list: T[] | null | undefined): T[] | null {
   return Array.isArray(list) && list.length > 0 ? list : null;
 }
 
+const WARNING_KINDS: readonly string[] = ["rain", "snow", "storm", "frost"];
+
+// normalizeWarning gives a warning its day (fallback when the answer names
+// none) and its chance (null when unknown). A kind this page has no words
+// for is no warning: a newer server must not show raw keys.
+function normalizeWarning(
+  raw: Partial<TodayWarning> | null | undefined,
+  fallback: TodayWarning["day"],
+): TodayWarning | null {
+  if (!raw || typeof raw !== "object" || !raw.from) return null;
+  if (typeof raw.kind !== "string" || !WARNING_KINDS.includes(raw.kind)) {
+    return null;
+  }
+  return {
+    kind: raw.kind,
+    from: raw.from,
+    day: raw.day === "today" || raw.day === "tomorrow" ? raw.day : fallback,
+    chance: typeof raw.chance === "number" ? raw.chance : null,
+  };
+}
+
 // normalizeToday fills what an answer leaves out with "nothing to show", so a
 // short or older answer hides the section instead of breaking the page. The
 // shown day is today unless the answer says tomorrow.
 export function normalizeToday(raw: Partial<Today> | null): Today {
   const today = raw ?? {};
   const day = today.day === "tomorrow" ? "tomorrow" : "today";
-  const warning = today.warning ?? null;
   return {
     date: typeof today.date === "string" ? today.date : "",
     day,
@@ -255,17 +282,11 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
       : null,
     weather: normalizeWeather(today.weather),
     air: normalizeAir(today.air),
-    // A warning without its day is for the shown day.
-    warning:
-      warning === null
-        ? null
-        : {
-            ...warning,
-            day:
-              warning.day === "today" || warning.day === "tomorrow"
-                ? warning.day
-                : day,
-          },
+    // A warning without its day is for the shown day, tonight's for today.
+    warning: normalizeWarning(today.warning, day),
+    // An older server has no tonight: no pill. Whether it shows is the
+    // page's call (only under tomorrow's heading).
+    tonight: normalizeWarning(today.tonight, "today"),
     runs: Array.isArray(today.runs) ? today.runs : [],
     refreshAt: typeof today.refreshAt === "string" ? today.refreshAt : null,
   };

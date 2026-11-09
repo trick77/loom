@@ -174,6 +174,7 @@ export function todayFixture(overrides: Partial<Today> = {}): Today {
       },
     },
     warning: null,
+    tonight: null,
     refreshAt: null,
     runs: [
       {

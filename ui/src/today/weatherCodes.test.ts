@@ -10,6 +10,7 @@ import {
   isNightAt,
   isNightNow,
   warned,
+  warningKey,
 } from "./weatherCodes";
 
 const sun: TodaySun = {
@@ -72,8 +73,30 @@ test("night is outside sunrise..sunset, or the polar night", () => {
   expect(isNightNow(null)).toBe(false);
 });
 
+test("a warning names its day only where the heading does not", () => {
+  const rain = (day: "today" | "tomorrow") =>
+    ({ kind: "rain", from: "21:00", day, chance: 90 }) as const;
+  expect(warningKey("today", rain("today"))).toBe("today.warning.rain");
+  expect(warningKey("today", rain("tomorrow"))).toBe(
+    "today.warningTomorrow.rain",
+  );
+  expect(warningKey("tomorrow", rain("tomorrow"))).toBe("today.warning.rain");
+  // Tonight's on tomorrow's tile (a server that still sends it there) is
+  // named, never read as tomorrow's.
+  expect(warningKey("tomorrow", rain("today"))).toBe(
+    "today.warningTonight.rain",
+  );
+  expect(warningKey("tonight", rain("today"))).toBe(
+    "today.warningTonight.rain",
+  );
+  // Past midnight tonight is night, not evening.
+  expect(warningKey("tonight", rain("tomorrow"))).toBe(
+    "today.warningNight.rain",
+  );
+});
+
 test("a warning marks the skies it is about", () => {
-  const at = { from: "17:00", day: "today" } as const;
+  const at = { from: "17:00", day: "today", chance: 80 } as const;
   expect(warned("rain", { kind: "rain", ...at })).toBe(true);
   expect(warned("snow", { kind: "snow", ...at })).toBe(true);
   expect(warned("storm", { kind: "storm", ...at })).toBe(true);
