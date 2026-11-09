@@ -275,6 +275,70 @@ test("news read elsewhere reloads today; a failed reload keeps it", async () => 
   expect(screen.getByRole("region", { name: /^Today · / })).toBeInTheDocument();
 });
 
+test("news the bell read or found reloads today", async () => {
+  vi.mocked(api.getToday).mockResolvedValue(todayFixture());
+  renderStart();
+  await screen.findByRole("region", { name: /New from your schedules/ });
+  vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
+  act(() => api.announce(api.THREAD_NEWS_CHANGED));
+  await waitFor(() => expect(screen.queryAllByRole("article")).toHaveLength(0));
+  expect(api.getToday).toHaveBeenCalledTimes(2);
+});
+
+test("a reload that brings a new day takes its view", async () => {
+  vi.mocked(api.getToday).mockResolvedValue(
+    todayFixture({ view: "line", runs: [] }),
+  );
+  renderStart();
+  await screen.findByRole("region", { name: "Today" });
+  vi.mocked(api.getToday).mockResolvedValue(
+    todayFixture({ date: "2026-11-10", view: "tiles", runs: [] }),
+  );
+  act(() => api.announce(api.NOTIFICATIONS_CHANGED));
+  expect(
+    await screen.findByRole("region", {
+      name: "Today · Tuesday, November 10",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("an older answer never overwrites a newer one", async () => {
+  let resolveFirst: (today: api.Today) => void = () => {};
+  vi.mocked(api.getToday).mockReturnValueOnce(
+    new Promise((r) => {
+      resolveFirst = r;
+    }),
+  );
+  vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
+  renderStart();
+  await waitFor(() => expect(api.getToday).toHaveBeenCalledOnce());
+  act(() => api.announce(api.NOTIFICATIONS_CHANGED));
+  await screen.findByRole("region", { name: /^Today · / });
+  await act(async () => resolveFirst(todayFixture()));
+  expect(screen.queryAllByRole("article")).toHaveLength(0);
+});
+
+test("a phone asks for the compact answer", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  try {
+    vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
+    renderStart();
+    await waitFor(() =>
+      expect(api.getToday).toHaveBeenCalledWith({ compact: true }),
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
 describe("returning to the tab", () => {
   let visibility: DocumentVisibilityState = "visible";
 
@@ -299,6 +363,19 @@ describe("returning to the tab", () => {
       document.dispatchEvent(new Event("visibilitychange"));
     });
   }
+
+  test("retries a first load that failed", async () => {
+    vi.mocked(api.getToday).mockRejectedValueOnce(new Error("down"));
+    renderStart();
+    await waitFor(() => expect(starters()).toBeInTheDocument());
+    vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
+    comeBack(new Date(2026, 10, 9, 10, 1));
+    expect(
+      await screen.findByRole("region", { name: /^Today · / }),
+    ).toBeInTheDocument();
+    expect(api.getToday).toHaveBeenCalledTimes(2);
+    expect(api.getToday).toHaveBeenCalledWith({ compact: false });
+  });
 
   test("reloads only when the last load is stale, keeping the tiles", async () => {
     vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));

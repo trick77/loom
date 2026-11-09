@@ -17,12 +17,18 @@ function Divider() {
   return <span aria-hidden className="h-3.5 w-px bg-[#343432]" />;
 }
 
-// sunText is the next sun time worth knowing: the sunrise before it, the
-// sunset after.
+// nextIsSunrise: before sunrise and after sunset the next sun time is a
+// sunrise. After sunset today's stands in for tomorrow's: they differ by
+// minutes.
+function nextIsSunrise(sun: TodaySun): boolean {
+  return sun.polar === "" && (sun.progress < 0 || sun.progress > 1);
+}
+
+// sunText is the next sun time worth knowing.
 function sunText(sun: TodaySun, t: TFunction): string | null {
   if (sun.polar === "day") return t("today.sun.polarDay");
   if (sun.polar === "night") return t("today.sun.polarNight");
-  if (sun.progress < 0 && sun.rise !== null)
+  if (nextIsSunrise(sun) && sun.rise !== null)
     return t("today.sun.sunriseAt", { time: sun.rise });
   if (sun.set !== null) return t("today.sun.sunsetAt", { time: sun.set });
   return null;
@@ -34,7 +40,7 @@ function SunPart({ sun }: { sun: TodaySun }) {
   if (text === null) return null;
   return (
     <span className="flex items-center gap-1.5">
-      <SunTimeIcon rising={sun.polar === "" && sun.progress < 0} />
+      <SunTimeIcon rising={nextIsSunrise(sun) && sun.rise !== null} />
       <span className="text-[#e8e6dc]">{text}</span>
     </span>
   );

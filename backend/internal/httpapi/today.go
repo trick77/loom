@@ -150,9 +150,10 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 			out.Weather, out.Warning = todayForecast(f, now.In(loc))
 		}
 	}
-	// Only a visit with weather uses up the day's tiles: one while the place
-	// is still being derived, or the forecast failing, leaves them for later.
-	if out.Weather != nil && s.users != nil {
+	// Only a visit that can show tiles uses up the day's: one without weather
+	// (the place still being derived, the forecast failing) or from a phone,
+	// which always shows the line (?compact=1), leaves them for later.
+	if out.Weather != nil && s.users != nil && r.URL.Query().Get("compact") != "1" {
 		if first, err := s.users.MarkTodaySeen(ctx, user.ID, out.Date); err != nil {
 			slog.Warn("mark today seen failed", "user_id", user.ID, "err", err)
 		} else if first {
@@ -168,7 +169,9 @@ func (s *server) todayRuns(ctx context.Context, user auth.User) []todayRun {
 	if s.schedules == nil {
 		return runs
 	}
-	notes, err := s.schedules.ListNotifications(ctx, user.ID, 50)
+	// Kept 30 days: a window this wide still finds an unread run behind an
+	// hourly schedule's read ones.
+	notes, err := s.schedules.ListNotifications(ctx, user.ID, 1000)
 	if err != nil {
 		slog.Warn("list notifications failed", "user_id", user.ID, "err", err)
 		return runs
@@ -197,7 +200,9 @@ func placeZone(p *location.Place, user auth.User) *time.Location {
 
 func sunOn(now time.Time, p *location.Place, loc *time.Location) *todaySun {
 	today := sun.On(now, p.Latitude, p.Longitude, loc)
-	yesterday := sun.On(now.AddDate(0, 0, -1), p.Latitude, p.Longitude, loc)
+	// The local day before: 24 hours back from a time just past midnight
+	// after a clock change can land two days back.
+	yesterday := sun.On(now.In(loc).AddDate(0, 0, -1), p.Latitude, p.Longitude, loc)
 	out := &todaySun{
 		DayMinutes:   int(today.Length().Round(time.Minute) / time.Minute),
 		DeltaMinutes: int((today.Length() - yesterday.Length()).Round(time.Minute) / time.Minute),

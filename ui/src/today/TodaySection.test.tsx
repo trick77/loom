@@ -250,6 +250,16 @@ test("after sunset the sun is set; the polar night has no sun", () => {
   expect(line()).toHaveTextContent("Polar night");
 });
 
+test("the line names the next sun time: sunset by day, sunrise after it", () => {
+  const sun = todayFixture().sun!;
+  const { unmount } = show({ view: "line", sun: { ...sun, progress: 0.5 } });
+  expect(line()).toHaveTextContent("Sunset 16:58");
+  unmount();
+  show({ view: "line", sun: { ...sun, progress: 1.3 } });
+  expect(line()).toHaveTextContent("Sunrise 07:25");
+  expect(line()).not.toHaveTextContent("Sunset");
+});
+
 test("without weather the sun times show alone", () => {
   show({ weather: null, runs: [] });
   const group = screen.getByRole("group", { name: "Today" });

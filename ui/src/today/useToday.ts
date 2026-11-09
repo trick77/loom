@@ -17,6 +17,15 @@ export type TodayState =
 // STALE_MS is how old a load may get before a return to the tab reloads it.
 export const STALE_MS = 30 * 60_000;
 
+// NARROW is below Tailwind's sm: there the weather always starts as the line.
+export const NARROW = "(max-width: 639px)";
+
+function isNarrow(): boolean {
+  return (
+    typeof window.matchMedia === "function" && window.matchMedia(NARROW).matches
+  );
+}
+
 // localDate is the browser's date, "YYYY-MM-DD".
 function localDate(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -34,28 +43,41 @@ export function useToday() {
   const alive = useRef(true);
   // When and on which local date the last load answered.
   const loaded = useRef<{ at: number; date: string } | null>(null);
-  // NOTIFICATIONS_CHANGED events this hook sent itself: the bell needs them,
-  // a reload here does not (the cards are already gone).
-  const ownAnnouncements = useRef(0);
+  // True while this hook announces: the bell and sidebar need those events,
+  // a reload here does not (the cards are already gone). dispatchEvent runs
+  // the listeners synchronously, so the flag covers exactly those events.
+  const announcing = useRef(false);
 
-  const load = useCallback(async (newDay = false) => {
+  // Loads are numbered; an answer older than one already shown is dropped.
+  const sent = useRef(0);
+  const applied = useRef(0);
+  const pending = useRef(0);
+
+  const load = useCallback(async () => {
+    const mine = ++sent.current;
+    pending.current++;
     try {
-      const fresh = await getToday();
-      if (!alive.current) return;
+      // A phone shows the line whatever the server picks: asking compact
+      // keeps the server from spending the day's tiles on it.
+      const fresh = await getToday({ compact: isNarrow() });
+      if (!alive.current || mine < applied.current) return;
+      applied.current = mine;
       loaded.current = { at: Date.now(), date: localDate() };
-      // The first load of a day picks tiles or the line; a reload the same
+      // The first answer of a day picks tiles or the line; a reload the same
       // day (news read, a place saved) must not fold the tiles under the user.
       setState((prev) =>
-        prev.status === "ready" && !newDay
+        prev.status === "ready" && prev.today.date === fresh.date
           ? { status: "ready", today: { ...fresh, view: prev.today.view } }
           : { status: "ready", today: fresh },
       );
     } catch {
-      if (!alive.current) return;
+      if (!alive.current || mine < applied.current) return;
       // A failed reload keeps what is showing.
       setState((prev) =>
         prev.status === "ready" ? prev : { status: "error" },
       );
+    } finally {
+      pending.current--;
     }
   }, []);
 
@@ -64,26 +86,30 @@ export function useToday() {
     // Deferred so StrictMode's mount-unmount-mount sends one GET, not two:
     // the server picks tiles for the first visit of the day only.
     const first = window.setTimeout(() => void load(), 0);
+    // The bell sends NOTIFICATIONS_CHANGED or THREAD_NEWS_CHANGED when news
+    // was read or found there; this hook's own announcements are skipped.
     const onChanged = () => {
-      if (ownAnnouncements.current > 0) {
-        ownAnnouncements.current--;
-        return;
-      }
-      void load();
+      if (!announcing.current) void load();
     };
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       const last = loaded.current;
-      if (last === null) return;
-      const newDay = last.date !== localDate();
-      if (newDay || Date.now() - last.at > STALE_MS) void load(newDay);
+      // Nothing loaded yet: retry, unless the first load is still on its way.
+      if (last === null) {
+        if (sent.current > 0 && pending.current === 0) void load();
+        return;
+      }
+      if (last.date !== localDate() || Date.now() - last.at > STALE_MS)
+        void load();
     };
     window.addEventListener(NOTIFICATIONS_CHANGED, onChanged);
+    window.addEventListener(THREAD_NEWS_CHANGED, onChanged);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive.current = false;
       window.clearTimeout(first);
       window.removeEventListener(NOTIFICATIONS_CHANGED, onChanged);
+      window.removeEventListener(THREAD_NEWS_CHANGED, onChanged);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [load]);
@@ -104,9 +130,13 @@ export function useToday() {
           });
         }
         if (failed.length === ids.length) return;
-        ownAnnouncements.current++;
-        announce(NOTIFICATIONS_CHANGED);
-        announce(THREAD_NEWS_CHANGED);
+        announcing.current = true;
+        try {
+          announce(NOTIFICATIONS_CHANGED);
+          announce(THREAD_NEWS_CHANGED);
+        } finally {
+          announcing.current = false;
+        }
       },
     );
   }, []);
