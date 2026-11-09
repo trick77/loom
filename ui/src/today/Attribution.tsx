@@ -12,12 +12,12 @@ export function Attribution({
 }) {
   const url = safeURL(attribution.url);
   return (
-    <div className={`ui-meta-text text-[#8f8b82] ${className}`}>
+    <div className={`ui-meta-text text-muted ${className}`}>
       {url === null ? (
         attribution.text
       ) : (
         <a
-          className="underline-offset-2 hover:text-[#c7c5bd] hover:underline"
+          className="underline-offset-2 hover:text-ink-dim hover:underline"
           href={url}
           rel="noopener"
           target="_blank"

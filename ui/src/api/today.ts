@@ -16,11 +16,12 @@ export type TodaySun = {
   rise: string | null;
   set: string | null;
   dayMinutes: number;
-  /** Day length change against yesterday, in minutes. */
+  /** Day length change against the day before the shown one, in minutes. */
   deltaMinutes: number;
   polar: "" | "day" | "night";
-  /** Position between rise (0) and set (1) now; <0 before, >1 after. */
-  progress: number;
+  /** Position between rise (0) and set (1) now; <0 before, >1 after; null
+   * when the shown day is tomorrow. */
+  progress: number | null;
 };
 
 export type TodayHour = {
@@ -31,14 +32,19 @@ export type TodayHour = {
   precipitationProbability: number | null;
 };
 
+export type TodayWeatherDay = {
+  high: number;
+  low: number;
+  code: number;
+  precipitationProbability: number | null;
+};
+
 export type TodayWeather = {
-  now: { temperature: number; code: number };
-  today: {
-    high: number;
-    low: number;
-    code: number;
-    precipitationProbability: number | null;
-  };
+  /** The sky now; null when the shown day is tomorrow. */
+  now: { temperature: number; code: number } | null;
+  /** The shown day's range and sky. */
+  day: TodayWeatherDay;
+  /** Today the next slots, tomorrow its daytime, 3 h apart. */
   hours: TodayHour[];
   /** The weather data licence asks for this wherever the data shows. */
   attribution: { text: string; url: string };
@@ -60,10 +66,9 @@ export type TodayRun = {
 };
 
 export type Today = {
-  /** The user's date, "YYYY-MM-DD". */
+  /** The shown day, "YYYY-MM-DD": today, or tomorrow from 18:00. */
   date: string;
-  /** tiles on the first visit of the day, line after. */
-  view: "tiles" | "line";
+  day: "today" | "tomorrow";
   location: TodayLocation | null;
   askLocation: boolean;
   sun: TodaySun | null;
@@ -81,31 +86,46 @@ export class PlaceNotFoundError extends Error {
   }
 }
 
-// getToday loads the start page's "Today". compact is for a phone, which shows
-// the line anyway: the server then answers "line" and keeps the day's tiles
-// for a wider screen.
-export async function getToday(
-  options: { compact?: boolean } = {},
-): Promise<Today> {
+// getToday loads the start page's "Today" (from 18:00 the server shows
+// tomorrow).
+export async function getToday(): Promise<Today> {
   const raw = await requestJSON<Partial<Today> | null>(
-    options.compact ? `/api/today?compact=1` : `/api/today`,
+    `/api/today`,
     "failed to load today",
     { headers: { "X-Loom-Timezone": browserTimezone() } },
   );
   return normalizeToday(raw);
 }
 
+// normalizeWeather takes the forecast only with the shown day's range; the
+// earlier `today` key stands in for `day`.
+function normalizeWeather(raw: unknown): TodayWeather | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const weather = raw as Partial<TodayWeather> & { today?: TodayWeatherDay };
+  const day = weather.day ?? weather.today;
+  if (!day) return null;
+  return {
+    now: weather.now ?? null,
+    day,
+    hours: Array.isArray(weather.hours) ? weather.hours : [],
+    attribution: weather.attribution ?? { text: "", url: "" },
+  };
+}
+
 // normalizeToday fills what an answer leaves out with "nothing to show", so a
-// short or older answer hides the section instead of breaking the page.
+// short or older answer hides the section instead of breaking the page. The
+// shown day is today unless the answer says tomorrow.
 export function normalizeToday(raw: Partial<Today> | null): Today {
   const today = raw ?? {};
   return {
     date: typeof today.date === "string" ? today.date : "",
-    view: today.view === "line" ? "line" : "tiles",
+    day: today.day === "tomorrow" ? "tomorrow" : "today",
     location: today.location ?? null,
     askLocation: today.askLocation === true,
-    sun: today.sun ?? null,
-    weather: today.weather ?? null,
+    sun: today.sun
+      ? { ...today.sun, progress: today.sun.progress ?? null }
+      : null,
+    weather: normalizeWeather(today.weather),
     warning: today.warning ?? null,
     runs: Array.isArray(today.runs) ? today.runs : [],
   };

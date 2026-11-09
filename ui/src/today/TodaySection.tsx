@@ -1,29 +1,18 @@
-import { useId, useState } from "react";
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Today, TodayWeather } from "../api/today";
-import { useMediaQuery } from "../chat/useMediaQuery";
 import { Attribution } from "./Attribution";
 import { formatDay } from "./format";
 import { LocationChip } from "./LocationChip";
 import { LocationPrompt } from "./LocationPrompt";
 import { ScheduleNews } from "./ScheduleNews";
+import { SunLine } from "./SunLine";
 import { SunTile } from "./SunTile";
-import { SunLine, TodayLine } from "./TodayLine";
-import { NARROW } from "./useToday";
 import { WeatherTile } from "./WeatherTile";
 
-function Tiles({ today, weather }: { today: Today; weather: TodayWeather }) {
-  return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
-      <WeatherTile weather={weather} sun={today.sun} warning={today.warning} />
-      {today.sun !== null && <SunTile sun={today.sun} />}
-    </div>
-  );
-}
-
-// WeatherBlock shows the tiles on the first visit of the day and the line
-// after it (on a phone always the line); the line unfolds the tiles.
+// WeatherBlock is the day's tiles under a "Today"/"Tomorrow" heading: side
+// by side where they fit, stacked on a phone.
 function WeatherBlock({
   today,
   weather,
@@ -34,53 +23,37 @@ function WeatherBlock({
   onOpenMemory(): void;
 }) {
   const { t, i18n } = useTranslation();
-  const narrow = useMediaQuery(NARROW);
-  const [expanded, setExpanded] = useState(false);
   const headingId = useId();
-  if (today.view === "line" || narrow) {
-    return (
-      <section aria-label={t("today.title")} className="flex flex-col gap-3">
-        <div className="flex justify-center">
-          <TodayLine
-            expanded={expanded}
-            location={today.location}
-            onOpenMemory={onOpenMemory}
-            onToggle={() => setExpanded((value) => !value)}
-            sun={today.sun}
-            warning={today.warning}
-            weather={weather}
-          />
-        </div>
-        {expanded && <Tiles today={today} weather={weather} />}
-        <Attribution
-          attribution={weather.attribution}
-          className="text-center"
-        />
-      </section>
-    );
-  }
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3.5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2
-          className="text-[13px] font-medium tracking-[0.02em] text-[#97958c]"
+          className="text-[13px] font-medium tracking-[0.02em] text-muted"
           id={headingId}
         >
-          {t("today.heading", { date: formatDay(today.date, i18n.language) })}
+          {t(
+            today.day === "tomorrow"
+              ? "today.headingTomorrow"
+              : "today.heading",
+            { date: formatDay(today.date, i18n.language) },
+          )}
         </h2>
         {today.location !== null && (
           <LocationChip location={today.location} onOpenMemory={onOpenMemory} />
         )}
       </div>
-      <Tiles today={today} weather={weather} />
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
+        <WeatherTile today={today} weather={weather} />
+        {today.sun !== null && <SunTile day={today.day} sun={today.sun} />}
+      </div>
       <Attribution attribution={weather.attribution} className="text-right" />
     </section>
   );
 }
 
 // TodaySection is the start page's "Today" under the composer: the weather
-// and sun for the user's place, the unread schedule runs, and the question
-// where the user lives when no memory says so.
+// and sun for the user's place (tomorrow's from 18:00), the unread schedule
+// runs, and the question where the user lives when no memory says so.
 export function TodaySection({
   today,
   onOpenThread,

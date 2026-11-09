@@ -321,7 +321,6 @@ type UserService interface {
 	ListUsers(context.Context) ([]auth.User, error)
 	UpdateResponseLanguage(ctx context.Context, id, language string) error
 	SetTimezone(ctx context.Context, id, tz string) error
-	MarkTodaySeen(ctx context.Context, id, day string) (bool, error)
 }
 
 // newServer builds the server struct from its dependencies.

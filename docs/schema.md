@@ -710,7 +710,6 @@ Go types:
 | `updated_at` | TEXT | no | `datetime('now')` |  |
 | `last_seen_at` | TEXT | yes |  |  |
 | `timezone` | TEXT | no | `''` |  |
-| `today_seen_on` | TEXT | no | `''` |  |
 
 Indexes:
 
@@ -1258,7 +1257,6 @@ erDiagram
         TEXT updated_at
         TEXT last_seen_at
         TEXT timezone
-        TEXT today_seen_on
     }
     vec_chunks {
         INTEGER rowid PK

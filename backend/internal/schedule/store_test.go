@@ -289,6 +289,30 @@ func TestRuns(t *testing.T) {
 	}
 }
 
+// Spending after FinishRun (the notification's summary) lands on the run.
+func TestSetRunUsage(t *testing.T) {
+	ctx := context.Background()
+	st := schedule.NewStore(openDB(t))
+	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
+	id, err := st.StartRun(ctx, "u1", sch.ID, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishRun(ctx, "u1", schedule.Run{ID: id, Status: schedule.StatusNew, Tokens: 100, CostNanoUSD: 5}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRunUsage(ctx, "u2", id, 999, 999); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRunUsage(ctx, "u1", id, 140, 7); err != nil {
+		t.Fatal(err)
+	}
+	runs, _ := st.ListRuns(ctx, "u1", sch.ID, 1)
+	if len(runs) != 1 || runs[0].Tokens != 140 || runs[0].CostNanoUSD != 7 || runs[0].Status != schedule.StatusNew {
+		t.Fatalf("runs = %+v, want the later usage, another user's ignored", runs)
+	}
+}
+
 func TestNotifications(t *testing.T) {
 	ctx := context.Background()
 	st := schedule.NewStore(openDB(t))
@@ -310,6 +334,14 @@ func TestNotifications(t *testing.T) {
 	}
 	if n, _ := st.UnreadCount(ctx, "u1"); n != 1 {
 		t.Fatalf("unread after one read = %d", n)
+	}
+	// Unread runs only, of this user only.
+	_ = st.CreateNotification(ctx, "u1", schedule.Notification{Kind: schedule.KindScheduleDisabled, Title: "off"})
+	if unread, err := st.ListUnread(ctx, "u1", schedule.KindScheduleRun, 5); err != nil || len(unread) != 1 || unread[0].Title != "one" {
+		t.Fatalf("ListUnread = %+v, %v", unread, err)
+	}
+	if unread, _ := st.ListUnread(ctx, "u2", schedule.KindScheduleRun, 5); len(unread) != 0 {
+		t.Fatalf("another user's: %+v", unread)
 	}
 	// Marking another user's notification does nothing.
 	other, _ := st.ListNotifications(ctx, "u2", 10)

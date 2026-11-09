@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-import type { TodaySun, TodayWarning, TodayWeather } from "../api/today";
+import type { Today, TodayWeather } from "../api/today";
 import { degrees } from "./format";
 import {
   conditionFor,
@@ -9,35 +9,39 @@ import {
   isNightNow,
   warned,
 } from "./weatherCodes";
-import { WeatherIcon } from "./WeatherIcon";
+import { WarningIcon, WeatherIcon } from "./WeatherIcon";
 
 export const TILE =
-  "rounded-2xl border border-border bg-[#242422] p-[18px] text-ink";
+  "rounded-2xl border border-border bg-card p-[18px] text-ink";
 
-// WeatherTile shows the sky now, today's range and the next hours. A warning
-// takes the condition's place, in the accent color.
+// WeatherTile shows the sky now with the day's range, or for tomorrow the
+// day's high and low, then the hours. A warning takes the condition's place,
+// in the accent color.
 export function WeatherTile({
   weather,
-  sun,
-  warning,
+  today,
 }: {
   weather: TodayWeather;
-  sun: TodaySun | null;
-  warning: TodayWarning | null;
+  today: Pick<Today, "day" | "sun" | "warning">;
 }) {
   const { t } = useTranslation();
-  const condition = conditionFor(weather.now.code);
-  const night = isNightNow(sun);
+  const { sun, warning } = today;
+  const now = today.day === "today" ? weather.now : null;
+  const condition = conditionFor(now?.code ?? weather.day.code);
+  const night = now !== null && isNightNow(sun);
   const label = t(conditionLabelKey(condition, night));
-  const rain = weather.today.precipitationProbability;
-  const range =
-    t("today.highLow", {
-      high: degrees(weather.today.high),
-      low: degrees(weather.today.low),
-    }) +
-    (rain === null
-      ? ""
-      : ` · ${t("today.rainChance", { percent: Math.round(rain) })}`);
+  const rain = weather.day.precipitationProbability;
+  const rainText =
+    rain === null ? null : t("today.rainChance", { percent: Math.round(rain) });
+  // Now: the range goes under the label. Tomorrow: the range is the big
+  // value, the rain chance stays.
+  const detail =
+    now === null
+      ? rainText
+      : t("today.highLow", {
+          high: degrees(weather.day.high),
+          low: degrees(weather.day.low),
+        }) + (rainText === null ? "" : ` · ${rainText}`);
   return (
     <div className={`${TILE} flex flex-col gap-4`}>
       <div className="flex items-center gap-3.5">
@@ -48,23 +52,42 @@ export function WeatherTile({
           label={label}
         />
         <div className="flex min-w-0 items-baseline gap-2.5">
-          <span className="text-4xl leading-none font-light">
-            {t("today.temperature", {
-              value: degrees(weather.now.temperature),
-            })}
-          </span>
+          {now !== null ? (
+            <span className="text-4xl leading-none font-light">
+              {t("today.temperature", { value: degrees(now.temperature) })}
+            </span>
+          ) : (
+            <span
+              className="shrink-0 leading-none font-light"
+              data-testid="day-range"
+            >
+              <span className="text-4xl">
+                {t("today.temperature", {
+                  value: degrees(weather.day.high),
+                })}
+              </span>
+              <span className="text-xl text-muted">
+                {" / "}
+                {t("today.temperature", { value: degrees(weather.day.low) })}
+              </span>
+            </span>
+          )}
           <span className="flex min-w-0 flex-col text-[13px] leading-[1.35]">
             {warning === null ? (
-              <span className="text-[#e8e6dc]">{label}</span>
+              <span className="text-ink-soft">{label}</span>
             ) : (
               <span
-                className="font-medium text-accent-strong"
+                className="flex items-center gap-1 font-medium text-accent-strong"
                 data-testid="weather-warning"
               >
-                {t(`today.warning.${warning.kind}`, { from: warning.from })}
+                <WarningIcon kind={warning.kind} size={14} />
+                {t(
+                  `today.${today.day === "tomorrow" ? "warningTomorrow" : "warning"}.${warning.kind}`,
+                  { from: warning.from },
+                )}
               </span>
             )}
-            <span className="text-[#97958c]">{range}</span>
+            {detail !== null && <span className="text-muted">{detail}</span>}
           </span>
         </div>
       </div>
@@ -82,14 +105,14 @@ export function WeatherTile({
                 className="flex flex-col items-center gap-1"
                 title={t(conditionLabelKey(hourCondition, hourNight))}
               >
-                <span className="text-[#97958c]">{hour.time}</span>
+                <span className="text-muted">{hour.time}</span>
                 <WeatherIcon
                   condition={hourCondition}
                   night={hourNight}
                   size={20}
                   warn={warned(hourCondition, warning)}
                 />
-                <span className="text-[#e8e6dc]">
+                <span className="text-ink-soft">
                   {t("today.temperature", { value: degrees(hour.temperature) })}
                 </span>
               </li>

@@ -846,6 +846,7 @@ export const en = {
   today: {
     title: "Today",
     heading: "Today · {{date}}",
+    headingTomorrow: "Tomorrow · {{date}}",
     temperature: "{{value}}°",
     highLow: "H {{high}}° · L {{low}}°",
     rainChance: "Rain {{percent}}%",
@@ -866,6 +867,12 @@ export const en = {
       storm: "Thunderstorms from {{from}}",
       frost: "Frost from {{from}}",
     },
+    warningTomorrow: {
+      rain: "Rain tomorrow from {{from}}",
+      snow: "Snow tomorrow from {{from}}",
+      storm: "Thunderstorms tomorrow from {{from}}",
+      frost: "Frost tomorrow from {{from}}",
+    },
     sun: {
       sunrise: "Sunrise",
       sunset: "Sunset",
@@ -879,6 +886,12 @@ export const en = {
       shorter_one: "{{count}} min shorter than yesterday",
       shorter_other: "{{count}} min shorter than yesterday",
       same: "same as yesterday",
+      longerThanToday_one: "{{count}} min longer than today",
+      longerThanToday_other: "{{count}} min longer than today",
+      shorterThanToday_one: "{{count}} min shorter than today",
+      shorterThanToday_other: "{{count}} min shorter than today",
+      sameAsToday: "same as today",
+      times: "Sunrise {{rise}}, sunset {{set}}",
       beforeRise: "Sun position: not up yet",
       up: "Sun position: {{duration}} of daylight left",
       afterSet: "Sun position: set",

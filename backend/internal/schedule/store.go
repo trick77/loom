@@ -371,6 +371,16 @@ WHERE user_id = ? AND id = ?`,
 	return nil
 }
 
+// SetRunUsage records what a finished run spent, for spending that came after
+// FinishRun (its notification's summary).
+func (st *Store) SetRunUsage(ctx context.Context, userID, runID string, tokens, costNanoUSD int64) error {
+	if _, err := st.db.ExecContext(ctx, `UPDATE schedule_runs SET tokens = ?, cost_nano_usd = ? WHERE user_id = ? AND id = ?`,
+		tokens, costNanoUSD, userID, runID); err != nil {
+		return fmt.Errorf("set run usage: %w", err)
+	}
+	return nil
+}
+
 const runColumns = "id, schedule_id, thread_id, message_id, started_at, finished_at, status, rounds, tokens, cost_nano_usd, duration_ms, error"
 
 func scanRun(row rowScanner) (Run, error) {
@@ -549,13 +559,29 @@ WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list notifications: %w", err)
 	}
+	return scanNotifications(rows)
+}
+
+// ListUnread returns the user's unread notifications of kind, newest first.
+func (st *Store) ListUnread(ctx context.Context, userID, kind string, limit int) ([]Notification, error) {
+	rows, err := st.db.QueryContext(ctx, `
+SELECT id, kind, schedule_id, thread_id, message_id, title, body, created_at, read_at FROM notifications
+WHERE user_id = ? AND kind = ? AND read_at IS NULL ORDER BY created_at DESC, rowid DESC LIMIT ?`, userID, kind, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list unread notifications: %w", err)
+	}
+	return scanNotifications(rows)
+}
+
+func scanNotifications(rows *sql.Rows) ([]Notification, error) {
 	defer func() { _ = rows.Close() }()
 	out := []Notification{}
 	for rows.Next() {
 		var n Notification
 		var scheduleID, threadID, messageID, readAt sql.NullString
 		var created string
-		if err := rows.Scan(&n.ID, &n.Kind, &scheduleID, &threadID, &messageID, &n.Title, &n.Body, &created, &readAt); err != nil {
+		var err error
+		if err = rows.Scan(&n.ID, &n.Kind, &scheduleID, &threadID, &messageID, &n.Title, &n.Body, &created, &readAt); err != nil {
 			return nil, fmt.Errorf("scan notification: %w", err)
 		}
 		n.ScheduleID, n.ThreadID, n.MessageID = nullString(scheduleID), nullString(threadID), nullString(messageID)

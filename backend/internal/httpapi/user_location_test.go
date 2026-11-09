@@ -26,6 +26,8 @@ type fakeLocationLLM struct {
 	today     string
 	stayUntil string
 	err       error
+	// during runs while the model "reads", as another request would.
+	during func()
 }
 
 func (f *fakeLocationLLM) ResolveUserLocation(_ context.Context, facts []llm.FactInput, today string) (llm.UserLocation, error) {
@@ -33,6 +35,9 @@ func (f *fakeLocationLLM) ResolveUserLocation(_ context.Context, facts []llm.Fac
 	defer f.mu.Unlock()
 	f.calls++
 	f.today = today
+	if f.during != nil {
+		f.during()
+	}
 	if f.err != nil {
 		return llm.UserLocation{}, f.err
 	}
@@ -192,6 +197,61 @@ func TestResolveLocationOffOrFailing(t *testing.T) {
 	broken.addFact(t, "In Broken this week")
 	if err := broken.s.resolveLocation(ctx, testUser); err == nil {
 		t.Fatal("an unreadable lookup gave no error")
+	}
+}
+
+// A home fact the model wrote may say more: setting a home keeps it and adds
+// the new one rather than rewriting it.
+func TestSetLocationKeepsARicherFact(t *testing.T) {
+	ctx := context.Background()
+	f := newLocationFixture(t)
+	f.addFact(t, "Lives Zürich with wife Anna, works at Acme")
+	if err := f.s.resolveLocation(ctx, testUser); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	newAuthenticatedServer(t, f.deps).ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/me/location", `{"place":"Lisbon"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set = %d %s", rec.Code, rec.Body)
+	}
+	facts, _ := f.chat.ListActiveUserFacts(ctx, testUser.ID)
+	var contents []string
+	for _, fact := range facts {
+		contents = append(contents, fact.Content)
+	}
+	if len(facts) != 2 || !strings.Contains(strings.Join(contents, "|"), "wife Anna") {
+		t.Fatalf("facts = %v, want the richer one kept", contents)
+	}
+}
+
+// A derivation that waited on the model while the user set a home leaves the
+// home as set.
+func TestResolveLocationLeavesAHomeSetMeanwhile(t *testing.T) {
+	ctx := context.Background()
+	f := newLocationFixture(t)
+	f.addFact(t, "Lives Zürich")
+	userSet := &location.Place{Name: "Lisbon", Kind: location.KindHome}
+	f.llm.during = func() {
+		if err := f.places.Save(ctx, testUser.ID, "set by the user", userSet, nil); err != nil {
+			t.Error(err)
+		}
+	}
+	if err := f.s.resolveLocation(ctx, testUser); err != nil {
+		t.Fatal(err)
+	}
+	if home, _, hash, _ := f.places.Places(ctx, testUser.ID); home == nil || home.Name != "Lisbon" || hash != "set by the user" {
+		t.Fatalf("home = %+v, hash %q: the derivation overwrote it", home, hash)
+	}
+}
+
+// The model reckons stays from last-seen days in the user's zone, the zone
+// "today" is in.
+func TestFactInputsInTheUsersZone(t *testing.T) {
+	la, _ := time.LoadLocation("America/Los_Angeles")
+	// 18:00 on Monday in Los Angeles is Tuesday in UTC.
+	facts := []chat.UserFact{{ID: "f1", Content: "In Rome this week", LastSeen: time.Date(2026, 11, 10, 2, 0, 0, 0, time.UTC)}}
+	if got := factInputsIn(facts, la)[0].LastSeen; got != "2026-11-09" {
+		t.Fatalf("last seen = %s, want the local Monday", got)
 	}
 }
 

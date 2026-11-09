@@ -112,21 +112,6 @@ func (s *UserStore) SetTimezone(ctx context.Context, id, tz string) error {
 	return nil
 }
 
-// MarkTodaySeen records that the user opened the "today" view on day
-// (YYYY-MM-DD, their zone) and reports whether it was the first time that day.
-// One statement, so two tabs opened together see one first visit.
-func (s *UserStore) MarkTodaySeen(ctx context.Context, id, day string) (bool, error) {
-	res, err := s.db.ExecContext(ctx, `UPDATE users SET today_seen_on = ? WHERE id = ? AND today_seen_on <> ?`, day, id, day)
-	if err != nil {
-		return false, fmt.Errorf("mark today seen: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("mark today seen: %w", err)
-	}
-	return n == 1, nil
-}
-
 // ListUsers returns all app-local users ordered for the admin user list.
 func (s *UserStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `

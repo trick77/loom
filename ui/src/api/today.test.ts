@@ -18,7 +18,7 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
   const fetchMock = stubFetch(Response.json({ date: "2026-11-09" }));
   await expect(getToday()).resolves.toEqual({
     date: "2026-11-09",
-    view: "tiles",
+    day: "today",
     location: null,
     askLocation: false,
     sun: null,
@@ -26,34 +26,73 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
     warning: null,
     runs: [],
   });
+  // One plain URL for every screen: no compact flag.
   expect(fetchMock).toHaveBeenCalledWith("/api/today", {
     headers: { "X-Loom-Timezone": browserTimezone() },
   });
 });
 
-test("getToday asks compact for a phone", async () => {
-  const fetchMock = stubFetch(Response.json({}));
-  await getToday({ compact: true });
-  expect(fetchMock).toHaveBeenCalledWith("/api/today?compact=1", {
-    headers: { "X-Loom-Timezone": browserTimezone() },
-  });
-});
+const dayRange = { high: 12, low: 4, code: 3, precipitationProbability: 40 };
+const attribution = { text: "Open-Meteo", url: "https://open-meteo.com/" };
 
 test("getToday keeps a full answer and survives a null one", async () => {
   const full = {
-    date: "2026-11-09",
-    view: "line",
+    date: "2026-11-10",
+    day: "tomorrow",
     location: { name: "Zürich", kind: "home" },
     askLocation: true,
-    sun: null,
-    weather: null,
-    warning: { kind: "rain", from: "17:00" },
+    sun: {
+      rise: "07:27",
+      set: "16:56",
+      dayMinutes: 569,
+      deltaMinutes: -2,
+      polar: "",
+      progress: null,
+    },
+    weather: { now: null, day: dayRange, hours: [], attribution },
+    warning: { kind: "rain", from: "09:00" },
     runs: [{ id: "n1", threadId: null, title: "t", body: "b", createdAt: "x" }],
   };
   stubFetch(Response.json(full));
   await expect(getToday()).resolves.toEqual(full);
+  stubFetch(Response.json({ ...full, day: "yesterday" }));
+  await expect(getToday()).resolves.toMatchObject({ day: "today" });
   stubFetch(Response.json(null));
-  await expect(getToday()).resolves.toMatchObject({ date: "", runs: [] });
+  await expect(getToday()).resolves.toMatchObject({
+    date: "",
+    day: "today",
+    runs: [],
+  });
+});
+
+test("getToday reads the weather defensively", async () => {
+  // The earlier `today` key stands in for `day`; a missing now is none.
+  stubFetch(
+    Response.json({ weather: { today: dayRange, hours: [], attribution } }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    weather: { now: null, day: dayRange },
+  });
+  // Without the day's range there is no forecast to show.
+  stubFetch(Response.json({ weather: { now: { temperature: 1, code: 0 } } }));
+  await expect(getToday()).resolves.toMatchObject({ weather: null });
+  // Missing hours, credit and sun position get safe defaults.
+  stubFetch(
+    Response.json({
+      weather: { day: dayRange },
+      sun: {
+        rise: "07:00",
+        set: "17:00",
+        dayMinutes: 600,
+        deltaMinutes: 0,
+        polar: "",
+      },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    weather: { hours: [], attribution: { text: "", url: "" } },
+    sun: { progress: null },
+  });
 });
 
 test("getToday maps a 401 to an expired session", async () => {

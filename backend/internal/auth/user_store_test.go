@@ -378,24 +378,4 @@ func TestUserStore_SetTimezoneReportsFailures(t *testing.T) {
 	if err := store.SetTimezone(ctx, "u", "UTC"); err == nil {
 		t.Fatal("SetTimezone() on a closed db: error = nil")
 	}
-	if _, err := store.MarkTodaySeen(ctx, "u", "2026-11-09"); err == nil {
-		t.Fatal("MarkTodaySeen() on a closed db: error = nil")
-	}
-}
-
-func TestUserStore_MarkTodaySeen(t *testing.T) {
-	ctx := context.Background()
-	store := NewUserStore(openTestDB(t))
-	user, err := store.UpsertFromClaims(ctx, Claims{Subject: "sub", Username: "jan"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, step := range []struct {
-		day   string
-		first bool
-	}{{"2026-11-09", true}, {"2026-11-09", false}, {"2026-11-10", true}, {"2026-11-10", false}} {
-		if first, err := store.MarkTodaySeen(ctx, user.ID, step.day); err != nil || first != step.first {
-			t.Fatalf("MarkTodaySeen(%s) = %v, %v; want %v", step.day, first, err, step.first)
-		}
-	}
 }

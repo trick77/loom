@@ -17,32 +17,28 @@ export type TodayState =
 // STALE_MS is how old a load may get before a return to the tab reloads it.
 export const STALE_MS = 30 * 60_000;
 
-// NARROW is below Tailwind's sm: there the weather always starts as the line.
-export const NARROW = "(max-width: 639px)";
+// TOMORROW_FROM is the local hour the server starts showing tomorrow.
+const TOMORROW_FROM = 18;
 
-function isNarrow(): boolean {
-  return (
-    typeof window.matchMedia === "function" && window.matchMedia(NARROW).matches
-  );
-}
-
-// localDate is the browser's date, "YYYY-MM-DD".
-function localDate(now = new Date()): string {
+// dayBucket names what the server would show now: the browser's date and
+// whether it is past TOMORROW_FROM. A change means the shown day may flip.
+function dayBucket(now = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return `${date}/${now.getHours() >= TOMORROW_FROM ? "evening" : "day"}`;
 }
 
 // useToday loads the start page's "Today" and keeps it current: it reloads
 // when news is read elsewhere (the bell, a thread) and when the tab comes
-// back on a new day or after a while, and reads runs itself with the card
-// gone before the server answers.
+// back after the shown day may have flipped (midnight, 18:00) or after a
+// while, and reads runs itself with the card gone before the server answers.
 export function useToday() {
   const [state, setState] = useState<TodayState>({ status: "loading" });
   // Runs read here stay hidden even if a reload races the read.
   const [read, setRead] = useState<ReadonlySet<string>>(() => new Set());
   const alive = useRef(true);
-  // When and on which local date the last load answered.
-  const loaded = useRef<{ at: number; date: string } | null>(null);
+  // When and in which day bucket the last load answered.
+  const loaded = useRef<{ at: number; bucket: string } | null>(null);
   // True while this hook announces: the bell and sidebar need those events,
   // a reload here does not (the cards are already gone). dispatchEvent runs
   // the listeners synchronously, so the flag covers exactly those events.
@@ -57,19 +53,11 @@ export function useToday() {
     const mine = ++sent.current;
     pending.current++;
     try {
-      // A phone shows the line whatever the server picks: asking compact
-      // keeps the server from spending the day's tiles on it.
-      const fresh = await getToday({ compact: isNarrow() });
+      const fresh = await getToday();
       if (!alive.current || mine < applied.current) return;
       applied.current = mine;
-      loaded.current = { at: Date.now(), date: localDate() };
-      // The first answer of a day picks tiles or the line; a reload the same
-      // day (news read, a place saved) must not fold the tiles under the user.
-      setState((prev) =>
-        prev.status === "ready" && prev.today.date === fresh.date
-          ? { status: "ready", today: { ...fresh, view: prev.today.view } }
-          : { status: "ready", today: fresh },
-      );
+      loaded.current = { at: Date.now(), bucket: dayBucket() };
+      setState({ status: "ready", today: fresh });
     } catch {
       if (!alive.current || mine < applied.current) return;
       // A failed reload keeps what is showing.
@@ -83,8 +71,7 @@ export function useToday() {
 
   useEffect(() => {
     alive.current = true;
-    // Deferred so StrictMode's mount-unmount-mount sends one GET, not two:
-    // the server picks tiles for the first visit of the day only.
+    // Deferred so StrictMode's mount-unmount-mount sends one GET, not two.
     const first = window.setTimeout(() => void load(), 0);
     // The bell sends NOTIFICATIONS_CHANGED or THREAD_NEWS_CHANGED when news
     // was read or found there; this hook's own announcements are skipped.
@@ -99,7 +86,7 @@ export function useToday() {
         if (sent.current > 0 && pending.current === 0) void load();
         return;
       }
-      if (last.date !== localDate() || Date.now() - last.at > STALE_MS)
+      if (last.bucket !== dayBucket() || Date.now() - last.at > STALE_MS)
         void load();
     };
     window.addEventListener(NOTIFICATIONS_CHANGED, onChanged);

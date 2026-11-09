@@ -10,7 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import * as api from "../api";
-import { todayFixture } from "../test/today";
+import { todayFixture, tomorrowFixture } from "../test/today";
 import { StartPanel } from "./StartPanel";
 
 vi.mock("../api", async () => {
@@ -159,7 +159,7 @@ test("marking a run read removes its card and tells the bell and sidebar", async
     name: /New from your schedules/,
   });
   vi.mocked(api.getToday).mockResolvedValue(
-    todayFixture({ view: "line", runs: [todayFixture().runs[1]] }),
+    todayFixture({ runs: [todayFixture().runs[1]] }),
   );
   const first = within(news).getAllByRole("article")[0];
   fireEvent.click(within(first).getByRole("button", { name: "Mark as read" }));
@@ -266,10 +266,7 @@ test("news read elsewhere reloads today; a failed reload keeps it", async () => 
   await waitFor(() => expect(api.getToday).toHaveBeenCalledTimes(2));
   expect(screen.getAllByRole("article")).toHaveLength(2);
 
-  // The same day's reload keeps this visit's tiles.
-  vi.mocked(api.getToday).mockResolvedValue(
-    todayFixture({ view: "line", runs: [] }),
-  );
+  vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
   act(() => api.announce(api.NOTIFICATIONS_CHANGED));
   await waitFor(() => expect(screen.queryAllByRole("article")).toHaveLength(0));
   expect(screen.getByRole("region", { name: /^Today · / })).toBeInTheDocument();
@@ -285,19 +282,15 @@ test("news the bell read or found reloads today", async () => {
   expect(api.getToday).toHaveBeenCalledTimes(2);
 });
 
-test("a reload that brings a new day takes its view", async () => {
-  vi.mocked(api.getToday).mockResolvedValue(
-    todayFixture({ view: "line", runs: [] }),
-  );
+test("a reload shows the day the server now shows", async () => {
+  vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
   renderStart();
-  await screen.findByRole("region", { name: "Today" });
-  vi.mocked(api.getToday).mockResolvedValue(
-    todayFixture({ date: "2026-11-10", view: "tiles", runs: [] }),
-  );
+  await screen.findByRole("region", { name: "Today · Monday, November 9" });
+  vi.mocked(api.getToday).mockResolvedValue(tomorrowFixture({ runs: [] }));
   act(() => api.announce(api.NOTIFICATIONS_CHANGED));
   expect(
     await screen.findByRole("region", {
-      name: "Today · Tuesday, November 10",
+      name: "Tomorrow · Tuesday, November 10",
     }),
   ).toBeInTheDocument();
 });
@@ -318,7 +311,7 @@ test("an older answer never overwrites a newer one", async () => {
   expect(screen.queryAllByRole("article")).toHaveLength(0);
 });
 
-test("a phone asks for the compact answer", async () => {
+test("a phone asks the same and gets the tiles", async () => {
   vi.stubGlobal(
     "matchMedia",
     vi.fn().mockImplementation((query: string) => ({
@@ -331,9 +324,10 @@ test("a phone asks for the compact answer", async () => {
   try {
     vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
     renderStart();
-    await waitFor(() =>
-      expect(api.getToday).toHaveBeenCalledWith({ compact: true }),
-    );
+    expect(
+      await screen.findByRole("list", { name: "Next hours" }),
+    ).toBeInTheDocument();
+    expect(api.getToday).toHaveBeenCalledWith();
   } finally {
     vi.unstubAllGlobals();
   }
@@ -374,16 +368,13 @@ describe("returning to the tab", () => {
       await screen.findByRole("region", { name: /^Today · / }),
     ).toBeInTheDocument();
     expect(api.getToday).toHaveBeenCalledTimes(2);
-    expect(api.getToday).toHaveBeenCalledWith({ compact: false });
+    expect(api.getToday).toHaveBeenCalledWith();
   });
 
-  test("reloads only when the last load is stale, keeping the tiles", async () => {
+  test("reloads only when the last load is stale", async () => {
     vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
     renderStart();
     await screen.findByRole("region", { name: /^Today · / });
-    vi.mocked(api.getToday).mockResolvedValue(
-      todayFixture({ view: "line", runs: [] }),
-    );
 
     comeBack(new Date(2026, 10, 9, 10, 20));
     visibility = "hidden";
@@ -399,18 +390,29 @@ describe("returning to the tab", () => {
     ).toBeInTheDocument();
   });
 
-  test("a new day takes the new answer's view", async () => {
-    vi.mocked(api.getToday).mockResolvedValue(
-      todayFixture({ view: "line", runs: [] }),
-    );
+  test("crossing 18:00 reloads tomorrow, even within half an hour", async () => {
+    vi.setSystemTime(new Date(2026, 10, 9, 17, 50));
+    vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
     renderStart();
+    await screen.findByRole("region", { name: /^Today · / });
+    vi.mocked(api.getToday).mockResolvedValue(tomorrowFixture({ runs: [] }));
+    comeBack(new Date(2026, 10, 9, 18, 5));
     expect(
-      await screen.findByRole("region", { name: "Today" }),
+      await screen.findByRole("region", {
+        name: "Tomorrow · Tuesday, November 10",
+      }),
     ).toBeInTheDocument();
+  });
+
+  test("crossing midnight reloads too", async () => {
+    vi.setSystemTime(new Date(2026, 10, 9, 23, 50));
+    vi.mocked(api.getToday).mockResolvedValue(tomorrowFixture({ runs: [] }));
+    renderStart();
+    await screen.findByRole("region", { name: /^Tomorrow · / });
     vi.mocked(api.getToday).mockResolvedValue(
-      todayFixture({ date: "2026-11-10", view: "tiles", runs: [] }),
+      todayFixture({ date: "2026-11-10", runs: [] }),
     );
-    comeBack(new Date(2026, 10, 10, 7, 0));
+    comeBack(new Date(2026, 10, 10, 0, 10));
     expect(
       await screen.findByRole("region", {
         name: "Today · Tuesday, November 10",
