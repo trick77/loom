@@ -344,15 +344,22 @@ func Teaser(answer string) string {
 }
 
 func plainTeaserLine(line string) string {
-	line = teaserListMark.ReplaceAllString(line, "")
+	return PlainLine(line, maxTeaserLength)
+}
+
+// PlainLine is markdown text as one plain line for a notification: list
+// marks, emphasis, links and citation numbers taken off, cut on a word
+// within max runes with an ellipsis.
+func PlainLine(line string, max int) string {
+	line = teaserListMark.ReplaceAllString(strings.TrimSpace(line), "")
 	line = teaserLink.ReplaceAllString(line, "$1")
 	line = teaserCitation.ReplaceAllString(line, "")
 	line = strings.Join(strings.Fields(teaserMarks.Replace(line)), " ")
 	r := []rune(line)
-	if len(r) <= maxTeaserLength {
+	if len(r) <= max {
 		return line
 	}
-	cut := string(r[:maxTeaserLength])
+	cut := string(r[:max-1])
 	if i := strings.LastIndex(cut, " "); i > len(cut)/2 {
 		cut = cut[:i]
 	}

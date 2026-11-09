@@ -79,15 +79,21 @@ func TestScheduledRunNotifiesWithTheSummary(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
 	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
-	f.sllm.summary = "Dune: Part Three opens on 17 December at the Arena."
+	// Markdown the model emits anyway is flattened like the fallback line.
+	f.sllm.summary = "**Dune: Part Three** opens on [17 December](https://arena.ch) at the Arena [1]."
 	s := newRunnerServer(t, f, researchClient("## Films\n- Dune: Part Three opens 17 Dec [1]."))
 	sch := newRunnerSchedule(t, f)
 
 	s.runSchedule(ctx, sch, timedRun)
 
 	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
-	if len(notes) != 1 || notes[0].Body != f.sllm.summary {
-		t.Fatalf("notifications = %+v, want the summary as body", notes)
+	if len(notes) != 1 || notes[0].Body != "Dune: Part Three opens on 17 December at the Arena." {
+		t.Fatalf("notifications = %+v, want the plain summary as body", notes)
+	}
+	// The run was recorded before the summary was written: it is not
+	// counted as running while the user is told.
+	if runs, _ := f.store.ListRuns(ctx, testUser.ID, sch.ID, 1); len(runs) != 1 || runs[0].Status != schedule.StatusNew {
+		t.Fatalf("runs = %+v", runs)
 	}
 	if f.sllm.summaryLanguage != testUser.ResponseLanguageName() {
 		t.Fatalf("summary language = %q, want the user's %q", f.sllm.summaryLanguage, testUser.ResponseLanguageName())

@@ -250,6 +250,8 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	// be; a timed one drops its own thread too.
 	var replacing string
 	var nothingNew bool
+	// announce, once set, tells the user about the run after it is recorded.
+	var announce func()
 	finish := func() {
 		run.DurationMS = s.clock().Sub(start).Milliseconds()
 		if err := s.schedules.FinishRun(detached, sch.UserID, run, s.clock()); err != nil {
@@ -283,6 +285,9 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		finish()
 		if replacing != "" {
 			s.replaceRunThreads(detached, sch.UserID, sch.ID, replacing)
+		}
+		if announce != nil {
+			announce()
 		}
 	}()
 
@@ -444,24 +449,31 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	if len(reported) == 0 {
 		return
 	}
-	summaryCtx, cancelSummary := context.WithTimeout(
-		llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), summaryTimeout)
-	defer cancelSummary()
-	s.notify(detached, user.ID, schedule.Notification{
-		Kind:       schedule.KindScheduleRun,
-		ScheduleID: &sch.ID,
-		ThreadID:   &thread.ID,
-		MessageID:  &assistant.ID,
-		Title:      sch.Name,
-		Body:       s.runSummary(summaryCtx, user, sch, result.Content),
-	})
+	// The summary is written after the run is recorded: its call counts
+	// neither toward the run's duration (which the next run's prompt reads)
+	// nor keeps the thread refusing replies as still running.
+	announce = func() {
+		summaryCtx, cancelSummary := context.WithTimeout(
+			llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), summaryTimeout)
+		defer cancelSummary()
+		body := s.runSummary(summaryCtx, user, sch, result.Content)
+		costs.Settle(detached)
+		s.notify(detached, user.ID, schedule.Notification{
+			Kind:       schedule.KindScheduleRun,
+			ScheduleID: &sch.ID,
+			ThreadID:   &thread.ID,
+			MessageID:  &assistant.ID,
+			Title:      sch.Name,
+			Body:       body,
+		})
+	}
 }
 
 // runSummary is a run's notification body: the model's short summary of the
-// answer, or the answer's first line when that fails.
+// answer as plain text, or the answer's first line when that fails.
 func (s *server) runSummary(ctx context.Context, user auth.User, sch schedule.Schedule, answer string) string {
 	summary, err := s.scheduleLLM.SummarizeRun(ctx, sch.Prompt, answer, user.ResponseLanguageName())
-	if err != nil {
+	if summary = schedule.PlainLine(summary, llm.RunSummaryMaxChars); err != nil || summary == "" {
 		slog.Warn("summarize scheduled run failed", "schedule_id", sch.ID, "err", err)
 		return schedule.Teaser(answer)
 	}

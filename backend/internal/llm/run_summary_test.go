@@ -10,7 +10,7 @@ import (
 
 func TestSummarizeRun(t *testing.T) {
 	var body string
-	srv := intentServer(t, "\"Two new listings under your limit [1], one with a balcony on Nordstrasse [2].\"", &body)
+	srv := intentServer(t, "Summary: \"Two new listings under your limit, one with a balcony on Nordstrasse.\"", &body)
 	defer srv.Close()
 	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
 	got, err := c.SummarizeRun(context.Background(), "find flats", "## Flats\n- Nordstrasse 12 [2]", "German")
@@ -20,7 +20,7 @@ func TestSummarizeRun(t *testing.T) {
 	if want := "Two new listings under your limit, one with a balcony on Nordstrasse."; got != want {
 		t.Fatalf("summary = %q, want %q", got, want)
 	}
-	for _, part := range []string{"find flats", "Nordstrasse 12", "German"} {
+	for _, part := range []string{"find flats", "Nordstrasse 12", "German", "at most 200 characters"} {
 		if !strings.Contains(body, part) {
 			t.Fatalf("request lacks %q: %s", part, body)
 		}
@@ -30,7 +30,7 @@ func TestSummarizeRun(t *testing.T) {
 func TestSummarizeRunFailures(t *testing.T) {
 	for name, payload := range map[string]string{
 		"cut off": `{"choices":[{"message":{"role":"assistant","content":"Two new"},"finish_reason":"length"}]}`,
-		"empty":   `{"choices":[{"message":{"role":"assistant","content":"  [1] "},"finish_reason":"stop"}]}`,
+		"empty":   `{"choices":[{"message":{"role":"assistant","content":" \"\" "},"finish_reason":"stop"}]}`,
 		"none":    `{"choices":[]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -55,13 +55,17 @@ func TestSummarizeRunFailures(t *testing.T) {
 	}
 }
 
-func TestCleanRunSummaryCapsLength(t *testing.T) {
-	long := strings.Repeat("word ", 100)
-	got := cleanRunSummary(long)
-	if n := len([]rune(got)); n > runSummaryMaxChars {
-		t.Fatalf("length = %d, want <= %d", n, runSummaryMaxChars)
-	}
-	if !strings.HasSuffix(got, "word…") {
-		t.Fatalf("summary = %q, want a whole last word and an ellipsis", got)
+func TestUnwrapSummary(t *testing.T) {
+	for in, want := range map[string]string{
+		"„Zwei neue Wohnungen.“":       "Zwei neue Wohnungen.",
+		"«Deux films.»":                "Deux films.",
+		"'Quoted.'":                    "Quoted.",
+		"Listed by the Joneses'":       "Listed by the Joneses'",
+		"summary: Two films.":          "Two films.",
+		"Note: the Arena opens at 18.": "Note: the Arena opens at 18.",
+	} {
+		if got := unwrapSummary(in); got != want {
+			t.Errorf("unwrapSummary(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
