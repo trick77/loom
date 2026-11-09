@@ -50,6 +50,14 @@ func todayForecastJSON() string {
 "attribution":{"text":"Weather data by Example","url":"https://weather.example/"}}`
 }
 
+// todayAirJSON is the air in Zurich from 08:00 on 9 November: birch
+// moderate and grass low today, tomorrow only a trace of grass.
+const todayAirJSON = `{"hourly":[{"time":"2026-11-09T08:00","aqi":18},{"time":"2026-11-09T09:00","aqi":45},
+ {"time":"2026-11-09T21:00","aqi":30}],
+"daily":[{"date":"2026-11-09","aqiMax":45,"pollen":{"birch":42.4,"grass":3,"olive":500,"alder":0.4}},
+ {"date":"2026-11-10","aqiMax":64,"pollen":{"grass":0.2}}],
+"attribution":{"text":"Air by Example","url":"https://air.example/"}}`
+
 func outlookDates(w *todayWeather) string {
 	var dates []string
 	for _, d := range w.Outlook {
@@ -66,6 +74,8 @@ type todayFixture struct {
 	forecastDays any
 	// forecastJSON answers the forecast; todayForecastJSON when empty.
 	forecastJSON string
+	// airErr fails the air quality call.
+	airErr error
 }
 
 // morning is 08:14 in Zurich on 9 November; dusk 19:30, evening 20:30.
@@ -88,8 +98,11 @@ func newTodayFixture(t *testing.T, withPlace bool) *todayFixture {
 	t.Cleanup(func() { _ = bg.Stop(10 * time.Second) })
 	geo := f.geo.call
 	f.deps.MCP = fakeMCPService{
-		Available: map[string]bool{geocodeTool: true, forecastTool: true},
+		Available: map[string]bool{geocodeTool: true, forecastTool: true, airQualityTool: true},
 		CallFunc: func(ctx context.Context, name string, args map[string]any) (string, error) {
+			if name == airQualityTool {
+				return todayAirJSON, tf.airErr
+			}
 			if name == forecastTool {
 				tf.forecastDays = args["days"]
 				if tf.forecastJSON != "" {
@@ -200,6 +213,16 @@ func TestToday(t *testing.T) {
 	if tf.forecastDays != 7 {
 		t.Fatalf("asked %v days, want 7: the outlook on the evening reaches six days ahead", tf.forecastDays)
 	}
+	// The air now and today's pollen by their load classes: a trace is none,
+	// a kind without classes (olive) is left out.
+	a := got.Air
+	if a == nil || *a.AQI != 18 || a.Level != "good" || a.Max || a.Attribution.URL != "https://air.example/" {
+		t.Fatalf("air = %+v", a)
+	}
+	if len(a.Pollen) != 2 || a.Pollen[0] != (todayPollen{Kind: "birch", Level: "moderate"}) ||
+		a.Pollen[1] != (todayPollen{Kind: "grass", Level: "low"}) {
+		t.Fatalf("pollen = %+v", a.Pollen)
+	}
 	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "17:00" || got.Warning.Day != dayToday {
 		t.Fatalf("warning = %+v", got.Warning)
 	}
@@ -244,6 +267,10 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	}
 	if outlookDates(w) != "2026-11-11,2026-11-12,2026-11-13,2026-11-14,2026-11-15" {
 		t.Fatalf("outlook after tomorrow = %v", outlookDates(w))
+	}
+	// Tomorrow's air is its worst, no pollen worth a class.
+	if a := got.Air; a == nil || *a.AQI != 64 || a.Level != "poor" || !a.Max || len(a.Pollen) != 0 {
+		t.Fatalf("tomorrow's air = %+v", got.Air)
 	}
 	// Its low reaches what the hours say: the days are fetched less often
 	// than the hours, the range never leaves an hour out.
@@ -330,6 +357,44 @@ func TestTodayFromABasicWeatherServer(t *testing.T) {
 	}
 	if outlookDates(w) != "2026-11-10" {
 		t.Fatalf("outlook = %v, want the one day after today it has", outlookDates(w))
+	}
+}
+
+// The air is optional: a failing call or a server without the tool costs the
+// air card, never the weather.
+func TestTodayWithoutTheAir(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.airErr = errors.New("air down")
+	if got := tf.get(t); got.Air != nil || got.Weather == nil {
+		t.Fatalf("failed air: air %+v, weather %+v", got.Air, got.Weather)
+	}
+	tf = newTodayFixture(t, true)
+	svc := tf.deps.MCP.(fakeMCPService)
+	delete(svc.Available, airQualityTool)
+	if got := tf.get(t); got.Air != nil || got.Weather == nil {
+		t.Fatalf("no air tool: air %+v, weather %+v", got.Air, got.Weather)
+	}
+}
+
+func TestAirLevels(t *testing.T) {
+	for aqi, want := range map[int]string{0: "good", 20: "good", 21: "fair", 40: "fair", 55: "moderate", 80: "poor",
+		81: "veryPoor", 100: "veryPoor", 101: "extremelyPoor"} {
+		if got := aqiLevel(aqi); got != want {
+			t.Errorf("aqi %d = %s, want %s", aqi, got, want)
+		}
+	}
+	for _, tc := range []struct {
+		kind  string
+		value float64
+		want  string
+	}{
+		{"birch", 0.4, ""}, {"birch", 1, "low"}, {"birch", 10.4, "low"}, {"birch", 11, "moderate"},
+		{"birch", 299, "high"}, {"birch", 300, "veryHigh"}, {"grass", 150, "veryHigh"}, {"grass", 49, "moderate"},
+		{"alder", 250, "veryHigh"}, {"mugwort", 6, "moderate"}, {"ragweed", 40, "veryHigh"}, {"olive", 500, ""},
+	} {
+		if got := pollenLevel(tc.kind, tc.value); got != tc.want {
+			t.Errorf("%s %v = %q, want %q", tc.kind, tc.value, got, tc.want)
+		}
 	}
 }
 

@@ -350,14 +350,26 @@ test("without anything to show the section is empty", () => {
 
 test("a credit link that is not a web address stays text", () => {
   const weather = todayFixture().weather!;
+  const air = todayFixture().air!;
   show({
     weather: {
       ...weather,
       attribution: { text: "Weather data", url: "javascript:alert(1)" },
     },
+    air: { ...air, attribution: { text: "Air data", url: "data:x" } },
   });
   expect(screen.getByText("Weather data")).toBeInTheDocument();
+  expect(screen.getByText("Air data")).toBeInTheDocument();
   expect(screen.queryByRole("link")).toBeNull();
+});
+
+test("the air's credit shows beside the weather's", () => {
+  show();
+  expect(
+    screen.getByRole("link", {
+      name: "Air quality by Open-Meteo.com, CAMS data",
+    }),
+  ).toHaveAttribute("href", "https://open-meteo.com/en/docs/air-quality-api");
 });
 
 test("unread runs open their thread or are marked read", () => {

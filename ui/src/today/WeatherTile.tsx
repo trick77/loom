@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { Today, TodayWeather } from "../api/today";
 import { Carousel, type Slide } from "./Carousel";
 import { degrees } from "./format";
-import { DetailsCard, OutlookCard, RainCard } from "./WeatherCards";
+import { AirCard, DetailsCard, OutlookCard, RainCard } from "./WeatherCards";
 import {
   conditionFor,
   conditionLabelKey,
@@ -18,7 +18,7 @@ export const TILE =
 
 type WeatherTileProps = {
   weather: TodayWeather;
-  today: Pick<Today, "day" | "sun" | "warning">;
+  today: Pick<Today, "day" | "sun" | "warning" | "air">;
 };
 
 // WeatherTile is the weather's cards to turn through: the sky now (or
@@ -51,6 +51,12 @@ export function WeatherTile({ weather, today }: WeatherTileProps) {
       key: "outlook",
       name: t("today.cards.outlook"),
       content: <OutlookCard days={weather.outlook} />,
+    });
+  if (today.air)
+    slides.push({
+      key: "air",
+      name: t("today.cards.air"),
+      content: <AirCard air={today.air} />,
     });
   return (
     <div className={TILE}>

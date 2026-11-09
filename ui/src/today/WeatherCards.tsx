@@ -1,6 +1,12 @@
 import { useTranslation } from "react-i18next";
 
-import type { TodayDetails, TodayOutlookDay, TodayRain } from "../api/today";
+import type {
+  TodayAir,
+  TodayDetails,
+  TodayOutlookDay,
+  TodayPollen,
+  TodayRain,
+} from "../api/today";
 import { degrees } from "./format";
 import { conditionFor, conditionLabelKey } from "./weatherCodes";
 import { WeatherIcon } from "./WeatherIcon";
@@ -247,5 +253,70 @@ export function OutlookCard({ days }: { days: TodayOutlookDay[] }) {
         );
       })}
     </ul>
+  );
+}
+
+const POLLEN_STEPS: Record<TodayPollen["level"], number> = {
+  low: 1,
+  moderate: 2,
+  high: 3,
+  veryHigh: 4,
+};
+
+// AirCard is the air quality index with its band and the pollen worth a
+// load class, each as four steps; tomorrow the index is the day's highest.
+export function AirCard({ air }: { air: TodayAir }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-3">
+      {air.aqi !== null && (
+        <div className="flex flex-col">
+          <span className="text-[12px] text-muted">
+            {t(air.max ? "today.air.qualityMax" : "today.air.quality")}
+          </span>
+          <span className="text-[15px] text-ink" data-testid="air-quality">
+            {air.level === ""
+              ? Math.round(air.aqi)
+              : `${Math.round(air.aqi)} · ${t(`today.air.levels.${air.level}`)}`}
+          </span>
+        </div>
+      )}
+      {air.pollen.length === 0 ? (
+        <p className="text-[13px] text-muted">{t("today.air.noPollen")}</p>
+      ) : (
+        <ul
+          aria-label={t("today.air.pollen")}
+          className="flex flex-col gap-1.5 text-[13px]"
+        >
+          {air.pollen.map((pollen) => {
+            const steps = POLLEN_STEPS[pollen.level];
+            return (
+              <li className="flex items-center gap-3" key={pollen.kind}>
+                <span className="w-20 shrink-0 text-ink-soft">
+                  {t(`today.air.kinds.${pollen.kind}`)}
+                </span>
+                <span aria-hidden="true" className="flex gap-0.5">
+                  {[1, 2, 3, 4].map((step) => (
+                    <span
+                      className={`h-1.5 w-4 rounded-full ${
+                        step > steps
+                          ? "bg-track"
+                          : steps >= 3
+                            ? "bg-accent"
+                            : "bg-ink-dim"
+                      }`}
+                      key={step}
+                    />
+                  ))}
+                </span>
+                <span className="text-muted">
+                  {t(`today.air.pollenLevels.${pollen.level}`)}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

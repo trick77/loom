@@ -27,7 +27,7 @@ const shown = () => {
 test("the tile opens on now, the other cards out of view", () => {
   show(todayFixture());
   expect(cardName()).toHaveTextContent("Now");
-  expect(shown()).toHaveAccessibleName("Now, 1 of 4");
+  expect(shown()).toHaveAccessibleName("Now, 1 of 5");
   expect(within(shown()).getByText("10°")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Previous card" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Now" })).toHaveAttribute(
@@ -36,7 +36,7 @@ test("the tile opens on now, the other cards out of view", () => {
   );
   // The rest are rendered beside it, inert: the tallest sets the height.
   const hidden = within(carousel()).getAllByRole("group", { hidden: true });
-  expect(hidden).toHaveLength(4);
+  expect(hidden).toHaveLength(5);
   for (const slide of hidden.slice(1)) {
     expect(slide).toHaveAttribute("aria-hidden", "true");
     expect(slide).toHaveAttribute("inert");
@@ -132,7 +132,37 @@ test("outlook: the days after the shown one", () => {
   ).toBeInTheDocument();
   // An unlikely rain is left out.
   expect(days[3]).not.toHaveTextContent("%");
+});
+
+test("air: the index now with its band, the pollen by load class", () => {
+  show(todayFixture());
+  fireEvent.click(screen.getByRole("button", { name: "Air & pollen" }));
+  expect(cardName()).toHaveTextContent("Air & pollen");
+  const card = shown();
+  expect(within(card).getByText("Air quality")).toBeInTheDocument();
+  expect(within(card).getByTestId("air-quality")).toHaveTextContent(
+    "18 · good",
+  );
+  const pollen = within(
+    within(card).getByRole("list", { name: "Pollen" }),
+  ).getAllByRole("listitem");
+  expect(pollen.map((li) => li.textContent)).toEqual([
+    "Birchmoderate",
+    "Grasshigh",
+  ]);
+  // The last card: nothing further.
   expect(screen.getByRole("button", { name: "Next card" })).toBeDisabled();
+});
+
+test("tomorrow's air is its worst; no pollen says so", () => {
+  show(tomorrowFixture());
+  fireEvent.click(screen.getByRole("button", { name: "Air & pollen" }));
+  const card = shown();
+  expect(within(card).getByText("Air quality, worst")).toBeInTheDocument();
+  expect(within(card).getByTestId("air-quality")).toHaveTextContent(
+    "64 · poor",
+  );
+  expect(within(card).getByText("Hardly any pollen")).toBeInTheDocument();
 });
 
 test("arrow keys and swipes turn the cards, within their ends", () => {
@@ -163,7 +193,11 @@ test("arrow keys and swipes turn the cards, within their ends", () => {
 });
 
 test("without further cards there is nothing to turn", () => {
-  show(todayFixture(), { details: null, rain: null, outlook: null });
+  show(todayFixture({ air: null }), {
+    details: null,
+    rain: null,
+    outlook: null,
+  });
   expect(screen.queryByRole("button", { name: "Next card" })).toBeNull();
   expect(screen.queryByTestId("card-name")).toBeNull();
   expect(within(shown()).getByText("10°")).toBeInTheDocument();

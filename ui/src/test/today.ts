@@ -49,6 +49,7 @@ export function tomorrowFixture(overrides: Partial<Today> = {}): Today {
         date: `2026-11-${11 + i}`,
       })),
     },
+    air: { ...base.air!, aqi: 64, level: "poor", max: true, pollen: [] },
     ...overrides,
   });
 }
@@ -157,6 +158,19 @@ export function todayFixture(overrides: Partial<Today> = {}): Today {
       attribution: {
         text: "Weather data by Open-Meteo.com",
         url: "https://open-meteo.com/",
+      },
+    },
+    air: {
+      aqi: 18,
+      level: "good",
+      max: false,
+      pollen: [
+        { kind: "birch", level: "moderate" },
+        { kind: "grass", level: "high" },
+      ],
+      attribution: {
+        text: "Air quality by Open-Meteo.com, CAMS data",
+        url: "https://open-meteo.com/en/docs/air-quality-api",
       },
     },
     warning: null,

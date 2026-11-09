@@ -360,7 +360,7 @@ services:
     # loom's weather over MCP (docs/weather.md): Open-Meteo answers, no key.
     # Every route needs WEATHER_TOKEN: the provider's free tier is limited per
     # IP; unset, it refuses every call and the weather is off. Keeps forecasts
-    # per place in memory (hours for the hour, days for 3 h). Stateless: no volume.
+    # per place in memory (hours for the hour, days 3 h, air 6 h). Stateless: no volume.
     image: ghcr.io/trick77/loom-weather:latest
     restart: unless-stopped
     # Small Go service proxying JSON to Open-Meteo.

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
@@ -18,8 +19,12 @@ import (
 	"github.com/trick77/ship/kit/httpx"
 )
 
-// forecastTool is the weather sidecar's forecast (docs/weather.md).
-var forecastTool = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool)
+// forecastTool and airQualityTool are the weather sidecar's (docs/weather.md);
+// the air is optional.
+var (
+	forecastTool   = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool)
+	airQualityTool = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherAirQualityTool)
+)
 
 const (
 	// forecastTimeout bounds the start page's forecast: the whole answer,
@@ -62,6 +67,7 @@ type todayResponse struct {
 	AskLocation bool            `json:"askLocation"`
 	Sun         *todaySun       `json:"sun"`
 	Weather     *todayWeather   `json:"weather"`
+	Air         *todayAir       `json:"air"`
 	Warning     *todayWarning   `json:"warning"`
 	Runs        []todayRun      `json:"runs"`
 	// RefreshAt is when the day shown changes next: the page reloads then.
@@ -137,6 +143,35 @@ type todayHour struct {
 	Temperature              float64 `json:"temperature"`
 	Code                     int     `json:"code"`
 	PrecipitationProbability *int    `json:"precipitationProbability"`
+}
+
+// todayAir is the air on the shown day: today the index now, tomorrow its
+// highest (Max), and the pollen worth a load class.
+type todayAir struct {
+	AQI         *int          `json:"aqi"`
+	Level       string        `json:"level"`
+	Max         bool          `json:"max"`
+	Pollen      []todayPollen `json:"pollen"`
+	Attribution attribution   `json:"attribution"`
+}
+
+type todayPollen struct {
+	Kind  string `json:"kind"`
+	Level string `json:"level"`
+}
+
+// airAnswer is the air_quality tool's answer, as far as the page reads it.
+type airAnswer struct {
+	Hourly []struct {
+		Time string `json:"time"`
+		AQI  *int   `json:"aqi"`
+	} `json:"hourly"`
+	Daily []struct {
+		Date   string             `json:"date"`
+		AQIMax *int               `json:"aqiMax"`
+		Pollen map[string]float64 `json:"pollen"`
+	} `json:"daily"`
+	Attribution attribution `json:"attribution"`
 }
 
 type attribution struct {
@@ -244,6 +279,13 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 	out.RefreshAt = &refreshAt
 	if p := out.Location; p != nil {
 		out.Sun = sunOn(now, shown, p, loc)
+		// Both wait together: the page waits on the slower, not the sum.
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			if a, ok := s.airFor(ctx, p, loc); ok {
+				out.Air = airOn(a, local, shown, tomorrow)
+			}
+		})
 		if f, ok := s.forecastFor(ctx, p, loc); ok {
 			if tomorrow {
 				out.Weather, out.Warning = tomorrowForecast(f, local, shown)
@@ -251,6 +293,7 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 				out.Weather, out.Warning = todayForecast(f, local)
 			}
 		}
+		wg.Wait()
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
@@ -362,6 +405,118 @@ func (s *server) forecastFor(ctx context.Context, p *location.Place, loc *time.L
 		return forecast{}, false
 	}
 	return f, true
+}
+
+// airFor asks the weather sidecar for the air at the place; ok is false when
+// it cannot say or has no such tool.
+func (s *server) airFor(ctx context.Context, p *location.Place, loc *time.Location) (airAnswer, bool) {
+	if !s.mcp.HasTool(airQualityTool) {
+		return airAnswer{}, false
+	}
+	ctx, cancel := context.WithTimeout(ctx, forecastTimeout)
+	defer cancel()
+	text, err := s.mcp.CallTool(ctx, airQualityTool, map[string]any{
+		"latitude": p.Latitude, "longitude": p.Longitude, "timezone": loc.String(), "days": 2,
+	})
+	if err != nil {
+		slog.Warn("air quality failed", "err", err)
+		return airAnswer{}, false
+	}
+	var a airAnswer
+	if err := json.Unmarshal([]byte(text), &a); err != nil {
+		slog.Warn("air quality unreadable", "err", err)
+		return airAnswer{}, false
+	}
+	return a, true
+}
+
+// airOn is the air on the shown day: today the index this hour, tomorrow its
+// highest; nil when neither the index nor any pollen is known.
+func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
+	date := shown.Format(time.DateOnly)
+	out := &todayAir{Pollen: []todayPollen{}, Attribution: a.Attribution, Max: tomorrow}
+	if !tomorrow {
+		current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
+		for _, h := range a.Hourly {
+			if h.Time >= current {
+				out.AQI = h.AQI
+				break
+			}
+		}
+	}
+	for _, d := range a.Daily {
+		if d.Date != date {
+			continue
+		}
+		if tomorrow {
+			out.AQI = d.AQIMax
+		}
+		for _, kind := range pollenOrder {
+			if v, ok := d.Pollen[kind]; ok {
+				if level := pollenLevel(kind, v); level != "" {
+					out.Pollen = append(out.Pollen, todayPollen{Kind: kind, Level: level})
+				}
+			}
+		}
+	}
+	if out.AQI != nil {
+		out.Level = aqiLevel(*out.AQI)
+	}
+	if out.AQI == nil && len(out.Pollen) == 0 {
+		return nil
+	}
+	return out
+}
+
+// aqiLevel is the European air quality index's band (EEA): good to 20, fair
+// to 40, moderate to 60, poor to 80, very poor to 100, extremely poor above.
+func aqiLevel(aqi int) string {
+	switch {
+	case aqi <= 20:
+		return "good"
+	case aqi <= 40:
+		return "fair"
+	case aqi <= 60:
+		return "moderate"
+	case aqi <= 80:
+		return "poor"
+	case aqi <= 100:
+		return "veryPoor"
+	}
+	return "extremelyPoor"
+}
+
+// pollenOrder is the kinds the page shows, in the season's order; olive has
+// no class here (it barely flies north of the Alps).
+var pollenOrder = []string{"alder", "birch", "grass", "mugwort", "ragweed"}
+
+// pollenClasses are where a kind's moderate, high and very high loads start,
+// in grains/m³ as a daily mean; low is from 1. MeteoSwiss, "Threshold values
+// for pollen load classes of allergenic pollen types" (2024-01-10).
+var pollenClasses = map[string][3]float64{
+	"alder":   {11, 70, 250},
+	"birch":   {11, 70, 300},
+	"grass":   {20, 50, 150},
+	"mugwort": {6, 15, 50},
+	"ragweed": {6, 11, 40},
+}
+
+// pollenLevel is a kind's load class for a day's mean; "" when below low or
+// the kind has no classes.
+func pollenLevel(kind string, mean float64) string {
+	classes, ok := pollenClasses[kind]
+	v := math.Round(mean)
+	switch {
+	case !ok || v < 1:
+		return ""
+	case v >= classes[2]:
+		return "veryHigh"
+	case v >= classes[1]:
+		return "high"
+	case v >= classes[0]:
+		return "moderate"
+	}
+	return "low"
 }
 
 // todayForecast reads the start page's weather off the forecast from the

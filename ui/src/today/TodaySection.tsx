@@ -46,7 +46,15 @@ function WeatherBlock({
         <WeatherTile today={today} weather={weather} />
         {today.sun !== null && <SunTile day={today.day} sun={today.sun} />}
       </div>
-      <Attribution attribution={weather.attribution} className="text-right" />
+      <div className="flex flex-col items-end gap-0.5">
+        <Attribution attribution={weather.attribution} className="text-right" />
+        {today.air && (
+          <Attribution
+            attribution={today.air.attribution}
+            className="text-right"
+          />
+        )}
+      </div>
     </section>
   );
 }

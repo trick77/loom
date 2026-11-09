@@ -23,6 +23,7 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
     askLocation: false,
     sun: null,
     weather: null,
+    air: null,
     warning: null,
     runs: [],
     refreshAt: null,
@@ -76,6 +77,13 @@ test("getToday keeps a full answer and survives a null one", async () => {
       ],
       attribution,
     },
+    air: {
+      aqi: 64,
+      level: "poor",
+      max: true,
+      pollen: [{ kind: "grass", level: "low" }],
+      attribution,
+    },
     warning: { kind: "rain", from: "20:00", day: "today" },
     runs: [{ id: "n1", threadId: null, title: "t", body: "b", createdAt: "x" }],
     refreshAt: "2026-11-10T00:00:00+01:00",
@@ -120,6 +128,16 @@ test("getToday reads the weather defensively", async () => {
   );
   await expect(getToday()).resolves.toMatchObject({
     weather: { details: null, rain: null, outlook: null },
+    air: null,
+  });
+  // Air with nothing to show is none; with pollen alone it stays.
+  stubFetch(Response.json({ air: { aqi: null, pollen: [] } }));
+  await expect(getToday()).resolves.toMatchObject({ air: null });
+  stubFetch(
+    Response.json({ air: { pollen: [{ kind: "birch", level: "high" }] } }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    air: { aqi: null, level: "", max: false, attribution: { text: "" } },
   });
   // Without the day's range there is no forecast to show.
   stubFetch(Response.json({ weather: { now: { temperature: 1, code: 0 } } }));

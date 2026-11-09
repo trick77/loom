@@ -17,9 +17,10 @@ import (
 // attribution its licence (CC BY 4.0) asks for next to the data: the tools
 // speak the weather contract (docs/weather.md).
 type openMeteo struct {
-	http         *http.Client
-	forecastURL  string
-	geocodingURL string
+	http          *http.Client
+	forecastURL   string
+	geocodingURL  string
+	airQualityURL string
 }
 
 // attribution is the credit the free tier's licence requires wherever its
@@ -144,6 +145,73 @@ func (p openMeteo) daily(ctx context.Context, lat, lon float64, timezone string,
 	}
 	if len(out.Daily) == 0 {
 		return forecastPart{}, fmt.Errorf("weather provider sent no daily forecast")
+	}
+	return out, nil
+}
+
+// pollenKinds are the provider's pollen variables, by the contract's names;
+// Europe only and only in season, null elsewhere.
+var pollenKinds = []string{"alder", "birch", "grass", "mugwort", "olive", "ragweed"}
+
+// airAttribution is the credit the air data's licence asks for: CAMS, the
+// models behind it, and the provider.
+var airAttribution = Attribution{
+	Text: "Air quality by Open-Meteo.com, CAMS data (Copernicus Atmosphere Monitoring Service)",
+	URL:  "https://open-meteo.com/en/docs/air-quality-api",
+}
+
+// airPart is the air at a place hour by hour, from today's midnight there.
+type airPart struct {
+	Latitude  float64
+	Longitude float64
+	Timezone  string
+	UTCOffset int
+	Hours     []airHour
+}
+
+type airHour struct {
+	Time string
+	AQI  *float64
+	// Pollen by pollenKinds' order, grains/m³.
+	Pollen []*float64
+}
+
+// air is the European air quality index and pollen, days days.
+func (p openMeteo) air(ctx context.Context, lat, lon float64, timezone string, days int) (airPart, error) {
+	q := forecastQuery(lat, lon, timezone, days)
+	variables := []string{"european_aqi"}
+	for _, kind := range pollenKinds {
+		variables = append(variables, kind+"_pollen")
+	}
+	q.Set("hourly", strings.Join(variables, ","))
+	var raw struct {
+		forecastHeader
+		Hourly map[string]json.RawMessage `json:"hourly"`
+	}
+	if err := p.get(ctx, p.airQualityURL+"/v1/air-quality?"+q.Encode(), &raw); err != nil {
+		return airPart{}, err
+	}
+	var times []string
+	if err := json.Unmarshal(raw.Hourly["time"], &times); err != nil || len(times) == 0 {
+		return airPart{}, fmt.Errorf("weather provider sent no air quality")
+	}
+	column := func(name string) []*float64 {
+		var values []*float64
+		_ = json.Unmarshal(raw.Hourly[name], &values) // missing: all unknown
+		return values
+	}
+	aqi := column("european_aqi")
+	pollen := make([][]*float64, len(pollenKinds))
+	for k, kind := range pollenKinds {
+		pollen[k] = column(kind + "_pollen")
+	}
+	out := airPart{Latitude: raw.Latitude, Longitude: raw.Longitude, Timezone: raw.Timezone, UTCOffset: raw.UTCOffset}
+	for i, t := range times {
+		h := airHour{Time: t, AQI: at(aqi, i), Pollen: make([]*float64, len(pollenKinds))}
+		for k := range pollenKinds {
+			h.Pollen[k] = at(pollen[k], i)
+		}
+		out.Hours = append(out.Hours, h)
 	}
 	return out, nil
 }

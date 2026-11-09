@@ -27,7 +27,8 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.addr != defaultAddr || cfg.forecastURL != defaultForecastURL || cfg.geocodingURL != defaultGeocodingURL {
+	if cfg.addr != defaultAddr || cfg.forecastURL != defaultForecastURL || cfg.geocodingURL != defaultGeocodingURL ||
+		cfg.airQualityURL != defaultAirQualityURL {
 		t.Fatalf("defaults %+v", cfg)
 	}
 	// No token: the sidecar starts and refuses every tool call.
@@ -46,6 +47,7 @@ func TestLoadConfig(t *testing.T) {
 		"short token":       {"WEATHER_TOKEN": "short"},
 		"bad forecast url":  {"WEATHER_TOKEN": testToken, "WEATHER_FORECAST_URL": "api.example"},
 		"bad geocoding url": {"WEATHER_TOKEN": testToken, "WEATHER_GEOCODING_URL": "ftp://x"},
+		"bad air url":       {"WEATHER_TOKEN": testToken, "WEATHER_AIR_QUALITY_URL": "x"},
 	} {
 		if _, err := loadConfig(vars(values)); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -78,14 +80,38 @@ const dailyReply = `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich
  "wind_speed_10m_max":[10,12.5,null,8,6],"wind_gusts_10m_max":[25,31,null,20,15],
  "wind_direction_10m_dominant":[200,248,null,90,100]}}`
 
+// airReply is two days of air from midnight in Zurich: birch the first day
+// only, grass every other hour, no alder at all.
+func airReply() string {
+	var times, aqi, birch, grass, nulls []string
+	for i := range 48 {
+		times = append(times, fmt.Sprintf(`"2026-11-%02dT%02d:00"`, 9+i/24, i%24))
+		aqi = append(aqi, fmt.Sprint(10+i))
+		nulls = append(nulls, "null")
+		b, g := "null", "0"
+		if i < 24 {
+			b = "20"
+		}
+		if i%2 == 1 {
+			g = "10"
+		}
+		birch, grass = append(birch, b), append(grass, g)
+	}
+	j := func(v []string) string { return "[" + strings.Join(v, ",") + "]" }
+	return `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich","utc_offset_seconds":3600,"hourly":{"time":` + j(times) +
+		`,"european_aqi":` + j(aqi) + `,"alder_pollen":` + j(nulls) + `,"birch_pollen":` + j(birch) +
+		`,"grass_pollen":` + j(grass) + `,"mugwort_pollen":` + j(nulls) + `,"olive_pollen":` + j(nulls) +
+		`,"ragweed_pollen":` + j(nulls) + `}}`
+}
+
 // fakeProvider answers the forecast and geocoding paths, counts the calls
 // and can be slowed or failed.
 type fakeProvider struct {
-	hourly, daily, lookups atomic.Int32
-	status                 int
-	gate                   chan struct{}
-	mu                     sync.Mutex
-	queries                []string
+	hourly, daily, air, lookups atomic.Int32
+	status                      int
+	gate                        chan struct{}
+	mu                          sync.Mutex
+	queries                     []string
 }
 
 // query is the provider's last query whose parameters hold part.
@@ -120,6 +146,9 @@ func (f *fakeProvider) server(t *testing.T) *httptest.Server {
 		case r.URL.Path == "/v1/forecast" && r.URL.Query().Has("daily"):
 			f.daily.Add(1)
 			_, _ = w.Write([]byte(dailyReply))
+		case r.URL.Path == "/v1/air-quality":
+			f.air.Add(1)
+			_, _ = w.Write([]byte(airReply()))
 		case r.URL.Path == "/v1/search":
 			f.lookups.Add(1)
 			_, _ = w.Write([]byte(`{"results":[{"name":"Baden","latitude":47.47,"longitude":8.3,"timezone":"Europe/Zurich","country":"Schweiz","country_code":"CH","admin1":"Aargau"}]}`))
@@ -134,7 +163,7 @@ func (f *fakeProvider) server(t *testing.T) *httptest.Server {
 // loomService is loom's own MCP client on a sidecar in front of the fake.
 func loomService(t *testing.T, provider string, now func() time.Time) *mcp.Service {
 	t.Helper()
-	cfg := config{token: testToken, forecastURL: provider, geocodingURL: provider}
+	cfg := config{token: testToken, forecastURL: provider, geocodingURL: provider, airQualityURL: provider}
 	srv := httptest.NewServer(newServerAt(cfg, http.DefaultClient, "test", now))
 	t.Cleanup(srv.Close)
 	svc, err := mcp.NewServiceFromConfigs(context.Background(), mcp.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
@@ -149,7 +178,77 @@ func loomService(t *testing.T, provider string, now func() time.Time) *mcp.Servi
 var (
 	forecastName = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool)
 	geocodeName  = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherGeocodeTool)
+	airName      = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherAirQualityTool)
 )
+
+func TestAirQuality(t *testing.T) {
+	fake := &fakeProvider{}
+	// 08:30 in Zurich.
+	clock := time.Date(2026, 11, 9, 7, 30, 0, 0, time.UTC)
+	var mu sync.Mutex
+	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return clock }
+	svc := loomService(t, fake.server(t).URL, now)
+	args := map[string]any{"latitude": 47.377, "longitude": 8.542, "timezone": "Europe/Zurich"}
+	res, err := svc.CallToolResult(context.Background(), airName, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got AirQuality
+	if err := json.Unmarshal([]byte(res.Text), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, res.Text)
+	}
+	// The hours from the current one, a day of them.
+	if len(got.Hourly) != 24 || got.Hourly[0].Time != "2026-11-09T08:00" || *got.Hourly[0].AQI != 18 {
+		t.Fatalf("hours = %+v", got.Hourly)
+	}
+	// Two days by default; pollen as each day's mean, a kind without values
+	// (or a day without any) left out.
+	if len(got.Daily) != 2 {
+		t.Fatalf("days = %+v", got.Daily)
+	}
+	d0, d1 := got.Daily[0], got.Daily[1]
+	if d0.Date != "2026-11-09" || *d0.AQIMax != 33 || len(d0.Pollen) != 2 || d0.Pollen["birch"] != 20 || d0.Pollen["grass"] != 5 {
+		t.Fatalf("first day = %+v", d0)
+	}
+	if d1.Date != "2026-11-10" || *d1.AQIMax != 57 || len(d1.Pollen) != 1 || d1.Pollen["grass"] != 5 {
+		t.Fatalf("second day = %+v", d1)
+	}
+	if strings.Contains(res.Text, "alder") || got.Attribution.Text == "" || len(res.Sources) != 1 ||
+		!strings.Contains(got.Attribution.Text, "CAMS") {
+		t.Fatalf("answer = %s, sources %+v", res.Text, res.Sources)
+	}
+	query := fake.query("european_aqi")
+	for _, part := range []string{"latitude=47.377", "forecast_days=4", "timezone=Europe%2FZurich", "birch_pollen"} {
+		if !strings.Contains(query, part) {
+			t.Fatalf("provider query %q lacks %q", query, part)
+		}
+	}
+	// Kept until the next six-hour mark (UTC): the models behind it run once
+	// or twice a day.
+	for _, step := range []struct {
+		to   time.Time
+		want int32
+	}{
+		{time.Date(2026, 11, 9, 11, 59, 0, 0, time.UTC), 1},
+		{time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC), 2},
+	} {
+		mu.Lock()
+		clock = step.to
+		mu.Unlock()
+		if _, err := svc.CallTool(context.Background(), airName, args); err != nil || fake.air.Load() != step.want {
+			t.Fatalf("at %s: %d calls, %v; want %d", step.to.Format("15:04"), fake.air.Load(), err, step.want)
+		}
+	}
+	for name, a := range map[string]map[string]any{
+		"days":     {"latitude": 1, "longitude": 2, "days": 5},
+		"no point": {"latitude": 1},
+		"timezone": {"latitude": 1, "longitude": 2, "timezone": "../x"},
+	} {
+		if _, err := svc.CallTool(context.Background(), airName, a); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
 
 func TestForecast(t *testing.T) {
 	fake := &fakeProvider{}
@@ -427,7 +526,8 @@ func TestCachePrunes(t *testing.T) {
 // loom addresses the contract by its own copy of the names: they must match
 // the server's.
 func TestContractNamesMatchLoom(t *testing.T) {
-	if mcp.WeatherServer != serverName || mcp.WeatherForecastTool != forecastTool || mcp.WeatherGeocodeTool != geocodeTool {
+	if mcp.WeatherServer != serverName || mcp.WeatherForecastTool != forecastTool || mcp.WeatherGeocodeTool != geocodeTool ||
+		mcp.WeatherAirQualityTool != airQualityTool {
 		t.Fatal("loom's weather contract names drifted from loom-weather's")
 	}
 }

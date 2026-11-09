@@ -90,6 +90,24 @@ export type TodayWeather = {
   attribution: { text: string; url: string };
 };
 
+export type TodayPollen = {
+  kind: "alder" | "birch" | "grass" | "mugwort" | "ragweed";
+  level: "low" | "moderate" | "high" | "veryHigh";
+};
+
+/** The air on the shown day: today the index now, tomorrow its highest. */
+export type TodayAir = {
+  /** European air quality index. */
+  aqi: number | null;
+  level:
+    "" | "good" | "fair" | "moderate" | "poor" | "veryPoor" | "extremelyPoor";
+  /** True when aqi is the day's highest (tomorrow). */
+  max: boolean;
+  /** Only the kinds worth a load class. */
+  pollen: TodayPollen[];
+  attribution: { text: string; url: string };
+};
+
 export type TodayWarning = {
   kind: "rain" | "snow" | "storm" | "frost";
   /** "HH:MM" */
@@ -115,6 +133,7 @@ export type Today = {
   askLocation: boolean;
   sun: TodaySun | null;
   weather: TodayWeather | null;
+  air: TodayAir | null;
   warning: TodayWarning | null;
   /** Unread schedule runs, newest first. */
   runs: TodayRun[];
@@ -159,6 +178,23 @@ function normalizeWeather(raw: unknown): TodayWeather | null {
   };
 }
 
+// normalizeAir keeps the air only with something to show; an older server
+// sends none.
+function normalizeAir(raw: unknown): TodayAir | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const air = raw as Partial<TodayAir>;
+  const aqi = typeof air.aqi === "number" ? air.aqi : null;
+  const pollen = Array.isArray(air.pollen) ? air.pollen : [];
+  if (aqi === null && pollen.length === 0) return null;
+  return {
+    aqi,
+    level: air.level ?? "",
+    max: air.max === true,
+    pollen,
+    attribution: air.attribution ?? { text: "", url: "" },
+  };
+}
+
 function nonEmpty<T>(list: T[] | null | undefined): T[] | null {
   return Array.isArray(list) && list.length > 0 ? list : null;
 }
@@ -179,6 +215,7 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
       ? { ...today.sun, progress: today.sun.progress ?? null }
       : null,
     weather: normalizeWeather(today.weather),
+    air: normalizeAir(today.air),
     // A warning without its day is for the shown day.
     warning:
       warning === null

@@ -109,6 +109,12 @@ func nextThreeHours(now time.Time) time.Time {
 	return now.Truncate(3 * time.Hour).Add(3 * time.Hour)
 }
 
+// nextSixHours is the next six-hour mark (UTC) after now: the air's models
+// run once or twice a day (Europe's) and every twelve hours (the global one).
+func nextSixHours(now time.Time) time.Time {
+	return now.Truncate(6 * time.Hour).Add(6 * time.Hour)
+}
+
 // geocodeTTL keeps a place-name lookup: names and their coordinates do not move.
 const geocodeTTL = 7 * 24 * time.Hour
 

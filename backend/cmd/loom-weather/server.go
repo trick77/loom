@@ -21,6 +21,13 @@ const (
 	serverName   = "weather"
 	forecastTool = "forecast"
 	geocodeTool  = "geocode"
+	// airQualityTool is optional in the contract: loom shows the air only
+	// where a server has it.
+	airQualityTool = "air_quality"
+	// maxAirDays is how far the provider's European pollen reaches.
+	maxAirDays = 4
+	// airHours is how many hours of the index an answer lists.
+	airHours = 24
 	// defaultDays and maxDays bound a forecast's days, today first.
 	defaultDays = 2
 	maxDays     = 7
@@ -101,6 +108,30 @@ func forecastOf(hourly, daily forecastPart, days int, now time.Time) Forecast {
 	return out
 }
 
+// AirQuality is the air_quality tool's answer, as JSON text: the European
+// air quality index, pollen grains/m³, times local to Timezone.
+type AirQuality struct {
+	Latitude    float64     `json:"latitude"`
+	Longitude   float64     `json:"longitude"`
+	Timezone    string      `json:"timezone"`
+	Hourly      []AirHour   `json:"hourly"`
+	Daily       []AirDay    `json:"daily"`
+	Attribution Attribution `json:"attribution"`
+}
+
+type AirHour struct {
+	Time string `json:"time"`
+	AQI  *int   `json:"aqi,omitempty"`
+}
+
+type AirDay struct {
+	Date   string `json:"date"`
+	AQIMax *int   `json:"aqiMax,omitempty"`
+	// Pollen is each kind's mean over the day; a kind without values is left
+	// out, and a day without any has none.
+	Pollen map[string]float64 `json:"pollen,omitempty"`
+}
+
 // Attribution is the credit the data's licence requires next to it.
 type Attribution struct {
 	Text string `json:"text"`
@@ -124,6 +155,7 @@ type weather struct {
 	provider openMeteo
 	hourly   *cache[forecastPart]
 	daily    *cache[forecastPart]
+	air      *cache[airPart]
 	places   *cache[[]Place]
 	now      func() time.Time
 }
@@ -136,11 +168,13 @@ func newServer(cfg config, client *http.Client, version string) http.Handler {
 
 func newServerAt(cfg config, client *http.Client, version string, now func() time.Time) http.Handler {
 	w := &weather{
-		provider: openMeteo{http: client, forecastURL: strings.TrimRight(cfg.forecastURL, "/"), geocodingURL: strings.TrimRight(cfg.geocodingURL, "/")},
-		hourly:   newCache[forecastPart](now, cacheLimit),
-		daily:    newCache[forecastPart](now, cacheLimit),
-		places:   newCache[[]Place](now, cacheLimit),
-		now:      now,
+		provider: openMeteo{http: client, forecastURL: strings.TrimRight(cfg.forecastURL, "/"),
+			geocodingURL: strings.TrimRight(cfg.geocodingURL, "/"), airQualityURL: strings.TrimRight(cfg.airQualityURL, "/")},
+		hourly: newCache[forecastPart](now, cacheLimit),
+		daily:  newCache[forecastPart](now, cacheLimit),
+		air:    newCache[airPart](now, cacheLimit),
+		places: newCache[[]Place](now, cacheLimit),
+		now:    now,
 	}
 	api := http.NewServeMux()
 	api.Handle("/mcp", mcpserver.New(w.mcpServer(version)))
@@ -178,6 +212,23 @@ func (w *weather) mcpServer(version string) mcpserver.Server {
 		ReadOnly:  true,
 		OpenWorld: true,
 		Run:       w.runGeocode,
+	}, {
+		Name:  airQualityTool,
+		Title: "Air quality and pollen",
+		Description: fmt.Sprintf("The air at a point, as JSON: the European air quality index (0-20 good, 20-40 fair, 40-60 "+
+			"moderate, 60-80 poor, 80-100 very poor, above extremely poor) hour by hour for %d hours, and each day's highest "+
+			"index and mean pollen (grains/m³) of alder, birch, grass, mugwort, olive and ragweed. Pollen only in Europe and "+
+			"in season: a kind left out has none.", airHours),
+		Schema: mcpserver.ObjectSchema(map[string]any{
+			"latitude":  map[string]any{"type": "number", "minimum": -90, "maximum": 90},
+			"longitude": map[string]any{"type": "number", "minimum": -180, "maximum": 180},
+			"timezone":  map[string]any{"type": "string", "description": "IANA zone the times read in; the place's own by default."},
+			"days": map[string]any{"type": "integer", "minimum": 1, "maximum": maxAirDays,
+				"description": fmt.Sprintf("Days from today, default %d.", defaultDays)},
+		}, "latitude", "longitude"),
+		ReadOnly:  true,
+		OpenWorld: true,
+		Run:       w.runAirQuality,
 	}}}
 }
 
@@ -196,34 +247,56 @@ type forecastArgs struct {
 	Days      float64  `json:"days"`
 }
 
-func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserver.Result {
+// point is a call's place, zone and days, checked.
+type point struct {
+	lat, lon float64
+	tz       string
+	days     int
+	// key is the cache key: about 100 m, so every request for one place, a
+	// city's centre, is the same key (the provider's grid is far coarser
+	// anyway). It leaves out days: the most is fetched once and cut to each
+	// call.
+	key string
+}
+
+// pointOf reads a call's point; days defaults to defaultDays, up to most.
+func pointOf(raw json.RawMessage, most int) (point, *mcpserver.Result) {
+	fail := func(msg string) (point, *mcpserver.Result) {
+		r := mcpserver.ErrorResult(msg)
+		return point{}, &r
+	}
 	var args forecastArgs
 	if err := mcpserver.DecodeArgs(raw, &args); err != nil {
-		return mcpserver.ErrorResult("invalid arguments: " + err.Error())
+		return fail("invalid arguments: " + err.Error())
 	}
 	switch {
 	case args.Latitude == nil || args.Longitude == nil:
-		return mcpserver.ErrorResult("latitude and longitude are required")
+		return fail("latitude and longitude are required")
 	case math.Abs(*args.Latitude) > 90 || math.Abs(*args.Longitude) > 180:
-		return mcpserver.ErrorResult("latitude must be within ±90 and longitude within ±180")
-	case args.Days < 0 || args.Days > maxDays || args.Days != math.Trunc(args.Days):
-		return mcpserver.ErrorResult(fmt.Sprintf("days must be a whole number between 1 and %d", maxDays))
+		return fail("latitude must be within ±90 and longitude within ±180")
+	case args.Days < 0 || args.Days > float64(most) || args.Days != math.Trunc(args.Days):
+		return fail(fmt.Sprintf("days must be a whole number between 1 and %d", most))
 	}
 	tz := strings.TrimSpace(args.Timezone)
 	if tz == "" {
 		tz = "auto"
 	} else if !timezonePattern.MatchString(tz) {
-		return mcpserver.ErrorResult("timezone must be an IANA zone such as Europe/Zurich")
+		return fail("timezone must be an IANA zone such as Europe/Zurich")
 	}
-	days := int(args.Days)
-	if days == 0 {
-		days = defaultDays
+	p := point{lat: round3(*args.Latitude), lon: round3(*args.Longitude), tz: tz, days: int(args.Days)}
+	if p.days == 0 {
+		p.days = defaultDays
 	}
-	// About 100 m: every request for one place, a city's centre, is the same
-	// key, and the provider's grid is far coarser anyway. The key leaves out
-	// days: the most is fetched once and cut to each call.
-	lat, lon := round3(*args.Latitude), round3(*args.Longitude)
-	key := fmt.Sprintf("%.3f,%.3f,%s", lat, lon, tz)
+	p.key = fmt.Sprintf("%.3f,%.3f,%s", p.lat, p.lon, p.tz)
+	return p, nil
+}
+
+func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserver.Result {
+	p, bad := pointOf(raw, maxDays)
+	if bad != nil {
+		return *bad
+	}
+	lat, lon, tz, days, key := p.lat, p.lon, p.tz, p.days, p.key
 	// On a miss both wait together, not one after the other.
 	var daily forecastPart
 	var dailyErr error
@@ -250,6 +323,80 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 	// when the model does not repeat it.
 	result.Sources = []mcpserver.Source{{URL: forecast.Attribution.URL, Title: forecast.Attribution.Text}}
 	return result
+}
+
+func (w *weather) runAirQuality(ctx context.Context, raw json.RawMessage) mcpserver.Result {
+	p, bad := pointOf(raw, maxAirDays)
+	if bad != nil {
+		return *bad
+	}
+	part, err := w.air.get(ctx, p.key, nextSixHours, func(ctx context.Context) (airPart, error) {
+		return w.provider.air(ctx, p.lat, p.lon, p.tz, maxAirDays)
+	})
+	if err != nil {
+		return mcpserver.ErrorResult("air quality failed: " + err.Error())
+	}
+	air := airQualityOf(part, p.days, w.now())
+	result := jsonResult(air)
+	result.Sources = []mcpserver.Source{{URL: air.Attribution.URL, Title: air.Attribution.Text}}
+	return result
+}
+
+// airQualityOf cuts the kept air to one call's: the hours from the current
+// one at the place for airHours, the days from today through days, each with
+// its highest index and its pollen as the day's mean, the measure pollen
+// load classes are defined on.
+func airQualityOf(part airPart, days int, now time.Time) AirQuality {
+	local := now.UTC().Add(time.Duration(part.UTCOffset) * time.Second)
+	current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
+	today := local.Format(time.DateOnly)
+	end := local.AddDate(0, 0, days).Format(time.DateOnly)
+	out := AirQuality{Latitude: part.Latitude, Longitude: part.Longitude, Timezone: part.Timezone,
+		Hourly: []AirHour{}, Daily: []AirDay{}, Attribution: airAttribution}
+	type sum struct {
+		total float64
+		n     int
+	}
+	var day *AirDay
+	var sums []sum
+	flush := func() {
+		if day == nil {
+			return
+		}
+		for k, s := range sums {
+			if s.n > 0 {
+				if day.Pollen == nil {
+					day.Pollen = map[string]float64{}
+				}
+				day.Pollen[pollenKinds[k]] = math.Round(s.total/float64(s.n)*10) / 10
+			}
+		}
+		out.Daily = append(out.Daily, *day)
+	}
+	for _, h := range part.Hours {
+		if h.Time >= current && len(out.Hourly) < airHours {
+			out.Hourly = append(out.Hourly, AirHour{Time: h.Time, AQI: whole(h.AQI)})
+		}
+		date := h.Time[:min(10, len(h.Time))]
+		if date < today || date >= end {
+			continue
+		}
+		if day == nil || day.Date != date {
+			flush()
+			day, sums = &AirDay{Date: date}, make([]sum, len(pollenKinds))
+		}
+		if aqi := whole(h.AQI); aqi != nil && (day.AQIMax == nil || *aqi > *day.AQIMax) {
+			day.AQIMax = aqi
+		}
+		for k, v := range h.Pollen {
+			if v != nil {
+				sums[k].total += *v
+				sums[k].n++
+			}
+		}
+	}
+	flush()
+	return out
 }
 
 type geocodeArgs struct {
