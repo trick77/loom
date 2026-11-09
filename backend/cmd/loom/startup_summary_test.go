@@ -104,6 +104,19 @@ func TestStartupCapabilitiesSearch(t *testing.T) {
 	assertCapability(t, items, "Web search", "configured", "not answering yet")
 }
 
+// compose sets the weather URL on every install: a missing token is named.
+func TestStartupCapabilitiesWeather(t *testing.T) {
+	items := startupCapabilities(config.Config{WeatherURL: "http://weather:8100"}, mcp.Config{}, startupRuntime{})
+	assertCapability(t, items, "weather", "disabled", "set BACKEND_WEATHER_TOKEN")
+	items = startupCapabilities(config.Config{}, mcp.Config{}, startupRuntime{})
+	assertCapability(t, items, "weather", "disabled", "set BACKEND_WEATHER_URL")
+	sidecar := mcp.Config{Servers: map[string]mcp.ServerConfig{mcp.WeatherServer: mcp.WeatherServerConfig("http://weather:8100", "t")}}
+	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{WeatherToolUp: true})
+	assertCapability(t, items, "weather", "enabled", "loom-weather sidecar")
+	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{})
+	assertCapability(t, items, "weather", "configured", "not answering yet")
+}
+
 // Who serves the document tools, how many answered, and an mcp.json server
 // whose files would all be dropped.
 func TestStartupCapabilitiesDocgen(t *testing.T) {

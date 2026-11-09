@@ -21,6 +21,8 @@ type startupRuntime struct {
 	// server answered, with or without the tool.
 	SearchToolUp   bool
 	SearchServerUp bool
+	// WeatherToolUp: discovery found the forecast tool.
+	WeatherToolUp bool
 }
 
 type startupCapability struct {
@@ -52,6 +54,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		mcpCapability(mcpConfig, runtime),
 		mcpFileCapability(cfg),
 		searchCapability(mcpConfig, runtime),
+		weatherCapability(cfg, mcpConfig, runtime),
 		imageGenCapability(mcpConfig, runtime),
 		sandboxCapability(cfg),
 		responseLoggingCapability(cfg),
@@ -154,6 +157,26 @@ func searchCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapab
 		return startupCapability{Name: "Web search", Status: "disabled", Detail: who + " serves no " + mcp.SearchTool + " tool (the sidecar's provider key unset?)"}
 	}
 	return startupCapability{Name: "Web search", Status: "configured", Detail: who + " not answering yet; offered once it does"}
+}
+
+// weatherCapability says who serves the weather: the loom-weather sidecar, or
+// an mcp.json server named weather that replaces it. compose sets the URL on
+// every install, so a missing token is the usual reason it is off.
+func weatherCapability(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
+	server, ok := mcpConfig.Servers[mcp.WeatherServer]
+	who := "mcp.json server " + mcp.WeatherServer
+	if server.BuiltIn {
+		who = "loom-weather sidecar"
+	}
+	switch {
+	case !ok && strings.TrimSpace(cfg.WeatherURL) != "":
+		return startupCapability{Name: "weather", Status: "disabled", Detail: "set BACKEND_WEATHER_TOKEN (loom-weather sidecar)"}
+	case !ok:
+		return startupCapability{Name: "weather", Status: "disabled", Detail: "set BACKEND_WEATHER_URL and BACKEND_WEATHER_TOKEN (loom-weather sidecar)"}
+	case runtime.WeatherToolUp:
+		return startupCapability{Name: "weather", Status: "enabled", Detail: who}
+	}
+	return startupCapability{Name: "weather", Status: "configured", Detail: who + " not answering yet; offered once it does"}
 }
 
 // imageGenCapability says who serves the image tool: the loom-imagegen

@@ -176,8 +176,10 @@ func runServer() error {
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
 	discoveredTools, imageToolUp, searchToolUp, searchServerUp, docgenTools := 0, false, false, false, 0
+	weatherToolUp := false
 	if toolService != nil {
 		discoveredTools = len(toolService.Tools())
+		weatherToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool))
 		imageToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool))
 		searchToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.SearchServer, mcp.SearchTool))
 		searchServerUp = mcpService.Answered(mcp.SearchServer)
@@ -221,6 +223,7 @@ func runServer() error {
 		ImageToolUp:         imageToolUp,
 		SearchToolUp:        searchToolUp,
 		SearchServerUp:      searchServerUp,
+		WeatherToolUp:       weatherToolUp,
 	})
 
 	// Post-turn refreshes outlive their request; serve() drains this group before
@@ -538,8 +541,6 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	// URL; without a token the weather is simply off.
 	if cfg.WeatherOn() {
 		out.FileServers.Servers[mcp.WeatherServer] = mcp.WeatherServerConfig(cfg.WeatherURL, cfg.WeatherToken)
-	} else if strings.TrimSpace(cfg.WeatherURL) != "" {
-		slog.Info("BACKEND_WEATHER_TOKEN is unset: the weather is off (docs/weather.md)")
 	}
 	// loom-docgen likewise (docs/docgen.md): a dead sidecar costs the
 	// document tools. An mcp.json server named docgen replaces it.
@@ -564,9 +565,10 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 				server.RestrictUsers, server.Users = true, existing.Users
 			}
 			server.PerUser = existing.PerUser
-			// Nor when its tools are offered: an override without categories
-			// keeps the built-in's, or it would be offered on every turn.
-			if len(server.Categories) == 0 {
+			// Nor when its tools are offered: an override that names no
+			// categories keeps the built-in's; "categories": [] offers it on
+			// every turn.
+			if server.Categories == nil {
 				server.Categories = existing.Categories
 			}
 		}

@@ -50,6 +50,34 @@ func TestComposePassesImageGenerationEnv(t *testing.T) {
 
 // The search sidecar is always on: loom waits for it and gets its address;
 // the Tavily key goes to the sidecar only.
+func TestComposeRunsWeather(t *testing.T) {
+	for path, url := range map[string]string{
+		"../../../compose.yaml":     "http://weather:8100",
+		"../../../compose.dev.yaml": "http://localhost:8100",
+	} {
+		t.Run(path, func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			compose := string(data)
+			if want := `BACKEND_WEATHER_URL: "${BACKEND_WEATHER_URL:-` + url + `}"`; !strings.Contains(compose, want) {
+				t.Fatalf("%s lacks %s", path, want)
+			}
+			dependsOn := regexp.MustCompile(`(?m)^      weather:\n(?:\s*#.*\n)*        condition: service_healthy\n(        required: false\n)?`).FindStringSubmatch(compose)
+			if dependsOn == nil || dependsOn[1] != "" {
+				t.Fatalf("%s: loom must depend on a healthy weather service", path)
+			}
+			service := composeService(t, compose, "weather")
+			for _, want := range []string{`user: "65532:65532"`, "read_only: true", "cap_drop: [ALL]", "no-new-privileges:true", `"/loom-weather", "healthcheck"`, "WEATHER_TOKEN:"} {
+				if !strings.Contains(service, want) {
+					t.Fatalf("%s weather service lacks %s", path, want)
+				}
+			}
+		})
+	}
+}
+
 func TestComposePassesSearchEnv(t *testing.T) {
 	for path, url := range map[string]string{
 		"../../../compose.yaml":     "http://search:8030",

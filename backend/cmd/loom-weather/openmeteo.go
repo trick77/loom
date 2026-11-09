@@ -40,6 +40,7 @@ func (p openMeteo) forecast(ctx context.Context, lat, lon float64, timezone stri
 		Latitude  float64 `json:"latitude"`
 		Longitude float64 `json:"longitude"`
 		Timezone  string  `json:"timezone"`
+		UTCOffset int     `json:"utc_offset_seconds"`
 		Hourly    struct {
 			Time          []string   `json:"time"`
 			Temperature   []*float64 `json:"temperature_2m"`
@@ -58,7 +59,8 @@ func (p openMeteo) forecast(ctx context.Context, lat, lon float64, timezone stri
 	if err := p.get(ctx, p.forecastURL+"/v1/forecast?"+q.Encode(), &raw); err != nil {
 		return Forecast{}, err
 	}
-	out := Forecast{Latitude: raw.Latitude, Longitude: raw.Longitude, Timezone: raw.Timezone, Hourly: []Hour{}, Daily: []Day{}, Attribution: attribution}
+	out := Forecast{Latitude: raw.Latitude, Longitude: raw.Longitude, Timezone: raw.Timezone, Hourly: []Hour{}, Daily: []Day{},
+		Attribution: attribution, utcOffset: raw.UTCOffset}
 	h := raw.Hourly
 	for i, t := range h.Time {
 		temp, code := at(h.Temperature, i), at(h.Code, i)
@@ -66,7 +68,7 @@ func (p openMeteo) forecast(ctx context.Context, lat, lon float64, timezone stri
 			continue
 		}
 		out.Hourly = append(out.Hourly, Hour{Time: t, Temperature: *temp, Code: *code,
-			PrecipitationProbability: value(at(h.Precipitation, i)), WindSpeed: value(at(h.Wind, i))})
+			PrecipitationProbability: at(h.Precipitation, i), WindSpeed: at(h.Wind, i)})
 	}
 	d := raw.Daily
 	for i, t := range d.Time {
@@ -75,7 +77,7 @@ func (p openMeteo) forecast(ctx context.Context, lat, lon float64, timezone stri
 			continue
 		}
 		out.Daily = append(out.Daily, Day{Date: t, High: *high, Low: *low, Code: *code,
-			PrecipitationProbability: value(at(d.Precipitation, i))})
+			PrecipitationProbability: at(d.Precipitation, i)})
 	}
 	if len(out.Hourly) == 0 {
 		return Forecast{}, fmt.Errorf("weather provider sent no forecast")
@@ -144,11 +146,4 @@ func at[T any](values []*T, i int) *T {
 		return values[i]
 	}
 	return nil
-}
-
-func value[T int | float64](v *T) T {
-	if v == nil {
-		return 0
-	}
-	return *v
 }
