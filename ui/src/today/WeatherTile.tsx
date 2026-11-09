@@ -1,7 +1,9 @@
 import { useTranslation } from "react-i18next";
 
 import type { Today, TodayWeather } from "../api/today";
+import { Carousel, type Slide } from "./Carousel";
 import { degrees } from "./format";
+import { DetailsCard, OutlookCard, RainCard } from "./WeatherCards";
 import {
   conditionFor,
   conditionLabelKey,
@@ -14,16 +16,53 @@ import { WarningIcon, WeatherIcon } from "./WeatherIcon";
 export const TILE =
   "rounded-2xl border border-border bg-card p-[18px] text-ink";
 
-// WeatherTile shows the sky now with the day's range, or for tomorrow the
-// day's high and low, then the hours. A warning takes the condition's place,
-// in the accent color.
-export function WeatherTile({
-  weather,
-  today,
-}: {
+type WeatherTileProps = {
   weather: TodayWeather;
   today: Pick<Today, "day" | "sun" | "warning">;
-}) {
+};
+
+// WeatherTile is the weather's cards to turn through: the sky now (or
+// tomorrow's) first, then whatever further cards the forecast has values
+// for.
+export function WeatherTile({ weather, today }: WeatherTileProps) {
+  const { t } = useTranslation();
+  const tomorrow = today.day === "tomorrow";
+  const slides: Slide[] = [
+    {
+      key: "now",
+      name: t(tomorrow ? "today.cards.overview" : "today.cards.now"),
+      content: <NowCard today={today} weather={weather} />,
+    },
+  ];
+  if (weather.details !== null)
+    slides.push({
+      key: "details",
+      name: t("today.cards.details"),
+      content: <DetailsCard details={weather.details} tomorrow={tomorrow} />,
+    });
+  if (weather.rain !== null)
+    slides.push({
+      key: "rain",
+      name: t("today.cards.rain"),
+      content: <RainCard rain={weather.rain} />,
+    });
+  if (weather.outlook !== null)
+    slides.push({
+      key: "outlook",
+      name: t("today.cards.outlook"),
+      content: <OutlookCard days={weather.outlook} />,
+    });
+  return (
+    <div className={TILE}>
+      <Carousel label={t("today.cards.weather")} slides={slides} />
+    </div>
+  );
+}
+
+// NowCard shows the sky now with the day's range, or for tomorrow the day's
+// high and low, then the hours. A warning takes the condition's place, in the
+// accent color.
+function NowCard({ weather, today }: WeatherTileProps) {
   const { t } = useTranslation();
   const { sun, warning } = today;
   const now = today.day === "today" ? weather.now : null;
@@ -43,7 +82,7 @@ export function WeatherTile({
           low: degrees(weather.day.low),
         }) + (rainText === null ? "" : ` · ${rainText}`);
   return (
-    <div className={`${TILE} flex flex-col gap-4`}>
+    <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3.5">
         <WeatherIcon
           condition={condition}

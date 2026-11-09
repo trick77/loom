@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
@@ -38,6 +39,13 @@ const (
 	eveningHour = 20
 	// tomorrowFrom and tomorrowTo bound tomorrow's hours shown and warned of.
 	tomorrowFrom, tomorrowTo = 6, 22
+	// rainHours is how many hours from now the rain card shows today.
+	rainHours = 12
+	// outlookDays is how many days after the shown one the outlook lists.
+	outlookDays = 5
+	// forecastDays is what the page asks the forecast for: today, tomorrow
+	// and the outlook after tomorrow, which in the evening is shown.
+	forecastDays = outlookDays + 2
 )
 
 // The day the page shows.
@@ -75,9 +83,41 @@ type todayWeather struct {
 	// Now is the weather this hour; nil when the page shows tomorrow.
 	Now *todayNow `json:"now"`
 	// Day is the shown day's high, low and weather.
-	Day         todayDay    `json:"day"`
-	Hours       []todayHour `json:"hours"`
-	Attribution attribution `json:"attribution"`
+	Day   todayDay    `json:"day"`
+	Hours []todayHour `json:"hours"`
+	// Details, Rain and Outlook are the tile's further cards, each nil when
+	// the forecast has no values for it.
+	Details     *todayDetails  `json:"details"`
+	Rain        []todayRain    `json:"rain"`
+	Outlook     []todayOutlook `json:"outlook"`
+	Attribution attribution    `json:"attribution"`
+}
+
+// todayDetails is the shown day in numbers: today the air and wind now,
+// tomorrow the wind at its strongest; both the day's UV, rain and sun.
+type todayDetails struct {
+	FeelsLike        *float64 `json:"feelsLike"`
+	Humidity         *int     `json:"humidity"`
+	Wind             *float64 `json:"wind"`
+	Gusts            *float64 `json:"gusts"`
+	WindDirection    *int     `json:"windDirection"`
+	UVMax            *float64 `json:"uvMax"`
+	PrecipitationSum *float64 `json:"precipitationSum"`
+	SunshineHours    *float64 `json:"sunshineHours"`
+}
+
+type todayRain struct {
+	Time          string   `json:"time"`
+	Precipitation *float64 `json:"precipitation"`
+	Probability   *int     `json:"probability"`
+}
+
+type todayOutlook struct {
+	Date                     string  `json:"date"`
+	High                     float64 `json:"high"`
+	Low                      float64 `json:"low"`
+	Code                     int     `json:"code"`
+	PrecipitationProbability *int    `json:"precipitationProbability"`
 }
 
 type todayNow struct {
@@ -119,22 +159,40 @@ type todayRun struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// forecast is the weather sidecar's answer, as far as the start page reads it.
+// forecast is the weather sidecar's answer, as far as the start page reads it
+// (docs/weather.md): beyond time, temperature and code every value may be
+// missing.
 type forecast struct {
-	Hourly []struct {
-		Time                     string  `json:"time"`
-		Temperature              float64 `json:"temperature"`
-		Code                     int     `json:"code"`
-		PrecipitationProbability *int    `json:"precipitationProbability"`
-	} `json:"hourly"`
-	Daily []struct {
-		Date                     string  `json:"date"`
-		High                     float64 `json:"high"`
-		Low                      float64 `json:"low"`
-		Code                     int     `json:"code"`
-		PrecipitationProbability *int    `json:"precipitationProbability"`
-	} `json:"daily"`
-	Attribution attribution `json:"attribution"`
+	Hourly      []forecastHour `json:"hourly"`
+	Daily       []forecastDay  `json:"daily"`
+	Attribution attribution    `json:"attribution"`
+}
+
+type forecastHour struct {
+	Time                     string   `json:"time"`
+	Temperature              float64  `json:"temperature"`
+	Code                     int      `json:"code"`
+	PrecipitationProbability *int     `json:"precipitationProbability"`
+	Precipitation            *float64 `json:"precipitation"`
+	WindSpeed                *float64 `json:"windSpeed"`
+	WindGusts                *float64 `json:"windGusts"`
+	WindDirection            *int     `json:"windDirection"`
+	ApparentTemperature      *float64 `json:"apparentTemperature"`
+	Humidity                 *int     `json:"humidity"`
+}
+
+type forecastDay struct {
+	Date                     string   `json:"date"`
+	High                     float64  `json:"high"`
+	Low                      float64  `json:"low"`
+	Code                     int      `json:"code"`
+	PrecipitationProbability *int     `json:"precipitationProbability"`
+	PrecipitationSum         *float64 `json:"precipitationSum"`
+	UVIndexMax               *float64 `json:"uvIndexMax"`
+	SunshineHours            *float64 `json:"sunshineHours"`
+	WindSpeedMax             *float64 `json:"windSpeedMax"`
+	WindGustsMax             *float64 `json:"windGustsMax"`
+	WindDirection            *int     `json:"windDirection"`
 }
 
 // handleToday is the start page's day: the user's place, its weather and sun,
@@ -292,7 +350,7 @@ func (s *server) forecastFor(ctx context.Context, p *location.Place, loc *time.L
 	ctx, cancel := context.WithTimeout(ctx, forecastTimeout)
 	defer cancel()
 	text, err := s.mcp.CallTool(ctx, forecastTool, map[string]any{
-		"latitude": p.Latitude, "longitude": p.Longitude, "timezone": loc.String(), "days": 2,
+		"latitude": p.Latitude, "longitude": p.Longitude, "timezone": loc.String(), "days": forecastDays,
 	})
 	if err != nil {
 		slog.Warn("forecast failed", "err", err)
@@ -331,8 +389,11 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 	}
 	out := &todayWeather{
 		Now:         &todayNow{Temperature: math.Round(temp*10) / 10, Code: first.Code},
-		Day:         day,
+		Day:         widen(dayView(day), f.Hourly, now),
 		Hours:       []todayHour{},
+		Details:     detailsOf(&first, day),
+		Rain:        rainIn(f.Hourly[:min(rainHours, len(f.Hourly))]),
+		Outlook:     outlookAfter(f, now),
 		Attribution: f.Attribution,
 	}
 	for i := 1; i < len(f.Hourly) && len(out.Hours) < 5; i += 3 {
@@ -371,7 +432,14 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *to
 	if from < 0 || to < from {
 		return nil, nil
 	}
-	out := &todayWeather{Day: day, Hours: []todayHour{}, Attribution: f.Attribution}
+	out := &todayWeather{
+		Day:         widen(dayView(day), f.Hourly, tomorrow),
+		Hours:       []todayHour{},
+		Details:     detailsOf(nil, day),
+		Rain:        rainIn(f.Hourly[from : to+1]),
+		Outlook:     outlookAfter(f, tomorrow),
+		Attribution: f.Attribution,
+	}
 	for i := from; i <= to && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))
 	}
@@ -396,7 +464,7 @@ func currentHour(f forecast, local time.Time) int {
 
 // dayOf is the forecast's day on date; ok is false when the forecast does
 // not name it, the first day returned then. A zero date asks for the first.
-func dayOf(f forecast, date time.Time) (todayDay, bool) {
+func dayOf(f forecast, date time.Time) (forecastDay, bool) {
 	day, ok := f.Daily[0], date.IsZero()
 	for _, d := range f.Daily {
 		if !date.IsZero() && d.Date == date.Format(time.DateOnly) {
@@ -404,7 +472,68 @@ func dayOf(f forecast, date time.Time) (todayDay, bool) {
 			break
 		}
 	}
-	return todayDay{High: day.High, Low: day.Low, Code: day.Code, PrecipitationProbability: day.PrecipitationProbability}, ok
+	return day, ok
+}
+
+func dayView(d forecastDay) todayDay {
+	return todayDay{High: d.High, Low: d.Low, Code: d.Code, PrecipitationProbability: d.PrecipitationProbability}
+}
+
+// widen stretches the day's range over its hours: the days are fetched less
+// often than the hours, and the temperature now must never fall outside the
+// range shown beside it.
+func widen(day todayDay, hours []forecastHour, date time.Time) todayDay {
+	prefix := date.Format(time.DateOnly)
+	for _, h := range hours {
+		if strings.HasPrefix(h.Time, prefix) {
+			day.High, day.Low = max(day.High, h.Temperature), min(day.Low, h.Temperature)
+		}
+	}
+	return day
+}
+
+// detailsOf is the details card: with now (today) the air and wind this
+// hour, without (tomorrow) the day's strongest wind; nil when the forecast
+// carries none of it.
+func detailsOf(now *forecastHour, day forecastDay) *todayDetails {
+	d := todayDetails{UVMax: day.UVIndexMax, PrecipitationSum: day.PrecipitationSum, SunshineHours: day.SunshineHours,
+		Wind: day.WindSpeedMax, Gusts: day.WindGustsMax, WindDirection: day.WindDirection}
+	if now != nil {
+		d.FeelsLike, d.Humidity = now.ApparentTemperature, now.Humidity
+		d.Wind, d.Gusts, d.WindDirection = now.WindSpeed, now.WindGusts, now.WindDirection
+	}
+	if d == (todayDetails{}) {
+		return nil
+	}
+	return &d
+}
+
+// rainIn is the rain card's hours; nil when none says how much or how likely.
+func rainIn(hours []forecastHour) []todayRain {
+	var out []todayRain
+	known := false
+	for _, h := range hours {
+		known = known || h.Precipitation != nil || h.PrecipitationProbability != nil
+		out = append(out, todayRain{Time: clock(h.Time), Precipitation: h.Precipitation, Probability: h.PrecipitationProbability})
+	}
+	if !known {
+		return nil
+	}
+	return out
+}
+
+// outlookAfter is up to outlookDays days after shown; nil when the forecast
+// ends with it.
+func outlookAfter(f forecast, shown time.Time) []todayOutlook {
+	date := shown.Format(time.DateOnly)
+	var out []todayOutlook
+	for _, d := range f.Daily {
+		if d.Date > date && len(out) < outlookDays {
+			out = append(out, todayOutlook{Date: d.Date, High: d.High, Low: d.Low, Code: d.Code,
+				PrecipitationProbability: d.PrecipitationProbability})
+		}
+	}
+	return out
 }
 
 func hourOf(f forecast, i int) todayHour {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,20 +27,45 @@ func todayForecastJSON() string {
 		if (i >= 9 && i <= 14) || (i >= 26 && i <= 28) {
 			code, chance = 61, 80
 		}
+		rain := 0.0
+		if code == 61 {
+			rain = 0.5 + float64(i%3)*0.4
+		}
 		b, _ := json.Marshal(map[string]any{"time": time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"),
-			"temperature": temp, "code": code, "precipitationProbability": chance})
+			"temperature": temp, "code": code, "precipitationProbability": chance, "precipitation": rain,
+			"windSpeed": 9 + float64(i), "windGusts": 20 + float64(i), "windDirection": 250,
+			"apparentTemperature": temp - 3, "humidity": 80 + i%10, "uvIndex": 0.5})
 		hours = append(hours, string(b))
 	}
 	return `{"hourly":[` + strings.Join(hours, ",") + `],
-"daily":[{"date":"2026-11-09","high":11,"low":3,"code":61,"precipitationProbability":80},
- {"date":"2026-11-10","high":9,"low":2,"code":61,"precipitationProbability":80}],
+"daily":[{"date":"2026-11-09","high":11,"low":3,"code":61,"precipitationProbability":80,"precipitationSum":4.2,
+  "uvIndexMax":1.6,"sunshineHours":2.5,"windSpeedMax":24,"windGustsMax":45,"windDirection":240},
+ {"date":"2026-11-10","high":9,"low":2,"code":61,"precipitationProbability":80,"precipitationSum":1.5,
+  "uvIndexMax":1.2,"sunshineHours":0.5,"windSpeedMax":30,"windGustsMax":55,"windDirection":260},
+ {"date":"2026-11-11","high":8,"low":1,"code":3,"precipitationProbability":20},
+ {"date":"2026-11-12","high":7,"low":0,"code":71,"precipitationProbability":60},
+ {"date":"2026-11-13","high":6,"low":-1,"code":0,"precipitationProbability":0},
+ {"date":"2026-11-14","high":7,"low":0,"code":2,"precipitationProbability":10},
+ {"date":"2026-11-15","high":9,"low":2,"code":3,"precipitationProbability":30}],
 "attribution":{"text":"Weather data by Example","url":"https://weather.example/"}}`
+}
+
+func outlookDates(w *todayWeather) string {
+	var dates []string
+	for _, d := range w.Outlook {
+		dates = append(dates, d.Date)
+	}
+	return strings.Join(dates, ",")
 }
 
 type todayFixture struct {
 	*locationFixture
 	schedules *schedule.Store
 	handler   http.Handler
+	// forecastDays is the days the last forecast call asked for.
+	forecastDays any
+	// forecastJSON answers the forecast; todayForecastJSON when empty.
+	forecastJSON string
 }
 
 // morning is 08:14 in Zurich on 9 November; dusk 19:30, evening 20:30.
@@ -65,6 +91,10 @@ func newTodayFixture(t *testing.T, withPlace bool) *todayFixture {
 		Available: map[string]bool{geocodeTool: true, forecastTool: true},
 		CallFunc: func(ctx context.Context, name string, args map[string]any) (string, error) {
 			if name == forecastTool {
+				tf.forecastDays = args["days"]
+				if tf.forecastJSON != "" {
+					return tf.forecastJSON, nil
+				}
 				return todayForecastJSON(), nil
 			}
 			return geo(ctx, name, args)
@@ -151,6 +181,25 @@ func TestToday(t *testing.T) {
 	if hourTimes(w) != "09:00,12:00,15:00,18:00,21:00" {
 		t.Fatalf("hours = %v", hourTimes(w))
 	}
+	// Details: the wind and air now, the rest the day's.
+	d := w.Details
+	if d == nil || *d.FeelsLike != 2 || *d.Humidity != 80 || *d.Wind != 9 || *d.Gusts != 20 || *d.WindDirection != 250 ||
+		*d.UVMax != 1.6 || *d.PrecipitationSum != 4.2 || *d.SunshineHours != 2.5 {
+		t.Fatalf("details = %+v", d)
+	}
+	// The rain hour by hour from now, twelve hours.
+	if len(w.Rain) != 12 || w.Rain[0].Time != "08:00" || w.Rain[11].Time != "19:00" || *w.Rain[0].Precipitation != 0 ||
+		*w.Rain[9].Precipitation != 0.5 || *w.Rain[9].Probability != 80 {
+		t.Fatalf("rain = %+v", w.Rain)
+	}
+	// The five days after the shown one.
+	if outlookDates(w) != "2026-11-10,2026-11-11,2026-11-12,2026-11-13,2026-11-14" || w.Outlook[2].Code != 71 ||
+		w.Outlook[3].Low != -1 || *w.Outlook[2].PrecipitationProbability != 60 {
+		t.Fatalf("outlook = %+v", w.Outlook)
+	}
+	if tf.forecastDays != 7 {
+		t.Fatalf("asked %v days, want 7: the outlook on the evening reaches six days ahead", tf.forecastDays)
+	}
 	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "17:00" || got.Warning.Day != dayToday {
 		t.Fatalf("warning = %+v", got.Warning)
 	}
@@ -184,6 +233,22 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	w := got.Weather
 	if w == nil || w.Now != nil || w.Day.High != 9 || hourTimes(w) != "06:00,09:00,12:00,15:00,18:00" {
 		t.Fatalf("tomorrow's weather = %+v", w)
+	}
+	// Tomorrow's details are its day's: no air now, the wind at its strongest.
+	if d := w.Details; d == nil || d.FeelsLike != nil || d.Humidity != nil || *d.Wind != 30 || *d.Gusts != 55 ||
+		*d.WindDirection != 260 || *d.UVMax != 1.2 || *d.PrecipitationSum != 1.5 || *d.SunshineHours != 0.5 {
+		t.Fatalf("tomorrow's details = %+v", w.Details)
+	}
+	if len(w.Rain) != 17 || w.Rain[0].Time != "06:00" || w.Rain[16].Time != "22:00" {
+		t.Fatalf("tomorrow's rain = %+v", w.Rain)
+	}
+	if outlookDates(w) != "2026-11-11,2026-11-12,2026-11-13,2026-11-14,2026-11-15" {
+		t.Fatalf("outlook after tomorrow = %v", outlookDates(w))
+	}
+	// Its low reaches what the hours say: the days are fetched less often
+	// than the hours, the range never leaves an hour out.
+	if math.Abs(w.Day.Low+2.2) > 1e-9 {
+		t.Fatalf("tomorrow's low = %v, want the coldest hour's -2.2", w.Day.Low)
 	}
 	// It is still raining tonight: that comes first, as tonight's.
 	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "20:00" || got.Warning.Day != dayToday {
@@ -246,6 +311,25 @@ func TestTodayAsksWhenTheDerivationFails(t *testing.T) {
 	}
 	if got := tf.get(t); !got.AskLocation {
 		t.Fatalf("no question after a failed derivation: %+v", got)
+	}
+}
+
+// A weather server that answers only the basics (an mcp.json replacement)
+// costs the cards it has no values for, never the weather.
+func TestTodayFromABasicWeatherServer(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.forecastJSON = `{"hourly":[{"time":"2026-11-09T08:00","temperature":5,"code":3},
+ {"time":"2026-11-09T09:00","temperature":6,"code":3}],
+"daily":[{"date":"2026-11-09","high":11,"low":3,"code":3},{"date":"2026-11-10","high":9,"low":2,"code":3}]}`
+	w := tf.get(t).Weather
+	if w == nil || w.Now == nil {
+		t.Fatalf("weather = %+v", w)
+	}
+	if w.Details != nil || w.Rain != nil {
+		t.Fatalf("details = %+v, rain = %+v; want none without their values", w.Details, w.Rain)
+	}
+	if outlookDates(w) != "2026-11-10" {
+		t.Fatalf("outlook = %v, want the one day after today it has", outlookDates(w))
 	}
 }
 
@@ -316,20 +400,10 @@ func TestTodayForecastWarnings(t *testing.T) {
 		var f forecast
 		for i := range codes {
 			c := chance
-			f.Hourly = append(f.Hourly, struct {
-				Time                     string  `json:"time"`
-				Temperature              float64 `json:"temperature"`
-				Code                     int     `json:"code"`
-				PrecipitationProbability *int    `json:"precipitationProbability"`
-			}{Time: time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"), Temperature: temps[i], Code: codes[i], PrecipitationProbability: &c})
+			f.Hourly = append(f.Hourly, forecastHour{Time: time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"),
+				Temperature: temps[i], Code: codes[i], PrecipitationProbability: &c})
 		}
-		f.Daily = append(f.Daily, struct {
-			Date                     string  `json:"date"`
-			High                     float64 `json:"high"`
-			Low                      float64 `json:"low"`
-			Code                     int     `json:"code"`
-			PrecipitationProbability *int    `json:"precipitationProbability"`
-		}{Date: "2026-11-08", High: 1, Low: -2, Code: 3})
+		f.Daily = append(f.Daily, forecastDay{Date: "2026-11-08", High: 1, Low: -2, Code: 3})
 		return f
 	}
 	if _, w := todayForecast(mk([]int{3, 3, 71}, []float64{2, 1, 0}, 80), now); w == nil || w.Kind != "snow" || w.From != "10:00" {
@@ -344,8 +418,9 @@ func TestTodayForecastWarnings(t *testing.T) {
 	if _, w := todayForecast(mk([]int{3, 95}, []float64{2, 3}, 60), now); w == nil || w.Kind != "storm" {
 		t.Fatalf("storm = %+v", w)
 	}
-	// No day matching today: the first one stands in.
-	if weather, _ := todayForecast(mk([]int{3}, []float64{2}, 0), now); weather.Day.High != 1 || weather.Now.Temperature != 2 {
+	// No day matching today: the first one stands in, its range stretched
+	// over today's hours.
+	if weather, _ := todayForecast(mk([]int{3}, []float64{2}, 0), now); weather.Day.High != 2 || weather.Day.Low != -2 || weather.Now.Temperature != 2 {
 		t.Fatalf("weather = %+v", weather)
 	}
 	if clock("garbled") != "garbled" {

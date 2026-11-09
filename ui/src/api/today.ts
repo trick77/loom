@@ -39,6 +39,40 @@ export type TodayWeatherDay = {
   precipitationProbability: number | null;
 };
 
+/** The shown day in numbers: today the air and wind now, tomorrow the wind
+ * at its strongest. Any value may be missing. */
+export type TodayDetails = {
+  feelsLike: number | null;
+  /** % */
+  humidity: number | null;
+  /** km/h */
+  wind: number | null;
+  gusts: number | null;
+  /** Degrees, where the wind blows from. */
+  windDirection: number | null;
+  uvMax: number | null;
+  /** mm over the day. */
+  precipitationSum: number | null;
+  sunshineHours: number | null;
+};
+
+export type TodayRain = {
+  time: string;
+  /** mm in the hour. */
+  precipitation: number | null;
+  /** % */
+  probability: number | null;
+};
+
+export type TodayOutlookDay = {
+  /** "YYYY-MM-DD" */
+  date: string;
+  high: number;
+  low: number;
+  code: number;
+  precipitationProbability: number | null;
+};
+
 export type TodayWeather = {
   /** The sky now; null when the shown day is tomorrow. */
   now: { temperature: number; code: number } | null;
@@ -46,6 +80,12 @@ export type TodayWeather = {
   day: TodayWeatherDay;
   /** Today the next slots, tomorrow its daytime, 3 h apart. */
   hours: TodayHour[];
+  /** The tile's further cards; null when the forecast has nothing for one. */
+  details: TodayDetails | null;
+  /** Today the next 12 hours, tomorrow its daytime, hour by hour. */
+  rain: TodayRain[] | null;
+  /** The days after the shown one. */
+  outlook: TodayOutlookDay[] | null;
   /** The weather data licence asks for this wherever the data shows. */
   attribution: { text: string; url: string };
 };
@@ -112,8 +152,15 @@ function normalizeWeather(raw: unknown): TodayWeather | null {
     now: weather.now ?? null,
     day,
     hours: Array.isArray(weather.hours) ? weather.hours : [],
+    details: weather.details ?? null,
+    rain: nonEmpty(weather.rain),
+    outlook: nonEmpty(weather.outlook),
     attribution: weather.attribution ?? { text: "", url: "" },
   };
+}
+
+function nonEmpty<T>(list: T[] | null | undefined): T[] | null {
+  return Array.isArray(list) && list.length > 0 ? list : null;
 }
 
 // normalizeToday fills what an answer leaves out with "nothing to show", so a

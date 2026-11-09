@@ -50,7 +50,32 @@ test("getToday keeps a full answer and survives a null one", async () => {
       polar: "",
       progress: null,
     },
-    weather: { now: null, day: dayRange, hours: [], attribution },
+    weather: {
+      now: null,
+      day: dayRange,
+      hours: [],
+      details: {
+        feelsLike: null,
+        humidity: null,
+        wind: 30,
+        gusts: 55,
+        windDirection: 260,
+        uvMax: 1,
+        precipitationSum: 0,
+        sunshineHours: 2,
+      },
+      rain: [{ time: "06:00", precipitation: 0, probability: 5 }],
+      outlook: [
+        {
+          date: "2026-11-11",
+          high: 8,
+          low: 1,
+          code: 3,
+          precipitationProbability: null,
+        },
+      ],
+      attribution,
+    },
     warning: { kind: "rain", from: "20:00", day: "today" },
     runs: [{ id: "n1", threadId: null, title: "t", body: "b", createdAt: "x" }],
     refreshAt: "2026-11-10T00:00:00+01:00",
@@ -86,6 +111,15 @@ test("getToday reads the weather defensively", async () => {
   );
   await expect(getToday()).resolves.toMatchObject({
     weather: { now: null, day: dayRange },
+  });
+  // An older server sends no further cards; an empty list is none either.
+  stubFetch(
+    Response.json({
+      weather: { day: dayRange, hours: [], rain: [], outlook: null },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    weather: { details: null, rain: null, outlook: null },
   });
   // Without the day's range there is no forecast to show.
   stubFetch(Response.json({ weather: { now: { temperature: 1, code: 0 } } }));
