@@ -282,6 +282,13 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// stopThreadWork stops what still writes to a thread about to go: its chat
+// turn, and a scheduled run's research (run_python writes artifacts).
+func (s *server) stopThreadWork(userID, threadID string) {
+	s.activeStreams.stopAndWait(userID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
+	s.runStreams.stopAndWait(userID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
+}
+
 // deleteThreadWithData removes a thread and everything that belongs to it: the
 // turn still generating on it, its private knowledge documents, its rows (via the
 // FK cascade), and its artifact files including their sidecar thumbnails. Shared
@@ -294,7 +301,7 @@ func (s *server) deleteThreadWithData(ctx context.Context, userID, threadID stri
 	// registry key carries userID, so this can only ever reach the caller's own
 	// stream. It returns immediately for the ids with no live stream, so a large
 	// bulk batch does not pay the wait per thread.
-	s.activeStreams.stopAndWait(userID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
+	s.stopThreadWork(userID, threadID)
 	// Before the artifact snapshot, so the in-use query below sees only the
 	// documents that outlive this thread.
 	if s.documents != nil {

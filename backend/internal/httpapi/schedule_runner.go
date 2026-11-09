@@ -316,8 +316,15 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	}
 	noteThread, replacing = thread.ID, thread.ID
 
-	runCtx, cancel := context.WithTimeout(ctx, s.scheduleRunTimeout())
+	timedCtx, cancel := context.WithTimeout(ctx, s.scheduleRunTimeout())
 	defer cancel()
+	runCtx, stop := context.WithCancelCause(timedCtx)
+	defer stop(nil)
+	// Only the loop below writes artifacts, so only it is stoppable by a
+	// thread delete; registered after the deferred cleanup above, so it is
+	// gone before that drops this run's own thread (no wait on itself).
+	endResearch := s.runStreams.register(user.ID, thread.ID, "", stop, nil)
+	defer endResearch()
 	usageTotal := llm.NewUsageAccumulator()
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: thread.ID}
 	streamCtx := llm.WithInferenceMetadata(llm.WithUsageAccumulator(runCtx, usageTotal), inference)
@@ -350,8 +357,16 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		},
 	}, turn.PrepareInput{StreamCtx: streamCtx, TurnCtx: turnCtx, ReqCtx: detached})
 	result, loopErr := turnRun.RunAssistantLoop(streamCtx)
+	endResearch()
 	run.Rounds = result.Rounds
 
+	if errors.Is(context.Cause(runCtx), errStreamThreadDeleted) {
+		// The user deleted the thread: nothing to note it in, and the
+		// earlier run threads stay (none replaces them).
+		run.Error = "the run's thread was deleted"
+		noteThread, replacing = "", ""
+		return
+	}
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 		run.Status, run.Error = schedule.StatusTimeout, "the run took longer than the time limit"
 		noteThread = ""

@@ -59,6 +59,11 @@ type Run struct {
 	scheduledTools map[string]bool
 	// searchCalls counts the paid search calls a scheduled run started.
 	searchCalls int
+	// lastStepRan is set once a scheduled run's scheduledLastStep tool read
+	// the run's tool files; it calls no other tool after that (afterLastStep).
+	// A job on the model's own data, or one refused before it started, sets
+	// nothing: it prints nothing the run's tools did not already show.
+	lastStepRan bool
 	// readOutside is set once any tool but the schedule tools returned
 	// content into the turn: from then on its text may carry instructions
 	// the user never gave.
@@ -129,6 +134,10 @@ type turnPlan struct {
 	// finalContext is a scheduled run's user memory and directives, for the
 	// tool-free call that writes its answer only; "" otherwise.
 	finalContext string
+	// researchBlock is what a scheduled run's tool rounds read and its
+	// answer step must not: the research note and the run_python guidance,
+	// as put into the system prompt (withFinalContext strips exactly this).
+	researchBlock string
 }
 
 // Prepare starts a persisted turn on the engine: it classifies the turn, gates
@@ -184,8 +193,9 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// not at all; later drift is handled per-turn just below. Titling has moved
 	// after the answer and no longer shares this gate.
 	category := t.thread.Category
-	// A scheduled run is research with the user's MCP tools: no image route,
-	// no drift check and no sandbox. It classifies its prompt on every run, so
+	// A scheduled run is research with the user's MCP tools, plus run_python
+	// on the files those tools return (never the user's uploads): no image
+	// route and no drift check. It classifies its prompt on every run, so
 	// category-tagged servers are offered as in chat, and keeps the label to
 	// itself: an edited prompt must never inherit a stale one.
 	scheduled := t.scheduled != nil
@@ -215,7 +225,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		docIdx                            = newDocIndexer()
 		documentContext, knowledgeContext string
 		knowledgeSources                  []Citation
-		sandboxOn                         = !scheduled && t.e.sandboxOffered()
+		sandboxOn                         = t.e.sandboxOffered()
 	)
 	parallel(
 		func() {
@@ -259,9 +269,12 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			}
 		},
 		// run_python's guidance travels with the tool: when the sidecar is
-		// off, the prompt never mentions it.
+		// off, the prompt never mentions it. A scheduled run lists no
+		// documents: run_python reads only its tool files there.
 		func() {
-			if sandboxOn {
+			if sandboxOn && scheduled {
+				sandboxGuidance = sandboxGuidancePrompt
+			} else if sandboxOn {
 				sandboxGuidance = t.e.sandboxGuidance(in.ReqCtx, t.user.ID, t.thread, in.DocumentAttachmentIDs)
 			}
 		},
@@ -318,10 +331,18 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// A scheduled run reads untrusted pages with tools nobody watches, so the
 	// user memory and directives stay out of every call that offers tools:
 	// only the tool-free call that writes the answer gets them (finalContext).
-	finalContext := ""
+	finalContext, researchBlock := "", ""
 	if scheduled {
-		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.startedNote(), t.sinceNote(), scheduledResearchNote, t.scheduled.Memory)
+		// The run_python guidance goes with the research note: the answer
+		// step offers no tools, and a prompt still saying "You have
+		// run_python" there gets a chart promised instead of drawn.
+		researchBlock = joinNonEmptyBlocks(researchNote(sandboxOn), sandboxGuidance)
+		sandboxGuidance = ""
+		scheduleBlock = joinNonEmptyBlocks(scheduledRunPrompt, t.startedNote(), t.sinceNote(), researchBlock, t.scheduled.Memory)
 		finalContext, userContext = userContext, ""
+		if sandboxOn {
+			finalContext = joinNonEmptyBlocks(finalContext, scheduledChartAnswerNote)
+		}
 	}
 	history := buildLLMHistory(t.user, t.now(), promptBlocks{
 		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(tools, t.offered)),
@@ -387,6 +408,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		knowledgeSources: knowledgeSources,
 		sourceCount:      docIdx.count(),
 		finalContext:     finalContext,
+		researchBlock:    researchBlock,
 	}
 }
 

@@ -46,12 +46,23 @@ type turnOutcome struct {
 // turn's events are recorded as SSE. cfg.Thread is set to store.
 func runStoredTurn(t *testing.T, cfg Config, store *fakeThreadStore, content string) turnOutcome {
 	t.Helper()
-	return runStoredTurnWithInbox(t, cfg, store, content, nil)
+	return driveTurn(t, cfg, store, content, nil, nil)
 }
 
 // runStoredTurnWithInbox is runStoredTurn with the turn reading queued
 // messages from inbox.
 func runStoredTurnWithInbox(t *testing.T, cfg Config, store *fakeThreadStore, content string, inbox Inbox) turnOutcome {
+	t.Helper()
+	return driveTurn(t, cfg, store, content, inbox, nil)
+}
+
+// runScheduledTurn is runStoredTurn as a schedule's headless run.
+func runScheduledTurn(t *testing.T, cfg Config, store *fakeThreadStore, content string) turnOutcome {
+	t.Helper()
+	return driveTurn(t, cfg, store, content, nil, &ScheduledRun{})
+}
+
+func driveTurn(t *testing.T, cfg Config, store *fakeThreadStore, content string, inbox Inbox, scheduled *ScheduledRun) turnOutcome {
 	t.Helper()
 	cfg.Thread = store
 	e := New(cfg)
@@ -82,6 +93,7 @@ func runStoredTurnWithInbox(t *testing.T, cfg Config, store *fakeThreadStore, co
 		Usage:       usage,
 		Start:       time.Now(),
 		Inbox:       inbox,
+		Scheduled:   scheduled,
 	}, PrepareInput{
 		StreamCtx:     ctx,
 		TurnCtx:       ctx,

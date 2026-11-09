@@ -10,6 +10,13 @@ sidecars; nothing is installed on the host. loom offers the tool only while the 
 its health probe (every minute while up, every 10 s while down); otherwise the tool and its prompt
 guidance are absent and chat works as before.
 
+A scheduled run gets `run_python` too, the only built-in it gets, for a chart the task asks for.
+The run reads untrusted pages unattended, and whatever a job prints could leave through a later
+fetch, so: the job reads only the files the run's MCP tools returned, never the user's uploads;
+once a job read those files no other tool runs; the answer step stays tool-free,
+so the chart is drawn in a research round. Scheduled jobs share one sidecar slot, leaving the other
+to chat.
+
 ## What isolates a job
 
 The container runs with the default runtime (runc). Untrusted code therefore meets the host kernel

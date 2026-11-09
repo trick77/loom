@@ -147,11 +147,11 @@ func TestSandboxFilesCodeNamedWithinCaps(t *testing.T) {
 	f := newSandboxFixture(t)
 	big := mcp.File{Name: "big.csv", Data: make([]byte, maxSandboxInputBytes)}
 	tf := map[string]mcp.File{"big.csv": big, "s.csv": {Name: "s.csv", Data: []byte("a\n")}}
-	files, msg := f.srv.sandboxFiles(t.Context(), testUser.ID, f.thread, []any{"s.csv"}, "open('in/big.csv'); open('in/s.csv')", tf)
+	files, msg := f.srv.sandboxFiles(t.Context(), testUser.ID, f.thread, []any{"s.csv"}, "open('in/big.csv'); open('in/s.csv')", tf, true)
 	if msg != "" || len(files) != 1 || files[0].Name != "s.csv" {
 		t.Errorf("over the byte cap: %q %v", msg, files)
 	}
-	if _, msg := f.srv.sandboxFiles(t.Context(), testUser.ID, f.thread, "s.csv", "", tf); !strings.Contains(msg, "files must be an array") {
+	if _, msg := f.srv.sandboxFiles(t.Context(), testUser.ID, f.thread, "s.csv", "", tf, true); !strings.Contains(msg, "files must be an array") {
 		t.Errorf("malformed files: %q", msg)
 	}
 }
