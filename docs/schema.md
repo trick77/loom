@@ -12,7 +12,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `user_id` | TEXT | no |  |  |
 | `thread_id` | TEXT | yes |  |  |
 | `project_id` | TEXT | yes |  |  |
@@ -76,7 +76,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `user_id` | TEXT | no |  |  |
 | `project_id` | TEXT | yes |  |  |
 | `artifact_id` | TEXT | yes |  |  |
@@ -132,7 +132,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `thread_id` | TEXT | no |  |  |
 | `user_id` | TEXT | no |  |  |
 | `role` | TEXT | no |  |  |
@@ -181,7 +181,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `user_id` | TEXT | no |  |  |
 | `kind` | TEXT | no |  |  |
 | `schedule_id` | TEXT | yes |  |  |
@@ -236,7 +236,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `user_id` | TEXT | no |  |  |
 | `name` | TEXT | no |  |  |
 | `description` | TEXT | no | `''` |  |
@@ -271,7 +271,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `user_id` | TEXT | no |  |  |
 | `endpoint` | TEXT | no |  |  |
 | `p256dh` | TEXT | no |  |  |
@@ -299,7 +299,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `thread_id` | TEXT | no |  |  |
 | `user_id` | TEXT | no |  |  |
 | `content` | TEXT | no |  |  |
@@ -347,7 +347,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `schedule_id` | TEXT | no |  |  |
 | `user_id` | TEXT | no |  |  |
 | `message_id` | TEXT | yes |  |  |
@@ -414,7 +414,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `user_id` | TEXT | no |  |  |
 | `name` | TEXT | no |  |  |
 | `prompt` | TEXT | no |  |  |
@@ -447,7 +447,7 @@ Checks:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `key` | TEXT | yes |  | 1 |
+| `key` | TEXT | no |  | 1 |
 | `value` | TEXT | no |  |  |
 
 ## shared_threads
@@ -458,7 +458,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `share_id` | TEXT | no |  |  |
 | `thread_id` | TEXT | no |  |  |
 | `user_id` | TEXT | no |  |  |
@@ -494,7 +494,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `user_id` | TEXT | no |  |  |
 | `project_id` | TEXT | yes |  |  |
 | `title` | TEXT | no |  |  |
@@ -555,7 +555,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `user_id` | TEXT | yes |  | 1 |
+| `user_id` | TEXT | no |  | 1 |
 | `last_created_at` | TEXT | no | `''` |  |
 | `last_message_id` | TEXT | no | `''` |  |
 | `last_refresh_at` | TEXT | yes |  |  |
@@ -590,7 +590,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `user_id` | TEXT | no |  |  |
 | `category` | TEXT | no |  |  |
 | `content` | TEXT | no |  |  |
@@ -624,7 +624,7 @@ Checks:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `user_id` | TEXT | yes |  | 1 |
+| `user_id` | TEXT | no |  | 1 |
 | `facts_hash` | TEXT | no |  |  |
 | `resolved_at` | TEXT | no | `datetime('now')` |  |
 
@@ -669,7 +669,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `user_id` | TEXT | yes |  | 1 |
+| `user_id` | TEXT | no |  | 1 |
 | `prompt_tokens` | INTEGER | no | `0` |  |
 | `completion_tokens` | INTEGER | no | `0` |  |
 | `cached_tokens` | INTEGER | no | `0` |  |
@@ -699,7 +699,7 @@ Go types:
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
-| `id` | TEXT | yes |  | 1 |
+| `id` | TEXT | no |  | 1 |
 | `oidc_subject` | TEXT | no |  |  |
 | `username` | TEXT | no |  |  |
 | `email` | TEXT | no | `''` |  |
@@ -1304,12 +1304,12 @@ erDiagram
     threads }o--o| schedules : "schedule_id"
     threads }o--|| users : "user_id"
     user_directives }o--|| users : "user_id"
-    user_fact_cursor |o--o| users : "user_id"
+    user_fact_cursor |o--|| users : "user_id"
     user_fact_sources }o--|| threads : "user_id, thread_id"
     user_fact_sources }o--|| user_facts : "fact_id"
     user_facts }o--|| users : "user_id"
-    user_location_state |o--o| users : "user_id"
+    user_location_state |o--|| users : "user_id"
     user_locations }o--|| users : "user_id"
-    user_usage_totals |o--o| users : "user_id"
+    user_usage_totals |o--|| users : "user_id"
     vector_refused |o--|| chunks : "chunk_id"
 ```
