@@ -560,8 +560,9 @@ func imagegenProblem(cfg Config) string {
 
 // sidecarProblem says what is wrong with a configured sidecar compose starts
 // by default: a URL that is not one, or a token it refuses. compose sets the
-// URL, so an upgraded install meets this first and the message names the
-// sidecar and its doc. An optional sidecar takes a missing token as off.
+// URL, so an upgraded install meets this first and the message (what) names
+// the sidecar, what it does without the token, and its doc. An optional
+// sidecar takes a missing token as off.
 func sidecarProblem(urlVar, rawURL, tokenVar, token, what, doc string, optional bool) string {
 	if strings.TrimSpace(rawURL) == "" {
 		return ""
@@ -573,7 +574,7 @@ func sidecarProblem(urlVar, rawURL, tokenVar, token, what, doc string, optional 
 		return ""
 	}
 	if msg := sidecar.TokenProblem(tokenVar, token); msg != "" {
-		return msg + ": " + what + ", which shares it and refuses to start without it (" + doc + ")"
+		return msg + ": " + what + " (" + doc + ")"
 	}
 	return ""
 }
@@ -581,7 +582,7 @@ func sidecarProblem(urlVar, rawURL, tokenVar, token, what, doc string, optional 
 // searchProblem says what is wrong with a configured search sidecar.
 func searchProblem(cfg Config) string {
 	return sidecarProblem("BACKEND_SEARCH_URL", cfg.SearchURL, "BACKEND_SEARCH_TOKEN", cfg.SearchToken,
-		"web search runs in the loom-search sidecar", "docs/search.md", false)
+		"web search runs in the loom-search sidecar, which shares it and refuses to start without it", "docs/search.md", false)
 }
 
 // weatherProblem says what is wrong with a configured weather sidecar. The
@@ -589,7 +590,7 @@ func searchProblem(cfg Config) string {
 // that brings the default URL never fails boot over it.
 func weatherProblem(cfg Config) string {
 	return sidecarProblem("BACKEND_WEATHER_URL", cfg.WeatherURL, "BACKEND_WEATHER_TOKEN", cfg.WeatherToken,
-		"the weather runs in the loom-weather sidecar", "docs/weather.md", true)
+		"the weather runs in the loom-weather sidecar, which shares it and refuses every call without it; leave it empty to keep the weather off", "docs/weather.md", true)
 }
 
 // WeatherOn reports whether the weather sidecar is configured: a URL and a
@@ -601,7 +602,7 @@ func (c Config) WeatherOn() bool {
 // docgenProblem says what is wrong with a configured docgen sidecar.
 func docgenProblem(cfg Config) string {
 	return sidecarProblem("BACKEND_DOCGEN_URL", cfg.DocgenURL, "BACKEND_DOCGEN_TOKEN", cfg.DocgenToken,
-		"the document tools run in the loom-docgen sidecar", "docs/docgen.md", false)
+		"the document tools run in the loom-docgen sidecar, which shares it and refuses to start without it", "docs/docgen.md", false)
 }
 
 // minStravaToken is the sidecar's own floor for STRAVA_TOKEN.

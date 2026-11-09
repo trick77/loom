@@ -32,7 +32,8 @@ const (
 
 // Forecast is the forecast tool's answer, as JSON text. Temperatures are °C,
 // wind km/h, probabilities %, times local to Timezone without an offset, codes
-// WMO weather interpretation codes.
+// WMO weather interpretation codes. A value the provider has not is left out,
+// never sent as 0.
 type Forecast struct {
 	Latitude    float64     `json:"latitude"`
 	Longitude   float64     `json:"longitude"`
@@ -40,14 +41,17 @@ type Forecast struct {
 	Hourly      []Hour      `json:"hourly"`
 	Daily       []Day       `json:"daily"`
 	Attribution Attribution `json:"attribution"`
+	// utcOffset is the place's offset from UTC in seconds: hours already past
+	// there are dropped on the way out.
+	utcOffset int
 }
 
 type Hour struct {
-	Time                     string  `json:"time"`
-	Temperature              float64 `json:"temperature"`
-	Code                     int     `json:"code"`
-	PrecipitationProbability int     `json:"precipitationProbability"`
-	WindSpeed                float64 `json:"windSpeed"`
+	Time                     string   `json:"time"`
+	Temperature              float64  `json:"temperature"`
+	Code                     int      `json:"code"`
+	PrecipitationProbability *int     `json:"precipitationProbability,omitempty"`
+	WindSpeed                *float64 `json:"windSpeed,omitempty"`
 }
 
 type Day struct {
@@ -55,7 +59,21 @@ type Day struct {
 	High                     float64 `json:"high"`
 	Low                      float64 `json:"low"`
 	Code                     int     `json:"code"`
-	PrecipitationProbability int     `json:"precipitationProbability"`
+	PrecipitationProbability *int    `json:"precipitationProbability,omitempty"`
+}
+
+// from drops the hours before the current one at the place: they only cost
+// the model tokens. The cached forecast keeps them, it is kept for the hour.
+func (f Forecast) from(now time.Time) Forecast {
+	current := now.UTC().Add(time.Duration(f.utcOffset) * time.Second).Truncate(time.Hour).Format("2006-01-02T15:04")
+	hours := make([]Hour, 0, len(f.Hourly))
+	for _, h := range f.Hourly {
+		if h.Time >= current {
+			hours = append(hours, h)
+		}
+	}
+	f.Hourly = hours
+	return f
 }
 
 // Attribution is the credit the data's licence requires next to it.
@@ -80,6 +98,7 @@ type weather struct {
 	provider  openMeteo
 	forecasts *cache[Forecast]
 	places    *cache[[]Place]
+	now       func() time.Time
 }
 
 // newServer mounts kit's health probes and, behind the bearer token, the
@@ -93,6 +112,7 @@ func newServerAt(cfg config, client *http.Client, version string, now func() tim
 		provider:  openMeteo{http: client, forecastURL: strings.TrimRight(cfg.forecastURL, "/"), geocodingURL: strings.TrimRight(cfg.geocodingURL, "/")},
 		forecasts: newCache[Forecast](now, cacheLimit),
 		places:    newCache[[]Place](now, cacheLimit),
+		now:       now,
 	}
 	api := http.NewServeMux()
 	api.Handle("/mcp", mcpserver.New(w.mcpServer(version)))
@@ -138,11 +158,12 @@ var (
 	languagePattern = regexp.MustCompile(`^[a-z]{2}$`)
 )
 
+// forecastArgs reads days as a number: some models send 2.0 for 2.
 type forecastArgs struct {
 	Latitude  *float64 `json:"latitude"`
 	Longitude *float64 `json:"longitude"`
 	Timezone  string   `json:"timezone"`
-	Days      int      `json:"days"`
+	Days      float64  `json:"days"`
 }
 
 func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserver.Result {
@@ -155,8 +176,8 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 		return mcpserver.ErrorResult("latitude and longitude are required")
 	case math.Abs(*args.Latitude) > 90 || math.Abs(*args.Longitude) > 180:
 		return mcpserver.ErrorResult("latitude must be within ±90 and longitude within ±180")
-	case args.Days < 0 || args.Days > maxDays:
-		return mcpserver.ErrorResult(fmt.Sprintf("days must be between 1 and %d", maxDays))
+	case args.Days < 0 || args.Days > maxDays || args.Days != math.Trunc(args.Days):
+		return mcpserver.ErrorResult(fmt.Sprintf("days must be a whole number between 1 and %d", maxDays))
 	}
 	tz := strings.TrimSpace(args.Timezone)
 	if tz == "" {
@@ -164,7 +185,7 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 	} else if !timezonePattern.MatchString(tz) {
 		return mcpserver.ErrorResult("timezone must be an IANA zone such as Europe/Zurich")
 	}
-	days := args.Days
+	days := int(args.Days)
 	if days == 0 {
 		days = defaultDays
 	}
@@ -178,7 +199,7 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 	if err != nil {
 		return mcpserver.ErrorResult("forecast failed: " + err.Error())
 	}
-	result := jsonResult(forecast)
+	result := jsonResult(forecast.from(w.now()))
 	// The licence's credit as a source too, so a chat answer cites it even
 	// when the model does not repeat it.
 	result.Sources = []mcpserver.Source{{URL: forecast.Attribution.URL, Title: forecast.Attribution.Text}}

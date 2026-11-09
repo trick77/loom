@@ -62,7 +62,7 @@ func TestServerNeedsTheToken(t *testing.T) {
 	}
 }
 
-const forecastReply = `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich",
+const forecastReply = `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich","utc_offset_seconds":3600,
 "hourly":{"time":["2026-11-09T08:00","2026-11-09T09:00","2026-11-09T10:00"],
  "temperature_2m":[5.1,6.2,null],"weather_code":[3,2,1],"precipitation_probability":[10,null,0],"wind_speed_10m":[8.5,9,10]},
 "daily":{"time":["2026-11-09","2026-11-10"],"temperature_2m_max":[11.2,9],"temperature_2m_min":[3.1,null],
@@ -126,7 +126,9 @@ var (
 
 func TestForecast(t *testing.T) {
 	fake := &fakeProvider{}
-	svc := loomService(t, fake.server(t).URL, time.Now)
+	// 08:30 in Zurich: the 08:00 hour is the current one.
+	at := func() time.Time { return time.Date(2026, 11, 9, 7, 30, 0, 0, time.UTC) }
+	svc := loomService(t, fake.server(t).URL, at)
 	res, err := svc.CallToolResult(context.Background(), forecastName, map[string]any{"latitude": 47.37689, "longitude": 8.54169, "timezone": "Europe/Zurich"})
 	if err != nil {
 		t.Fatal(err)
@@ -140,20 +142,31 @@ func TestForecast(t *testing.T) {
 	if len(res.Sources) != 1 || res.Sources[0].URL != got.Attribution.URL {
 		t.Fatalf("sources = %+v", res.Sources)
 	}
-	// A POSIX-style zone is a zone.
-	if _, err := svc.CallTool(context.Background(), forecastName, map[string]any{"latitude": 40.7, "longitude": -74, "timezone": "EST5EDT"}); err != nil {
+	// A POSIX-style zone is a zone, and 2.0 days are 2.
+	if _, err := svc.CallTool(context.Background(), forecastName, map[string]any{"latitude": 40.7, "longitude": -74, "timezone": "EST5EDT", "days": 2.0}); err != nil {
 		t.Fatalf("EST5EDT: %v", err)
 	}
+	// An hour later the 08:00 row is gone from the answer.
+	later := loomService(t, fake.server(t).URL, func() time.Time { return at().Add(time.Hour) })
+	text2, err := later.CallTool(context.Background(), forecastName, map[string]any{"latitude": 47.37689, "longitude": 8.54169, "timezone": "Europe/Zurich"})
+	if err != nil || strings.Contains(text2, "2026-11-09T08:00") || !strings.Contains(text2, "2026-11-09T09:00") {
+		t.Fatalf("an hour later: %s, %v", text2, err)
+	}
 	// An hour or day missing a value it cannot do without is left out; a
-	// missing probability reads 0.
+	// missing probability stays missing, never 0.
 	if got.Timezone != "Europe/Zurich" || len(got.Hourly) != 2 || len(got.Daily) != 1 {
 		t.Fatalf("forecast = %+v", got)
 	}
-	if got.Hourly[0] != (Hour{Time: "2026-11-09T08:00", Temperature: 5.1, Code: 3, PrecipitationProbability: 10, WindSpeed: 8.5}) ||
-		got.Hourly[1].PrecipitationProbability != 0 {
-		t.Fatalf("hours = %+v", got.Hourly)
+	h := got.Hourly[0]
+	if h.Time != "2026-11-09T08:00" || h.Temperature != 5.1 || h.Code != 3 || h.PrecipitationProbability == nil ||
+		*h.PrecipitationProbability != 10 || h.WindSpeed == nil || *h.WindSpeed != 8.5 {
+		t.Fatalf("first hour = %+v", h)
 	}
-	if got.Daily[0] != (Day{Date: "2026-11-09", High: 11.2, Low: 3.1, Code: 3, PrecipitationProbability: 10}) {
+	if got.Hourly[1].PrecipitationProbability != nil || !strings.Contains(text, `"code":2,"windSpeed":9}`) {
+		t.Fatalf("an unknown probability was sent: %s", text)
+	}
+	d := got.Daily[0]
+	if d.Date != "2026-11-09" || d.High != 11.2 || d.Low != 3.1 || d.Code != 3 || d.PrecipitationProbability == nil || *d.PrecipitationProbability != 10 {
 		t.Fatalf("days = %+v", got.Daily)
 	}
 	if got.Attribution.Text == "" || !strings.HasPrefix(got.Attribution.URL, "https://") {
@@ -250,6 +263,7 @@ func TestErrorsAreToolErrors(t *testing.T) {
 		"no point":      {forecastName, map[string]any{"latitude": 1}, "required"},
 		"off the globe": {forecastName, map[string]any{"latitude": 91, "longitude": 0}, "within"},
 		"days":          {forecastName, map[string]any{"latitude": 1, "longitude": 2, "days": 9}, "days"},
+		"half a day":    {forecastName, map[string]any{"latitude": 1, "longitude": 2, "days": 1.5}, "whole number"},
 		"timezone":      {forecastName, map[string]any{"latitude": 1, "longitude": 2, "timezone": "../etc"}, "IANA"},
 		"unknown":       {forecastName, map[string]any{"lat": 1}, "invalid arguments"},
 		"lookup":        {geocodeName, map[string]any{"query": "Baden"}, "400"},
