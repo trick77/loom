@@ -11,7 +11,7 @@ import { Icon } from "../chat/Icon";
 import { degrees } from "./format";
 import { LocationChip } from "./LocationChip";
 import { conditionFor, conditionLabelKey, isNightNow } from "./weatherCodes";
-import { SunTimeIcon, WeatherIcon } from "./WeatherIcon";
+import { SunTimeIcon, WarningIcon, WeatherIcon } from "./WeatherIcon";
 
 function Divider() {
   return <span aria-hidden className="h-3.5 w-px bg-[#343432]" />;
@@ -81,20 +81,10 @@ export function TodayLine({
         </span>
         {warning !== null && (
           <span
-            className="flex items-center gap-1.5 font-medium text-[#d97757]"
+            className="flex items-center gap-1.5 font-medium text-accent-strong"
             data-testid="line-warning"
           >
-            <WeatherIcon
-              condition={
-                warning.kind === "snow"
-                  ? "snow"
-                  : warning.kind === "storm"
-                    ? "storm"
-                    : "rain"
-              }
-              size={16}
-              warn
-            />
+            <WarningIcon kind={warning.kind} size={16} />
             {t(`today.warning.${warning.kind}`, { from: warning.from })}
           </span>
         )}

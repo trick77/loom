@@ -51,14 +51,14 @@ export function ScheduleNews({
       <ul className="flex flex-col gap-2.5">
         {runs.map((run) => (
           <li key={run.id}>
-            <article className="flex items-start gap-3.5 rounded-2xl border border-[#323230] bg-[#242422] py-3.5 pr-1.5 pl-[18px] sm:pr-3.5">
+            <article className="flex items-start gap-3.5 rounded-2xl border border-border bg-[#242422] py-3.5 pr-1.5 pl-[18px] sm:pr-3.5">
               <span
                 aria-hidden
                 className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#c9a25f]"
               />
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <div className="flex flex-wrap items-baseline gap-x-2.5">
-                  <h3 className="text-[15px] font-medium text-[#faf9f5]">
+                  <h3 className="text-[15px] font-medium text-ink">
                     {run.title}
                   </h3>
                   <span className="text-xs text-[#8f8b82]">

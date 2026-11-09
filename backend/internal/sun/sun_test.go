@@ -71,6 +71,33 @@ func TestPolar(t *testing.T) {
 	}
 }
 
+// Either event alone turning polar makes the day polar: never a day with
+// zero times.
+func TestPolarOf(t *testing.T) {
+	for _, tc := range []struct {
+		rise, set event
+		want      Polar
+	}{
+		{event{}, event{}, NotPolar},
+		{event{polar: PolarNight}, event{}, PolarNight},
+		{event{}, event{polar: PolarDay}, PolarDay},
+	} {
+		if got := polarOf(tc.rise, tc.set); got != tc.want {
+			t.Errorf("polarOf(%+v, %+v) = %q, want %q", tc.rise, tc.set, got, tc.want)
+		}
+	}
+	// Days along the polar circle's edge, all year: never a zero sunrise.
+	oslo := load(t, "Europe/Oslo")
+	for d := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC); d.Year() == 2026; d = d.AddDate(0, 0, 1) {
+		for _, lat := range []float64{66.0, 66.5, 67.0, 67.5} {
+			day := On(d, lat, 15, oslo)
+			if day.Polar == NotPolar && (day.Rise.IsZero() || day.Set.IsZero() || day.Length() <= 0) {
+				t.Fatalf("%s at %.1f°: %+v", d.Format("2006-01-02"), lat, day)
+			}
+		}
+	}
+}
+
 // The day is the calendar day in the place's zone, not UTC's.
 func TestOnUsesTheLocalDay(t *testing.T) {
 	sydney := load(t, "Australia/Sydney")

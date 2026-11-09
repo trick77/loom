@@ -53,19 +53,29 @@ func On(date time.Time, lat, lon float64, loc *time.Location) Day {
 	}
 	rise := eventMinutes(midnight, lat, lon, -1, noon.minutes)
 	set := eventMinutes(midnight, lat, lon, 1, noon.minutes)
-	if rise.polar != NotPolar || set.polar != NotPolar {
-		return Day{Polar: rise.polar}
+	if p := polarOf(rise, set); p != NotPolar {
+		return Day{Polar: p}
 	}
 	at := func(minutes float64) time.Time {
 		return midnight.Add(time.Duration(minutes * float64(time.Minute))).In(loc)
 	}
-	// Refined once, at the event's own time.
+	// Refined once, at the event's own time. Near a polar circle one event
+	// alone may then turn polar: the day counts as polar, never as one with
+	// a zero sunrise or sunset.
 	rise = eventMinutes(midnight, lat, lon, -1, rise.minutes)
 	set = eventMinutes(midnight, lat, lon, 1, set.minutes)
-	if rise.polar != NotPolar || set.polar != NotPolar {
-		return Day{Polar: rise.polar}
+	if p := polarOf(rise, set); p != NotPolar {
+		return Day{Polar: p}
 	}
 	return Day{Rise: at(rise.minutes), Set: at(set.minutes)}
+}
+
+// polarOf is the polar state either event found; NotPolar when neither did.
+func polarOf(rise, set event) Polar {
+	if rise.polar != NotPolar {
+		return rise.polar
+	}
+	return set.polar
 }
 
 type event struct {

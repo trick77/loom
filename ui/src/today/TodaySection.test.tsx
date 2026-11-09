@@ -135,18 +135,32 @@ test("a warning stands out in the line and in the tile", () => {
   show({ view: "line", warning: { kind: "rain", from: "17:00" } });
   const warning = screen.getByTestId("line-warning");
   expect(warning).toHaveTextContent("Rain from 17:00");
-  expect(warning).toHaveClass("text-[#d97757]");
+  expect(warning).toHaveClass("text-accent-strong");
+  expect(warning.querySelector("svg")).toHaveAttribute("data-warning", "rain");
   fireEvent.click(line());
   expect(screen.getByTestId("weather-warning")).toHaveTextContent(
     "Rain from 17:00",
   );
-  expect(screen.getByTestId("weather-warning")).toHaveClass("text-[#d97757]");
+  expect(screen.getByTestId("weather-warning")).toHaveClass(
+    "text-accent-strong",
+  );
   // The rainy 18:00 slot is drawn in the accent, the sunny ones are not.
   const hours = within(
     screen.getByRole("list", { name: "Next hours" }),
   ).getAllByRole("listitem");
-  expect(hours[3].querySelector("svg")).toHaveAttribute("stroke", "#d97757");
-  expect(hours[1].querySelector("svg")).toHaveAttribute("stroke", "#e0b46a");
+  expect(hours[3].querySelector("svg")).toHaveClass("text-accent-strong");
+  expect(hours[1].querySelector("svg")).toHaveClass("text-[#e0b46a]");
+});
+
+test.each([
+  ["frost", "Frost from 06:00"],
+  ["snow", "Snow from 06:00"],
+  ["storm", "Thunderstorms from 06:00"],
+] as const)("a %s warning draws its own icon", (kind, text) => {
+  show({ view: "line", warning: { kind, from: "06:00" } });
+  const warning = screen.getByTestId("line-warning");
+  expect(warning).toHaveTextContent(text);
+  expect(warning.querySelector("svg")).toHaveAttribute("data-warning", kind);
 });
 
 test("the place chip explains the memory and opens the memories", () => {

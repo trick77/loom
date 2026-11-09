@@ -20,8 +20,10 @@ import (
 var forecastTool = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool)
 
 const (
-	// forecastTimeout bounds the start page's forecast: it waits on it.
-	forecastTimeout = 8 * time.Second
+	// forecastTimeout bounds the start page's forecast: the whole answer,
+	// the unread runs included, waits on it. The sidecar answers from its
+	// cache within the hour, so only its first call per place and hour waits.
+	forecastTimeout = 4 * time.Second
 	// todayRuns is how many unread run results the start page lists.
 	todayRuns = 5
 	// warningHours is how far ahead a warning looks.
@@ -115,9 +117,9 @@ type forecast struct {
 }
 
 // handleToday is the start page's "today": the user's place, its weather and
-// sun, and the schedule results not read yet. The first call of a day says
-// "tiles", later ones "line". Every part is optional: one that fails is left
-// out, never the page.
+// sun, and the schedule results not read yet. The first call of a day that
+// has weather to show says "tiles", later ones "line". Every part is
+// optional: one that fails is left out, never the page.
 func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 	user, ok := currentUser(w, r)
 	if !ok {
@@ -127,11 +129,6 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 	user.Timezone = s.rememberTimezone(ctx, user, r)
 	now := s.clock()
 	out := todayResponse{Date: userToday(user, now), View: "line", Runs: s.todayRuns(ctx, user)}
-	if first, err := s.users.MarkTodaySeen(ctx, user.ID, out.Date); err != nil {
-		slog.Warn("mark today seen failed", "user_id", user.ID, "err", err)
-	} else if first {
-		out.View = "tiles"
-	}
 	if s.locationOn() {
 		// The facts may have changed since the last sweep: derive in the
 		// background, the next visit shows it. Unchanged facts cost two queries.
@@ -151,6 +148,15 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 		out.Sun = sunOn(now, p, loc)
 		if f, ok := s.forecastFor(ctx, p, loc); ok {
 			out.Weather, out.Warning = todayForecast(f, now.In(loc))
+		}
+	}
+	// Only a visit with weather uses up the day's tiles: one while the place
+	// is still being derived, or the forecast failing, leaves them for later.
+	if out.Weather != nil && s.users != nil {
+		if first, err := s.users.MarkTodaySeen(ctx, user.ID, out.Date); err != nil {
+			slog.Warn("mark today seen failed", "user_id", user.ID, "err", err)
+		} else if first {
+			out.View = "tiles"
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
@@ -202,7 +208,9 @@ func sunOn(now time.Time, p *location.Place, loc *time.Location) *todaySun {
 	}
 	rise, set := today.Rise.Format("15:04"), today.Set.Format("15:04")
 	out.Rise, out.Set = &rise, &set
-	out.Progress = math.Round(float64(now.Sub(today.Rise))/float64(today.Length())*1000) / 1000
+	if length := today.Length(); length > 0 {
+		out.Progress = math.Round(float64(now.Sub(today.Rise))/float64(length)*1000) / 1000
+	}
 	return out
 }
 
@@ -226,13 +234,27 @@ func (s *server) forecastFor(ctx context.Context, p *location.Place, loc *time.L
 	return f, true
 }
 
-// todayForecast reads the start page's weather off the forecast, whose first
-// hour is the current one: "now" between it and the next, five hours three
-// apart, today's high and low, and a warning for the next hours.
+// todayForecast reads the start page's weather off the forecast from the
+// current hour on: "now" between it and the next, five hours three apart,
+// today's high and low, and a warning for the next hours. The contract does
+// not promise the hours start now, so the current one is looked up; a
+// forecast with no hour from now on is none.
 func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
+	current := now.Truncate(time.Hour).Format("2006-01-02T15:04")
+	start := -1
+	for i, h := range f.Hourly {
+		if h.Time >= current {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return nil, nil
+	}
+	f.Hourly = f.Hourly[start:]
 	first := f.Hourly[0]
 	temp := first.Temperature
-	if len(f.Hourly) > 1 {
+	if len(f.Hourly) > 1 && first.Time == current {
 		frac := float64(now.Minute()) / 60
 		temp += (f.Hourly[1].Temperature - temp) * frac
 	}

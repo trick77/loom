@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import * as api from "../api";
 import { todayFixture } from "../test/today";
@@ -171,9 +171,9 @@ test("marking a run read removes its card and tells the bell and sidebar", async
       api.THREAD_NEWS_CHANGED,
     ]),
   );
-  // The reload the announcement brings keeps this visit's tiles.
-  await waitFor(() => expect(api.getToday).toHaveBeenCalledTimes(2));
-  expect(screen.getByRole("region", { name: /^Today · / })).toBeInTheDocument();
+  // Its own announcement reloads nothing: the card is already gone.
+  await new Promise((r) => setTimeout(r, 20));
+  expect(api.getToday).toHaveBeenCalledOnce();
   // The run left has no thread to open.
   expect(
     screen.queryByRole("button", { name: "Open full result →" }),
@@ -215,7 +215,11 @@ test("mark all read clears the news and the starters come back", async () => {
   expect(
     screen.queryByRole("region", { name: /New from your schedules/ }),
   ).toBeNull();
-  expect(api.markAllNotificationsRead).toHaveBeenCalledOnce();
+  // Only the runs shown, never everything the bell holds.
+  expect(api.markAllNotificationsRead).not.toHaveBeenCalled();
+  expect(api.markNotificationRead).toHaveBeenCalledTimes(2);
+  expect(api.markNotificationRead).toHaveBeenCalledWith("n1");
+  expect(api.markNotificationRead).toHaveBeenCalledWith("n2");
   await waitFor(() =>
     expect(events).toEqual([
       api.NOTIFICATIONS_CHANGED,
@@ -223,11 +227,14 @@ test("mark all read clears the news and the starters come back", async () => {
     ]),
   );
   expect(starters()).toBeInTheDocument();
+  expect(api.getToday).toHaveBeenCalledOnce();
 });
 
-test("a failed mark-all brings the cards back", async () => {
+test("a failed mark-all brings back only the cards that failed", async () => {
   vi.mocked(api.getToday).mockResolvedValue(todayFixture());
-  vi.mocked(api.markAllNotificationsRead).mockRejectedValue(new Error("down"));
+  vi.mocked(api.markNotificationRead).mockImplementation(async (id) => {
+    if (id === "n2") throw new Error("down");
+  });
   renderStart();
   const news = await screen.findByRole("region", {
     name: /New from your schedules/,
@@ -235,10 +242,19 @@ test("a failed mark-all brings the cards back", async () => {
   fireEvent.click(
     within(news).getByRole("button", { name: "Mark all as read" }),
   );
-  expect(
-    await screen.findByRole("region", { name: /New from your schedules/ }),
-  ).toBeInTheDocument();
-  expect(screen.getAllByRole("article")).toHaveLength(2);
+  const back = await screen.findByRole("region", {
+    name: /New from your schedules/,
+  });
+  expect(within(back).getAllByRole("article")).toHaveLength(1);
+  expect(within(back).getByRole("article")).toHaveTextContent(
+    "Flats in Zürich",
+  );
+  await waitFor(() =>
+    expect(events).toEqual([
+      api.NOTIFICATIONS_CHANGED,
+      api.THREAD_NEWS_CHANGED,
+    ]),
+  );
 });
 
 test("news read elsewhere reloads today; a failed reload keeps it", async () => {
@@ -250,9 +266,80 @@ test("news read elsewhere reloads today; a failed reload keeps it", async () => 
   await waitFor(() => expect(api.getToday).toHaveBeenCalledTimes(2));
   expect(screen.getAllByRole("article")).toHaveLength(2);
 
-  vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
+  // The same day's reload keeps this visit's tiles.
+  vi.mocked(api.getToday).mockResolvedValue(
+    todayFixture({ view: "line", runs: [] }),
+  );
   act(() => api.announce(api.NOTIFICATIONS_CHANGED));
   await waitFor(() => expect(screen.queryAllByRole("article")).toHaveLength(0));
+  expect(screen.getByRole("region", { name: /^Today · / })).toBeInTheDocument();
+});
+
+describe("returning to the tab", () => {
+  let visibility: DocumentVisibilityState = "visible";
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 9, 10, 0));
+    visibility = "visible";
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => visibility,
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete (document as { visibilityState?: unknown }).visibilityState;
+  });
+
+  function comeBack(at: Date) {
+    vi.setSystemTime(at);
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+  }
+
+  test("reloads only when the last load is stale, keeping the tiles", async () => {
+    vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
+    renderStart();
+    await screen.findByRole("region", { name: /^Today · / });
+    vi.mocked(api.getToday).mockResolvedValue(
+      todayFixture({ view: "line", runs: [] }),
+    );
+
+    comeBack(new Date(2026, 10, 9, 10, 20));
+    visibility = "hidden";
+    comeBack(new Date(2026, 10, 9, 11, 0));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.getToday).toHaveBeenCalledOnce();
+
+    visibility = "visible";
+    comeBack(new Date(2026, 10, 9, 10, 31));
+    await waitFor(() => expect(api.getToday).toHaveBeenCalledTimes(2));
+    expect(
+      screen.getByRole("region", { name: /^Today · / }),
+    ).toBeInTheDocument();
+  });
+
+  test("a new day takes the new answer's view", async () => {
+    vi.mocked(api.getToday).mockResolvedValue(
+      todayFixture({ view: "line", runs: [] }),
+    );
+    renderStart();
+    expect(
+      await screen.findByRole("region", { name: "Today" }),
+    ).toBeInTheDocument();
+    vi.mocked(api.getToday).mockResolvedValue(
+      todayFixture({ date: "2026-11-10", view: "tiles", runs: [] }),
+    );
+    comeBack(new Date(2026, 10, 10, 7, 0));
+    expect(
+      await screen.findByRole("region", {
+        name: "Today · Tuesday, November 10",
+      }),
+    ).toBeInTheDocument();
+  });
 });
 
 test("a saved place reloads today with its weather", async () => {
