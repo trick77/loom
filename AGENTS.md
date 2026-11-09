@@ -3,12 +3,11 @@
 Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 
 ## Working conventions
-- Docs, specs, code comments English only (maintainer talks German). TDD. YAML is `.yaml`.
-- One branch per change, never commit to `master`.
+- TDD.
 - Commit subjects + PR titles: Go style `area: what` (`turn: …`, `ui: …`), gated by ship.
 - Fresh clone: `ship hooks` before the first push (check, conform and init install it too); without the pre-push hook a push skips the gate.
-- Gate: `make check` (`ship check`), floors 75 (Go, UI, patch). Raise tests, never a floor. Sandbox escape test is CI only (`sandbox-escape.yaml`, docker); isolation
-  change → `make sandbox-escape-test` locally.
+- Gate: `make check` (`ship check`), floors 75 (Go, UI, patch). Raise tests, never a floor. Sandbox escape
+  test is CI only (`sandbox-escape.yaml`, docker); isolation change → `make sandbox-escape-test` locally.
 - Release by hand: `gh workflow run Release -f bump=auto` (`Release: minor`/`Release-note: …` lines).
 - What kit (`github.com/trick77/ship/kit`) provides → from kit, never hand-rolled. Lint config is ship's.
 
@@ -29,7 +28,7 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 - `run_python` → `loom-sandbox` (`docs/sandbox.md`): a job never gets `/data`, a user id or a socket.
 
 ## Config
-- `BACKEND_*` env (`config.go`, `.env.example`). Empty = unset (kit env); `off` disables an optional one.
+- `BACKEND_*` env: empty = unset (kit env); `off` disables an optional one.
 - Public URL only from `PUBLIC_FQDN` (Traefik rule too): `https://<PUBLIC_FQDN>`, required in oidc; dev
   `http://<BACKEND_ADDR>`. Never a separate public-URL var (blank one → cookies without Secure, unnoticed).
 - Boot needs `BACKEND_AUTH_MODE` (`oidc` + issuer/client, or `dev` on loopback) and
@@ -42,11 +41,10 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 - Secrets via env only. `admin` is seeded from env on first boot only.
 
 ## Database / migrations
-- Schema: `docs/schema.md` = `TestSchemaDoc` golden; regen in `backend/` after a migration or model.go change.
-  Covers model.go types (name, dir, doc, `Table:`) and fields of `Table: -` types only; Table-bound fields and
-  field-vs-column match go unchecked.
-- Next free number `store/migrations/NNNN_*.sql`, never a taken one (kit runner refuses duplicates).
-  Never edit an applied migration.
+- `docs/schema.md` = `TestSchemaDoc` golden; regen in `backend/` after a migration or model.go change.
+  Covers model.go types (name, dir, doc, `Table:`) and fields of `Table: -` types only; Table-bound
+  fields and field-vs-column match go unchecked.
+- Next free `backend/internal/store/migrations/NNNN_*.sql` (kit runner refuses duplicates); never edit an applied one.
 - Rebuild needing FKs off: first line `-- migrate:no-transaction`, then `PRAGMA foreign_keys = OFF; BEGIN;
   … COMMIT; PRAGMA foreign_keys = ON;` (0032). Migrations run on their own pool, a failed one leaks no
   FK-off connection.
@@ -56,8 +54,6 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 
 ## Frontend
 - Direction A: themed classes from `ui/src/index.css` tokens (`bg-panel`, `text-ink`).
-- Build writes the Go embed `backend/web/dist`; unbuilt binary serves `web/placeholder.html` with 503.
-  Never commit built assets.
 
 ## Queued messages
 - Sent during a running turn → `queued_messages`, moved into `messages` only by `ConsumeQueued` (one tx,
