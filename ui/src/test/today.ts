@@ -1,6 +1,6 @@
 import type { Today } from "../api";
 
-// tomorrowFixture is the same place shown from 18:00: tomorrow's range and
+// tomorrowFixture is the same place shown from 20:00: tomorrow's range and
 // daytime hours, no "now".
 export function tomorrowFixture(overrides: Partial<Today> = {}): Today {
   const base = todayFixture();

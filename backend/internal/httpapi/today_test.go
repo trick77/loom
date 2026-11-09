@@ -42,10 +42,11 @@ type todayFixture struct {
 	handler   http.Handler
 }
 
-// morning is 08:14 in Zurich on 9 November; evening 18:30.
+// morning is 08:14 in Zurich on 9 November; dusk 19:30, evening 20:30.
 var (
 	morning = time.Date(2026, 11, 9, 7, 14, 0, 0, time.UTC)
-	evening = time.Date(2026, 11, 9, 17, 30, 0, 0, time.UTC)
+	dusk    = time.Date(2026, 11, 9, 18, 30, 0, 0, time.UTC)
+	evening = time.Date(2026, 11, 9, 19, 30, 0, 0, time.UTC)
 )
 
 func newTodayFixture(t *testing.T, withPlace bool) *todayFixture {
@@ -153,13 +154,26 @@ func TestToday(t *testing.T) {
 	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "17:00" || got.Warning.Day != dayToday {
 		t.Fatalf("warning = %+v", got.Warning)
 	}
-	// The page turns to tomorrow at 18:00 at the place.
-	if got.RefreshAt == nil || !got.RefreshAt.Equal(time.Date(2026, 11, 9, 17, 0, 0, 0, time.UTC)) {
-		t.Fatalf("refreshAt = %v, want 18:00 in Zurich", got.RefreshAt)
+	// The page turns to tomorrow at 20:00 at the place.
+	if got.RefreshAt == nil || !got.RefreshAt.Equal(time.Date(2026, 11, 9, 19, 0, 0, 0, time.UTC)) {
+		t.Fatalf("refreshAt = %v, want 20:00 in Zurich", got.RefreshAt)
 	}
 }
 
-// From 18:00 the page shows tomorrow: its date, weather and sun.
+// Before 20:00 the page still shows today.
+func TestTodayAtDuskShowsToday(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.handler = todayHandler(newServer(tf.deps), dusk)
+	got := tf.get(t)
+	if got.Date != "2026-11-09" || got.Day != dayToday || got.Weather == nil || got.Weather.Now == nil {
+		t.Fatalf("dusk = %+v", got)
+	}
+	if got.RefreshAt == nil || !got.RefreshAt.Equal(time.Date(2026, 11, 9, 19, 0, 0, 0, time.UTC)) {
+		t.Fatalf("refreshAt = %v, want 20:00 in Zurich", got.RefreshAt)
+	}
+}
+
+// From 20:00 the page shows tomorrow: its date, weather and sun.
 func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	tf := newTodayFixture(t, true)
 	tf.handler = todayHandler(newServer(tf.deps), evening)
@@ -172,7 +186,7 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 		t.Fatalf("tomorrow's weather = %+v", w)
 	}
 	// It is still raining tonight: that comes first, as tonight's.
-	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "18:00" || got.Warning.Day != dayToday {
+	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "20:00" || got.Warning.Day != dayToday {
 		t.Fatalf("tonight's warning = %+v", got.Warning)
 	}
 	if s := got.Sun; s == nil || s.Rise == nil || !strings.HasPrefix(*s.Rise, "07:2") || s.Progress != nil || s.DeltaMinutes > -1 {
