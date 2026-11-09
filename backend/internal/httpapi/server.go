@@ -321,6 +321,7 @@ type UserService interface {
 	ListUsers(context.Context) ([]auth.User, error)
 	UpdateResponseLanguage(ctx context.Context, id, language string) error
 	SetTimezone(ctx context.Context, id, tz string) error
+	MarkTodaySeen(ctx context.Context, id, day string) (bool, error)
 }
 
 // newServer builds the server struct from its dependencies.
@@ -422,6 +423,7 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("GET /api/me/usage", s.requireAuth(http.HandlerFunc(s.handleGetUsage)))
 	mux.Handle("GET /api/me/facts", s.requireAuth(http.HandlerFunc(s.handleGetUserFacts)))
 	mux.Handle("POST /api/me/location", s.requireAuth(http.HandlerFunc(s.handleSetLocation)))
+	mux.Handle("GET /api/today", s.requireAuth(http.HandlerFunc(s.handleToday)))
 	mux.Handle("GET /api/me/directives", s.requireAuth(http.HandlerFunc(s.handleGetUserDirectives)))
 	mux.Handle("GET /api/me/apple-music", s.requireAuth(http.HandlerFunc(s.handleAppleMusicStatus)))
 	mux.Handle("POST /api/me/apple-music/check", s.requireAuth(http.HandlerFunc(s.handleAppleMusicCheck)))

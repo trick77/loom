@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -81,6 +82,7 @@ func (g *geocoder) call(_ context.Context, name string, args map[string]any) (st
 }
 
 type locationFixture struct {
+	db     *sql.DB
 	deps   Deps
 	s      *server
 	chat   *chat.Store
@@ -92,7 +94,7 @@ type locationFixture struct {
 func newLocationFixture(t *testing.T) *locationFixture {
 	t.Helper()
 	db := newUserDB(t)
-	f := &locationFixture{chat: chat.NewStore(db), places: location.NewStore(db), llm: &fakeLocationLLM{stayUntil: "2026-11-15"}, geo: &geocoder{}}
+	f := &locationFixture{db: db, chat: chat.NewStore(db), places: location.NewStore(db), llm: &fakeLocationLLM{stayUntil: "2026-11-15"}, geo: &geocoder{}}
 	f.deps = Deps{
 		Thread:      f.chat,
 		Usage:       stubUsageStore{},
