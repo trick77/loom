@@ -726,6 +726,7 @@ Virtual table: `vec0(embedding float[1536], user_id TEXT partition key, project_
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
+| `rowid` | INTEGER | no |  | 1 |
 | `embedding` |  | yes |  |  |
 | `user_id` |  | yes |  |  |
 | `project_id` |  | yes |  |  |
@@ -1258,6 +1259,7 @@ erDiagram
         TEXT timezone
     }
     vec_chunks {
+        INTEGER rowid PK
         ANY embedding
         ANY user_id
         ANY project_id
@@ -1282,7 +1284,7 @@ erDiagram
     notifications }o--o| threads : "thread_id"
     notifications }o--o| schedules : "schedule_id"
     notifications }o--|| users : "user_id"
-    project_memory }o--|| projects : "user_id, project_id"
+    project_memory |o--|| projects : "user_id, project_id"
     projects }o--|| users : "user_id"
     push_subscriptions }o--|| users : "user_id"
     queued_messages }o--|| threads : "thread_id"
@@ -1296,18 +1298,18 @@ erDiagram
     schedule_sources }o--|| users : "user_id"
     schedule_sources }o--|| schedules : "schedule_id"
     schedules }o--|| users : "user_id"
-    shared_threads }o--|| threads : "user_id, thread_id"
+    shared_threads |o--|| threads : "user_id, thread_id"
     shared_threads }o--|| users : "user_id"
     threads }o--o| projects : "user_id, project_id"
     threads }o--o| schedules : "schedule_id"
     threads }o--|| users : "user_id"
     user_directives }o--|| users : "user_id"
-    user_fact_cursor }o--o| users : "user_id"
+    user_fact_cursor |o--o| users : "user_id"
     user_fact_sources }o--|| threads : "user_id, thread_id"
     user_fact_sources }o--|| user_facts : "fact_id"
     user_facts }o--|| users : "user_id"
-    user_location_state }o--o| users : "user_id"
+    user_location_state |o--o| users : "user_id"
     user_locations }o--|| users : "user_id"
-    user_usage_totals }o--o| users : "user_id"
-    vector_refused }o--|| chunks : "chunk_id"
+    user_usage_totals |o--o| users : "user_id"
+    vector_refused |o--|| chunks : "chunk_id"
 ```
