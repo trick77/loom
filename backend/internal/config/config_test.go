@@ -275,11 +275,17 @@ func TestLoadImagegenSidecarProblems(t *testing.T) {
 func TestLoadWeatherSidecar(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_WEATHER_URL", "http://weather:8100")
+	// compose sets the URL on every install: without a token the weather is
+	// off, never a failed boot.
+	if cfg, err := Load(); err != nil || cfg.WeatherOn() {
+		t.Fatalf("no token: on=%v, %v", cfg.WeatherOn(), err)
+	}
+	t.Setenv("BACKEND_WEATHER_TOKEN", "short")
 	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_WEATHER_TOKEN must be at least 32") {
-		t.Fatalf("no token: %v", err)
+		t.Fatalf("short token: %v", err)
 	}
 	t.Setenv("BACKEND_WEATHER_TOKEN", strings.Repeat("a", 32))
-	if cfg, err := Load(); err != nil || cfg.WeatherURL != "http://weather:8100" || cfg.WeatherToken != strings.Repeat("a", 32) {
+	if cfg, err := Load(); err != nil || !cfg.WeatherOn() || cfg.WeatherURL != "http://weather:8100" {
 		t.Fatalf("configured: %+v, %v", cfg, err)
 	}
 	t.Setenv("BACKEND_WEATHER_URL", "weather:8100")

@@ -29,9 +29,11 @@ func loadConfig(getenv func(string) string) (config, error) {
 		forecastURL:  r.String("WEATHER_FORECAST_URL", defaultForecastURL),
 		geocodingURL: r.String("WEATHER_GEOCODING_URL", defaultGeocodingURL),
 	}
-	// Required: the provider's free tier is rate-limited per IP, and whoever
-	// calls spends it. loom checks its side with the same rule.
-	if msg := sidecar.TokenProblem("WEATHER_TOKEN", cfg.token); msg != "" {
+	// The provider's free tier is rate-limited per IP and whoever calls spends
+	// it, so every tool route needs the token. Without one the sidecar answers
+	// its health probe and refuses everything else: compose starts it on every
+	// install, set up for the weather or not. loom checks its side alike.
+	if msg := sidecar.TokenProblem("WEATHER_TOKEN", cfg.token); cfg.token != "" && msg != "" {
 		r.Fail("%s", msg)
 	}
 	for name, raw := range map[string]string{"WEATHER_FORECAST_URL": cfg.forecastURL, "WEATHER_GEOCODING_URL": cfg.geocodingURL} {

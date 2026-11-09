@@ -63,7 +63,7 @@ func (c *cache[V]) run(ctx context.Context, key string, call *cacheCall[V], expi
 	c.mu.Lock()
 	delete(c.inflight, key)
 	if call.err == nil {
-		c.prune()
+		c.prune(key)
 		now := c.now()
 		c.entries[key] = cacheEntry[V]{value: call.value, expires: expires(now)}
 	}
@@ -71,19 +71,26 @@ func (c *cache[V]) run(ctx context.Context, key string, call *cacheCall[V], expi
 	close(call.done)
 }
 
-// prune makes room for one more entry; the caller holds mu.
-func (c *cache[V]) prune() {
-	if len(c.entries) < c.limit {
+// prune makes room for key; the caller holds mu. At the limit the expired go
+// first, then the entry closest to expiring: never all at once, which would
+// send every user's next request to the provider together.
+func (c *cache[V]) prune(key string) {
+	if _, ok := c.entries[key]; ok || len(c.entries) < c.limit {
 		return
 	}
 	now := c.now()
+	oldest, first := "", time.Time{}
 	for k, e := range c.entries {
 		if !now.Before(e.expires) {
 			delete(c.entries, k)
+			continue
+		}
+		if oldest == "" || e.expires.Before(first) {
+			oldest, first = k, e.expires
 		}
 	}
 	if len(c.entries) >= c.limit {
-		clear(c.entries)
+		delete(c.entries, oldest)
 	}
 }
 

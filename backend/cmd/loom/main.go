@@ -534,9 +534,12 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 		out.FileServers.Servers[mcp.SearchServer] = mcp.SearchServerConfig(cfg.SearchURL, cfg.SearchToken)
 	}
 	// loom-weather likewise (docs/weather.md): a dead sidecar costs the
-	// weather. An mcp.json server named weather replaces it.
-	if strings.TrimSpace(cfg.WeatherURL) != "" {
+	// weather. An mcp.json server named weather replaces it. compose sets the
+	// URL; without a token the weather is simply off.
+	if cfg.WeatherOn() {
 		out.FileServers.Servers[mcp.WeatherServer] = mcp.WeatherServerConfig(cfg.WeatherURL, cfg.WeatherToken)
+	} else if strings.TrimSpace(cfg.WeatherURL) != "" {
+		slog.Info("BACKEND_WEATHER_TOKEN is unset: the weather is off (docs/weather.md)")
 	}
 	// loom-docgen likewise (docs/docgen.md): a dead sidecar costs the
 	// document tools. An mcp.json server named docgen replaces it.
@@ -561,6 +564,11 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 				server.RestrictUsers, server.Users = true, existing.Users
 			}
 			server.PerUser = existing.PerUser
+			// Nor when its tools are offered: an override without categories
+			// keeps the built-in's, or it would be offered on every turn.
+			if len(server.Categories) == 0 {
+				server.Categories = existing.Categories
+			}
 		}
 		out.FileServers.Servers[name] = server
 	}
