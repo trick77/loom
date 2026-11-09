@@ -73,7 +73,7 @@ export function StartPanel({
       todayState.today.weather === null &&
       todayState.today.runs.length === 0);
   return (
-    <section className="flex h-svh min-h-0 flex-col">
+    <section className="@container flex h-svh min-h-0 flex-col">
       <header
         aria-label={t("thread.header")}
         className="ui-control-text flex h-9 shrink-0 items-center justify-between gap-3 border-b border-[#252523] px-4 text-[#d5d2c9]"
@@ -92,7 +92,13 @@ export function StartPanel({
           <Icon name="ghost" size="18px" />
         </button>
       </header>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[22.7vh] pb-12 sm:px-8">
+      {/* The top gap centers the header, greeting, composer and weather
+          tiles in the screen: ~596px side by side, ~812px stacked (a column
+          under 596px), at least 2rem, at most 22.7svh. It follows the screen
+          only: tied to the content, the composer jumped when Today loaded, a
+          line was typed or a run was read. A fixed 22.7vh left a tablet
+          scrolling with a fifth of it empty above. */}
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[clamp(2rem,calc((100svh_-_596px)/2),22.7svh)] pb-12 sm:px-8 @max-[596px]:pt-[clamp(2rem,calc((100svh_-_812px)/2),22.7svh)]">
         <h2 className="ui-greeting-text mb-8 text-center font-serif">
           <img
             src={loomLogo}
