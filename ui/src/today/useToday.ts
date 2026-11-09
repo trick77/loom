@@ -30,7 +30,7 @@ function refreshTime(refreshAt: string | null): number | null {
 }
 
 // useToday loads the start page's "Today" and keeps it current: it reloads
-// when the shown day changes (the server's refreshAt: 18:00, midnight), when
+// when the shown day changes (the server's refreshAt: 20:00, midnight), when
 // news is read elsewhere (the bell, a thread), and when the tab comes back
 // after that moment or after a while; it reads runs itself with the card
 // gone before the server answers.

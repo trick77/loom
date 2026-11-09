@@ -68,7 +68,7 @@ export type TodayRun = {
 };
 
 export type Today = {
-  /** The shown day, "YYYY-MM-DD": today, or tomorrow from 18:00. */
+  /** The shown day, "YYYY-MM-DD": today, or tomorrow from 20:00. */
   date: string;
   day: "today" | "tomorrow";
   location: TodayLocation | null;
@@ -78,7 +78,7 @@ export type Today = {
   warning: TodayWarning | null;
   /** Unread schedule runs, newest first. */
   runs: TodayRun[];
-  /** RFC3339: when the shown day changes next (18:00 or midnight). */
+  /** RFC3339: when the shown day changes next (20:00 or midnight). */
   refreshAt: string | null;
 };
 
@@ -90,7 +90,7 @@ export class PlaceNotFoundError extends Error {
   }
 }
 
-// getToday loads the start page's "Today" (from 18:00 the server shows
+// getToday loads the start page's "Today" (from 20:00 the server shows
 // tomorrow).
 export async function getToday(): Promise<Today> {
   const raw = await requestJSON<Partial<Today> | null>(

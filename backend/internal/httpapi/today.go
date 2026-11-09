@@ -35,7 +35,7 @@ const (
 	// eveningHour is when the page turns to tomorrow, local to the place (to
 	// the browser while no place is known): in the evening the day ahead is
 	// what is worth knowing.
-	eveningHour = 18
+	eveningHour = 20
 	// tomorrowFrom and tomorrowTo bound tomorrow's hours shown and warned of.
 	tomorrowFrom, tomorrowTo = 6, 22
 )
