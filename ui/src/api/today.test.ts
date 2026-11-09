@@ -139,6 +139,28 @@ test("getToday reads the weather defensively", async () => {
   await expect(getToday()).resolves.toMatchObject({
     air: { aqi: null, level: "", max: false, attribution: { text: "" } },
   });
+  // Kinds and levels without words here are dropped; no pollen list is
+  // unknown, not none.
+  stubFetch(
+    Response.json({
+      air: {
+        aqi: 30,
+        level: "toxic",
+        pollen: [
+          { kind: "olive", level: "high" },
+          { kind: "birch", level: "extreme" },
+          { kind: "grass", level: "low" },
+        ],
+      },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    air: { aqi: 30, level: "", pollen: [{ kind: "grass", level: "low" }] },
+  });
+  stubFetch(Response.json({ air: { aqi: 30, level: "fair" } }));
+  await expect(getToday()).resolves.toMatchObject({
+    air: { aqi: 30, level: "fair", pollen: null },
+  });
   // Without the day's range there is no forecast to show.
   stubFetch(Response.json({ weather: { now: { temperature: 1, code: 0 } } }));
   await expect(getToday()).resolves.toMatchObject({ weather: null });

@@ -218,7 +218,7 @@ func TestAirQuality(t *testing.T) {
 		t.Fatalf("answer = %s, sources %+v", res.Text, res.Sources)
 	}
 	query := fake.query("european_aqi")
-	for _, part := range []string{"latitude=47.377", "forecast_days=4", "timezone=Europe%2FZurich", "birch_pollen"} {
+	for _, part := range []string{"latitude=47.377", "forecast_days=5", "timezone=Europe%2FZurich", "birch_pollen"} {
 		if !strings.Contains(query, part) {
 			t.Fatalf("provider query %q lacks %q", query, part)
 		}
@@ -306,8 +306,8 @@ func TestForecast(t *testing.T) {
 	// The hours are fetched for three days, the days for seven, whatever
 	// the call asked: one fetch of each serves every call for the place.
 	for query, parts := range map[string][]string{
-		hourlyQuery: {"latitude=47.377", "longitude=8.542", "forecast_days=3", "timezone=Europe%2FZurich"},
-		dailyQuery:  {"latitude=47.377", "longitude=8.542", "forecast_days=7", "timezone=Europe%2FZurich"},
+		hourlyQuery: {"latitude=47.377", "longitude=8.542", "forecast_days=4", "timezone=Europe%2FZurich"},
+		dailyQuery:  {"latitude=47.377", "longitude=8.542", "forecast_days=8", "timezone=Europe%2FZurich"},
 	} {
 		for _, part := range parts {
 			if !strings.Contains(query, part) {
@@ -317,6 +317,20 @@ func TestForecast(t *testing.T) {
 	}
 	if strings.Contains(hourlyQuery, "daily=") || strings.Contains(dailyQuery, "hourly=") {
 		t.Fatalf("hours and days asked together: %q, %q", hourlyQuery, dailyQuery)
+	}
+}
+
+// A part kept over the clock change reads the place's clock from its zone,
+// not from the offset it was fetched with; a zone this host does not know
+// falls back to that offset.
+func TestWindowFollowsTheZone(t *testing.T) {
+	// 01:30 UTC on 29 March: Zurich went from +1 to +2 at 01:00 UTC.
+	now := time.Date(2026, 3, 29, 1, 30, 0, 0, time.UTC)
+	if current, today, end := window(now, "Europe/Zurich", 3600, 2); current != "2026-03-29T03:00" || today != "2026-03-29" || end != "2026-03-31" {
+		t.Fatalf("zone: %s %s %s", current, today, end)
+	}
+	if current, _, _ := window(now, "Nowhere/Unknown", 3600, 1); current != "2026-03-29T02:00" {
+		t.Fatalf("offset fallback: %s", current)
 	}
 }
 

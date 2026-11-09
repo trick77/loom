@@ -363,13 +363,17 @@ test("a credit link that is not a web address stays text", () => {
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-test("the air's credit shows beside the weather's", () => {
-  show();
+test("the air's credit shows beside the weather's, none without text", () => {
+  const { unmount } = show();
   expect(
     screen.getByRole("link", {
       name: "Air quality by Open-Meteo.com, CAMS data",
     }),
   ).toHaveAttribute("href", "https://open-meteo.com/en/docs/air-quality-api");
+  unmount();
+  const air = todayFixture().air!;
+  show({ air: { ...air, attribution: { text: "", url: "" } } });
+  expect(screen.getAllByRole("link")).toHaveLength(1);
 });
 
 test("unread runs open their thread or are marked read", () => {

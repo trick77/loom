@@ -165,6 +165,18 @@ test("tomorrow's air is its worst; no pollen says so", () => {
   expect(within(card).getByText("Hardly any pollen")).toBeInTheDocument();
 });
 
+test("air where pollen is unknown shows no pollen line at all", () => {
+  const base = todayFixture();
+  show(todayFixture({ air: { ...base.air!, pollen: null } }));
+  fireEvent.click(screen.getByRole("button", { name: "Air & pollen" }));
+  const card = shown();
+  expect(within(card).getByTestId("air-quality")).toHaveTextContent(
+    "18 · good",
+  );
+  expect(within(card).queryByText("Hardly any pollen")).toBeNull();
+  expect(within(card).queryByRole("list", { name: "Pollen" })).toBeNull();
+});
+
 test("arrow keys and swipes turn the cards, within their ends", () => {
   show(todayFixture());
   const track = screen.getByTestId("carousel-track");

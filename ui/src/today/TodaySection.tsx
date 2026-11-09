@@ -48,7 +48,7 @@ function WeatherBlock({
       </div>
       <div className="flex flex-col items-end gap-0.5">
         <Attribution attribution={weather.attribution} className="text-right" />
-        {today.air && (
+        {today.air && today.air.attribution.text !== "" && (
           <Attribution
             attribution={today.air.attribution}
             className="text-right"

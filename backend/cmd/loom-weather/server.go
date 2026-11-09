@@ -88,11 +88,8 @@ type Day struct {
 // at most hourlyDays days, days from today through days. The kept parts hold
 // more; a part kept over midnight starts a day early, dropped here.
 func forecastOf(hourly, daily forecastPart, days int, now time.Time) Forecast {
-	local := now.UTC().Add(time.Duration(hourly.UTCOffset) * time.Second)
-	current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
-	today := local.Format(time.DateOnly)
-	hoursEnd := local.AddDate(0, 0, min(days, hourlyDays)).Format(time.DateOnly)
-	daysEnd := local.AddDate(0, 0, days).Format(time.DateOnly)
+	current, today, daysEnd := window(now, hourly.Timezone, hourly.UTCOffset, days)
+	_, _, hoursEnd := window(now, hourly.Timezone, hourly.UTCOffset, min(days, hourlyDays))
 	out := Forecast{Latitude: hourly.Latitude, Longitude: hourly.Longitude, Timezone: hourly.Timezone,
 		Hourly: []Hour{}, Daily: []Day{}, Attribution: attribution}
 	for _, h := range hourly.Hourly {
@@ -247,6 +244,20 @@ type forecastArgs struct {
 	Days      float64  `json:"days"`
 }
 
+// window is a call's cut of a kept part at now, in the place's local times as
+// the provider writes them: the current hour ("2006-01-02T15:04"), today, and
+// the first date past days. The clock comes from the zone, so a part kept
+// over a clock change still reads right; the offset it was fetched with only
+// stands in for a zone this host does not know.
+func window(now time.Time, timezone string, utcOffset, days int) (current, today, end string) {
+	local := now.UTC().Add(time.Duration(utcOffset) * time.Second)
+	if loc, err := time.LoadLocation(timezone); timezone != "" && err == nil {
+		local = now.In(loc)
+	}
+	return local.Truncate(time.Hour).Format("2006-01-02T15:04"), local.Format(time.DateOnly),
+		local.AddDate(0, 0, days).Format(time.DateOnly)
+}
+
 // point is a call's place, zone and days, checked.
 type point struct {
 	lat, lon float64
@@ -296,19 +307,20 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 	if bad != nil {
 		return *bad
 	}
-	lat, lon, tz, days, key := p.lat, p.lon, p.tz, p.days, p.key
-	// On a miss both wait together, not one after the other.
+	// On a miss both wait together, not one after the other. Each is fetched
+	// a day longer than a call may ask: a part kept past the place's midnight
+	// still holds every day asked.
 	var daily forecastPart
 	var dailyErr error
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		daily, dailyErr = w.daily.get(ctx, key, nextThreeHours, func(ctx context.Context) (forecastPart, error) {
-			return w.provider.daily(ctx, lat, lon, tz, maxDays)
+		daily, dailyErr = w.daily.get(ctx, p.key, nextThreeHours, func(ctx context.Context) (forecastPart, error) {
+			return w.provider.daily(ctx, p.lat, p.lon, p.tz, maxDays+1)
 		})
 	}()
-	hourly, err := w.hourly.get(ctx, key, nextHour, func(ctx context.Context) (forecastPart, error) {
-		return w.provider.hourly(ctx, lat, lon, tz, hourlyDays)
+	hourly, err := w.hourly.get(ctx, p.key, nextHour, func(ctx context.Context) (forecastPart, error) {
+		return w.provider.hourly(ctx, p.lat, p.lon, p.tz, hourlyDays+1)
 	})
 	<-done
 	if err == nil {
@@ -317,7 +329,7 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 	if err != nil {
 		return mcpserver.ErrorResult("forecast failed: " + err.Error())
 	}
-	forecast := forecastOf(hourly, daily, days, w.now())
+	forecast := forecastOf(hourly, daily, p.days, w.now())
 	result := jsonResult(forecast)
 	// The licence's credit as a source too, so a chat answer cites it even
 	// when the model does not repeat it.
@@ -331,7 +343,9 @@ func (w *weather) runAirQuality(ctx context.Context, raw json.RawMessage) mcpser
 		return *bad
 	}
 	part, err := w.air.get(ctx, p.key, nextSixHours, func(ctx context.Context) (airPart, error) {
-		return w.provider.air(ctx, p.lat, p.lon, p.tz, maxAirDays)
+		// A day more than a call may ask: a part kept past the place's
+		// midnight still holds every day asked.
+		return w.provider.air(ctx, p.lat, p.lon, p.tz, maxAirDays+1)
 	})
 	if err != nil {
 		return mcpserver.ErrorResult("air quality failed: " + err.Error())
@@ -347,10 +361,7 @@ func (w *weather) runAirQuality(ctx context.Context, raw json.RawMessage) mcpser
 // its highest index and its pollen as the day's mean, the measure pollen
 // load classes are defined on.
 func airQualityOf(part airPart, days int, now time.Time) AirQuality {
-	local := now.UTC().Add(time.Duration(part.UTCOffset) * time.Second)
-	current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
-	today := local.Format(time.DateOnly)
-	end := local.AddDate(0, 0, days).Format(time.DateOnly)
+	current, today, end := window(now, part.Timezone, part.UTCOffset, days)
 	out := AirQuality{Latitude: part.Latitude, Longitude: part.Longitude, Timezone: part.Timezone,
 		Hourly: []AirHour{}, Daily: []AirDay{}, Attribution: airAttribution}
 	type sum struct {

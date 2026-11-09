@@ -103,10 +103,33 @@ export type TodayAir = {
     "" | "good" | "fair" | "moderate" | "poor" | "veryPoor" | "extremelyPoor";
   /** True when aqi is the day's highest (tomorrow). */
   max: boolean;
-  /** Only the kinds worth a load class. */
-  pollen: TodayPollen[];
+  /** Only the kinds worth a load class; empty: hardly any; null: unknown
+   * here (outside Europe, out of season). */
+  pollen: TodayPollen[] | null;
   attribution: { text: string; url: string };
 };
+
+const POLLEN_KINDS: readonly string[] = [
+  "alder",
+  "birch",
+  "grass",
+  "mugwort",
+  "ragweed",
+];
+const POLLEN_LEVELS: readonly string[] = [
+  "low",
+  "moderate",
+  "high",
+  "veryHigh",
+];
+const AIR_LEVELS: readonly string[] = [
+  "good",
+  "fair",
+  "moderate",
+  "poor",
+  "veryPoor",
+  "extremelyPoor",
+];
 
 export type TodayWarning = {
   kind: "rain" | "snow" | "storm" | "frost";
@@ -184,11 +207,21 @@ function normalizeAir(raw: unknown): TodayAir | null {
   if (raw === null || typeof raw !== "object") return null;
   const air = raw as Partial<TodayAir>;
   const aqi = typeof air.aqi === "number" ? air.aqi : null;
-  const pollen = Array.isArray(air.pollen) ? air.pollen : [];
-  if (aqi === null && pollen.length === 0) return null;
+  // Kinds and levels this page has no words for are left out: a newer or
+  // other server must not show raw keys.
+  const pollen = Array.isArray(air.pollen)
+    ? air.pollen.filter(
+        (p) =>
+          POLLEN_KINDS.includes(p?.kind) && POLLEN_LEVELS.includes(p?.level),
+      )
+    : null;
+  if (aqi === null && (pollen === null || pollen.length === 0)) return null;
   return {
     aqi,
-    level: air.level ?? "",
+    level:
+      typeof air.level === "string" && AIR_LEVELS.includes(air.level)
+        ? air.level
+        : "",
     max: air.max === true,
     pollen,
     attribution: air.attribution ?? { text: "", url: "" },

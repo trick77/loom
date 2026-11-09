@@ -74,8 +74,12 @@ type todayFixture struct {
 	forecastDays any
 	// forecastJSON answers the forecast; todayForecastJSON when empty.
 	forecastJSON string
-	// airErr fails the air quality call.
-	airErr error
+	// airErr fails the air quality call; airJSON answers it, todayAirJSON
+	// when empty.
+	airErr  error
+	airJSON string
+	// forecastErr fails the forecast.
+	forecastErr error
 }
 
 // morning is 08:14 in Zurich on 9 November; dusk 19:30, evening 20:30.
@@ -101,10 +105,16 @@ func newTodayFixture(t *testing.T, withPlace bool) *todayFixture {
 		Available: map[string]bool{geocodeTool: true, forecastTool: true, airQualityTool: true},
 		CallFunc: func(ctx context.Context, name string, args map[string]any) (string, error) {
 			if name == airQualityTool {
+				if tf.airJSON != "" {
+					return tf.airJSON, tf.airErr
+				}
 				return todayAirJSON, tf.airErr
 			}
 			if name == forecastTool {
 				tf.forecastDays = args["days"]
+				if tf.forecastErr != nil {
+					return "", tf.forecastErr
+				}
 				if tf.forecastJSON != "" {
 					return tf.forecastJSON, nil
 				}
@@ -269,7 +279,7 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 		t.Fatalf("outlook after tomorrow = %v", outlookDates(w))
 	}
 	// Tomorrow's air is its worst, no pollen worth a class.
-	if a := got.Air; a == nil || *a.AQI != 64 || a.Level != "poor" || !a.Max || len(a.Pollen) != 0 {
+	if a := got.Air; a == nil || *a.AQI != 64 || a.Level != "poor" || !a.Max || a.Pollen == nil || len(a.Pollen) != 0 {
 		t.Fatalf("tomorrow's air = %+v", got.Air)
 	}
 	// Its low reaches what the hours say: the days are fetched less often
@@ -373,6 +383,34 @@ func TestTodayWithoutTheAir(t *testing.T) {
 	delete(svc.Available, airQualityTool)
 	if got := tf.get(t); got.Air != nil || got.Weather == nil {
 		t.Fatalf("no air tool: air %+v, weather %+v", got.Air, got.Weather)
+	}
+}
+
+// Without the weather the air has no tile to show on: left out.
+func TestTodayAirNeedsTheWeather(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.forecastErr = errors.New("forecast down")
+	if got := tf.get(t); got.Weather != nil || got.Air != nil {
+		t.Fatalf("weather %+v, air %+v; want neither", got.Weather, got.Air)
+	}
+}
+
+// Another server's air: a fractional index is rounded, an hour without one
+// falls to the next, and no pollen at all is unknown, never "hardly any".
+func TestTodayAirFromAnotherServer(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.airJSON = `{"hourly":[{"time":"2026-11-09T08:00"},{"time":"2026-11-09T09:00","aqi":44.6}],
+"daily":[{"date":"2026-11-09","aqiMax":44.6}]}`
+	a := tf.get(t).Air
+	if a == nil || *a.AQI != 45 || a.Level != "moderate" || a.Pollen != nil {
+		t.Fatalf("air = %+v", a)
+	}
+	// An index only hours from now is not now; with no pollen there is
+	// nothing to show.
+	tf.airJSON = `{"hourly":[{"time":"2026-11-09T08:00"},{"time":"2026-11-09T09:00"},{"time":"2026-11-09T10:00"},
+ {"time":"2026-11-09T11:00","aqi":30}],"daily":[{"date":"2026-11-09"}]}`
+	if a := tf.get(t).Air; a != nil {
+		t.Fatalf("air = %+v, want none", a)
 	}
 }
 

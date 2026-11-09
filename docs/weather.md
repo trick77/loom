@@ -60,13 +60,14 @@ loom classes the pollen itself (MeteoSwiss load classes; olive has none and is n
 ## Caching
 
 The sidecar keeps a forecast in two parts per point (rounded to 3 decimals, about 100 m) and timezone, each fetched
-for the most a call can ask (hours 3 days, days 7) and cut to each call, so `days` never splits the cache:
+a day past the most a call can ask (hours 4 days, days 8; a part kept past the place's midnight still holds every day
+asked) and cut to each call at the place's clock, so `days` never splits the cache:
 
 - the hours until the top of the next hour: "now" is read off them;
 - the days until the next three-hour mark (UTC): the models behind them run every 3 h (Switzerland's) or 6 h (the
   global one), an hourly fetch would only spend the daily call limit.
 
-The air is kept per point and timezone until the next six-hour mark (UTC), fetched for 4 days: its models run once
+The air is kept per point and timezone until the next six-hour mark (UTC), fetched for 5 days: its models run once
 or twice a day (Europe's) and every 12 h (the global one).
 
 Each request asks at most 10 variables: past that the provider counts it as more than one call. Per place that is 24

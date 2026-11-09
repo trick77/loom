@@ -281,7 +281,7 @@ export function AirCard({ air }: { air: TodayAir }) {
           </span>
         </div>
       )}
-      {air.pollen.length === 0 ? (
+      {air.pollen === null ? null : air.pollen.length === 0 ? (
         <p className="text-[13px] text-muted">{t("today.air.noPollen")}</p>
       ) : (
         <ul

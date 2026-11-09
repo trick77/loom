@@ -51,6 +51,9 @@ const (
 	// forecastDays is what the page asks the forecast for: today, tomorrow
 	// and the outlook after tomorrow, which in the evening is shown.
 	forecastDays = outlookDays + 2
+	// airNowHours is how far ahead "now" may take the air index from when
+	// the current hour has none.
+	airNowHours = 3
 )
 
 // The day the page shows.
@@ -148,9 +151,12 @@ type todayHour struct {
 // todayAir is the air on the shown day: today the index now, tomorrow its
 // highest (Max), and the pollen worth a load class.
 type todayAir struct {
-	AQI         *int          `json:"aqi"`
-	Level       string        `json:"level"`
-	Max         bool          `json:"max"`
+	AQI   *int   `json:"aqi"`
+	Level string `json:"level"`
+	Max   bool   `json:"max"`
+	// Pollen is nil where the forecast has none at all (outside Europe, out
+	// of season), empty where it has some but none worth a class: "hardly
+	// any" must not stand for "unknown".
 	Pollen      []todayPollen `json:"pollen"`
 	Attribution attribution   `json:"attribution"`
 }
@@ -161,14 +167,15 @@ type todayPollen struct {
 }
 
 // airAnswer is the air_quality tool's answer, as far as the page reads it.
+// The index is read as a number: another server may send fractions.
 type airAnswer struct {
 	Hourly []struct {
-		Time string `json:"time"`
-		AQI  *int   `json:"aqi"`
+		Time string   `json:"time"`
+		AQI  *float64 `json:"aqi"`
 	} `json:"hourly"`
 	Daily []struct {
 		Date   string             `json:"date"`
-		AQIMax *int               `json:"aqiMax"`
+		AQIMax *float64           `json:"aqiMax"`
 		Pollen map[string]float64 `json:"pollen"`
 	} `json:"daily"`
 	Attribution attribution `json:"attribution"`
@@ -279,11 +286,15 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 	out.RefreshAt = &refreshAt
 	if p := out.Location; p != nil {
 		out.Sun = sunOn(now, shown, p, loc)
-		// Both wait together: the page waits on the slower, not the sum.
+		// Both wait together: the page waits on the slower, not the sum. The
+		// air shows on the weather's tile only: without the weather it is
+		// called off and left out.
+		airCtx, cancelAir := context.WithCancel(ctx)
+		var air *todayAir
 		var wg sync.WaitGroup
 		wg.Go(func() {
-			if a, ok := s.airFor(ctx, p, loc); ok {
-				out.Air = airOn(a, local, shown, tomorrow)
+			if a, ok := s.airFor(airCtx, p, loc); ok {
+				air = airOn(a, local, shown, tomorrow)
 			}
 		})
 		if f, ok := s.forecastFor(ctx, p, loc); ok {
@@ -293,7 +304,14 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 				out.Weather, out.Warning = todayForecast(f, local)
 			}
 		}
+		if out.Weather == nil {
+			cancelAir()
+		}
 		wg.Wait()
+		cancelAir()
+		if out.Weather != nil {
+			out.Air = air
+		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
@@ -434,12 +452,21 @@ func (s *server) airFor(ctx context.Context, p *location.Place, loc *time.Locati
 // highest; nil when neither the index nor any pollen is known.
 func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
 	date := shown.Format(time.DateOnly)
-	out := &todayAir{Pollen: []todayPollen{}, Attribution: a.Attribution, Max: tomorrow}
+	out := &todayAir{Attribution: a.Attribution, Max: tomorrow}
+	var aqi *float64
 	if !tomorrow {
-		current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
+		// The first hour from now with an index, within airNowHours: an
+		// hour the provider has none for is skipped, a later one is not now.
+		current, seen := hourStamp(local), 0
 		for _, h := range a.Hourly {
-			if h.Time >= current {
-				out.AQI = h.AQI
+			if h.Time < current {
+				continue
+			}
+			if seen++; seen > airNowHours {
+				break
+			}
+			if h.AQI != nil {
+				aqi = h.AQI
 				break
 			}
 		}
@@ -449,23 +476,34 @@ func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
 			continue
 		}
 		if tomorrow {
-			out.AQI = d.AQIMax
+			aqi = d.AQIMax
 		}
 		for _, kind := range pollenOrder {
-			if v, ok := d.Pollen[kind]; ok {
-				if level := pollenLevel(kind, v); level != "" {
-					out.Pollen = append(out.Pollen, todayPollen{Kind: kind, Level: level})
-				}
+			v, ok := d.Pollen[kind]
+			if !ok {
+				continue
+			}
+			if out.Pollen == nil {
+				out.Pollen = []todayPollen{}
+			}
+			if level := pollenLevel(kind, v); level != "" {
+				out.Pollen = append(out.Pollen, todayPollen{Kind: kind, Level: level})
 			}
 		}
 	}
-	if out.AQI != nil {
-		out.Level = aqiLevel(*out.AQI)
+	if aqi != nil {
+		v := int(math.Round(*aqi))
+		out.AQI, out.Level = &v, aqiLevel(v)
 	}
 	if out.AQI == nil && len(out.Pollen) == 0 {
 		return nil
 	}
 	return out
+}
+
+// hourStamp is local's hour as the forecasts write their times.
+func hourStamp(local time.Time) string {
+	return local.Truncate(time.Hour).Format("2006-01-02T15:04")
 }
 
 // aqiLevel is the European air quality index's band (EEA): good to 20, fair
@@ -525,7 +563,7 @@ func pollenLevel(kind string, mean float64) string {
 // not promise the hours start now, so the current one is looked up; a
 // forecast with no hour from now on is none.
 func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
-	current := now.Truncate(time.Hour).Format("2006-01-02T15:04")
+	current := hourStamp(now)
 	start := currentHour(f, now)
 	if start < 0 {
 		return nil, nil
@@ -608,7 +646,7 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *to
 // currentHour is the index of the forecast's hour that holds local, or the
 // first after it; -1 when the forecast ended before.
 func currentHour(f forecast, local time.Time) int {
-	current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
+	current := hourStamp(local)
 	for i, h := range f.Hourly {
 		if h.Time >= current {
 			return i
