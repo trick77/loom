@@ -23,6 +23,7 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
     askLocation: false,
     sun: null,
     weather: null,
+    air: null,
     warning: null,
     runs: [],
     refreshAt: null,
@@ -50,7 +51,39 @@ test("getToday keeps a full answer and survives a null one", async () => {
       polar: "",
       progress: null,
     },
-    weather: { now: null, day: dayRange, hours: [], attribution },
+    weather: {
+      now: null,
+      day: dayRange,
+      hours: [],
+      details: {
+        feelsLike: null,
+        humidity: null,
+        wind: 30,
+        gusts: 55,
+        windDirection: 260,
+        uvMax: 1,
+        precipitationSum: 0,
+        sunshineHours: 2,
+      },
+      rain: [{ time: "06:00", precipitation: 0, probability: 5 }],
+      outlook: [
+        {
+          date: "2026-11-11",
+          high: 8,
+          low: 1,
+          code: 3,
+          precipitationProbability: null,
+        },
+      ],
+      attribution,
+    },
+    air: {
+      aqi: 64,
+      level: "poor",
+      max: true,
+      pollen: [{ kind: "grass", level: "low" }],
+      attribution,
+    },
     warning: { kind: "rain", from: "20:00", day: "today" },
     runs: [{ id: "n1", threadId: null, title: "t", body: "b", createdAt: "x" }],
     refreshAt: "2026-11-10T00:00:00+01:00",
@@ -86,6 +119,54 @@ test("getToday reads the weather defensively", async () => {
   );
   await expect(getToday()).resolves.toMatchObject({
     weather: { now: null, day: dayRange },
+  });
+  // An older server sends no further cards; an empty list is none either.
+  stubFetch(
+    Response.json({
+      weather: { day: dayRange, hours: [], rain: [], outlook: null },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    weather: { details: null, rain: null, outlook: null },
+    air: null,
+  });
+  // Air with nothing to show is none; with pollen alone it stays.
+  stubFetch(Response.json({ air: { aqi: null, pollen: [] } }));
+  await expect(getToday()).resolves.toMatchObject({ air: null });
+  stubFetch(
+    Response.json({ air: { pollen: [{ kind: "birch", level: "high" }] } }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    air: { aqi: null, level: "", max: false, attribution: { text: "" } },
+  });
+  // Kinds and levels without words here are dropped; no pollen list is
+  // unknown, not none.
+  stubFetch(
+    Response.json({
+      air: {
+        aqi: 30,
+        level: "toxic",
+        pollen: [
+          { kind: "olive", level: "high" },
+          { kind: "birch", level: "extreme" },
+          { kind: "grass", level: "low" },
+        ],
+      },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    air: { aqi: 30, level: "", pollen: [{ kind: "grass", level: "low" }] },
+  });
+  // Only kinds it cannot name: unknown, never "hardly any".
+  stubFetch(
+    Response.json({
+      air: { aqi: 30, pollen: [{ kind: "olive", level: "high" }] },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({ air: { pollen: null } });
+  stubFetch(Response.json({ air: { aqi: 30, level: "fair" } }));
+  await expect(getToday()).resolves.toMatchObject({
+    air: { aqi: 30, level: "fair", pollen: null },
   });
   // Without the day's range there is no forecast to show.
   stubFetch(Response.json({ weather: { now: { temperature: 1, code: 0 } } }));

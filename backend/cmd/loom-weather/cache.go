@@ -33,6 +33,17 @@ func newCache[V any](now func() time.Time, limit int) *cache[V] {
 	return &cache[V]{entries: map[string]cacheEntry[V]{}, inflight: map[string]*cacheCall[V]{}, now: now, limit: limit}
 }
 
+// peek returns the kept value for key while it is current, without fetching.
+func (c *cache[V]) peek(key string) (V, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.entries[key]; ok && c.now().Before(e.expires) {
+		return e.value, true
+	}
+	var zero V
+	return zero, false
+}
+
 // get returns the kept value for key, else fetches it once for every caller
 // waiting on key and keeps it until expires(now). The fetch runs detached
 // from any one caller, so a caller that gives up does not fail the others.
@@ -94,11 +105,25 @@ func (c *cache[V]) prune(key string) {
 	}
 }
 
-// nextHour is the top of the hour after now: forecasts change with model runs
-// every few hours, and loom reads "now" from the hourly values itself, so one
-// fetch per place and hour shows everything there is.
+// nextHour is the top of the hour after now: the hours change with model
+// runs, some of which run hourly, and loom reads "now" from the hourly values
+// itself, so one fetch per place and hour shows everything there is.
 func nextHour(now time.Time) time.Time {
 	return now.Truncate(time.Hour).Add(time.Hour)
+}
+
+// nextThreeHours is the next three-hour mark (UTC) after now: the days barely
+// move between the runs of the models behind them (every three hours for
+// Switzerland's, six for the global one), so an hourly fetch would only spend
+// the provider's daily call limit.
+func nextThreeHours(now time.Time) time.Time {
+	return now.Truncate(3 * time.Hour).Add(3 * time.Hour)
+}
+
+// nextSixHours is the next six-hour mark (UTC) after now: the air's models
+// run once or twice a day (Europe's) and every twelve hours (the global one).
+func nextSixHours(now time.Time) time.Time {
+	return now.Truncate(6 * time.Hour).Add(6 * time.Hour)
 }
 
 // geocodeTTL keeps a place-name lookup: names and their coordinates do not move.

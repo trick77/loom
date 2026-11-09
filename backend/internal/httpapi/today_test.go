@@ -26,20 +26,59 @@ func todayForecastJSON() string {
 		if (i >= 9 && i <= 14) || (i >= 26 && i <= 28) {
 			code, chance = 61, 80
 		}
+		rain := 0.0
+		if code == 61 {
+			rain = 0.5 + float64(i%3)*0.4
+		}
 		b, _ := json.Marshal(map[string]any{"time": time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"),
-			"temperature": temp, "code": code, "precipitationProbability": chance})
+			"temperature": temp, "code": code, "precipitationProbability": chance, "precipitation": rain,
+			"windSpeed": 9 + float64(i), "windGusts": 20 + float64(i), "windDirection": 250,
+			"apparentTemperature": temp - 3, "humidity": 80 + i%10, "uvIndex": 0.5})
 		hours = append(hours, string(b))
 	}
 	return `{"hourly":[` + strings.Join(hours, ",") + `],
-"daily":[{"date":"2026-11-09","high":11,"low":3,"code":61,"precipitationProbability":80},
- {"date":"2026-11-10","high":9,"low":2,"code":61,"precipitationProbability":80}],
+"daily":[{"date":"2026-11-09","high":11,"low":3,"code":61,"precipitationProbability":80,"precipitationSum":4.2,
+  "uvIndexMax":1.6,"sunshineHours":2.5,"windSpeedMax":24,"windGustsMax":45,"windDirection":240},
+ {"date":"2026-11-10","high":9,"low":2,"code":61,"precipitationProbability":80,"precipitationSum":1.5,
+  "uvIndexMax":1.2,"sunshineHours":0.5,"windSpeedMax":30,"windGustsMax":55,"windDirection":260},
+ {"date":"2026-11-11","high":8,"low":1,"code":3,"precipitationProbability":20},
+ {"date":"2026-11-12","high":7,"low":0,"code":71,"precipitationProbability":60},
+ {"date":"2026-11-13","high":6,"low":-1,"code":0,"precipitationProbability":0},
+ {"date":"2026-11-14","high":7,"low":0,"code":2,"precipitationProbability":10},
+ {"date":"2026-11-15","high":9,"low":2,"code":3,"precipitationProbability":30}],
 "attribution":{"text":"Weather data by Example","url":"https://weather.example/"}}`
+}
+
+// todayAirJSON is the air in Zurich from 08:00 on 9 November: birch
+// moderate and grass low today, tomorrow only a trace of grass.
+const todayAirJSON = `{"hourly":[{"time":"2026-11-09T08:00","aqi":18},{"time":"2026-11-09T09:00","aqi":45},
+ {"time":"2026-11-09T21:00","aqi":30}],
+"daily":[{"date":"2026-11-09","aqiMax":45,"pollen":{"birch":42.4,"grass":3,"olive":500,"alder":0.4}},
+ {"date":"2026-11-10","aqiMax":64,"pollen":{"grass":0.2}}],
+"attribution":{"text":"Air by Example","url":"https://air.example/"}}`
+
+func outlookDates(w *todayWeather) string {
+	var dates []string
+	for _, d := range w.Outlook {
+		dates = append(dates, d.Date)
+	}
+	return strings.Join(dates, ",")
 }
 
 type todayFixture struct {
 	*locationFixture
 	schedules *schedule.Store
 	handler   http.Handler
+	// forecastDays is the days the last forecast call asked for.
+	forecastDays any
+	// forecastJSON answers the forecast; todayForecastJSON when empty.
+	forecastJSON string
+	// airErr fails the air quality call; airJSON answers it, todayAirJSON
+	// when empty.
+	airErr  error
+	airJSON string
+	// forecastErr fails the forecast.
+	forecastErr error
 }
 
 // morning is 08:14 in Zurich on 9 November; dusk 19:30, evening 20:30.
@@ -62,9 +101,22 @@ func newTodayFixture(t *testing.T, withPlace bool) *todayFixture {
 	t.Cleanup(func() { _ = bg.Stop(10 * time.Second) })
 	geo := f.geo.call
 	f.deps.MCP = fakeMCPService{
-		Available: map[string]bool{geocodeTool: true, forecastTool: true},
+		Available: map[string]bool{geocodeTool: true, forecastTool: true, airQualityTool: true},
 		CallFunc: func(ctx context.Context, name string, args map[string]any) (string, error) {
+			if name == airQualityTool {
+				if tf.airJSON != "" {
+					return tf.airJSON, tf.airErr
+				}
+				return todayAirJSON, tf.airErr
+			}
 			if name == forecastTool {
+				tf.forecastDays = args["days"]
+				if tf.forecastErr != nil {
+					return "", tf.forecastErr
+				}
+				if tf.forecastJSON != "" {
+					return tf.forecastJSON, nil
+				}
 				return todayForecastJSON(), nil
 			}
 			return geo(ctx, name, args)
@@ -151,6 +203,35 @@ func TestToday(t *testing.T) {
 	if hourTimes(w) != "09:00,12:00,15:00,18:00,21:00" {
 		t.Fatalf("hours = %v", hourTimes(w))
 	}
+	// Details: the wind and air now, the rest the day's.
+	d := w.Details
+	if d == nil || *d.FeelsLike != 2 || *d.Humidity != 80 || *d.Wind != 9 || *d.Gusts != 20 || *d.WindDirection != 250 ||
+		*d.UVMax != 1.6 || *d.PrecipitationSum != 4.2 || *d.SunshineHours != 2.5 {
+		t.Fatalf("details = %+v", d)
+	}
+	// The rain hour by hour from now, twelve hours.
+	if len(w.Rain) != 12 || w.Rain[0].Time != "08:00" || w.Rain[11].Time != "19:00" || *w.Rain[0].Precipitation != 0 ||
+		*w.Rain[9].Precipitation != 0.5 || *w.Rain[9].Probability != 80 {
+		t.Fatalf("rain = %+v", w.Rain)
+	}
+	// The five days after the shown one.
+	if outlookDates(w) != "2026-11-10,2026-11-11,2026-11-12,2026-11-13,2026-11-14" || w.Outlook[2].Code != 71 ||
+		w.Outlook[3].Low != -1 || *w.Outlook[2].PrecipitationProbability != 60 {
+		t.Fatalf("outlook = %+v", w.Outlook)
+	}
+	if tf.forecastDays != 7 {
+		t.Fatalf("asked %v days, want 7: the outlook on the evening reaches six days ahead", tf.forecastDays)
+	}
+	// The air now and today's pollen by their load classes: a trace is none,
+	// a kind without classes (olive) is left out.
+	a := got.Air
+	if a == nil || *a.AQI != 18 || a.Level != "good" || a.Max || a.Attribution.URL != "https://air.example/" {
+		t.Fatalf("air = %+v", a)
+	}
+	if len(a.Pollen) != 2 || a.Pollen[0] != (todayPollen{Kind: "birch", Level: "moderate"}) ||
+		a.Pollen[1] != (todayPollen{Kind: "grass", Level: "low"}) {
+		t.Fatalf("pollen = %+v", a.Pollen)
+	}
 	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "17:00" || got.Warning.Day != dayToday {
 		t.Fatalf("warning = %+v", got.Warning)
 	}
@@ -184,6 +265,21 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	w := got.Weather
 	if w == nil || w.Now != nil || w.Day.High != 9 || hourTimes(w) != "06:00,09:00,12:00,15:00,18:00" {
 		t.Fatalf("tomorrow's weather = %+v", w)
+	}
+	// Tomorrow's details are its day's: no air now, the wind at its strongest.
+	if d := w.Details; d == nil || d.FeelsLike != nil || d.Humidity != nil || *d.Wind != 30 || *d.Gusts != 55 ||
+		*d.WindDirection != 260 || *d.UVMax != 1.2 || *d.PrecipitationSum != 1.5 || *d.SunshineHours != 0.5 {
+		t.Fatalf("tomorrow's details = %+v", w.Details)
+	}
+	if len(w.Rain) != 17 || w.Rain[0].Time != "06:00" || w.Rain[16].Time != "22:00" {
+		t.Fatalf("tomorrow's rain = %+v", w.Rain)
+	}
+	if outlookDates(w) != "2026-11-11,2026-11-12,2026-11-13,2026-11-14,2026-11-15" {
+		t.Fatalf("outlook after tomorrow = %v", outlookDates(w))
+	}
+	// Tomorrow's air is its worst, no pollen worth a class.
+	if a := got.Air; a == nil || *a.AQI != 64 || a.Level != "poor" || !a.Max || a.Pollen == nil || len(a.Pollen) != 0 {
+		t.Fatalf("tomorrow's air = %+v", got.Air)
 	}
 	// It is still raining tonight: that comes first, as tonight's.
 	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "20:00" || got.Warning.Day != dayToday {
@@ -246,6 +342,91 @@ func TestTodayAsksWhenTheDerivationFails(t *testing.T) {
 	}
 	if got := tf.get(t); !got.AskLocation {
 		t.Fatalf("no question after a failed derivation: %+v", got)
+	}
+}
+
+// A weather server that answers only the basics (an mcp.json replacement)
+// costs the cards it has no values for, never the weather.
+func TestTodayFromABasicWeatherServer(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.forecastJSON = `{"hourly":[{"time":"2026-11-09T08:00","temperature":5,"code":3},
+ {"time":"2026-11-09T09:00","temperature":6,"code":3}],
+"daily":[{"date":"2026-11-09","high":11,"low":3,"code":3},{"date":"2026-11-10","high":9,"low":2,"code":3}]}`
+	w := tf.get(t).Weather
+	if w == nil || w.Now == nil {
+		t.Fatalf("weather = %+v", w)
+	}
+	if w.Details != nil || w.Rain != nil {
+		t.Fatalf("details = %+v, rain = %+v; want none without their values", w.Details, w.Rain)
+	}
+	if outlookDates(w) != "2026-11-10" {
+		t.Fatalf("outlook = %v, want the one day after today it has", outlookDates(w))
+	}
+}
+
+// The air is optional: a failing call or a server without the tool costs the
+// air card, never the weather.
+func TestTodayWithoutTheAir(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.airErr = errors.New("air down")
+	if got := tf.get(t); got.Air != nil || got.Weather == nil {
+		t.Fatalf("failed air: air %+v, weather %+v", got.Air, got.Weather)
+	}
+	tf = newTodayFixture(t, true)
+	svc := tf.deps.MCP.(fakeMCPService)
+	delete(svc.Available, airQualityTool)
+	if got := tf.get(t); got.Air != nil || got.Weather == nil {
+		t.Fatalf("no air tool: air %+v, weather %+v", got.Air, got.Weather)
+	}
+}
+
+// Without the weather the air has no tile to show on: left out.
+func TestTodayAirNeedsTheWeather(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.forecastErr = errors.New("forecast down")
+	if got := tf.get(t); got.Weather != nil || got.Air != nil {
+		t.Fatalf("weather %+v, air %+v; want neither", got.Weather, got.Air)
+	}
+}
+
+// Another server's air: a fractional index is rounded, an hour without one
+// falls to the next, and no pollen at all is unknown, never "hardly any".
+func TestTodayAirFromAnotherServer(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	tf.airJSON = `{"hourly":[{"time":"2026-11-09T08:00"},{"time":"2026-11-09T09:00","aqi":44.6}],
+"daily":[{"date":"2026-11-09","aqiMax":44.6}]}`
+	a := tf.get(t).Air
+	if a == nil || *a.AQI != 45 || a.Level != "moderate" || a.Pollen != nil {
+		t.Fatalf("air = %+v", a)
+	}
+	// An index only hours from now is not now; with no pollen there is
+	// nothing to show.
+	tf.airJSON = `{"hourly":[{"time":"2026-11-09T08:00"},{"time":"2026-11-09T09:00"},{"time":"2026-11-09T10:00"},
+ {"time":"2026-11-09T11:00","aqi":30}],"daily":[{"date":"2026-11-09"}]}`
+	if a := tf.get(t).Air; a != nil {
+		t.Fatalf("air = %+v, want none", a)
+	}
+}
+
+func TestAirLevels(t *testing.T) {
+	for aqi, want := range map[int]string{0: "good", 20: "good", 21: "fair", 40: "fair", 55: "moderate", 80: "poor",
+		81: "veryPoor", 100: "veryPoor", 101: "extremelyPoor"} {
+		if got := aqiLevel(aqi); got != want {
+			t.Errorf("aqi %d = %s, want %s", aqi, got, want)
+		}
+	}
+	for _, tc := range []struct {
+		kind  string
+		value float64
+		want  string
+	}{
+		{"birch", 0.4, ""}, {"birch", 1, "low"}, {"birch", 10.4, "low"}, {"birch", 11, "moderate"},
+		{"birch", 299, "high"}, {"birch", 300, "veryHigh"}, {"grass", 150, "veryHigh"}, {"grass", 49, "moderate"},
+		{"alder", 250, "veryHigh"}, {"mugwort", 6, "moderate"}, {"ragweed", 40, "veryHigh"}, {"olive", 500, ""},
+	} {
+		if got := pollenLevel(tc.kind, tc.value); got != tc.want {
+			t.Errorf("%s %v = %q, want %q", tc.kind, tc.value, got, tc.want)
+		}
 	}
 }
 
@@ -316,20 +497,10 @@ func TestTodayForecastWarnings(t *testing.T) {
 		var f forecast
 		for i := range codes {
 			c := chance
-			f.Hourly = append(f.Hourly, struct {
-				Time                     string  `json:"time"`
-				Temperature              float64 `json:"temperature"`
-				Code                     int     `json:"code"`
-				PrecipitationProbability *int    `json:"precipitationProbability"`
-			}{Time: time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"), Temperature: temps[i], Code: codes[i], PrecipitationProbability: &c})
+			f.Hourly = append(f.Hourly, forecastHour{Time: time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"),
+				Temperature: temps[i], Code: codes[i], PrecipitationProbability: &c})
 		}
-		f.Daily = append(f.Daily, struct {
-			Date                     string  `json:"date"`
-			High                     float64 `json:"high"`
-			Low                      float64 `json:"low"`
-			Code                     int     `json:"code"`
-			PrecipitationProbability *int    `json:"precipitationProbability"`
-		}{Date: "2026-11-08", High: 1, Low: -2, Code: 3})
+		f.Daily = append(f.Daily, forecastDay{Date: "2026-11-08", High: 1, Low: -2, Code: 3})
 		return f
 	}
 	if _, w := todayForecast(mk([]int{3, 3, 71}, []float64{2, 1, 0}, 80), now); w == nil || w.Kind != "snow" || w.From != "10:00" {
@@ -344,8 +515,13 @@ func TestTodayForecastWarnings(t *testing.T) {
 	if _, w := todayForecast(mk([]int{3, 95}, []float64{2, 3}, 60), now); w == nil || w.Kind != "storm" {
 		t.Fatalf("storm = %+v", w)
 	}
-	// No day matching today: the first one stands in.
-	if weather, _ := todayForecast(mk([]int{3}, []float64{2}, 0), now); weather.Day.High != 1 || weather.Now.Temperature != 2 {
+	// No day matching today: the first one stands in for the range, never
+	// for the details.
+	stand := mk([]int{3}, []float64{2}, 0)
+	uv := 5.0
+	stand.Daily[0].UVIndexMax = &uv
+	if weather, _ := todayForecast(stand, now); weather.Day.High != 1 || weather.Day.Low != -2 || weather.Now.Temperature != 2 ||
+		weather.Details != nil {
 		t.Fatalf("weather = %+v", weather)
 	}
 	if clock("garbled") != "garbled" {

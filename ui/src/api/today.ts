@@ -39,6 +39,40 @@ export type TodayWeatherDay = {
   precipitationProbability: number | null;
 };
 
+/** The shown day in numbers: today the air and wind now, tomorrow the wind
+ * at its strongest. Any value may be missing. */
+export type TodayDetails = {
+  feelsLike: number | null;
+  /** % */
+  humidity: number | null;
+  /** km/h */
+  wind: number | null;
+  gusts: number | null;
+  /** Degrees, where the wind blows from. */
+  windDirection: number | null;
+  uvMax: number | null;
+  /** mm over the day. */
+  precipitationSum: number | null;
+  sunshineHours: number | null;
+};
+
+export type TodayRain = {
+  time: string;
+  /** mm in the hour. */
+  precipitation: number | null;
+  /** % */
+  probability: number | null;
+};
+
+export type TodayOutlookDay = {
+  /** "YYYY-MM-DD" */
+  date: string;
+  high: number;
+  low: number;
+  code: number;
+  precipitationProbability: number | null;
+};
+
 export type TodayWeather = {
   /** The sky now; null when the shown day is tomorrow. */
   now: { temperature: number; code: number } | null;
@@ -46,9 +80,56 @@ export type TodayWeather = {
   day: TodayWeatherDay;
   /** Today the next slots, tomorrow its daytime, 3 h apart. */
   hours: TodayHour[];
+  /** The tile's further cards; null when the forecast has nothing for one. */
+  details: TodayDetails | null;
+  /** Today the next 12 hours, tomorrow its daytime, hour by hour. */
+  rain: TodayRain[] | null;
+  /** The days after the shown one. */
+  outlook: TodayOutlookDay[] | null;
   /** The weather data licence asks for this wherever the data shows. */
   attribution: { text: string; url: string };
 };
+
+export type TodayPollen = {
+  kind: "alder" | "birch" | "grass" | "mugwort" | "ragweed";
+  level: "low" | "moderate" | "high" | "veryHigh";
+};
+
+/** The air on the shown day: today the index now, tomorrow its highest. */
+export type TodayAir = {
+  /** European air quality index. */
+  aqi: number | null;
+  level:
+    "" | "good" | "fair" | "moderate" | "poor" | "veryPoor" | "extremelyPoor";
+  /** True when aqi is the day's highest (tomorrow). */
+  max: boolean;
+  /** Only the kinds worth a load class; empty: hardly any; null: unknown
+   * here (outside Europe, out of season). */
+  pollen: TodayPollen[] | null;
+  attribution: { text: string; url: string };
+};
+
+const POLLEN_KINDS: readonly string[] = [
+  "alder",
+  "birch",
+  "grass",
+  "mugwort",
+  "ragweed",
+];
+const POLLEN_LEVELS: readonly string[] = [
+  "low",
+  "moderate",
+  "high",
+  "veryHigh",
+];
+const AIR_LEVELS: readonly string[] = [
+  "good",
+  "fair",
+  "moderate",
+  "poor",
+  "veryPoor",
+  "extremelyPoor",
+];
 
 export type TodayWarning = {
   kind: "rain" | "snow" | "storm" | "frost";
@@ -75,6 +156,7 @@ export type Today = {
   askLocation: boolean;
   sun: TodaySun | null;
   weather: TodayWeather | null;
+  air: TodayAir | null;
   warning: TodayWarning | null;
   /** Unread schedule runs, newest first. */
   runs: TodayRun[];
@@ -112,8 +194,48 @@ function normalizeWeather(raw: unknown): TodayWeather | null {
     now: weather.now ?? null,
     day,
     hours: Array.isArray(weather.hours) ? weather.hours : [],
+    details: weather.details ?? null,
+    rain: nonEmpty(weather.rain),
+    outlook: nonEmpty(weather.outlook),
     attribution: weather.attribution ?? { text: "", url: "" },
   };
+}
+
+// normalizeAir keeps the air only with something to show; an older server
+// sends none.
+function normalizeAir(raw: unknown): TodayAir | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const air = raw as Partial<TodayAir>;
+  const aqi = typeof air.aqi === "number" ? air.aqi : null;
+  // Kinds and levels this page has no words for are left out: a newer or
+  // other server must not show raw keys.
+  // A list left empty by the filter is unknown, not "hardly any": the
+  // server named a load this page cannot.
+  const known = Array.isArray(air.pollen)
+    ? air.pollen.filter(
+        (p) =>
+          POLLEN_KINDS.includes(p?.kind) && POLLEN_LEVELS.includes(p?.level),
+      )
+    : null;
+  const pollen =
+    known !== null && known.length === 0 && air.pollen!.length > 0
+      ? null
+      : known;
+  if (aqi === null && (pollen === null || pollen.length === 0)) return null;
+  return {
+    aqi,
+    level:
+      typeof air.level === "string" && AIR_LEVELS.includes(air.level)
+        ? air.level
+        : "",
+    max: air.max === true,
+    pollen,
+    attribution: air.attribution ?? { text: "", url: "" },
+  };
+}
+
+function nonEmpty<T>(list: T[] | null | undefined): T[] | null {
+  return Array.isArray(list) && list.length > 0 ? list : null;
 }
 
 // normalizeToday fills what an answer leaves out with "nothing to show", so a
@@ -132,6 +254,7 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
       ? { ...today.sun, progress: today.sun.progress ?? null }
       : null,
     weather: normalizeWeather(today.weather),
+    air: normalizeAir(today.air),
     // A warning without its day is for the shown day.
     warning:
       warning === null
