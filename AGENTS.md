@@ -4,6 +4,7 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 
 ## Working conventions
 - TDD.
+- English only (maintainer talks German). Never commit to master: worktree + PR per change.
 - Commit subjects + PR titles: Go style `area: what` (`turn: …`, `ui: …`), gated by ship.
 - Fresh clone: `ship hooks` before the first push (check, conform and init install it too); without the pre-push hook a push skips the gate.
 - Gate: `make check` (`ship check`), floors 75 (Go, UI, patch). Raise tests, never a floor. Sandbox escape
