@@ -845,6 +845,7 @@ export const en = {
   // The start page's "Today" section: weather, sun times, unread schedule runs.
   today: {
     title: "Today",
+    titleTomorrow: "Tomorrow",
     heading: "Today · {{date}}",
     headingTomorrow: "Tomorrow · {{date}}",
     temperature: "{{value}}°",

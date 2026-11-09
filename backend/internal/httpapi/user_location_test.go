@@ -44,8 +44,9 @@ func (f *fakeLocationLLM) ResolveUserLocation(_ context.Context, facts []llm.Fac
 	var out llm.UserLocation
 	for _, fact := range facts {
 		if place, ok := strings.CutPrefix(fact.Content, "Lives "); ok && out.Home == nil {
+			// The town is the first word: "Lives Zürich with Anna, works at X".
 			place, _, _ = strings.Cut(place, ",")
-			out.Home = &llm.PlaceRef{Place: place, FactID: fact.ID}
+			out.Home = &llm.PlaceRef{Place: strings.Fields(place)[0], FactID: fact.ID}
 		}
 		if rest, ok := strings.CutPrefix(fact.Content, "In "); ok && out.Current == nil {
 			// A country the lookup does not find the place in: it retries
@@ -209,6 +210,10 @@ func TestSetLocationKeepsARicherFact(t *testing.T) {
 	if err := f.s.resolveLocation(ctx, testUser); err != nil {
 		t.Fatal(err)
 	}
+	// The home came from that fact, so the rule that guards it is what runs.
+	if home, _, _, _ := f.places.Places(ctx, testUser.ID); home == nil || home.Name != "Zürich" {
+		t.Fatalf("home = %+v, want Zürich from the richer fact", home)
+	}
 	rec := httptest.NewRecorder()
 	newAuthenticatedServer(t, f.deps).ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/me/location", `{"place":"Lisbon"}`))
 	if rec.Code != http.StatusOK {
@@ -250,7 +255,7 @@ func TestFactInputsInTheUsersZone(t *testing.T) {
 	la, _ := time.LoadLocation("America/Los_Angeles")
 	// 18:00 on Monday in Los Angeles is Tuesday in UTC.
 	facts := []chat.UserFact{{ID: "f1", Content: "In Rome this week", LastSeen: time.Date(2026, 11, 10, 2, 0, 0, 0, time.UTC)}}
-	if got := factInputsIn(facts, la)[0].LastSeen; got != "2026-11-09" {
+	if got := factInputs(facts, la)[0].LastSeen; got != "2026-11-09" {
 		t.Fatalf("last seen = %s, want the local Monday", got)
 	}
 }

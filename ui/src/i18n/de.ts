@@ -868,6 +868,7 @@ export const de = {
   },
   today: {
     title: "Heute",
+    titleTomorrow: "Morgen",
     heading: "Heute · {{date}}",
     headingTomorrow: "Morgen · {{date}}",
     temperature: "{{value}}°",

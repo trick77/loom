@@ -3,10 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
@@ -162,35 +162,40 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 		// would add a second home fact.
 		out.Location, out.AskLocation = place, err == nil && place == nil && s.locationSettled(ctx, user)
 	}
-	loc := placeZone(&location.Place{}, user)
-	if out.Location != nil {
-		loc = placeZone(out.Location, user)
-	}
-	local := now.In(loc)
-	tomorrow := local.Hour() >= eveningHour
-	shown := local
+	// The evening is the user's own (their browser's clock), the clock the
+	// page reloads by; the weather's hours read in the place's zone.
+	userLocal := now.In(userZone(user))
+	tomorrow := userLocal.Hour() >= eveningHour
+	shownDay := userLocal
 	out.Day = dayToday
 	if tomorrow {
-		shown, out.Day = local.AddDate(0, 0, 1), dayTomorrow
+		shownDay, out.Day = userLocal.AddDate(0, 0, 1), dayTomorrow
 	}
-	out.Date = shown.Format(time.DateOnly)
+	out.Date = shownDay.Format(time.DateOnly)
 	if p := out.Location; p != nil {
+		loc := placeZone(p, user)
+		y, m, d := shownDay.Date()
+		shown := time.Date(y, m, d, 12, 0, 0, 0, loc)
 		out.Sun = sunOn(now, shown, p, loc)
 		if f, ok := s.forecastFor(ctx, p, loc); ok {
 			if tomorrow {
 				out.Weather, out.Warning = tomorrowForecast(f, shown)
 			} else {
-				out.Weather, out.Warning = todayForecast(f, local)
+				out.Weather, out.Warning = todayForecast(f, now.In(loc))
 			}
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
 }
 
-// locationSettled reports whether the places were derived from the facts as
-// they are now, or there are no facts to derive them from; an error counts as
-// not settled (no question asked).
+// locationSettled reports whether the facts as they are now were read for a
+// place: derived, or the derivation failed (asking beats waiting on a model
+// that keeps failing), or there are no facts to read. An error counts as not
+// settled (no question asked).
 func (s *server) locationSettled(ctx context.Context, user auth.User) bool {
+	if s.thread == nil {
+		return false
+	}
 	facts, err := s.thread.ListActiveUserFacts(ctx, user.ID)
 	if err != nil {
 		return false
@@ -198,8 +203,12 @@ func (s *server) locationSettled(ctx context.Context, user auth.User) bool {
 	if len(facts) == 0 {
 		return true
 	}
+	hash := location.HashFacts(facts)
+	if failed, ok := s.locationFailed.Load(user.ID); ok && failed == hash {
+		return true
+	}
 	kept, err := s.locations.FactsHash(ctx, user.ID)
-	return err == nil && kept == location.HashFacts(facts)
+	return err == nil && kept == hash
 }
 
 // todayRuns is the schedule results the user has not read, newest first.
@@ -301,9 +310,14 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 		frac := float64(now.Minute()) / 60
 		temp += (f.Hourly[1].Temperature - temp) * frac
 	}
+	day, ok := dayOf(f, now)
+	if !ok {
+		// A daily list that does not name today: its first day stands in.
+		day, _ = dayOf(f, time.Time{})
+	}
 	out := &todayWeather{
 		Now:         &todayNow{Temperature: math.Round(temp*10) / 10, Code: first.Code},
-		Day:         dayOf(f, now),
+		Day:         day,
 		Hours:       []todayHour{},
 		Attribution: f.Attribution,
 	}
@@ -315,42 +329,51 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 
 // tomorrowForecast reads tomorrow off the forecast: its high and low, five
 // hours from tomorrowFrom three apart, and a warning for its daytime. A
-// forecast that does not reach tomorrow is none.
+// forecast that does not reach tomorrow, or whose days do not name it, is
+// none: never today's numbers under tomorrow's name.
 func tomorrowForecast(f forecast, tomorrow time.Time) (*todayWeather, *todayWarning) {
+	day, ok := dayOf(f, tomorrow)
+	if !ok {
+		return nil, nil
+	}
 	date := tomorrow.Format(time.DateOnly)
 	from, to := -1, -1
 	for i, h := range f.Hourly {
 		if len(h.Time) < 13 || h.Time[:10] != date {
 			continue
 		}
-		hour := h.Time[11:13]
-		if from < 0 && hour >= fmt.Sprintf("%02d", tomorrowFrom) {
+		hour, err := strconv.Atoi(h.Time[11:13])
+		if err != nil {
+			continue
+		}
+		if from < 0 && hour >= tomorrowFrom {
 			from = i
 		}
-		if hour <= fmt.Sprintf("%02d", tomorrowTo) {
+		if hour <= tomorrowTo {
 			to = i
 		}
 	}
 	if from < 0 || to < from {
 		return nil, nil
 	}
-	out := &todayWeather{Day: dayOf(f, tomorrow), Hours: []todayHour{}, Attribution: f.Attribution}
+	out := &todayWeather{Day: day, Hours: []todayHour{}, Attribution: f.Attribution}
 	for i := from; i <= to && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))
 	}
 	return out, warningIn(f, from, to-from)
 }
 
-// dayOf is the forecast's day on date, else its first.
-func dayOf(f forecast, date time.Time) todayDay {
-	day := f.Daily[0]
+// dayOf is the forecast's day on date; ok is false when the forecast does
+// not name it, the first day returned then. A zero date asks for the first.
+func dayOf(f forecast, date time.Time) (todayDay, bool) {
+	day, ok := f.Daily[0], date.IsZero()
 	for _, d := range f.Daily {
-		if d.Date == date.Format(time.DateOnly) {
-			day = d
+		if !date.IsZero() && d.Date == date.Format(time.DateOnly) {
+			day, ok = d, true
 			break
 		}
 	}
-	return todayDay{High: day.High, Low: day.Low, Code: day.Code, PrecipitationProbability: day.PrecipitationProbability}
+	return todayDay{High: day.High, Low: day.Low, Code: day.Code, PrecipitationProbability: day.PrecipitationProbability}, ok
 }
 
 func hourOf(f forecast, i int) todayHour {

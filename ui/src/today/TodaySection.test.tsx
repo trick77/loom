@@ -278,6 +278,33 @@ test("without weather the sun times show alone", () => {
   );
 });
 
+test("in the evening without weather the sun line is tomorrow's", () => {
+  const sun = tomorrowFixture().sun!;
+  const { unmount } = showTomorrow({ weather: null, runs: [] });
+  expect(screen.queryByRole("group", { name: "Today" })).toBeNull();
+  const group = screen.getByRole("group", { name: "Tomorrow" });
+  expect(within(group).getByTestId("sun-line-day")).toHaveTextContent(
+    "Tomorrow",
+  );
+  expect(group).toHaveTextContent("Sunrise 07:25");
+  expect(group).toHaveTextContent("Sunset 16:58");
+  unmount();
+
+  // Tomorrow is never "now": a stray position does not turn it into a
+  // sunrise-next line.
+  showTomorrow({
+    weather: null,
+    runs: [],
+    sun: { ...sun, rise: null, progress: 1.3 },
+  });
+  const line = screen.getByRole("group", { name: "Tomorrow" });
+  expect(line).toHaveTextContent("Sunset 16:58");
+  // The sunset's icon is the setting one, not a sunrise arrow.
+  expect(
+    line.querySelector('path[d="M12 6v4M9.5 8.5 12 11l2.5-2.5"]'),
+  ).not.toBeNull();
+});
+
 test("the sun line names the one sun time it knows", () => {
   const sun = todayFixture().sun!;
   const cases: [Partial<api.TodaySun>, string][] = [
