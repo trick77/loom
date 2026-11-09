@@ -23,7 +23,10 @@ const (
 	geocodeTool  = "geocode"
 	// defaultDays and maxDays bound a forecast's days, today first.
 	defaultDays = 2
-	maxDays     = 3
+	maxDays     = 7
+	// hourlyDays is how many days the hours cover at most: further out only
+	// the days are worth their tokens.
+	hourlyDays = 3
 	// maxPlaces is how many matches a lookup returns.
 	maxPlaces = 5
 	// cacheLimit bounds each cache's entries.
@@ -31,9 +34,10 @@ const (
 )
 
 // Forecast is the forecast tool's answer, as JSON text. Temperatures are °C,
-// wind km/h, probabilities %, times local to Timezone without an offset, codes
-// WMO weather interpretation codes. A value the provider has not is left out,
-// never sent as 0.
+// wind km/h, directions degrees (where it blows from), precipitation mm,
+// probabilities and humidity %, times local to Timezone without an offset,
+// codes WMO weather interpretation codes. A value the provider has not is
+// left out, never sent as 0.
 type Forecast struct {
 	Latitude    float64     `json:"latitude"`
 	Longitude   float64     `json:"longitude"`
@@ -41,9 +45,6 @@ type Forecast struct {
 	Hourly      []Hour      `json:"hourly"`
 	Daily       []Day       `json:"daily"`
 	Attribution Attribution `json:"attribution"`
-	// utcOffset is the place's offset from UTC in seconds: hours already past
-	// there are dropped on the way out.
-	utcOffset int
 }
 
 type Hour struct {
@@ -51,29 +52,53 @@ type Hour struct {
 	Temperature              float64  `json:"temperature"`
 	Code                     int      `json:"code"`
 	PrecipitationProbability *int     `json:"precipitationProbability,omitempty"`
+	Precipitation            *float64 `json:"precipitation,omitempty"`
 	WindSpeed                *float64 `json:"windSpeed,omitempty"`
+	WindGusts                *float64 `json:"windGusts,omitempty"`
+	WindDirection            *int     `json:"windDirection,omitempty"`
+	ApparentTemperature      *float64 `json:"apparentTemperature,omitempty"`
+	Humidity                 *int     `json:"humidity,omitempty"`
+	UVIndex                  *float64 `json:"uvIndex,omitempty"`
 }
 
 type Day struct {
-	Date                     string  `json:"date"`
-	High                     float64 `json:"high"`
-	Low                      float64 `json:"low"`
-	Code                     int     `json:"code"`
-	PrecipitationProbability *int    `json:"precipitationProbability,omitempty"`
+	Date                     string   `json:"date"`
+	High                     float64  `json:"high"`
+	Low                      float64  `json:"low"`
+	Code                     int      `json:"code"`
+	PrecipitationProbability *int     `json:"precipitationProbability,omitempty"`
+	PrecipitationSum         *float64 `json:"precipitationSum,omitempty"`
+	UVIndexMax               *float64 `json:"uvIndexMax,omitempty"`
+	SunshineHours            *float64 `json:"sunshineHours,omitempty"`
+	WindSpeedMax             *float64 `json:"windSpeedMax,omitempty"`
+	WindGustsMax             *float64 `json:"windGustsMax,omitempty"`
+	// WindDirection is the day's dominant one.
+	WindDirection *int `json:"windDirection,omitempty"`
 }
 
-// from drops the hours before the current one at the place: they only cost
-// the model tokens. The cached forecast keeps them, it is kept for the hour.
-func (f Forecast) from(now time.Time) Forecast {
-	current := now.UTC().Add(time.Duration(f.utcOffset) * time.Second).Truncate(time.Hour).Format("2006-01-02T15:04")
-	hours := make([]Hour, 0, len(f.Hourly))
-	for _, h := range f.Hourly {
-		if h.Time >= current {
-			hours = append(hours, h)
+// forecastOf cuts the kept hours and days to one call's: hours from the
+// current one at the place (earlier ones only cost the model tokens) through
+// at most hourlyDays days, days from today through days. The kept parts hold
+// more; a part kept over midnight starts a day early, dropped here.
+func forecastOf(hourly, daily forecastPart, days int, now time.Time) Forecast {
+	local := now.UTC().Add(time.Duration(hourly.UTCOffset) * time.Second)
+	current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
+	today := local.Format(time.DateOnly)
+	hoursEnd := local.AddDate(0, 0, min(days, hourlyDays)).Format(time.DateOnly)
+	daysEnd := local.AddDate(0, 0, days).Format(time.DateOnly)
+	out := Forecast{Latitude: hourly.Latitude, Longitude: hourly.Longitude, Timezone: hourly.Timezone,
+		Hourly: []Hour{}, Daily: []Day{}, Attribution: attribution}
+	for _, h := range hourly.Hourly {
+		if h.Time >= current && h.Time < hoursEnd {
+			out.Hourly = append(out.Hourly, h)
 		}
 	}
-	f.Hourly = hours
-	return f
+	for _, d := range daily.Daily {
+		if d.Date >= today && d.Date < daysEnd {
+			out.Daily = append(out.Daily, d)
+		}
+	}
+	return out
 }
 
 // Attribution is the credit the data's licence requires next to it.
@@ -93,12 +118,14 @@ type Place struct {
 	Timezone    string  `json:"timezone,omitempty"`
 }
 
-// weather is the tools' state: the provider and its two caches.
+// weather is the tools' state: the provider and its caches. The hours and
+// the days of a forecast are kept apart, each as long as it stays current.
 type weather struct {
-	provider  openMeteo
-	forecasts *cache[Forecast]
-	places    *cache[[]Place]
-	now       func() time.Time
+	provider openMeteo
+	hourly   *cache[forecastPart]
+	daily    *cache[forecastPart]
+	places   *cache[[]Place]
+	now      func() time.Time
 }
 
 // newServer mounts kit's health probes and, behind the bearer token, the
@@ -109,10 +136,11 @@ func newServer(cfg config, client *http.Client, version string) http.Handler {
 
 func newServerAt(cfg config, client *http.Client, version string, now func() time.Time) http.Handler {
 	w := &weather{
-		provider:  openMeteo{http: client, forecastURL: strings.TrimRight(cfg.forecastURL, "/"), geocodingURL: strings.TrimRight(cfg.geocodingURL, "/")},
-		forecasts: newCache[Forecast](now, cacheLimit),
-		places:    newCache[[]Place](now, cacheLimit),
-		now:       now,
+		provider: openMeteo{http: client, forecastURL: strings.TrimRight(cfg.forecastURL, "/"), geocodingURL: strings.TrimRight(cfg.geocodingURL, "/")},
+		hourly:   newCache[forecastPart](now, cacheLimit),
+		daily:    newCache[forecastPart](now, cacheLimit),
+		places:   newCache[[]Place](now, cacheLimit),
+		now:      now,
 	}
 	api := http.NewServeMux()
 	api.Handle("/mcp", mcpserver.New(w.mcpServer(version)))
@@ -123,8 +151,10 @@ func (w *weather) mcpServer(version string) mcpserver.Server {
 	return mcpserver.Server{Name: serverName, Version: version, Tools: []mcpserver.Tool{{
 		Name:  forecastTool,
 		Title: "Weather forecast",
-		Description: "The weather forecast for a point: hourly temperature (°C), WMO weather code, chance of precipitation (%) and " +
-			"wind (km/h), and each day's high, low and code, as JSON. Look the place up with " + geocodeTool + " first when you only have its name.",
+		Description: fmt.Sprintf("The weather forecast for a point, as JSON: hourly temperature and feels-like (°C), WMO weather code, "+
+			"chance (%%) and amount (mm) of precipitation, wind and gusts (km/h) with direction, humidity (%%) and UV index for the "+
+			"first %d days at most; each day's high, low, code, chance and sum of precipitation, UV index, sunshine hours and wind. "+
+			"Look the place up with %s first when you only have its name.", hourlyDays, geocodeTool),
 		Schema: mcpserver.ObjectSchema(map[string]any{
 			"latitude":  map[string]any{"type": "number", "minimum": -90, "maximum": 90},
 			"longitude": map[string]any{"type": "number", "minimum": -180, "maximum": 180},
@@ -190,16 +220,32 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 		days = defaultDays
 	}
 	// About 100 m: every request for one place, a city's centre, is the same
-	// key, and the provider's grid is far coarser anyway.
+	// key, and the provider's grid is far coarser anyway. The key leaves out
+	// days: the most is fetched once and cut to each call.
 	lat, lon := round3(*args.Latitude), round3(*args.Longitude)
-	key := fmt.Sprintf("%.3f,%.3f,%s,%d", lat, lon, tz, days)
-	forecast, err := w.forecasts.get(ctx, key, nextHour, func(ctx context.Context) (Forecast, error) {
-		return w.provider.forecast(ctx, lat, lon, tz, days)
+	key := fmt.Sprintf("%.3f,%.3f,%s", lat, lon, tz)
+	// On a miss both wait together, not one after the other.
+	var daily forecastPart
+	var dailyErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		daily, dailyErr = w.daily.get(ctx, key, nextThreeHours, func(ctx context.Context) (forecastPart, error) {
+			return w.provider.daily(ctx, lat, lon, tz, maxDays)
+		})
+	}()
+	hourly, err := w.hourly.get(ctx, key, nextHour, func(ctx context.Context) (forecastPart, error) {
+		return w.provider.hourly(ctx, lat, lon, tz, hourlyDays)
 	})
+	<-done
+	if err == nil {
+		err = dailyErr
+	}
 	if err != nil {
 		return mcpserver.ErrorResult("forecast failed: " + err.Error())
 	}
-	result := jsonResult(forecast.from(w.now()))
+	forecast := forecastOf(hourly, daily, days, w.now())
+	result := jsonResult(forecast)
 	// The licence's credit as a source too, so a chat answer cites it even
 	// when the model does not repeat it.
 	result.Sources = []mcpserver.Source{{URL: forecast.Attribution.URL, Title: forecast.Attribution.Text}}

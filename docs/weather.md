@@ -12,19 +12,25 @@ category `weather`, kept by an `mcp.json` override that sets no categories of it
 
 Both answer with one JSON object as text.
 
-`forecast` takes `latitude`, `longitude` (required), `timezone` (IANA, default the place's own) and `days` (1-3,
-default 2, today first):
+`forecast` takes `latitude`, `longitude` (required), `timezone` (IANA, default the place's own) and `days` (1-7,
+default 2, today first). `daily` covers `days` days, `hourly` the first 3 of them at most, from the current hour:
 
 ```json
 {"latitude": 47.38, "longitude": 8.54, "timezone": "Europe/Zurich",
- "hourly": [{"time": "2026-11-09T09:00", "temperature": 6.2, "code": 3, "precipitationProbability": 10, "windSpeed": 9}],
- "daily": [{"date": "2026-11-09", "high": 11.2, "low": 3.1, "code": 3, "precipitationProbability": 10}],
+ "hourly": [{"time": "2026-11-09T09:00", "temperature": 6.2, "code": 3, "precipitationProbability": 10,
+             "precipitation": 0.1, "windSpeed": 9, "windGusts": 21, "windDirection": 250,
+             "apparentTemperature": 3.8, "humidity": 87, "uvIndex": 0.4}],
+ "daily": [{"date": "2026-11-09", "high": 11.2, "low": 3.1, "code": 3, "precipitationProbability": 10,
+            "precipitationSum": 0.3, "uvIndexMax": 1.6, "sunshineHours": 4.5, "windSpeedMax": 12.5,
+            "windGustsMax": 31, "windDirection": 248}],
  "attribution": {"text": "Weather data by Open-Meteo.com", "url": "https://open-meteo.com/"}}
 ```
 
-Temperatures °C, wind km/h, probabilities %, times local to `timezone` without an offset, `code` a WMO weather
-interpretation code. `attribution` is the credit the data's licence requires next to the data; the result also cites it
-as a source, so a chat answer carries it.
+Temperatures °C, wind km/h, wind directions degrees (where it blows from; a day's is its dominant one), precipitation
+mm, probabilities and humidity %, times local to `timezone` without an offset, `code` a WMO weather interpretation code.
+Only `time`/`date`, `temperature`/`high`/`low` and `code` are always there: a reader shows what it gets and leaves out
+the rest. `attribution` is the credit the data's licence requires next to the data; the result also cites it as a
+source, so a chat answer carries it.
 
 `geocode` takes `query` (name or postal code, required), `country` (ISO 3166-1 alpha-2) and `language` (ISO 639-1,
 default `en`), and answers up to 5 matches, best first:
@@ -36,9 +42,17 @@ default `en`), and answers up to 5 matches, best first:
 
 ## Caching
 
-The sidecar keeps a forecast per point (rounded to 3 decimals, about 100 m), timezone and days until the top of the
-next hour, and a lookup for 7 days, in memory. Concurrent misses on one key make one provider request: every user
-whose place is the same city centre shares it. Errors are never kept. A restart starts empty.
+The sidecar keeps a forecast in two parts per point (rounded to 3 decimals, about 100 m) and timezone, each fetched
+for the most a call can ask (hours 3 days, days 7) and cut to each call, so `days` never splits the cache:
+
+- the hours until the top of the next hour: "now" is read off them;
+- the days until the next three-hour mark (UTC): the models behind them run every 3 h (Switzerland's) or 6 h (the
+  global one), an hourly fetch would only spend the daily call limit.
+
+Each request asks at most 10 variables: past that the provider counts it as more than one call. Per place that is 24
+hourly plus 8 daily requests a day, the free tier's 10,000 enough for some 300 places. A lookup is kept for 7 days.
+All in memory; concurrent misses on one key make one provider request: every user whose place is the same city centre
+shares it. Errors are never kept. A restart starts empty.
 
 ## Provider
 

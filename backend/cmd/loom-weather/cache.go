@@ -94,11 +94,19 @@ func (c *cache[V]) prune(key string) {
 	}
 }
 
-// nextHour is the top of the hour after now: forecasts change with model runs
-// every few hours, and loom reads "now" from the hourly values itself, so one
-// fetch per place and hour shows everything there is.
+// nextHour is the top of the hour after now: the hours change with model
+// runs, some of which run hourly, and loom reads "now" from the hourly values
+// itself, so one fetch per place and hour shows everything there is.
 func nextHour(now time.Time) time.Time {
 	return now.Truncate(time.Hour).Add(time.Hour)
+}
+
+// nextThreeHours is the next three-hour mark (UTC) after now: the days barely
+// move between the runs of the models behind them (every three hours for
+// Switzerland's, six for the global one), so an hourly fetch would only spend
+// the provider's daily call limit.
+func nextThreeHours(now time.Time) time.Time {
+	return now.Truncate(3 * time.Hour).Add(3 * time.Hour)
 }
 
 // geocodeTTL keeps a place-name lookup: names and their coordinates do not move.
