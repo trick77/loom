@@ -453,6 +453,39 @@ func TestScheduledRunCutByShutdownLeavesANote(t *testing.T) {
 	}
 }
 
+// Deleting a run's thread stops the run first, as it stops a chat turn: a
+// run can write artifacts (run_python), and one written during the delete
+// would be left on the volume.
+func TestDeletingARunThreadStopsTheRun(t *testing.T) {
+	f := newScheduleFixture(t)
+	blocking := &blockingChatClient{started: make(chan struct{}), done: make(chan struct{})}
+	f.deps.LLM = blocking
+	s := newServer(f.deps)
+	sch := newRunnerSchedule(t, f)
+	finished := make(chan struct{})
+	go func() {
+		s.runSchedule(context.Background(), sch, timedRun)
+		close(finished)
+	}()
+	<-blocking.started
+	threadID := lastRunThread(t, f, sch)
+	if _, err := s.deleteThreadWithData(context.Background(), testUser.ID, threadID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(threadDeleteStopTimeout):
+		t.Fatal("the run kept going after its thread was deleted")
+	}
+	if !errors.Is(blocking.cancelCause, errStreamThreadDeleted) {
+		t.Fatalf("run canceled by %v", blocking.cancelCause)
+	}
+	runs, _ := f.store.ListRuns(context.Background(), testUser.ID, sch.ID, 5)
+	if len(runs) != 1 || runs[0].Status != schedule.StatusFailed || runs[0].Error != "the run's thread was deleted" {
+		t.Fatalf("run = %+v", runs)
+	}
+}
+
 func TestScheduledRunStopsAtTheTokenBudget(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)

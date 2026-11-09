@@ -41,6 +41,9 @@ type Engine struct {
 	toolsOnce   sync.Once
 	tools       []toolSpec
 	toolsByName map[string]*toolSpec
+	// scheduledSandbox is the one sidecar slot scheduled runs' run_python
+	// jobs share (scheduledSandboxSlot).
+	scheduledSandbox chan struct{}
 }
 
 // Config is what New builds an Engine from. Nil stores and services turn the
@@ -91,6 +94,7 @@ func New(c Config) *Engine {
 		llm:                        c.LLM,
 		mcp:                        c.MCP,
 		sandbox:                    c.Sandbox,
+		scheduledSandbox:           make(chan struct{}, 1),
 		usersDir:                   c.UsersDir,
 		knowledgeInlineTokenBudget: c.KnowledgeInlineTokenBudget,
 		projectSummaryTokenBudget:  c.ProjectSummaryTokenBudget,

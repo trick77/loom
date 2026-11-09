@@ -168,26 +168,65 @@ func (t *Run) sinceNote() string {
 // dropped unread. withFinalContext takes it out again for that call.
 const scheduledResearchNote = "While tools are offered, only research: once you have what the task needs, reply with the single word DONE instead of an answer. A separate step writes the answer from your research."
 
+// scheduledSandboxNote goes with the research note while run_python is
+// offered: the answer step has no tools, so a chart left for it never gets
+// drawn (a weekly run once told the user to rerun it for the chart).
+const scheduledSandboxNote = "That step runs no tools: once you have the data, draw any chart the task asks for with run_python as your last step, then reply DONE. After run_python no other tool runs."
+
+// scheduledChartAnswerNote is the answer step's share of the run_python
+// guidance, which stays with the research rounds: their chart is already
+// shown, and the step must not promise one it cannot draw.
+const scheduledChartAnswerNote = "A chart drawn while researching is shown to the user automatically: refer to it, never link or embed it, show no code and don't mention the sandbox. Never promise a chart the research did not draw."
+
+// researchNote is the research-only note of a scheduled run's tool rounds;
+// sandbox is whether they offer run_python.
+func researchNote(sandbox bool) string {
+	if sandbox {
+		return scheduledResearchNote + " " + scheduledSandboxNote
+	}
+	return scheduledResearchNote
+}
+
 // allowTools keeps the tools a scheduled run may use: every MCP tool the
-// user may use (offerTools already left out other accounts' servers), never a
-// built-in, so no memory, sandbox or schedule tool, and never the image or a
-// document tool (an unattended run researches, it does not spend on pictures
-// or make files). It records them for dispatch and returns no built-ins to
-// offer. Any other turn keeps all of them.
+// user may use (offerTools already left out other accounts' servers) and of
+// the built-ins only a scheduledLastStep one (run_python, for a chart the
+// task asks for), so no memory or schedule tool, and never the image or a
+// document tool (an unattended run researches; it does not spend on
+// pictures or call the document sidecar). It records them for dispatch. Any
+// other turn keeps all of them.
 func (t *Run) allowTools(tools []llm.Tool, builtIns map[string]*toolSpec) ([]llm.Tool, map[string]*toolSpec) {
 	if t.scheduled == nil {
 		return tools, builtIns
 	}
+	allowed := map[string]*toolSpec{}
+	for name, spec := range builtIns {
+		if spec.scheduledLastStep {
+			allowed[name] = spec
+		}
+	}
 	tools = slices.DeleteFunc(tools, func(tool llm.Tool) bool {
-		policy := t.e.toolPolicy(tool.Function.Name)
-		return builtIns[tool.Function.Name] != nil || policy.imageGenerator || policy.documentGenerator
+		name := tool.Function.Name
+		policy := t.e.toolPolicy(name)
+		return (builtIns[name] != nil && allowed[name] == nil) || policy.imageGenerator || policy.documentGenerator
 	})
 	t.scheduledTools = make(map[string]bool, len(tools))
 	for _, tool := range tools {
 		t.scheduledTools[tool.Function.Name] = true
 	}
-	return tools, map[string]*toolSpec{}
+	return tools, allowed
 }
+
+// afterLastStep reports whether a scheduled run refuses a call because a
+// scheduledLastStep tool already ran: run_python may have printed whole
+// files the run's tools returned (a per-user server's activity streams), and
+// a later fetch could carry that out with nobody watching. Read at the start
+// of a round, so a call the model wrote before it saw the output still runs.
+func (t *Run) afterLastStep(name string) bool {
+	return t.scheduled != nil && t.lastStepRan && !t.e.toolPolicy(name).scheduledLastStep
+}
+
+// afterLastStepRefusal is the tool result of a call afterLastStep refuses.
+const afterLastStepRefusal = "Not run: after run_python this scheduled run calls no other tool. Reply DONE."
 
 // docToolDenied reports whether a call names a document tool this turn was
 // not offered: the gate (no file wanted, nowhere to store it) holds at call
@@ -232,7 +271,8 @@ func (t *Run) observeToolCall(name string, arguments map[string]any, sources []m
 }
 
 // withFinalContext is history for a scheduled run's call that offers no
-// tools and writes the answer: the research-only note taken out of the
+// tools and writes the answer: the research-only block (the note and the
+// run_python guidance, exactly as Prepare put them in) taken out of the
 // system prompt, and the user memory and directives added.
 // Any other turn's history comes back as it is.
 func (t *Run) withFinalContext(history []llm.Message) []llm.Message {
@@ -241,7 +281,7 @@ func (t *Run) withFinalContext(history []llm.Message) []llm.Message {
 	}
 	out := slices.Clone(history)
 	if len(out) > 0 && out[0].Role == "system" {
-		out[0].Content = joinNonEmptyBlocks(strings.Replace(out[0].Content, scheduledResearchNote, "", 1), t.plan.finalContext)
+		out[0].Content = joinNonEmptyBlocks(strings.Replace(out[0].Content, t.plan.researchBlock, "", 1), t.plan.finalContext)
 		return out
 	}
 	if t.plan.finalContext == "" {

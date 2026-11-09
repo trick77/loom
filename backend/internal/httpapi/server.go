@@ -125,7 +125,11 @@ type server struct {
 	publicURL             string
 	indexHTML             func() ([]byte, bool)
 	activeStreams         activeStreamRegistry
-	lifetime              context.Context
+	// runStreams holds the scheduled runs whose research (the only part that
+	// writes artifacts) is in flight, by thread, only so a thread delete can
+	// stop it first (stopThreadWork); chat's queue and hand-off never see them.
+	runStreams activeStreamRegistry
+	lifetime   context.Context
 	// engine runs the chat turns the stream handlers start.
 	engine *turn.Engine
 	// schedules is nil while scheduled tasks are off; see scheduleRuns.

@@ -233,6 +233,8 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		denied := make([]bool, len(result.ToolCalls))
 		// A scheduled run's search calls past its limit never start either.
 		capped := make([]bool, len(result.ToolCalls))
+		// A scheduled run's calls after its last step never start either.
+		sealed := make([]bool, len(result.ToolCalls))
 		skipped := make([]bool, len(result.ToolCalls))
 		for i, call := range result.ToolCalls {
 			perToolCount[call.Function.Name]++
@@ -241,8 +243,9 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			if t.scheduledDenies(call.Function.Name) || t.docToolDenied(call.Function.Name) {
 				denied[i] = true
 			}
-			capped[i] = !deferred[i] && !denied[i] && t.searchCapped(call.Function.Name)
-			skipped[i] = deferred[i] || denied[i] || capped[i]
+			sealed[i] = !denied[i] && t.afterLastStep(call.Function.Name)
+			capped[i] = !deferred[i] && !denied[i] && !sealed[i] && t.searchCapped(call.Function.Name)
+			skipped[i] = deferred[i] || denied[i] || sealed[i] || capped[i]
 		}
 		// The round's independent web reads start now and overlap; everything
 		// below still handles the calls one at a time, in the model's order.
@@ -265,6 +268,8 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				output = "An image was already generated this turn. Only one image can be generated per turn, so this request was skipped."
 			} else if denied[i] {
 				output = fmt.Sprintf("tool failed: unknown tool %q", call.Function.Name)
+			} else if sealed[i] {
+				output = afterLastStepRefusal
 			} else if capped[i] {
 				output = searchLimitReached
 			} else if deferred[i] {

@@ -23,7 +23,7 @@ func (s *server) stopProjectThreadStreams(ctx context.Context, userID, projectID
 			continue
 		}
 		for _, threadID := range ids {
-			s.activeStreams.stopAndWait(userID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
+			s.stopThreadWork(userID, threadID)
 		}
 	}
 }

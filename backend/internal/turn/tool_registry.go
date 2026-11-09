@@ -9,6 +9,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/sandbox"
 )
 
 // toolSpec is everything the engine knows about one tool. A built-in has a
@@ -53,6 +54,11 @@ type toolSpec struct {
 	// client widens its budgets while it is on offer (llm.Tool.LongRunning).
 	// A scheduled run never gets one.
 	documentGenerator bool
+	// scheduledLastStep marks the one built-in a scheduled run also gets, as
+	// its last step: it can read in full what the run's tools returned, so
+	// once it did (its run sets Run.lastStepRan) the run calls no other tool
+	// (Run.afterLastStep).
+	scheduledLastStep bool
 
 	// What follows is particular to an MCP tool loom knows by name (the web
 	// tools, web_tools.go); nil or zero leaves the generic behaviour.
@@ -169,11 +175,30 @@ var sandboxToolSpec = toolSpec{
 	schema:  sandboxTool,
 	offered: func(e *Engine, _ chat.Thread, gate toolGate) bool { return e.canStoreArtifacts() && gate.sandbox },
 	run: func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response) {
-		return t.e.runSandboxTool(ctx, t.stream, t.user, t.thread, call, t.toolFiles)
+		if t.scheduled == nil {
+			return t.e.runSandboxTool(ctx, t.stream, t.user, t.thread, call, t.toolFiles, sandboxScope{documents: true})
+		}
+		// A scheduled run hands it tool files only, never a document: the
+		// run reads untrusted pages, and a printed upload could leave
+		// through a fetch. A job that got tool files is the run's last
+		// step. Its jobs take turns on one sidecar slot, so runs that fire
+		// together leave the other slots to chat; the soft deadline bounds
+		// the wait and the job.
+		ctx, cancel := t.roundContext(ctx)
+		defer cancel()
+		release, ok := t.e.scheduledSandboxSlot(ctx)
+		if !ok {
+			return "tool failed: cancelled", nil
+		}
+		defer release()
+		return t.e.runSandboxTool(ctx, t.stream, t.user, t.thread, call, t.toolFiles, sandboxScope{
+			beforeRun: func(files []sandbox.File) { t.lastStepRan = t.lastStepRan || len(files) > 0 },
+		})
 	},
 	// Each job can hold a sandbox slot for up to a minute; a round that
 	// wants more is better split across rounds.
-	capPerRound: sandboxToolCallsPerRound,
+	capPerRound:       sandboxToolCallsPerRound,
+	scheduledLastStep: true,
 }
 
 // mcpPolicies are the policies of the MCP tools loom knows by name: the web

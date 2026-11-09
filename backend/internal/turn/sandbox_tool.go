@@ -77,6 +77,28 @@ func (s *Engine) sandboxOffered() bool {
 	return s.sandbox != nil && s.sandbox.Available() && s.canStoreArtifacts()
 }
 
+// sandboxScope is what one run_python call may read and who hears of it.
+type sandboxScope struct {
+	// documents lets the job read the user's in-scope uploads besides the
+	// turn's tool files.
+	documents bool
+	// beforeRun sees the files a job is about to get; nil ignores them.
+	beforeRun func(files []sandbox.File)
+}
+
+// scheduledSandboxSlot waits for the slot scheduled runs' jobs share and
+// returns its release; false when ctx ends first. Two runs at once
+// (maxConcurrentScheduleRuns) would otherwise hold both default sidecar
+// slots for up to a minute each.
+func (s *Engine) scheduledSandboxSlot(ctx context.Context) (func(), bool) {
+	select {
+	case s.scheduledSandbox <- struct{}{}:
+		return func() { <-s.scheduledSandbox }, true
+	case <-ctx.Done():
+		return nil, false
+	}
+}
+
 func sandboxTool() llm.Tool {
 	return llm.Tool{
 		Type: "function",
@@ -263,7 +285,7 @@ func countIn(inputs, of []sandboxInput) int {
 // the job, persist the files it wrote as artifacts and report back to the
 // model. A failing program is a normal result; only an infrastructure problem
 // returns "tool failed".
-func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall, toolFiles map[string]mcp.File) (output string, created []artifact.Response) {
+func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.User, thread chat.Thread, call llm.ToolCall, toolFiles map[string]mcp.File, scope sandboxScope) (output string, created []artifact.Response) {
 	start := time.Now()
 	defer func() {
 		attrs := []any{
@@ -288,9 +310,12 @@ func (s *Engine) runSandboxTool(ctx context.Context, stream Emitter, user auth.U
 	if strings.TrimSpace(code) == "" {
 		return "tool failed: invalid arguments: code is required", nil
 	}
-	files, msg := s.sandboxFiles(ctx, user.ID, thread, args["files"], code, toolFiles)
+	files, msg := s.sandboxFiles(ctx, user.ID, thread, args["files"], code, toolFiles, scope.documents)
 	if msg != "" {
 		return capToolOutput(msg), nil
+	}
+	if scope.beforeRun != nil {
+		scope.beforeRun(files)
 	}
 
 	res, err := s.sandbox.Run(ctx, sandbox.Request{Code: code, Files: files, Timeout: s.sandbox.Timeout()})
@@ -425,7 +450,7 @@ func spellsPath(code, path string) bool {
 // while they fit the caps: one the model did not ask for never fails the call.
 // The second result is a model-facing message when a name is unknown or the
 // files are too large.
-func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Thread, raw any, code string, toolFiles map[string]mcp.File) ([]sandbox.File, string) {
+func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Thread, raw any, code string, toolFiles map[string]mcp.File, documents bool) ([]sandbox.File, string) {
 	var list []any
 	if raw != nil {
 		var ok bool
@@ -433,7 +458,7 @@ func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Th
 			return nil, `tool failed: invalid arguments: files must be an array of names, e.g. ["data_1a2b3c.csv"]`
 		}
 	}
-	files, total, seen, msg := s.namedSandboxFiles(ctx, userID, thread, list, toolFiles)
+	files, total, seen, msg := s.namedSandboxFiles(ctx, userID, thread, list, toolFiles, documents)
 	if msg != "" {
 		return nil, msg
 	}
@@ -448,13 +473,17 @@ func (s *Engine) sandboxFiles(ctx context.Context, userID string, thread chat.Th
 	return files, ""
 }
 
-// namedSandboxFiles resolves the files argument's names.
-func (s *Engine) namedSandboxFiles(ctx context.Context, userID string, thread chat.Thread, list []any, toolFiles map[string]mcp.File) ([]sandbox.File, int, map[string]bool, string) {
+// namedSandboxFiles resolves the files argument's names; without documents,
+// against the tool files only.
+func (s *Engine) namedSandboxFiles(ctx context.Context, userID string, thread chat.Thread, list []any, toolFiles map[string]mcp.File, documents bool) ([]sandbox.File, int, map[string]bool, string) {
 	seen := map[string]bool{}
 	if len(list) == 0 {
 		return nil, 0, seen, ""
 	}
-	inputs := s.sandboxInputs(ctx, userID, thread, 0)
+	var inputs []sandboxInput
+	if documents {
+		inputs = s.sandboxInputs(ctx, userID, thread, 0)
+	}
 	byAlias := map[string]sandboxInput{}
 	for _, in := range inputs {
 		byAlias[in.alias] = in

@@ -161,7 +161,7 @@ const (
 // keepToolFiles holds a tool's files for run_python until the turn ends
 // (a later file of the same name replaces the earlier one) and returns the
 // line that tells the model their names; "" when there are none or this turn
-// does not offer run_python (a scheduled run, the sidecar down). They are
+// does not offer run_python (the sidecar down). They are
 // never persisted or shown; of their content only a CSV's header line
 // (csvColumns) reaches the prompt.
 func (t *Run) keepToolFiles(files []mcp.File) string {
