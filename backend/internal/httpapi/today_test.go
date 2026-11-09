@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/schedule"
 )
@@ -52,6 +53,11 @@ func newTodayFixture(t *testing.T, withPlace bool) *todayFixture {
 	ctx := context.Background()
 	tf := &todayFixture{locationFixture: f}
 	tf.schedules = schedule.NewStore(f.db)
+	// Each visit derives the place in the background: it ends before the
+	// test's database goes.
+	bg := background.New(context.Background())
+	f.deps.Background = bg
+	t.Cleanup(func() { _ = bg.Stop(10 * time.Second) })
 	geo := f.geo.call
 	f.deps.MCP = fakeMCPService{
 		Available: map[string]bool{geocodeTool: true, forecastTool: true},
@@ -182,7 +188,13 @@ func TestTodayWithoutAPlace(t *testing.T) {
 func TestTodayDoesNotAskWhileTheFactsAreUnread(t *testing.T) {
 	tf := newTodayFixture(t, false)
 	tf.addFact(t, "Lives Bern")
-	if got := tf.get(t); got.AskLocation {
+	// The derivation the visit starts waits on the model until the answer is
+	// out, as a real one would.
+	answered := make(chan struct{})
+	tf.llm.during = func() { <-answered }
+	got := tf.get(t)
+	close(answered)
+	if got.AskLocation {
 		t.Fatalf("asked while a derivation is pending: %+v", got)
 	}
 }
