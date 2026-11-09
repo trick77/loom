@@ -430,6 +430,7 @@ Go types:
 | `disabled_at` | TEXT | yes |  |  |
 | `created_at` | TEXT | no | `datetime('now')` |  |
 | `updated_at` | TEXT | no | `datetime('now')` |  |
+| `unread_runs` | INTEGER | no | `0` |  |
 
 Foreign keys:
 
@@ -1142,6 +1143,7 @@ erDiagram
         TEXT disabled_at
         TEXT created_at
         TEXT updated_at
+        INTEGER unread_runs
     }
     settings {
         TEXT key PK

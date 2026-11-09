@@ -4,6 +4,9 @@
 // Fixed per-run limits, shown next to the form; the server enforces them.
 export const RUN_TOKEN_LIMIT = 1_000_000;
 export const RUN_MINUTES = 5;
+// Runs with news in a row nobody read before loom turns the schedule off;
+// the backend's unreadRunLimit, like RUN_MINUTES is its RunTimeout.
+export const UNREAD_RUN_LIMIT = 5;
 export const PROMPT_MAX_LENGTH = 2000;
 
 type Lang = string;

@@ -741,12 +741,15 @@ export const de = {
     pausedNote: "pausiert",
     disabledNote:
       "deaktiviert {{date}}: zwei Läufe nacheinander dauerten länger als {{minutes}} Minuten",
+    disabledNoteUnread:
+      "deaktiviert {{date}}: die Neuigkeiten von {{runs}} Läufen nacheinander blieben ungelesen",
     status: {
       new: "gemeldet",
       nothing_new: "nichts zu melden",
       token_limit: "Token-Limit erreicht",
       timeout: "Zeitlimit",
       disabled: "deaktiviert · Zeitlimit",
+      disabled_unread: "deaktiviert · ungelesen",
       failed: "fehlgeschlagen",
       running: "läuft",
       paused: "pausiert",
@@ -806,6 +809,8 @@ export const de = {
     disabled: {
       title: "Automatisch deaktiviert am {{date}}",
       body: "Zwei Läufe nacheinander dauerten länger als {{minutes}} Minuten. Vereinfache den Prompt oder aktiviere ihn unverändert wieder.",
+      bodyUnread:
+        "Die Neuigkeiten von {{runs}} Läufen nacheinander blieben ungelesen. Aktiviere ihn wieder, falls du ihn noch brauchst.",
       enable: "Wieder aktivieren",
     },
     detail: {
