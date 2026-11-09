@@ -84,6 +84,18 @@
   --color-ink-warm: #d5d2c9;
   --color-ink-dim: #c7c5bd;
   --color-sun: #e0b46a;
+  /* Weather: rain is blue, never the accent (the accent warns); the cold end
+     of a temperature range. */
+  --color-rain: #7fb0de;
+  --color-cold: #8fb4d9;
+  /* Air quality bands (EEA, good to extremely poor), muted for the dark
+     ground; UV and pollen loads reuse them. */
+  --color-aq-good: #5fa97a;
+  --color-aq-fair: #b5c46a;
+  --color-aq-moderate: #e0b46a;
+  --color-aq-poor: #d97757;
+  --color-aq-very-poor: #e06a66;
+  --color-aq-extreme: #b98ad6;
   --color-unread: #c9a25f;
   --color-unread-ink: #e0c48f;
   --font-sans:
@@ -1473,6 +1485,16 @@ a.ui-activity-tool-url:hover {
   background: #282826;
   color: #faf9f5;
   font-weight: 500;
+}
+
+/* A weather card's time until the carousel turns on by itself. */
+@keyframes card-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 @keyframes attachment-progress {

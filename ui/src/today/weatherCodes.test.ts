@@ -89,10 +89,6 @@ test("a warning names its day only where the heading does not", () => {
   expect(warningKey("tonight", rain("today"))).toBe(
     "today.warningTonight.rain",
   );
-  // Past midnight tonight is night, not evening.
-  expect(warningKey("tonight", rain("tomorrow"))).toBe(
-    "today.warningNight.rain",
-  );
 });
 
 test("a warning marks the skies it is about", () => {

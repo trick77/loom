@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +57,19 @@ const todayAirJSON = `{"hourly":[{"time":"2026-11-09T08:00","aqi":18},{"time":"2
 "daily":[{"date":"2026-11-09","aqiMax":45,"pollen":{"birch":42.4,"grass":3,"olive":500,"alder":0.4}},
  {"date":"2026-11-10","aqiMax":64,"pollen":{"grass":0.2}}],
 "attribution":{"text":"Air by Example","url":"https://air.example/"}}`
+
+// airHours is the air's hours as "15:00=18,16:00=-".
+func airHours(a *todayAir) string {
+	out := make([]string, 0, len(a.Hours))
+	for _, h := range a.Hours {
+		v := "-"
+		if h.AQI != nil {
+			v = strconv.Itoa(*h.AQI)
+		}
+		out = append(out, h.Time+"="+v)
+	}
+	return strings.Join(out, ",")
+}
 
 func outlookDates(w *todayWeather) string {
 	var dates []string
@@ -225,8 +239,12 @@ func TestToday(t *testing.T) {
 	// The air now and today's pollen by their load classes: a trace is none,
 	// a kind without classes (olive) is left out.
 	a := got.Air
-	if a == nil || *a.AQI != 18 || a.Level != "good" || a.Max || a.Attribution.URL != "https://air.example/" {
+	if a == nil || *a.AQI != 18 || a.Level != "good" || a.Max {
 		t.Fatalf("air = %+v", a)
+	}
+	// The index hour by hour from now, for the curve.
+	if airHours(a) != "08:00=18,09:00=45,21:00=30" {
+		t.Fatalf("air hours = %v", airHours(a))
 	}
 	if len(a.Pollen) != 2 || a.Pollen[0] != (todayPollen{Kind: "birch", Level: "moderate"}) ||
 		a.Pollen[1] != (todayPollen{Kind: "grass", Level: "low"}) {
@@ -283,7 +301,8 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 		t.Fatalf("outlook after tomorrow = %v", outlookDates(w))
 	}
 	// Tomorrow's air is its worst, no pollen worth a class.
-	if a := got.Air; a == nil || *a.AQI != 64 || a.Level != "poor" || !a.Max || a.Pollen == nil || len(a.Pollen) != 0 {
+	if a := got.Air; a == nil || *a.AQI != 64 || a.Level != "poor" || !a.Max || a.Pollen == nil || len(a.Pollen) != 0 ||
+		a.Hours == nil || len(a.Hours) != 0 {
 		t.Fatalf("tomorrow's air = %+v", got.Air)
 	}
 	// It is still raining tonight: that is tonight's, apart from tomorrow's.
@@ -312,30 +331,39 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	}
 }
 
-// Tonight ends where tomorrow's hours start: frost at 05:00 is tonight's
-// (with no chance to tell), rain from 06:00 tomorrow's.
+// Tonight ends at midnight: rain at 02:00 or frost at 05:00 falls while
+// everyone sleeps, no pill; rain from 06:00 is tomorrow's.
 func TestTomorrowWarnsOfTonightApart(t *testing.T) {
-	var f forecast
-	for i := range 20 {
-		at := time.Date(2026, 11, 9, 21+i, 0, 0, 0, time.UTC)
-		temp, code, chance := 3.0, 3, 10
-		if at.Hour() == 5 {
-			temp = -1
+	build := func(wet func(at time.Time) bool) forecast {
+		var f forecast
+		for i := range 20 {
+			at := time.Date(2026, 11, 9, 21+i, 0, 0, 0, time.UTC)
+			temp, code, chance := 3.0, 3, 10
+			if at.Hour() == 5 {
+				temp = -1
+			}
+			if wet(at) {
+				code, chance = 61, 90
+			}
+			f.Hourly = append(f.Hourly, forecastHour{Time: at.Format("2006-01-02T15:04"), Temperature: temp, Code: code,
+				PrecipitationProbability: &chance})
 		}
-		if at.Day() == 10 && at.Hour() >= 6 {
-			code, chance = 61, 90
-		}
-		f.Hourly = append(f.Hourly, forecastHour{Time: at.Format("2006-01-02T15:04"), Temperature: temp, Code: code,
-			PrecipitationProbability: &chance})
+		f.Daily = []forecastDay{{Date: "2026-11-09"}, {Date: "2026-11-10", High: 5, Low: -1, Code: 61}}
+		return f
 	}
-	f.Daily = []forecastDay{{Date: "2026-11-09"}, {Date: "2026-11-10", High: 5, Low: -1, Code: 61}}
 	local := time.Date(2026, 11, 9, 21, 15, 0, 0, time.UTC)
-	_, w, n := tomorrowForecast(f, local, local.AddDate(0, 0, 1))
-	if n == nil || n.Kind != "frost" || n.From != "05:00" || n.Day != dayTomorrow || n.Chance != nil {
-		t.Fatalf("tonight's warning = %+v", n)
+	small := build(func(at time.Time) bool { return at.Day() == 10 && (at.Hour() == 2 || at.Hour() >= 6) })
+	_, w, n := tomorrowForecast(small, local, local.AddDate(0, 0, 1))
+	if n != nil {
+		t.Fatalf("the small hours made tonight's warning %+v", n)
 	}
 	if w == nil || w.Kind != "rain" || w.From != "06:00" || w.Day != dayTomorrow || w.Chance == nil || *w.Chance != 90 {
 		t.Fatalf("tomorrow's warning = %+v", w)
+	}
+	late := build(func(at time.Time) bool { return at.Day() == 9 && at.Hour() == 23 })
+	if _, _, n := tomorrowForecast(late, local, local.AddDate(0, 0, 1)); n == nil || n.Kind != "rain" || n.From != "23:00" ||
+		n.Day != dayToday || n.Chance == nil || *n.Chance != 90 {
+		t.Fatalf("tonight's warning = %+v", n)
 	}
 }
 
@@ -431,7 +459,7 @@ func TestTodayAirFromAnotherServer(t *testing.T) {
 	tf.airJSON = `{"hourly":[{"time":"2026-11-09T08:00"},{"time":"2026-11-09T09:00","aqi":44.6}],
 "daily":[{"date":"2026-11-09","aqiMax":44.6}]}`
 	a := tf.get(t).Air
-	if a == nil || *a.AQI != 45 || a.Level != "moderate" || a.Pollen != nil {
+	if a == nil || *a.AQI != 45 || a.Level != "moderate" || a.Pollen != nil || airHours(a) != "08:00=-,09:00=45" {
 		t.Fatalf("air = %+v", a)
 	}
 	// An index only hours from now is not now; with no pollen there is

@@ -106,8 +106,12 @@ export type TodayAir = {
   /** Only the kinds worth a load class; empty: hardly any; null: unknown
    * here (outside Europe, out of season). */
   pollen: TodayPollen[] | null;
-  attribution: { text: string; url: string };
+  /** The index hour by hour for the curve: today 24 h from now, tomorrow
+   * its shown hours as far as the air reaches; null is a gap. */
+  hours: TodayAirHour[];
 };
+
+export type TodayAirHour = { time: string; aqi: number | null };
 
 const POLLEN_KINDS: readonly string[] = [
   "alder",
@@ -135,8 +139,7 @@ export type TodayWarning = {
   kind: "rain" | "snow" | "storm" | "frost";
   /** "HH:MM" */
   from: string;
-  /** The day `from` falls on: today's next hours can reach into tomorrow,
-   * tonight's into its small hours. */
+  /** The day `from` falls on: today's next hours can reach into tomorrow. */
   day: "today" | "tomorrow";
   /** Precipitation chance at `from` in percent; null for frost. */
   chance: number | null;
@@ -162,7 +165,7 @@ export type Today = {
   air: TodayAir | null;
   /** The shown day's warning: tomorrow's covers its daytime only. */
   warning: TodayWarning | null;
-  /** What comes tonight, before tomorrow's hours; the server sends it only
+  /** What comes tonight, before midnight; the server sends it only
    * while the shown day is tomorrow. */
   tonight: TodayWarning | null;
   /** Unread schedule runs, newest first. */
@@ -237,8 +240,19 @@ function normalizeAir(raw: unknown): TodayAir | null {
         : "",
     max: air.max === true,
     pollen,
-    attribution: air.attribution ?? { text: "", url: "" },
+    hours: Array.isArray(air.hours)
+      ? air.hours
+          .filter((h) => typeof h?.time === "string")
+          .map((h) => ({
+            time: h.time,
+            aqi: typeof h.aqi === "number" ? h.aqi : null,
+          }))
+      : [],
   };
+}
+
+function tonightOf(warning: TodayWarning | null): TodayWarning | null {
+  return warning !== null && warning.day === "today" ? warning : null;
 }
 
 function nonEmpty<T>(list: T[] | null | undefined): T[] | null {
@@ -285,8 +299,9 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
     // A warning without its day is for the shown day, tonight's for today.
     warning: normalizeWarning(today.warning, day),
     // An older server has no tonight: no pill. Whether it shows is the
-    // page's call (only under tomorrow's heading).
-    tonight: normalizeWarning(today.tonight, "today"),
+    // page's call (only under tomorrow's heading). Tonight ends at
+    // midnight: an older server's small hours fall while everyone sleeps.
+    tonight: tonightOf(normalizeWarning(today.tonight, "today")),
     runs: Array.isArray(today.runs) ? today.runs : [],
     refreshAt: typeof today.refreshAt === "string" ? today.refreshAt : null,
   };

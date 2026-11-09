@@ -53,6 +53,8 @@ const (
 	// airNowHours is how far ahead "now" may take the air index from when
 	// the current hour has none.
 	airNowHours = 3
+	// airCurveHours is how many hours from now the air's curve shows today.
+	airCurveHours = 24
 )
 
 // The day the page shows.
@@ -71,8 +73,8 @@ type todayResponse struct {
 	Weather     *todayWeather   `json:"weather"`
 	Air         *todayAir       `json:"air"`
 	Warning     *todayWarning   `json:"warning"`
-	// Tonight is what comes before tomorrow's hours; only while the page
-	// shows tomorrow.
+	// Tonight is what comes before midnight; only while the page shows
+	// tomorrow.
 	Tonight *todayWarning `json:"tonight"`
 	Runs    []todayRun    `json:"runs"`
 	// RefreshAt is when the day shown changes next: the page reloads then.
@@ -159,8 +161,16 @@ type todayAir struct {
 	// Pollen is nil where the forecast has none at all (outside Europe, out
 	// of season), empty where it has some but none worth a class: "hardly
 	// any" must not stand for "unknown".
-	Pollen      []todayPollen `json:"pollen"`
-	Attribution attribution   `json:"attribution"`
+	Pollen []todayPollen `json:"pollen"`
+	// Hours is the index hour by hour for the curve: today from now, tomorrow
+	// its shown hours as far as the air reaches; an hour without one is nil,
+	// a gap in the curve.
+	Hours []todayAirHour `json:"hours"`
+}
+
+type todayAirHour struct {
+	Time string `json:"time"`
+	AQI  *int   `json:"aqi"`
 }
 
 type todayPollen struct {
@@ -180,7 +190,6 @@ type airAnswer struct {
 		AQIMax *float64           `json:"aqiMax"`
 		Pollen map[string]float64 `json:"pollen"`
 	} `json:"daily"`
-	Attribution attribution `json:"attribution"`
 }
 
 type attribution struct {
@@ -191,8 +200,7 @@ type attribution struct {
 type todayWarning struct {
 	Kind string `json:"kind"`
 	From string `json:"from"`
-	// Day is the day From falls on: today's 12 h may reach into tomorrow,
-	// tonight's into its small hours.
+	// Day is the day From falls on: today's 12 h may reach into tomorrow.
 	Day string `json:"day"`
 	// Chance is the precipitation chance at From; nil for frost.
 	Chance *int `json:"chance"`
@@ -457,7 +465,7 @@ func (s *server) airFor(ctx context.Context, p *location.Place, loc *time.Locati
 // highest; nil when neither the index nor any pollen is known.
 func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
 	date := shown.Format(time.DateOnly)
-	out := &todayAir{Attribution: a.Attribution, Max: tomorrow}
+	out := &todayAir{Max: tomorrow, Hours: airHoursOn(a, local, date, tomorrow)}
 	var aqi *float64
 	if !tomorrow {
 		// The first hour from now with an index, within airNowHours: an
@@ -502,6 +510,36 @@ func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
 	}
 	if out.AQI == nil && len(out.Pollen) == 0 {
 		return nil
+	}
+	return out
+}
+
+// airHoursOn is the index hour by hour: today airCurveHours from now,
+// tomorrow from tomorrowFrom to tomorrowTo as far as the answer reaches (the
+// air tool lists 24 hours from now: from 20:00 tomorrow's end is cut).
+func airHoursOn(a airAnswer, local time.Time, date string, tomorrow bool) []todayAirHour {
+	out := []todayAirHour{}
+	current := hourStamp(local)
+	for _, h := range a.Hourly {
+		if len(h.Time) < 13 {
+			continue
+		}
+		if tomorrow {
+			hour, err := strconv.Atoi(h.Time[11:13])
+			if h.Time[:10] != date || err != nil || hour < tomorrowFrom || hour > tomorrowTo {
+				continue
+			}
+		} else if h.Time < current {
+			continue
+		} else if len(out) == airCurveHours {
+			break
+		}
+		hour := todayAirHour{Time: clock(h.Time)}
+		if h.AQI != nil {
+			v := int(math.Round(*h.AQI))
+			hour.AQI = &v
+		}
+		out = append(out, hour)
 	}
 	return out
 }
@@ -606,7 +644,7 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 
 // tomorrowForecast reads tomorrow off the forecast: its high and low, five
 // hours from tomorrowFrom three apart, a warning for tomorrow's daytime and
-// one for tonight, from now (local) until tomorrow's hours start. Apart: the
+// one for tonight, from now (local) until midnight. Apart: the
 // page shows tonight on its own, under tomorrow's heading it read as
 // tomorrow's. A forecast that does not reach tomorrow, or whose days do not
 // name it, is none: never today's numbers under tomorrow's name.
@@ -616,10 +654,13 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (weather *todayWeat
 		return nil, nil, nil
 	}
 	date := tomorrow.Format(time.DateOnly)
-	from, to := -1, -1
+	from, to, midnight := -1, -1, -1
 	for i, h := range f.Hourly {
 		if len(h.Time) < 13 || h.Time[:10] != date {
 			continue
+		}
+		if midnight < 0 {
+			midnight = i
 		}
 		hour, err := strconv.Atoi(h.Time[11:13])
 		if err != nil {
@@ -646,8 +687,10 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (weather *todayWeat
 	for i := from; i <= to && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))
 	}
-	if now := currentHour(f, local); now >= 0 && now < from {
-		tonight = warningIn(f, now, from-1-now, local)
+	// Tonight ends at midnight: what comes in the small hours falls while
+	// everyone sleeps, and tomorrow's warning starts at tomorrowFrom.
+	if now := currentHour(f, local); now >= 0 && now < midnight {
+		tonight = warningIn(f, now, midnight-1-now, local)
 	}
 	return out, warningIn(f, from, to-from, local), tonight
 }
