@@ -34,8 +34,8 @@ services:
       # Web search sidecar (docs/search.md), always on. BACKEND_SEARCH_TOKEN
       # comes in through env_file.
       BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-http://search:8030}"
-      # Weather sidecar (docs/weather.md), always on. BACKEND_WEATHER_TOKEN
-      # comes in through env_file.
+      # Weather sidecar (docs/weather.md), always started; on once
+      # BACKEND_WEATHER_TOKEN is set (it comes in through env_file).
       BACKEND_WEATHER_URL: "${BACKEND_WEATHER_URL:-http://weather:8100}"
       # The Tavily key is the sidecar's alone: over what env_file loads, loom
       # sees only whether one is set (it warns when the sidecar is not configured).
@@ -108,6 +108,10 @@ services:
       search:
         # Discovered at boot: waiting keeps web search from missing until the
         # next refresh.
+        condition: service_healthy
+      weather:
+        # Discovered at boot: waiting keeps the weather from missing until the
+        # next refresh. Healthy without a token too (it then refuses calls).
         condition: service_healthy
       imagegen:
         # Discovered at boot like the rest: waiting keeps the image tool from
@@ -355,7 +359,8 @@ services:
   weather:
     # loom's weather over MCP (docs/weather.md): Open-Meteo answers, no key.
     # Every route needs WEATHER_TOKEN: the provider's free tier is limited per
-    # IP. Keeps forecasts per place and hour in memory. Stateless: no volume.
+    # IP; unset, it refuses every call and the weather is off. Keeps forecasts
+    # per place and hour in memory. Stateless: no volume.
     image: ghcr.io/trick77/loom-weather:latest
     restart: unless-stopped
     # Small Go service proxying JSON to Open-Meteo.

@@ -1,6 +1,10 @@
 package mcp
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/trick77/loom/internal/classifier"
+)
 
 // The weather contract (docs/weather.md) as loom addresses it. The
 // loom-weather sidecar serves it; its tests hold these to its names.
@@ -12,13 +16,15 @@ const (
 
 // WeatherServerConfig is the loom-weather sidecar's endpoint. Best-effort like
 // search: a dead sidecar costs the weather, never boot. In a turn its tools
-// are offered only on weather questions.
+// are offered only on weather questions, so a continued thread of another
+// category is re-classified to catch a turn that drifts to the weather
+// (CoversGated).
 func WeatherServerConfig(baseURL, token string) ServerConfig {
 	return ServerConfig{
 		Transport:  TransportStreamableHTTP,
 		URL:        strings.TrimRight(baseURL, "/") + "/mcp",
 		Headers:    map[string]string{"Authorization": "Bearer " + token},
-		Categories: []string{"weather"},
+		Categories: []string{string(classifier.Weather)},
 		BuiltIn:    true,
 	}
 }

@@ -30,8 +30,19 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.addr != defaultAddr || cfg.forecastURL != defaultForecastURL || cfg.geocodingURL != defaultGeocodingURL {
 		t.Fatalf("defaults %+v", cfg)
 	}
+	// No token: the sidecar starts and refuses every tool call.
+	cfg, err = loadConfig(vars(map[string]string{}))
+	if err != nil || cfg.token != "" {
+		t.Fatalf("no token: %+v, %v", cfg, err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer ")
+	newServer(cfg, http.DefaultClient, "test").ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no token configured, empty bearer: %d", rec.Code)
+	}
 	for name, values := range map[string]map[string]string{
-		"no token":          {},
 		"short token":       {"WEATHER_TOKEN": "short"},
 		"bad forecast url":  {"WEATHER_TOKEN": testToken, "WEATHER_FORECAST_URL": "api.example"},
 		"bad geocoding url": {"WEATHER_TOKEN": testToken, "WEATHER_GEOCODING_URL": "ftp://x"},
@@ -116,13 +127,22 @@ var (
 func TestForecast(t *testing.T) {
 	fake := &fakeProvider{}
 	svc := loomService(t, fake.server(t).URL, time.Now)
-	text, err := svc.CallTool(context.Background(), forecastName, map[string]any{"latitude": 47.37689, "longitude": 8.54169, "timezone": "Europe/Zurich"})
+	res, err := svc.CallToolResult(context.Background(), forecastName, map[string]any{"latitude": 47.37689, "longitude": 8.54169, "timezone": "Europe/Zurich"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	text, firstQuery := res.Text, fake.query
 	var got Forecast
 	if err := json.Unmarshal([]byte(text), &got); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, text)
+	}
+	// The licence's credit is cited as a source too.
+	if len(res.Sources) != 1 || res.Sources[0].URL != got.Attribution.URL {
+		t.Fatalf("sources = %+v", res.Sources)
+	}
+	// A POSIX-style zone is a zone.
+	if _, err := svc.CallTool(context.Background(), forecastName, map[string]any{"latitude": 40.7, "longitude": -74, "timezone": "EST5EDT"}); err != nil {
+		t.Fatalf("EST5EDT: %v", err)
 	}
 	// An hour or day missing a value it cannot do without is left out; a
 	// missing probability reads 0.
@@ -140,8 +160,8 @@ func TestForecast(t *testing.T) {
 		t.Fatalf("attribution = %+v", got.Attribution)
 	}
 	for _, part := range []string{"latitude=47.377", "longitude=8.542", "forecast_days=2", "timezone=Europe%2FZurich"} {
-		if !strings.Contains(fake.query, part) {
-			t.Fatalf("provider query %q lacks %q", fake.query, part)
+		if !strings.Contains(firstQuery, part) {
+			t.Fatalf("provider query %q lacks %q", firstQuery, part)
 		}
 	}
 }

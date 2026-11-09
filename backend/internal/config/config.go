@@ -122,7 +122,7 @@ type Config struct {
 	SearchToken string
 	// WeatherURL is the loom-weather sidecar (docs/weather.md); empty keeps the
 	// weather off unless an mcp.json server named weather serves it.
-	// WeatherToken is its WEATHER_TOKEN, required with the URL.
+	// WeatherToken is its WEATHER_TOKEN; without one the weather is off.
 	WeatherURL   string
 	WeatherToken string
 	// DocgenURL is the loom-docgen sidecar (docs/docgen.md); empty keeps the
@@ -558,53 +558,50 @@ func imagegenProblem(cfg Config) string {
 	return ""
 }
 
-// searchProblem says what is wrong with a configured search sidecar, by the
-// rule imagegenProblem follows.
+// sidecarProblem says what is wrong with a configured sidecar compose starts
+// by default: a URL that is not one, or a token it refuses. compose sets the
+// URL, so an upgraded install meets this first and the message names the
+// sidecar and its doc. An optional sidecar takes a missing token as off.
+func sidecarProblem(urlVar, rawURL, tokenVar, token, what, doc string, optional bool) string {
+	if strings.TrimSpace(rawURL) == "" {
+		return ""
+	}
+	if !isAbsoluteHTTPURL(rawURL) {
+		return urlVar + " must be an absolute http(s) URL"
+	}
+	if optional && token == "" {
+		return ""
+	}
+	if msg := sidecar.TokenProblem(tokenVar, token); msg != "" {
+		return msg + ": " + what + ", which shares it and refuses to start without it (" + doc + ")"
+	}
+	return ""
+}
+
+// searchProblem says what is wrong with a configured search sidecar.
 func searchProblem(cfg Config) string {
-	if strings.TrimSpace(cfg.SearchURL) == "" {
-		return ""
-	}
-	if !isAbsoluteHTTPURL(cfg.SearchURL) {
-		return "BACKEND_SEARCH_URL must be an absolute http(s) URL"
-	}
-	// compose sets the URL by default: an upgraded install meets this first,
-	// so it names the sidecar and the way out.
-	if msg := sidecar.TokenProblem("BACKEND_SEARCH_TOKEN", cfg.SearchToken); msg != "" {
-		return msg + ": web search runs in the loom-search sidecar, which shares it and refuses to start without it (docs/search.md)"
-	}
-	return ""
+	return sidecarProblem("BACKEND_SEARCH_URL", cfg.SearchURL, "BACKEND_SEARCH_TOKEN", cfg.SearchToken,
+		"web search runs in the loom-search sidecar", "docs/search.md", false)
 }
 
-// weatherProblem says what is wrong with a configured weather sidecar, by the
-// rule searchProblem follows.
+// weatherProblem says what is wrong with a configured weather sidecar. The
+// weather is optional: without a token it is off (WeatherOn), so an upgrade
+// that brings the default URL never fails boot over it.
 func weatherProblem(cfg Config) string {
-	if strings.TrimSpace(cfg.WeatherURL) == "" {
-		return ""
-	}
-	if !isAbsoluteHTTPURL(cfg.WeatherURL) {
-		return "BACKEND_WEATHER_URL must be an absolute http(s) URL"
-	}
-	// compose sets the URL by default: an upgraded install meets this first.
-	if msg := sidecar.TokenProblem("BACKEND_WEATHER_TOKEN", cfg.WeatherToken); msg != "" {
-		return msg + ": the weather runs in the loom-weather sidecar, which shares it and refuses to start without it (docs/weather.md)"
-	}
-	return ""
+	return sidecarProblem("BACKEND_WEATHER_URL", cfg.WeatherURL, "BACKEND_WEATHER_TOKEN", cfg.WeatherToken,
+		"the weather runs in the loom-weather sidecar", "docs/weather.md", true)
 }
 
-// docgenProblem says what is wrong with a configured docgen sidecar, by the
-// rule searchProblem follows.
+// WeatherOn reports whether the weather sidecar is configured: a URL and a
+// token both set.
+func (c Config) WeatherOn() bool {
+	return strings.TrimSpace(c.WeatherURL) != "" && c.WeatherToken != ""
+}
+
+// docgenProblem says what is wrong with a configured docgen sidecar.
 func docgenProblem(cfg Config) string {
-	if strings.TrimSpace(cfg.DocgenURL) == "" {
-		return ""
-	}
-	if !isAbsoluteHTTPURL(cfg.DocgenURL) {
-		return "BACKEND_DOCGEN_URL must be an absolute http(s) URL"
-	}
-	// compose sets the URL by default: an upgraded install meets this first.
-	if msg := sidecar.TokenProblem("BACKEND_DOCGEN_TOKEN", cfg.DocgenToken); msg != "" {
-		return msg + ": the document tools run in the loom-docgen sidecar, which shares it and refuses to start without it (docs/docgen.md)"
-	}
-	return ""
+	return sidecarProblem("BACKEND_DOCGEN_URL", cfg.DocgenURL, "BACKEND_DOCGEN_TOKEN", cfg.DocgenToken,
+		"the document tools run in the loom-docgen sidecar", "docs/docgen.md", false)
 }
 
 // minStravaToken is the sidecar's own floor for STRAVA_TOKEN.

@@ -50,6 +50,9 @@ func serve() error {
 		return err
 	}
 	srv := httpx.NewServer(cfg.addr, newServer(cfg, &http.Client{Timeout: providerTimeout}, version.Version))
+	if cfg.token == "" {
+		slog.Warn("WEATHER_TOKEN is unset: refusing every tool call, the weather stays off")
+	}
 	slog.Info("weather listening", "addr", cfg.addr)
 	return httpx.Serve(context.Background(), srv, shutdownTimeout)
 }

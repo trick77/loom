@@ -119,6 +119,22 @@ func TestToolConfigForConfigAddsWeatherSidecar(t *testing.T) {
 	if _, ok := mustToolConfig(t, config.Config{}).Servers[mcp.WeatherServer]; ok {
 		t.Fatal("weather registered without its URL")
 	}
+	// compose sets the URL on every install: without a token it stays off.
+	if _, ok := mustToolConfig(t, config.Config{WeatherURL: "http://weather:8100"}).Servers[mcp.WeatherServer]; ok {
+		t.Fatal("weather registered without its token")
+	}
+	// An mcp.json override replaces the endpoint, not when it is offered.
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers": {"weather": {"type": "http", "url": "https://other.example/mcp"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tc, err = toolConfigForConfig(config.Config{WeatherURL: "http://weather:8100", WeatherToken: strings.Repeat("t", 32), MCPServersFile: path}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sc := tc.FileServers.Servers[mcp.WeatherServer]; sc.URL != "https://other.example/mcp" || len(sc.Categories) != 1 {
+		t.Fatalf("override = %+v, want its URL and the built-in's categories", sc)
+	}
 }
 
 // An upgraded install that still sets the Tavily key, but no sidecar, is told

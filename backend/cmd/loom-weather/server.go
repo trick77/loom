@@ -132,7 +132,8 @@ func (w *weather) mcpServer(version string) mcpserver.Server {
 }
 
 var (
-	timezonePattern = regexp.MustCompile(`^[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}$`)
+	// Zone names, POSIX-style ones such as EST5EDT or Etc/GMT+1 included.
+	timezonePattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){0,2}$`)
 	countryPattern  = regexp.MustCompile(`^[A-Za-z]{2}$`)
 	languagePattern = regexp.MustCompile(`^[a-z]{2}$`)
 )
@@ -177,7 +178,11 @@ func (w *weather) runForecast(ctx context.Context, raw json.RawMessage) mcpserve
 	if err != nil {
 		return mcpserver.ErrorResult("forecast failed: " + err.Error())
 	}
-	return jsonResult(forecast)
+	result := jsonResult(forecast)
+	// The licence's credit as a source too, so a chat answer cites it even
+	// when the model does not repeat it.
+	result.Sources = []mcpserver.Source{{URL: forecast.Attribution.URL, Title: forecast.Attribution.Text}}
+	return result
 }
 
 type geocodeArgs struct {
