@@ -75,6 +75,25 @@ func lastRunThread(t *testing.T, f *scheduleFixture, sch schedule.Schedule) stri
 	return *runs[0].ThreadID
 }
 
+func TestScheduledRunNotifiesWithTheSummary(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
+	f.sllm.summary = "Dune: Part Three opens on 17 December at the Arena."
+	s := newRunnerServer(t, f, researchClient("## Films\n- Dune: Part Three opens 17 Dec [1]."))
+	sch := newRunnerSchedule(t, f)
+
+	s.runSchedule(ctx, sch, timedRun)
+
+	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
+	if len(notes) != 1 || notes[0].Body != f.sllm.summary {
+		t.Fatalf("notifications = %+v, want the summary as body", notes)
+	}
+	if f.sllm.summaryLanguage != testUser.ResponseLanguageName() {
+		t.Fatalf("summary language = %q, want the user's %q", f.sllm.summaryLanguage, testUser.ResponseLanguageName())
+	}
+}
+
 func TestScheduledRunAnnouncesNewsOnAReportedItem(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)

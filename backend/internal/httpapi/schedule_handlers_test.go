@@ -19,11 +19,24 @@ import (
 
 // fakeScheduleLLM reads every interval as template and reports findings. Nil
 // findings is an extraction that could not tell, an empty list nothing new.
+// An empty summary is a summary call that failed.
 type fakeScheduleLLM struct {
-	mu       sync.Mutex
-	template string
-	ok       bool
-	findings []llm.Finding
+	mu              sync.Mutex
+	template        string
+	ok              bool
+	findings        []llm.Finding
+	summary         string
+	summaryLanguage string
+}
+
+func (f *fakeScheduleLLM) SummarizeRun(_ context.Context, _, _, language string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.summaryLanguage = language
+	if f.summary == "" {
+		return "", errors.New("no summary scripted")
+	}
+	return f.summary, nil
 }
 
 func (f *fakeScheduleLLM) ParseSchedule(context.Context, string) (string, bool, error) {

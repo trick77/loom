@@ -95,6 +95,7 @@ type Deps struct {
 type ScheduleLLM interface {
 	ParseSchedule(ctx context.Context, text string) (string, bool, error)
 	ExtractFindings(ctx context.Context, task, answer string) ([]llm.Finding, error)
+	SummarizeRun(ctx context.Context, task, answer, responseLanguage string) (string, error)
 }
 
 type server struct {
