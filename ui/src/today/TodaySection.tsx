@@ -9,6 +9,7 @@ import { LocationPrompt } from "./LocationPrompt";
 import { ScheduleNews } from "./ScheduleNews";
 import { SunLine } from "./SunLine";
 import { SunTile } from "./SunTile";
+import { TonightPill } from "./TonightPill";
 import { WeatherTile } from "./WeatherTile";
 
 // WeatherBlock is the day's tiles under a "Today"/"Tomorrow" heading: side
@@ -26,6 +27,9 @@ function WeatherBlock({
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3.5">
+      {today.day === "tomorrow" && today.tonight !== null && (
+        <TonightPill warning={today.tonight} />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2
           className="text-[13px] font-medium tracking-[0.02em] text-muted"
@@ -60,7 +64,7 @@ function WeatherBlock({
 }
 
 // TodaySection is the start page's "Today" under the composer: the weather
-// and sun for the user's place (tomorrow's from 18:00), the unread schedule
+// and sun for the user's place (tomorrow's from 20:00), the unread schedule
 // runs, and the question where the user lives when no memory says so.
 export function TodaySection({
   today,

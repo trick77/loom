@@ -947,6 +947,18 @@ export const en = {
       storm: "Thunderstorms from {{from}}",
       frost: "Frost from {{from}}",
     },
+    warningTonight: {
+      rain: "Rain tonight from {{from}}",
+      snow: "Snow tonight from {{from}}",
+      storm: "Thunderstorms tonight from {{from}}",
+      frost: "Frost tonight from {{from}}",
+    },
+    warningNight: {
+      rain: "Rain overnight from {{from}}",
+      snow: "Snow overnight from {{from}}",
+      storm: "Thunderstorms overnight from {{from}}",
+      frost: "Frost overnight from {{from}}",
+    },
     warningTomorrow: {
       rain: "Rain tomorrow from {{from}}",
       snow: "Snow tomorrow from {{from}}",

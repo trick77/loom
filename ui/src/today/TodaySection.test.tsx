@@ -162,7 +162,7 @@ test("tomorrow without a rain chance, longer or as long as today", () => {
 
 test("a warning stands out in the tile, today and tomorrow", () => {
   const { unmount } = show({
-    warning: { kind: "rain", from: "17:00", day: "today" },
+    warning: { kind: "rain", from: "17:00", day: "today", chance: 80 },
   });
   const warning = screen.getByTestId("weather-warning");
   expect(warning).toHaveTextContent("Rain from 17:00");
@@ -173,22 +173,61 @@ test("a warning stands out in the tile, today and tomorrow", () => {
   expect(hourItems()[1].querySelector("svg")).toHaveClass("text-sun");
   unmount();
 
-  const { unmount: unmountTomorrow } = showTomorrow({
-    warning: { kind: "rain", from: "09:00", day: "tomorrow" },
+  // Today's next hours reach into tomorrow's morning: it says so.
+  const { unmount: unmountLate } = show({
+    warning: { kind: "rain", from: "06:00", day: "tomorrow", chance: 70 },
   });
   expect(screen.getByTestId("weather-warning")).toHaveTextContent(
-    "Rain tomorrow from 09:00",
+    "Rain tomorrow from 06:00",
   );
-  unmountTomorrow();
+  unmountLate();
 
-  // In the evening the page shows tomorrow, but rain tonight reads as today.
-  showTomorrow({ warning: { kind: "rain", from: "20:00", day: "today" } });
+  // Under tomorrow's heading, tomorrow goes unsaid; no tonight, no pill.
+  showTomorrow({
+    warning: { kind: "rain", from: "09:00", day: "tomorrow", chance: 80 },
+  });
   expect(screen.getByTestId("weather-warning")).toHaveTextContent(
-    "Rain from 20:00",
+    "Rain from 09:00",
   );
   expect(screen.getByTestId("weather-warning")).not.toHaveTextContent(
     "tomorrow",
   );
+  expect(screen.queryByTestId("tonight-warning")).toBeNull();
+});
+
+test("in the evening tonight's warning is a pill above tomorrow", () => {
+  showTomorrow({
+    tonight: { kind: "rain", from: "21:00", day: "today", chance: 100 },
+    warning: { kind: "rain", from: "06:00", day: "tomorrow", chance: 90 },
+  });
+  const pill = screen.getByTestId("tonight-warning");
+  expect(pill).toHaveTextContent("Rain tonight from 21:00 100%");
+  expect(pill).toHaveClass("rounded-full", "text-accent-strong");
+  expect(pill.querySelector("svg")).toHaveAttribute("data-warning", "rain");
+  // It comes before tomorrow's heading, and the tile warns of tomorrow only.
+  const heading = screen.getByRole("heading", {
+    name: "Tomorrow · Tuesday, November 10",
+  });
+  expect(
+    pill.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  const tile = screen.getByTestId("weather-warning");
+  expect(tile).toHaveTextContent("Rain from 06:00");
+  expect(tile).not.toHaveTextContent("21:00");
+});
+
+test("frost tonight shows no chance; by day there is no pill", () => {
+  const { unmount } = showTomorrow({
+    tonight: { kind: "frost", from: "04:00", day: "tomorrow", chance: null },
+  });
+  const pill = screen.getByTestId("tonight-warning");
+  expect(pill).toHaveTextContent("Frost overnight from 04:00");
+  expect(pill).not.toHaveTextContent("%");
+  unmount();
+  show({
+    tonight: { kind: "rain", from: "21:00", day: "today", chance: 100 },
+  });
+  expect(screen.queryByTestId("tonight-warning")).toBeNull();
 });
 
 test.each([
@@ -196,7 +235,7 @@ test.each([
   ["snow", "Snow from 06:00"],
   ["storm", "Thunderstorms from 06:00"],
 ] as const)("a %s warning draws its own icon", (kind, text) => {
-  show({ warning: { kind, from: "06:00", day: "today" } });
+  show({ warning: { kind, from: "06:00", day: "today", chance: null } });
   const warning = screen.getByTestId("weather-warning");
   expect(warning).toHaveTextContent(text);
   expect(warning.querySelector("svg")).toHaveAttribute("data-warning", kind);

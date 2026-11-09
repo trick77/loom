@@ -55,6 +55,22 @@ export function isNightNow(sun: TodaySun | null): boolean {
   return sun.progress < 0 || sun.progress > 1;
 }
 
+// warningKey is a warning's text under the shown day's heading: the day
+// shown goes unsaid, another day is named. Tonight's pill says evening or,
+// past midnight, night.
+export function warningKey(
+  shown: "today" | "tomorrow" | "tonight",
+  warning: TodayWarning,
+): string {
+  let group = "warning";
+  if (shown === "tonight") {
+    group = warning.day === "tomorrow" ? "warningNight" : "warningTonight";
+  } else if (warning.day !== shown) {
+    group = shown === "today" ? "warningTomorrow" : "warningTonight";
+  }
+  return `today.${group}.${warning.kind}`;
+}
+
 // warned tells whether a slot's sky is what the warning is about.
 export function warned(
   condition: Condition,

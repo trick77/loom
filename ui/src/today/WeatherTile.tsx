@@ -10,6 +10,7 @@ import {
   isNightAt,
   isNightNow,
   warned,
+  warningKey,
 } from "./weatherCodes";
 import { WarningIcon, WeatherIcon } from "./WeatherIcon";
 
@@ -132,11 +133,7 @@ function NowCard({ weather, today }: WeatherTileProps) {
                 data-testid="weather-warning"
               >
                 <WarningIcon kind={warning.kind} size={14} />
-                {t(
-                  // Its own day: in the evening a warning can be for tonight.
-                  `today.${warning.day === "tomorrow" ? "warningTomorrow" : "warning"}.${warning.kind}`,
-                  { from: warning.from },
-                )}
+                {t(warningKey(today.day, warning), { from: warning.from })}
               </span>
             )}
             {detail !== null && <span className="text-muted">{detail}</span>}

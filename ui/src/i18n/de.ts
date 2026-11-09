@@ -970,6 +970,18 @@ export const de = {
       storm: "Ab {{from}} Gewitter",
       frost: "Ab {{from}} Frost",
     },
+    warningTonight: {
+      rain: "Heute Abend ab {{from}} Regen",
+      snow: "Heute Abend ab {{from}} Schnee",
+      storm: "Heute Abend ab {{from}} Gewitter",
+      frost: "Heute Abend ab {{from}} Frost",
+    },
+    warningNight: {
+      rain: "Heute Nacht ab {{from}} Regen",
+      snow: "Heute Nacht ab {{from}} Schnee",
+      storm: "Heute Nacht ab {{from}} Gewitter",
+      frost: "Heute Nacht ab {{from}} Frost",
+    },
     warningTomorrow: {
       rain: "Morgen ab {{from}} Regen",
       snow: "Morgen ab {{from}} Schnee",
