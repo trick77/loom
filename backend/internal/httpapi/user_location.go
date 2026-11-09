@@ -50,32 +50,34 @@ func userToday(user auth.User, now time.Time) string {
 // fails is noted by the facts' hash (locationFailed), so the start page can
 // still ask where the user lives; the next visit tries again.
 func (s *server) resolveLocation(ctx context.Context, user auth.User) error {
-	err := s.deriveLocation(ctx, user)
-	if err != nil {
-		if facts, ferr := s.thread.ListActiveUserFacts(context.WithoutCancel(ctx), user.ID); ferr == nil {
-			s.locationFailed.Store(user.ID, location.HashFacts(facts))
-		}
+	tried, err := s.deriveLocation(ctx, user)
+	if err != nil && tried != "" {
+		// The facts the derivation read, not the ones there now: facts that
+		// changed meanwhile were never tried, and must not count as settled.
+		s.locationFailed.Store(user.ID, tried)
 	}
 	return err
 }
 
-func (s *server) deriveLocation(ctx context.Context, user auth.User) error {
+// deriveLocation is resolveLocation's work; tried is the hash of the facts it
+// read, "" when it read none.
+func (s *server) deriveLocation(ctx context.Context, user auth.User) (tried string, err error) {
 	if !s.locationOn() || s.thread == nil {
-		return nil
+		return "", nil
 	}
 	release, ok := s.inflight.tryAcquire("location:" + user.ID)
 	if !ok {
-		return nil
+		return "", nil
 	}
 	defer release()
 	facts, err := s.thread.ListActiveUserFacts(ctx, user.ID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	hash := location.HashFacts(facts)
 	kept, err := s.locations.FactsHash(ctx, user.ID)
 	if err != nil || kept == hash {
-		return err
+		return hash, err
 	}
 	// Saved only if nobody saved places since they were read here: the user
 	// may set a home while the model is still reading the facts.
@@ -88,29 +90,29 @@ func (s *server) deriveLocation(ctx context.Context, user auth.User) error {
 		return err
 	}
 	if len(facts) == 0 {
-		return save(nil, nil)
+		return hash, save(nil, nil)
 	}
 	home, current, _, err := s.locations.Places(ctx, user.ID)
 	if err != nil {
-		return err
+		return hash, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, locationTimeout)
 	defer cancel()
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_location", Round: 1}
 	read, err := s.locationLLM.ResolveUserLocation(llm.WithInferenceMetadata(ctx, inference), factInputs(facts, userZone(user)), userToday(user, s.clock()))
 	if err != nil {
-		return fmt.Errorf("read location: %w", err)
+		return hash, fmt.Errorf("read location: %w", err)
 	}
 	newHome, err := s.placeFor(ctx, user, location.KindHome, read.Home, home)
 	if err != nil {
-		return err
+		return hash, err
 	}
 	newCurrent, err := s.placeFor(ctx, user, location.KindCurrent, read.Current, current)
 	if err != nil {
-		return err
+		return hash, err
 	}
 	slog.Info("user location derived", "user_id", user.ID, "home", newHome != nil, "current", newCurrent != nil)
-	return save(newHome, newCurrent)
+	return hash, save(newHome, newCurrent)
 }
 
 // placeFor turns a place the facts name into a town's centre. One kept from
@@ -232,8 +234,8 @@ func (s *server) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	}
 	// No lock against a derivation in flight (the start page starts one on
 	// every visit, and it may wait on the model for long): the user's answer
-	// is saved now. A derivation that read the facts before it saves under
-	// their old hash, so the next one reads the new fact.
+	// is saved now, and a derivation that read the places before finds them
+	// changed and drops its own (SaveIf). The next one reads the new fact.
 	fact, err := s.rememberHome(ctx, user, home)
 	if err != nil {
 		serverError(w, r, err, "remember place failed")

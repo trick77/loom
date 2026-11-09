@@ -54,6 +54,8 @@ export type TodayWarning = {
   kind: "rain" | "snow" | "storm" | "frost";
   /** "HH:MM" */
   from: string;
+  /** The day the warning is for: in the evening it can be for tonight. */
+  day: "today" | "tomorrow";
 };
 
 export type TodayRun = {
@@ -76,6 +78,8 @@ export type Today = {
   warning: TodayWarning | null;
   /** Unread schedule runs, newest first. */
   runs: TodayRun[];
+  /** RFC3339: when the shown day changes next (18:00 or midnight). */
+  refreshAt: string | null;
 };
 
 // PlaceNotFoundError is a place the server could not find on the map.
@@ -117,17 +121,30 @@ function normalizeWeather(raw: unknown): TodayWeather | null {
 // shown day is today unless the answer says tomorrow.
 export function normalizeToday(raw: Partial<Today> | null): Today {
   const today = raw ?? {};
+  const day = today.day === "tomorrow" ? "tomorrow" : "today";
+  const warning = today.warning ?? null;
   return {
     date: typeof today.date === "string" ? today.date : "",
-    day: today.day === "tomorrow" ? "tomorrow" : "today",
+    day,
     location: today.location ?? null,
     askLocation: today.askLocation === true,
     sun: today.sun
       ? { ...today.sun, progress: today.sun.progress ?? null }
       : null,
     weather: normalizeWeather(today.weather),
-    warning: today.warning ?? null,
+    // A warning without its day is for the shown day.
+    warning:
+      warning === null
+        ? null
+        : {
+            ...warning,
+            day:
+              warning.day === "today" || warning.day === "tomorrow"
+                ? warning.day
+                : day,
+          },
     runs: Array.isArray(today.runs) ? today.runs : [],
+    refreshAt: typeof today.refreshAt === "string" ? today.refreshAt : null,
   };
 }
 

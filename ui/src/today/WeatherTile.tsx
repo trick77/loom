@@ -82,7 +82,8 @@ export function WeatherTile({
               >
                 <WarningIcon kind={warning.kind} size={14} />
                 {t(
-                  `today.${today.day === "tomorrow" ? "warningTomorrow" : "warning"}.${warning.kind}`,
+                  // Its own day: in the evening a warning can be for tonight.
+                  `today.${warning.day === "tomorrow" ? "warningTomorrow" : "warning"}.${warning.kind}`,
                   { from: warning.from },
                 )}
               </span>

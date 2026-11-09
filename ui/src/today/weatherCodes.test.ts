@@ -73,11 +73,12 @@ test("night is outside sunrise..sunset, or the polar night", () => {
 });
 
 test("a warning marks the skies it is about", () => {
-  expect(warned("rain", { kind: "rain", from: "17:00" })).toBe(true);
-  expect(warned("snow", { kind: "snow", from: "17:00" })).toBe(true);
-  expect(warned("storm", { kind: "storm", from: "17:00" })).toBe(true);
-  expect(warned("clear", { kind: "rain", from: "17:00" })).toBe(false);
-  expect(warned("clear", { kind: "frost", from: "17:00" })).toBe(false);
+  const at = { from: "17:00", day: "today" } as const;
+  expect(warned("rain", { kind: "rain", ...at })).toBe(true);
+  expect(warned("snow", { kind: "snow", ...at })).toBe(true);
+  expect(warned("storm", { kind: "storm", ...at })).toBe(true);
+  expect(warned("clear", { kind: "rain", ...at })).toBe(false);
+  expect(warned("clear", { kind: "frost", ...at })).toBe(false);
   expect(warned("rain", null)).toBe(false);
 });
 
