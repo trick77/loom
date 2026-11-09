@@ -34,13 +34,13 @@ func TestStoreSavesAndReplacesPlaces(t *testing.T) {
 		t.Fatalf("never derived: %v %v %q %v", home, current, hash, err)
 	}
 	home := &location.Place{Name: "Zürich", Country: "Schweiz", Latitude: 47.37, Longitude: 8.54, Timezone: "Europe/Zurich", FactID: "f1"}
-	stay := &location.Place{Name: "Lisbon", Latitude: 38.7, Longitude: -9.1, Until: "2026-11-15", FactID: "f2"}
+	stay := &location.Place{Name: "Lisbon", Latitude: 38.7, Longitude: -9.1, Since: "2026-11-10", Until: "2026-11-15", FactID: "f2", Query: "lisbon|PT"}
 	if err := st.Save(ctx, "u1", "h1", home, stay); err != nil {
 		t.Fatal(err)
 	}
 	gotHome, gotCurrent, hash, err := st.Places(ctx, "u1")
 	if err != nil || hash != "h1" || gotHome == nil || gotHome.Name != "Zürich" || gotHome.Kind != location.KindHome || gotHome.Until != "" ||
-		gotCurrent == nil || gotCurrent.Until != "2026-11-15" || gotCurrent.FactID != "f2" {
+		gotCurrent == nil || gotCurrent.Since != "2026-11-10" || gotCurrent.Until != "2026-11-15" || gotCurrent.FactID != "f2" || gotCurrent.Query != "lisbon|PT" {
 		t.Fatalf("places = %+v, %+v, %q, %v", gotHome, gotCurrent, hash, err)
 	}
 	// Another user sees none of it.
@@ -58,11 +58,12 @@ func TestStoreSavesAndReplacesPlaces(t *testing.T) {
 
 func TestHere(t *testing.T) {
 	home := &location.Place{Kind: location.KindHome, Name: "Zürich"}
-	stay := &location.Place{Kind: location.KindCurrent, Name: "Lisbon", Until: "2026-11-15"}
+	stay := &location.Place{Kind: location.KindCurrent, Name: "Lisbon", Since: "2026-11-09", Until: "2026-11-15"}
 	for _, tc := range []struct {
 		home, current *location.Place
 		today, want   string
 	}{
+		{home, stay, "2026-11-08", "Zürich"},
 		{home, stay, "2026-11-09", "Lisbon"},
 		{home, stay, "2026-11-15", "Lisbon"},
 		{home, stay, "2026-11-16", "Zürich"},
@@ -76,15 +77,15 @@ func TestHere(t *testing.T) {
 	}
 }
 
-func TestFactsHash(t *testing.T) {
+func TestHashFacts(t *testing.T) {
 	day := time.Date(2026, 11, 9, 8, 0, 0, 0, time.UTC)
 	facts := []chat.UserFact{{ID: "f1", Content: "Lives Zurich", LastSeen: day}}
-	base := location.FactsHash(facts)
-	if location.FactsHash(facts) != base {
+	base := location.HashFacts(facts)
+	if location.HashFacts(facts) != base {
 		t.Fatal("the hash is not stable")
 	}
 	later := []chat.UserFact{{ID: "f1", Content: "Lives Zurich", LastSeen: day.Add(2 * time.Hour)}}
-	if location.FactsHash(later) != base {
+	if location.HashFacts(later) != base {
 		t.Fatal("seen again the same day changed the hash")
 	}
 	for name, changed := range map[string][]chat.UserFact{
@@ -93,7 +94,7 @@ func TestFactsHash(t *testing.T) {
 		"added":    {facts[0], {ID: "f2", Content: "In Lisbon this week", LastSeen: day}},
 		"gone":     nil,
 	} {
-		if location.FactsHash(changed) == base {
+		if location.HashFacts(changed) == base {
 			t.Errorf("%s: the hash did not change", name)
 		}
 	}

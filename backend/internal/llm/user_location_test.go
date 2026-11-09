@@ -33,15 +33,18 @@ func TestResolveUserLocation(t *testing.T) {
 func TestParseUserLocationDropsWhatItCannotTrust(t *testing.T) {
 	facts := []FactInput{{ID: "f1"}, {ID: "f2"}}
 	for reply, want := range map[string]string{
-		`{"home":null,"current":null}`:                                              "none",
-		`{"home":{"place":"","fact":"f1"}}`:                                         "none",
-		`{"home":{"place":"Bern","fact":"f9"}}`:                                     "none",
-		`{"home":{"place":"Bern","country":"Switzerland","fact":"f1","until":"x"}}`: "home",
-		`{"current":{"place":"Lisbon","fact":"f2"}}`:                                "none",
-		`{"current":{"place":"Lisbon","fact":"f2","until":"2026-13-45"}}`:           "none",
-		`{"current":{"place":"Lisbon","fact":"f2","until":"2026-11-15"}}`:           "current",
-		"```json\n{\"home\":{\"place\":\"Bern\",\"fact\":\"f1\"}}\n```":             "home",
-		`{"home":{"place":"` + strings.Repeat("x", 101) + `","fact":"f1"}}`:         "none",
+		`{"home":null,"current":null}`:                                                         "none",
+		`{"home":{"place":"","fact":"f1"}}`:                                                    "none",
+		`{"home":{"place":"Bern","fact":"f9"}}`:                                                "none",
+		`{"home":{"place":"Bern","country":"Switzerland","fact":"f1","until":"x"}}`:            "home",
+		`{"current":{"place":"Lisbon","fact":"f2"}}`:                                           "none",
+		`{"current":{"place":"Lisbon","fact":"f2","until":"2026-13-45"}}`:                      "none",
+		`{"current":{"place":"Lisbon","fact":"f2","until":"2026-11-15"}}`:                      "current",
+		`{"current":{"place":"Lisbon","fact":"f2","since":"2026-11-20","until":"2026-11-26"}}`: "current",
+		`{"current":{"place":"Lisbon","fact":"f2","since":"2026-11-20","until":"2026-11-15"}}`: "none",
+		`{"current":{"place":"Lisbon","fact":"f2","since":"soon","until":"2026-11-15"}}`:       "none",
+		"```json\n{\"home\":{\"place\":\"Bern\",\"fact\":\"f1\"}}\n```":                        "home",
+		`{"home":{"place":"` + strings.Repeat("x", 101) + `","fact":"f1"}}`:                    "none",
 	} {
 		loc, ok := parseUserLocation(reply, facts)
 		if !ok {
