@@ -89,6 +89,7 @@ export function TodaySection({
       ) : (
         today.sun !== null && (
           <SunLine
+            day={today.day}
             location={today.location}
             onOpenMemory={onOpenMemory}
             sun={today.sun}

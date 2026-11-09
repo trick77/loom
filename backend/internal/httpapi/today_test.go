@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -196,6 +197,35 @@ func TestTodayDoesNotAskWhileTheFactsAreUnread(t *testing.T) {
 	close(answered)
 	if got.AskLocation {
 		t.Fatalf("asked while a derivation is pending: %+v", got)
+	}
+}
+
+// A derivation that keeps failing must not hide the question for good: once
+// it failed for the facts as they are, the page asks.
+func TestTodayAsksWhenTheDerivationFails(t *testing.T) {
+	tf := newTodayFixture(t, false)
+	tf.addFact(t, "Likes tea")
+	tf.llm.err = errors.New("model down")
+	srv := newServer(tf.deps)
+	tf.handler = todayHandler(srv, morning)
+	if err := srv.resolveLocation(context.Background(), testUser); err == nil {
+		t.Fatal("the derivation did not fail")
+	}
+	if got := tf.get(t); !got.AskLocation {
+		t.Fatalf("no question after a failed derivation: %+v", got)
+	}
+}
+
+// A forecast whose days do not name tomorrow has no tomorrow: never today's
+// numbers under tomorrow's name.
+func TestTomorrowNeedsItsOwnDay(t *testing.T) {
+	var f forecast
+	if err := json.Unmarshal([]byte(todayForecastJSON()), &f); err != nil {
+		t.Fatal(err)
+	}
+	f.Daily = f.Daily[:1]
+	if weather, warning := tomorrowForecast(f, time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)); weather != nil || warning != nil {
+		t.Fatalf("tomorrow from today's day: %+v, %+v", weather, warning)
 	}
 }
 

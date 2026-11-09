@@ -146,6 +146,9 @@ type server struct {
 	// locations and locationLLM are nil while places are off.
 	locations   *location.Store
 	locationLLM LocationLLM
+	// locationFailed holds, by user id, the facts hash whose derivation last
+	// failed: the start page still asks where the user lives then.
+	locationFailed sync.Map
 	// push and pushStore are nil while push notifications are off.
 	push      PushSender
 	pushStore *webpush.Store

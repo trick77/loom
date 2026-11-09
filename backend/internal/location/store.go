@@ -97,11 +97,24 @@ func (s *Store) save(ctx context.Context, userID string, readHash *string, facts
 	}
 	defer func() { _ = tx.Rollback() }()
 	if readHash != nil {
-		var kept string
-		if err := tx.QueryRowContext(ctx, `SELECT facts_hash FROM user_location_state WHERE user_id = ?`, userID).Scan(&kept); err != nil && err != sql.ErrNoRows {
-			return fmt.Errorf("save places: read state: %w", err)
+		// The compare is the transaction's first statement and a write, so it
+		// takes the write lock at once: no read snapshot to upgrade, which a
+		// concurrent Save would turn into SQLITE_BUSY instead of ErrStale.
+		var res sql.Result
+		if *readHash == "" {
+			res, err = tx.ExecContext(ctx, `INSERT INTO user_location_state (user_id, facts_hash) VALUES (?, ?) ON CONFLICT (user_id) DO NOTHING`,
+				userID, factsHash)
+		} else {
+			res, err = tx.ExecContext(ctx, `UPDATE user_location_state SET facts_hash = ?, resolved_at = datetime('now') WHERE user_id = ? AND facts_hash = ?`,
+				factsHash, userID, *readHash)
 		}
-		if kept != *readHash {
+		if err != nil {
+			return fmt.Errorf("save places: state: %w", err)
+		}
+		if n, err := res.RowsAffected(); err != nil || n == 0 {
+			if err != nil {
+				return fmt.Errorf("save places: state: %w", err)
+			}
 			return ErrStale
 		}
 	}
@@ -119,11 +132,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?)`
 			return fmt.Errorf("save places: %s: %w", kind, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `
+	if readHash == nil {
+		if _, err := tx.ExecContext(ctx, `
 INSERT INTO user_location_state (user_id, facts_hash) VALUES (?, ?)
 ON CONFLICT (user_id) DO UPDATE SET facts_hash = excluded.facts_hash, resolved_at = datetime('now')`,
-		userID, factsHash); err != nil {
-		return fmt.Errorf("save places: state: %w", err)
+			userID, factsHash); err != nil {
+			return fmt.Errorf("save places: state: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("save places: commit: %w", err)

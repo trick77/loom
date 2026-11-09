@@ -263,7 +263,7 @@ func (s *server) applyUserFactsBatch(ctx context.Context, user auth.User, messag
 		lctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
 		defer cancel()
 		inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_memory", Round: 1}
-		replyOps, err := s.llm.ExtractUserFacts(llm.WithInferenceMetadata(lctx, inference), factInputs(facts), transcript, excluded, forgotten, user.ResponseLanguageName())
+		replyOps, err := s.llm.ExtractUserFacts(llm.WithInferenceMetadata(lctx, inference), factInputs(facts, userZone(user)), transcript, excluded, forgotten, user.ResponseLanguageName())
 		if err != nil {
 			return cursor, 0, err
 		}
@@ -315,7 +315,7 @@ func (s *server) consolidateUserFactsIfDue(ctx context.Context, user auth.User, 
 		lctx, cancel := context.WithTimeout(ctx, memoryBackgroundTimeout)
 		defer cancel()
 		inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_memory_consolidate", Round: 1}
-		merges, err := s.llm.ConsolidateUserFacts(llm.WithInferenceMetadata(lctx, inference), factInputs(facts), user.ResponseLanguageName())
+		merges, err := s.llm.ConsolidateUserFacts(llm.WithInferenceMetadata(lctx, inference), factInputs(facts, userZone(user)), user.ResponseLanguageName())
 		if isFactRefreshSkippable(err) {
 			// A merge reply that does not fit or parse would fail the same way
 			// every sweep: skip this week's pass instead of retrying hourly.
@@ -389,12 +389,25 @@ func factsTranscript(messages []chat.Message) (string, map[string]string, map[st
 	return strings.TrimSpace(b.String()), labels, dates, max(used, 1)
 }
 
-func factInputs(facts []chat.UserFact) []llm.FactInput {
+// factInputs is the facts as the model reads them, each last-seen day in the
+// user's zone: "this week", said on a Monday evening in Los Angeles, was said
+// on Monday, not on UTC's Tuesday.
+func factInputs(facts []chat.UserFact, loc *time.Location) []llm.FactInput {
 	out := make([]llm.FactInput, len(facts))
 	for i, f := range facts {
-		out[i] = llm.FactInput{ID: f.ID, Category: f.Category, Content: f.Content, Durable: f.Durable, LastSeen: f.LastSeen.UTC().Format(time.DateOnly)}
+		out[i] = llm.FactInput{ID: f.ID, Category: f.Category, Content: f.Content, Durable: f.Durable, LastSeen: f.LastSeen.In(loc).Format(time.DateOnly)}
 	}
 	return out
+}
+
+// userZone is the zone the user's browser last sent; UTC without one.
+func userZone(user auth.User) *time.Location {
+	if user.Timezone != "" {
+		if loc, err := time.LoadLocation(user.Timezone); err == nil {
+			return loc
+		}
+	}
+	return time.UTC
 }
 
 // toFactOps maps the model's ops onto store ops, turning thread labels into
