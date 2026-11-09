@@ -218,10 +218,10 @@ test("in the evening tonight's warning is a pill above tomorrow", () => {
 
 test("frost tonight shows no chance; by day there is no pill", () => {
   const { unmount } = showTomorrow({
-    tonight: { kind: "frost", from: "04:00", day: "tomorrow", chance: null },
+    tonight: { kind: "frost", from: "23:00", day: "today", chance: null },
   });
   const pill = screen.getByTestId("tonight-warning");
-  expect(pill).toHaveTextContent("Frost overnight from 04:00");
+  expect(pill).toHaveTextContent("Frost tonight from 23:00");
   expect(pill).not.toHaveTextContent("%");
   unmount();
   show({
@@ -389,30 +389,20 @@ test("without anything to show the section is empty", () => {
 
 test("a credit link that is not a web address stays text", () => {
   const weather = todayFixture().weather!;
-  const air = todayFixture().air!;
   show({
     weather: {
       ...weather,
       attribution: { text: "Weather data", url: "javascript:alert(1)" },
     },
-    air: { ...air, attribution: { text: "Air data", url: "data:x" } },
   });
   expect(screen.getByText("Weather data")).toBeInTheDocument();
-  expect(screen.getByText("Air data")).toBeInTheDocument();
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-test("the air's credit shows beside the weather's, none without text", () => {
-  const { unmount } = show();
-  expect(
-    screen.getByRole("link", {
-      name: "Air quality by Open-Meteo.com, CAMS data",
-    }),
-  ).toHaveAttribute("href", "https://open-meteo.com/en/docs/air-quality-api");
-  unmount();
-  const air = todayFixture().air!;
-  show({ air: { ...air, attribution: { text: "", url: "" } } });
+test("only the weather's credit shows under the tiles", () => {
+  show();
   expect(screen.getAllByRole("link")).toHaveLength(1);
+  expect(screen.queryByText(/Air quality by/)).toBeNull();
 });
 
 test("unread runs open their thread or are marked read", () => {

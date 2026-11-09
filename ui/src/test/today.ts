@@ -66,6 +66,19 @@ function rainHours() {
   });
 }
 
+// airHours is the index for 24 hours from 08:00, highest (31) at 16:00;
+// 20:00 has none.
+function airHours() {
+  const curve = [
+    18, 17, 16, 16, 18, 22, 26, 29, 31, 30, 27, 24, 21, 19, 18, 17, 16, 15, 15,
+    16, 18, 20, 21, 20,
+  ];
+  return curve.map((aqi, i) => ({
+    time: `${String((8 + i) % 24).padStart(2, "0")}:00`,
+    aqi: i === 12 ? null : aqi,
+  }));
+}
+
 // todayFixture is today in Zürich with two unread runs; tests take away what
 // they do not need.
 export function todayFixture(overrides: Partial<Today> = {}): Today {
@@ -168,10 +181,7 @@ export function todayFixture(overrides: Partial<Today> = {}): Today {
         { kind: "birch", level: "moderate" },
         { kind: "grass", level: "high" },
       ],
-      attribution: {
-        text: "Air quality by Open-Meteo.com, CAMS data",
-        url: "https://open-meteo.com/en/docs/air-quality-api",
-      },
+      hours: airHours(),
     },
     warning: null,
     tonight: null,

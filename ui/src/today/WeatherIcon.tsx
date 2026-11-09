@@ -163,6 +163,46 @@ export function WarningIcon({
   );
 }
 
+const METRICS = {
+  thermometer: <path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z" />,
+  droplet: (
+    <path d="M12 3.5s-6 6.6-6 10.5a6 6 0 0 0 12 0c0-3.9-6-10.5-6-10.5z" />
+  ),
+  sun: SUN,
+  rain: RAIN,
+  wind: <path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7" />,
+  leaf: <path d="M5 19c8 0 14-6 14-14-8 0-14 6-14 14zM5 19l7-7" />,
+} as const;
+
+// MetricIcon marks a value on the weather's cards, in the color its class
+// gives; decoration next to the text that names the value.
+export function MetricIcon({
+  kind,
+  size,
+  className,
+}: {
+  kind: keyof typeof METRICS;
+  size: number;
+  className: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={size >= 32 ? 1.5 : 1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={`shrink-0 ${className}`}
+    >
+      {METRICS[kind]}
+    </svg>
+  );
+}
+
 // SunsetIcon and SunriseIcon mark the sun times in the compact line.
 export function SunTimeIcon({ rising }: { rising: boolean }) {
   return (

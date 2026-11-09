@@ -83,7 +83,10 @@ test("getToday keeps a full answer and survives a null one", async () => {
       level: "poor",
       max: true,
       pollen: [{ kind: "grass", level: "low" }],
-      attribution,
+      hours: [
+        { time: "06:00", aqi: 40 },
+        { time: "07:00", aqi: null },
+      ],
     },
     warning: { kind: "rain", from: "10:00", day: "tomorrow", chance: 80 },
     tonight: { kind: "rain", from: "20:00", day: "today", chance: 90 },
@@ -107,6 +110,14 @@ test("getToday keeps a full answer and survives a null one", async () => {
   });
   // An older server sends no tonight; a kind without words is no warning.
   stubFetch(Response.json({ ...full, tonight: undefined }));
+  await expect(getToday()).resolves.toMatchObject({ tonight: null });
+  // An older server's tonight past midnight falls while everyone sleeps.
+  stubFetch(
+    Response.json({
+      ...full,
+      tonight: { kind: "rain", from: "02:00", day: "tomorrow" },
+    }),
+  );
   await expect(getToday()).resolves.toMatchObject({ tonight: null });
   stubFetch(
     Response.json({
@@ -159,7 +170,24 @@ test("getToday reads the weather defensively", async () => {
     Response.json({ air: { pollen: [{ kind: "birch", level: "high" }] } }),
   );
   await expect(getToday()).resolves.toMatchObject({
-    air: { aqi: null, level: "", max: false, attribution: { text: "" } },
+    air: { aqi: null, level: "", max: false, hours: [] },
+  });
+  // Hours without a time are dropped, an index that is no number is a gap.
+  stubFetch(
+    Response.json({
+      air: {
+        aqi: 30,
+        hours: [{ time: "09:00", aqi: 31.6 }, { aqi: 5 }, { time: "10:00" }],
+      },
+    }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    air: {
+      hours: [
+        { time: "09:00", aqi: 31.6 },
+        { time: "10:00", aqi: null },
+      ],
+    },
   });
   // Kinds and levels without words here are dropped; no pollen list is
   // unknown, not none.

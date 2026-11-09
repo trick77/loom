@@ -1,5 +1,14 @@
-import { type ReactNode, type PointerEvent, useRef, useState } from "react";
+import {
+  type FocusEvent,
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
+
+import { useMediaQuery } from "../chat/useMediaQuery";
 
 export type Slide = { key: string; name: string; content: ReactNode };
 
@@ -7,15 +16,18 @@ export type Slide = { key: string; name: string; content: ReactNode };
 export const SWIPE_PX = 40;
 
 // Carousel shows one slide at a time, turned by the arrows, the dots, the
-// arrow keys or a swipe. Every slide stays rendered side by side, so the
-// tallest sets the height and the grid around it never jumps; the ones out
-// of view are inert. It always opens on the first: a warning lives there.
+// arrow keys or a swipe, and with autoAdvanceMs by itself, back to the first
+// after the last. Every slide stays rendered side by side, so the tallest
+// sets the height and the grid around it never jumps; the ones out of view
+// are inert. It always opens on the first: a warning lives there.
 export function Carousel({
   label,
   slides,
+  autoAdvanceMs,
 }: {
   label: string;
   slides: Slide[];
+  autoAdvanceMs?: number;
 }) {
   const { t } = useTranslation();
   const [index, setIndex] = useState(0);
@@ -23,6 +35,48 @@ export function Carousel({
   const count = slides.length;
   const current = Math.min(index, count - 1);
   const go = (to: number) => setIndex(Math.max(0, Math.min(count - 1, to)));
+
+  // It holds still while read: under the mouse, with keyboard focus inside
+  // (a keyboard or screen reader user), on a hidden page, and never turns for
+  // reduced motion.
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [hidden, setHidden] = useState(() => document.hidden);
+  const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
+  useEffect(() => {
+    const onChange = () => setHidden(document.hidden);
+    document.addEventListener("visibilitychange", onChange);
+    return () => document.removeEventListener("visibilitychange", onChange);
+  }, []);
+  const auto = autoAdvanceMs !== undefined && count > 1 && !reduced;
+  const running = auto && !hovered && !focused && !hidden;
+  // Every turn, by hand or by itself, starts the time over.
+  useEffect(() => {
+    if (!running) return;
+    const timer = setTimeout(
+      () => setIndex((current + 1) % count),
+      autoAdvanceMs,
+    );
+    return () => clearTimeout(timer);
+  }, [running, current, count, autoAdvanceMs]);
+  const onBlur = (event: FocusEvent) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setFocused(false);
+    }
+  };
+  // Focus holds the card for keyboard and screen reader users only: a click
+  // or tap leaves its button focused until the next click elsewhere, which
+  // held the cards for good. A key pressed anywhere makes focus count again.
+  const pointing = useRef(false);
+  useEffect(() => {
+    const onKey = () => (pointing.current = false);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
+  // Only a mouse hovers: a tap's emulated mouseenter has no leave.
+  const onHover = (event: PointerEvent, over: boolean) => {
+    if (event.pointerType === "mouse") setHovered(over);
+  };
 
   const onPointerDown = (event: PointerEvent) => {
     start.current = { x: event.clientX, y: event.clientY };
@@ -43,6 +97,13 @@ export function Carousel({
       aria-label={label}
       aria-roledescription={t("today.cards.carousel")}
       className="flex h-full flex-col gap-3"
+      onBlur={onBlur}
+      onFocus={() => {
+        if (!pointing.current) setFocused(true);
+      }}
+      onPointerDownCapture={() => (pointing.current = true)}
+      onPointerEnter={(event) => onHover(event, true)}
+      onPointerLeave={(event) => onHover(event, false)}
       onKeyDown={(event) => {
         if (event.key === "ArrowRight") go(current + 1);
         else if (event.key === "ArrowLeft") go(current - 1);
@@ -82,7 +143,9 @@ export function Carousel({
       </div>
       {count > 1 && (
         <div className="flex items-center justify-between gap-2 text-[12px] text-muted">
-          <span aria-live="polite" data-testid="card-name">
+          {/* Announced on a turn by hand only: turning by itself, it would
+              speak up every 15 s. */}
+          <span aria-live={running ? "off" : "polite"} data-testid="card-name">
             {slides[current].name}
           </span>
           <div className="flex items-center">
@@ -101,13 +164,34 @@ export function Carousel({
                 onClick={() => go(i)}
                 type="button"
               >
-                <span
-                  className={`size-1.5 rounded-full transition-colors ${
-                    i === current
-                      ? "bg-ink-soft"
-                      : "bg-border-strong group-hover:bg-muted"
-                  }`}
-                />
+                {i === current && auto ? (
+                  // The current card's dot fills up until it turns; held
+                  // still, it stands full.
+                  <span
+                    className="flex h-1.5 w-5 overflow-hidden rounded-full bg-border-strong"
+                    data-testid="card-progress"
+                  >
+                    <span
+                      className="w-full origin-left rounded-full bg-ink-soft"
+                      key={`${current}/${running}`}
+                      style={
+                        running
+                          ? {
+                              animation: `card-progress ${autoAdvanceMs}ms linear forwards`,
+                            }
+                          : undefined
+                      }
+                    />
+                  </span>
+                ) : (
+                  <span
+                    className={`size-1.5 rounded-full transition-colors ${
+                      i === current
+                        ? "bg-ink-soft"
+                        : "bg-border-strong group-hover:bg-muted"
+                    }`}
+                  />
+                )}
               </button>
             ))}
             <ArrowButton

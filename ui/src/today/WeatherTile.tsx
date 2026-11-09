@@ -17,6 +17,9 @@ import { WarningIcon, WeatherIcon } from "./WeatherIcon";
 export const TILE =
   "rounded-2xl border border-border bg-card p-[18px] text-ink";
 
+// AUTO_ADVANCE_MS is how long a weather card shows before the next.
+export const AUTO_ADVANCE_MS = 15_000;
+
 type WeatherTileProps = {
   weather: TodayWeather;
   today: Pick<Today, "date" | "day" | "sun" | "warning" | "air">;
@@ -45,7 +48,7 @@ export function WeatherTile({ weather, today }: WeatherTileProps) {
     slides.push({
       key: "rain",
       name: t("today.cards.rain"),
-      content: <RainCard rain={weather.rain} />,
+      content: <RainCard outlook={weather.outlook} rain={weather.rain} />,
     });
   if (weather.outlook !== null)
     slides.push({
@@ -64,6 +67,7 @@ export function WeatherTile({ weather, today }: WeatherTileProps) {
       {/* A new shown day starts over on the first card, where its warning
           is: the 20:00 turn to tomorrow keeps the page open. */}
       <Carousel
+        autoAdvanceMs={AUTO_ADVANCE_MS}
         key={`${today.date}/${today.day}`}
         label={t("today.cards.weather")}
         slides={slides}

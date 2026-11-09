@@ -56,15 +56,15 @@ export function isNightNow(sun: TodaySun | null): boolean {
 }
 
 // warningKey is a warning's text under the shown day's heading: the day
-// shown goes unsaid, another day is named. Tonight's pill says evening or,
-// past midnight, night.
+// shown goes unsaid, another day is named. Tonight's pill says evening: it
+// ends at midnight.
 export function warningKey(
   shown: "today" | "tomorrow" | "tonight",
   warning: TodayWarning,
 ): string {
   let group = "warning";
   if (shown === "tonight") {
-    group = warning.day === "tomorrow" ? "warningNight" : "warningTonight";
+    group = "warningTonight";
   } else if (warning.day !== shown) {
     group = shown === "today" ? "warningTomorrow" : "warningTonight";
   }
