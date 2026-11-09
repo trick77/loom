@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,7 +13,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/location"
-	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/loom/internal/weather"
 	"github.com/trick77/ship/kit/httpx"
 )
 
@@ -22,9 +21,6 @@ import (
 type LocationLLM interface {
 	ResolveUserLocation(ctx context.Context, facts []llm.FactInput, today string) (llm.UserLocation, error)
 }
-
-// geocodeTool turns a place name into a town's centre (docs/weather.md).
-var geocodeTool = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherGeocodeTool)
 
 // locationTimeout bounds one derivation: a gate call and a few lookups.
 const locationTimeout = 45 * time.Second
@@ -35,7 +31,7 @@ const homeFactPrefix = "Lives "
 // locationOn reports whether places can be derived: a store, the model, and
 // the weather sidecar's lookup.
 func (s *server) locationOn() bool {
-	return s.locations != nil && s.locationLLM != nil && s.mcp != nil && s.mcp.HasTool(geocodeTool)
+	return s.locations != nil && s.locationLLM != nil && s.mcp != nil && s.mcp.HasTool(weather.GeocodeTool)
 }
 
 // userToday is the user's date, in their kept timezone (UTC without one).
@@ -145,53 +141,11 @@ func placeQuery(place, country string) string {
 // none of that name. A country the model named narrows the lookup; when it
 // finds nothing there, the name alone is looked up.
 func (s *server) geocode(ctx context.Context, user auth.User, query, country string) (*location.Place, error) {
-	p, err := s.lookUp(ctx, user, query, country)
-	if err == nil && p == nil && country != "" {
-		p, err = s.lookUp(ctx, user, query, "")
-	}
+	p, err := weather.Find(ctx, s.mcp, query, country, weather.Language(user.ResponseLanguage))
 	if p != nil {
 		p.Query = placeQuery(query, country)
 	}
 	return p, err
-}
-
-func (s *server) lookUp(ctx context.Context, user auth.User, query, country string) (*location.Place, error) {
-	args := map[string]any{"query": query, "language": geocodeLanguage(user)}
-	if country != "" {
-		args["country"] = country
-	}
-	text, err := s.mcp.CallTool(ctx, geocodeTool, args)
-	if err != nil {
-		return nil, fmt.Errorf("look up %q: %w", query, err)
-	}
-	var reply struct {
-		Places []struct {
-			Name      string  `json:"name"`
-			Region    string  `json:"region"`
-			Country   string  `json:"country"`
-			Latitude  float64 `json:"latitude"`
-			Longitude float64 `json:"longitude"`
-			Timezone  string  `json:"timezone"`
-		} `json:"places"`
-	}
-	if err := json.Unmarshal([]byte(text), &reply); err != nil {
-		return nil, fmt.Errorf("look up %q: unreadable reply: %w", query, err)
-	}
-	if len(reply.Places) == 0 {
-		return nil, nil
-	}
-	m := reply.Places[0]
-	return &location.Place{Name: m.Name, Region: m.Region, Country: m.Country, Latitude: m.Latitude, Longitude: m.Longitude, Timezone: m.Timezone}, nil
-}
-
-// geocodeLanguage names places in the user's language: the base of their
-// pinned one, else English.
-func geocodeLanguage(user auth.User) string {
-	lang, _, _ := strings.Cut(strings.ToLower(user.ResponseLanguage), "-")
-	if len(lang) != 2 {
-		return "en"
-	}
-	return lang
 }
 
 // maxLocationBody bounds the place a user types.
@@ -297,6 +251,15 @@ func (s *server) rememberHome(ctx context.Context, user auth.User, home *locatio
 		}
 	}
 	return s.thread.AddUserFact(ctx, user.ID, "", chat.FactCategoryPersonal, content, true)
+}
+
+// enginePlaces is the turn engine's view of the users' places.
+type enginePlaces struct {
+	s *server
+}
+
+func (p enginePlaces) UserPlace(ctx context.Context, user auth.User) (*location.Place, error) {
+	return p.s.userPlace(ctx, user)
 }
 
 // userPlace is where the user is today; nil when no place is known.

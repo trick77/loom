@@ -15,6 +15,7 @@ import (
 	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/schedule"
+	"github.com/trick77/loom/internal/weather"
 )
 
 // todayForecastJSON is a forecast from 08:00 on 9 November in Zurich through
@@ -34,7 +35,7 @@ func todayForecastJSON() string {
 		b, _ := json.Marshal(map[string]any{"time": time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"),
 			"temperature": temp, "code": code, "precipitationProbability": chance, "precipitation": rain,
 			"windSpeed": 9 + float64(i), "windGusts": 20 + float64(i), "windDirection": 250,
-			"apparentTemperature": temp - 3, "humidity": 80 + i%10, "uvIndex": 0.5})
+			"apparentTemperature": temp - 3, "humidity": 80 + i%10, "sunshineMinutes": 30})
 		hours = append(hours, string(b))
 	}
 	return `{"hourly":[` + strings.Join(hours, ",") + `],
@@ -115,15 +116,15 @@ func newTodayFixture(t *testing.T, withPlace bool) *todayFixture {
 	t.Cleanup(func() { _ = bg.Stop(10 * time.Second) })
 	geo := f.geo.call
 	f.deps.MCP = fakeMCPService{
-		Available: map[string]bool{geocodeTool: true, forecastTool: true, airQualityTool: true},
+		Available: map[string]bool{weather.GeocodeTool: true, weather.ForecastTool: true, weather.AirQualityTool: true},
 		CallFunc: func(ctx context.Context, name string, args map[string]any) (string, error) {
-			if name == airQualityTool {
+			if name == weather.AirQualityTool {
 				if tf.airJSON != "" {
 					return tf.airJSON, tf.airErr
 				}
 				return todayAirJSON, tf.airErr
 			}
-			if name == forecastTool {
+			if name == weather.ForecastTool {
 				tf.forecastDays = args["days"]
 				if tf.forecastErr != nil {
 					return "", tf.forecastErr
@@ -320,7 +321,7 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 		t.Fatalf("refreshAt = %v, want midnight in Zurich", got.RefreshAt)
 	}
 	// Late, with tonight dry: no warning for tonight, tomorrow's stays.
-	var f forecast
+	var f weather.Forecast
 	if err := json.Unmarshal([]byte(todayForecastJSON()), &f); err != nil {
 		t.Fatal(err)
 	}
@@ -334,8 +335,8 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 // Tonight ends at midnight: rain at 02:00 or frost at 05:00 falls while
 // everyone sleeps, no pill; rain from 06:00 is tomorrow's.
 func TestTomorrowWarnsOfTonightApart(t *testing.T) {
-	build := func(wet func(at time.Time) bool) forecast {
-		var f forecast
+	build := func(wet func(at time.Time) bool) weather.Forecast {
+		var f weather.Forecast
 		for i := range 20 {
 			at := time.Date(2026, 11, 9, 21+i, 0, 0, 0, time.UTC)
 			temp, code, chance := 3.0, 3, 10
@@ -345,10 +346,10 @@ func TestTomorrowWarnsOfTonightApart(t *testing.T) {
 			if wet(at) {
 				code, chance = 61, 90
 			}
-			f.Hourly = append(f.Hourly, forecastHour{Time: at.Format("2006-01-02T15:04"), Temperature: temp, Code: code,
+			f.Hourly = append(f.Hourly, weather.Hour{Time: at.Format("2006-01-02T15:04"), Temperature: temp, Code: code,
 				PrecipitationProbability: &chance})
 		}
-		f.Daily = []forecastDay{{Date: "2026-11-09"}, {Date: "2026-11-10", High: 5, Low: -1, Code: 61}}
+		f.Daily = []weather.Day{{Date: "2026-11-09"}, {Date: "2026-11-10", High: 5, Low: -1, Code: 61}}
 		return f
 	}
 	local := time.Date(2026, 11, 9, 21, 15, 0, 0, time.UTC)
@@ -437,7 +438,7 @@ func TestTodayWithoutTheAir(t *testing.T) {
 	}
 	tf = newTodayFixture(t, true)
 	svc := tf.deps.MCP.(fakeMCPService)
-	delete(svc.Available, airQualityTool)
+	delete(svc.Available, weather.AirQualityTool)
 	if got := tf.get(t); got.Air != nil || got.Weather == nil {
 		t.Fatalf("no air tool: air %+v, weather %+v", got.Air, got.Weather)
 	}
@@ -471,32 +472,10 @@ func TestTodayAirFromAnotherServer(t *testing.T) {
 	}
 }
 
-func TestAirLevels(t *testing.T) {
-	for aqi, want := range map[int]string{0: "good", 20: "good", 21: "fair", 40: "fair", 55: "moderate", 80: "poor",
-		81: "veryPoor", 100: "veryPoor", 101: "extremelyPoor"} {
-		if got := aqiLevel(aqi); got != want {
-			t.Errorf("aqi %d = %s, want %s", aqi, got, want)
-		}
-	}
-	for _, tc := range []struct {
-		kind  string
-		value float64
-		want  string
-	}{
-		{"birch", 0.4, ""}, {"birch", 1, "low"}, {"birch", 10.4, "low"}, {"birch", 11, "moderate"},
-		{"birch", 299, "high"}, {"birch", 300, "veryHigh"}, {"grass", 150, "veryHigh"}, {"grass", 49, "moderate"},
-		{"alder", 250, "veryHigh"}, {"mugwort", 6, "moderate"}, {"ragweed", 40, "veryHigh"}, {"olive", 500, ""},
-	} {
-		if got := pollenLevel(tc.kind, tc.value); got != tc.want {
-			t.Errorf("%s %v = %q, want %q", tc.kind, tc.value, got, tc.want)
-		}
-	}
-}
-
 // A forecast whose days do not name tomorrow has no tomorrow: never today's
 // numbers under tomorrow's name.
 func TestTomorrowNeedsItsOwnDay(t *testing.T) {
-	var f forecast
+	var f weather.Forecast
 	if err := json.Unmarshal([]byte(todayForecastJSON()), &f); err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +500,7 @@ func TestSunOnAcrossAClockChange(t *testing.T) {
 // The contract does not promise the forecast starts now: the current hour is
 // looked up, and a forecast that ended is none.
 func TestTodayForecastFindsTheCurrentHour(t *testing.T) {
-	var f forecast
+	var f weather.Forecast
 	if err := json.Unmarshal([]byte(todayForecastJSON()), &f); err != nil {
 		t.Fatal(err)
 	}
@@ -556,14 +535,14 @@ func TestTodayWithoutTheWeather(t *testing.T) {
 
 func TestTodayForecastWarnings(t *testing.T) {
 	now := time.Date(2026, 11, 9, 8, 30, 0, 0, time.UTC)
-	mk := func(codes []int, temps []float64, chance int) forecast {
-		var f forecast
+	mk := func(codes []int, temps []float64, chance int) weather.Forecast {
+		var f weather.Forecast
 		for i := range codes {
 			c := chance
-			f.Hourly = append(f.Hourly, forecastHour{Time: time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"),
+			f.Hourly = append(f.Hourly, weather.Hour{Time: time.Date(2026, 11, 9, 8+i, 0, 0, 0, time.UTC).Format("2006-01-02T15:04"),
 				Temperature: temps[i], Code: codes[i], PrecipitationProbability: &c})
 		}
-		f.Daily = append(f.Daily, forecastDay{Date: "2026-11-08", High: 1, Low: -2, Code: 3})
+		f.Daily = append(f.Daily, weather.Day{Date: "2026-11-08", High: 1, Low: -2, Code: 3})
 		return f
 	}
 	if _, w := todayForecast(mk([]int{3, 3, 71}, []float64{2, 1, 0}, 80), now); w == nil || w.Kind != "snow" || w.From != "10:00" {

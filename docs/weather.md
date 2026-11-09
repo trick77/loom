@@ -6,7 +6,7 @@ Open-Meteo; an `mcp.json` entry named `weather` replaces the sidecar with any se
 keeps the policy, never the provider: the start page (`GET /api/today`) asks `forecast` for the user's place, which
 `geocode` found from the place their memory names; in a chat turn the tools are offered on weather questions only (classifier
 category `weather`, kept by an `mcp.json` override that sets no categories of its own). The forecast carries no
-"now": a reader takes it from the hourly values.
+"now": a reader takes it from the hourly values. When to go out for a run or a ride is loom's own (Outdoor windows).
 
 ## Tools
 
@@ -19,7 +19,7 @@ default 2, today first). `daily` covers `days` days, `hourly` the first 3 of the
 {"latitude": 47.38, "longitude": 8.54, "timezone": "Europe/Zurich",
  "hourly": [{"time": "2026-11-09T09:00", "temperature": 6.2, "code": 3, "precipitationProbability": 10,
              "precipitation": 0.1, "windSpeed": 9, "windGusts": 21, "windDirection": 250,
-             "apparentTemperature": 3.8, "humidity": 87, "uvIndex": 0.4}],
+             "apparentTemperature": 3.8, "humidity": 87, "sunshineMinutes": 25}],
  "daily": [{"date": "2026-11-09", "high": 11.2, "low": 3.1, "code": 3, "precipitationProbability": 10,
             "precipitationSum": 0.3, "uvIndexMax": 1.6, "sunshineHours": 4.5, "windSpeedMax": 12.5,
             "windGustsMax": 31, "windDirection": 248}],
@@ -27,7 +27,9 @@ default 2, today first). `daily` covers `days` days, `hourly` the first 3 of the
 ```
 
 Temperatures °C, wind km/h, wind directions degrees (where it blows from; a day's is its dominant one), precipitation
-mm, probabilities and humidity %, times local to `timezone` without an offset, `code` a WMO weather interpretation code.
+mm, probabilities and humidity %, an hour's `sunshineMinutes` 0-60, times local to `timezone` without an offset, `code` a
+WMO weather interpretation code. The hours carry sunshine, not the UV index (a day still has `uvIndexMax`): the
+provider's 10 variables per request were all spent, and the outdoor windows need the sun hour by hour.
 Only `time`/`date`, `temperature`/`high`/`low` and `code` are always there: a reader shows what it gets and leaves out
 the rest. A day's `high`/`low` take in its hours' temperatures (the two parts are fetched apart). When the days cannot
 be had, `daily` is empty and the hours still answer. `attribution` is the credit the data's licence requires next to the data; the result also cites it as a
@@ -57,6 +59,27 @@ defined on). Pollen kinds: `alder`, `birch`, `grass`, `mugwort`, `olive`, `ragwe
 ```
 
 loom classes the pollen itself (MeteoSwiss load classes; olive has none and is not shown).
+
+## Outdoor windows
+
+"When can I go for a run / a ride (today, tomorrow, in Luzern)?" is loom's own tool `outdoor_windows`
+(`internal/weather/windows.go`), offered on weather, training and health turns while `forecast` is there, to accounts
+the weather server serves; its calls carry the user like any MCP call. A model
+reading two days of hours proposed times after dark and misread the rain, so loom ranks and the model only words it.
+It plans where the user is (the start page's place) or at a place it looks up with `geocode`, in that place's zone,
+from the same `forecast` (2 days) and `air_quality` calls as the start page: the sidecar's cache, no extra provider call.
+The sun is `internal/sun`.
+
+- A window lies wholly in daylight: never before sunrise, past sunset or already begun. Starts: the earliest (now,
+  on a quarter hour), each full hour, the latest that still ends at sunset. Polar night: none; polar day: all day.
+- An hour is wet from code 51 (drizzle and worse), a 50 % chance or 0.2 mm. Dry windows only, when there are any;
+  else the two driest.
+- Then sunnier (in quarters of the window; without `sunshineMinutes` the code stands in; an hour already past the
+  band's top draws nothing, or a July noon would beat a mild morning), then nearer the feels-like band (run
+  12-20 °C, ride 15-24 °C) and gusts below 40 (run) / 30 km/h (ride, weighed double), then earlier.
+- A run is 60 minutes, a ride 120 by default. The air is a note on the best window (index from moderate, pollen
+  from a moderate load), never a rank: pollen is a day's mean, it cannot tell one hour from another.
+- The forecast's (and the noted air's) `attribution` sources are cited like an MCP result's.
 
 ## Caching
 

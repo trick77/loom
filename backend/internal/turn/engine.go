@@ -29,6 +29,9 @@ type Engine struct {
 	memory                    Memory
 	// schedules runs the schedule tools; nil keeps them off.
 	schedules ScheduleTools
+	// places is where a user is, for outdoor_windows; nil plans only where
+	// the user names.
+	places Places
 	// reasoningTitleHold and reasoningTitleStartBytes tune the reasoning title
 	// timing; zero means the default (see titleHold, titleStartBytes).
 	reasoningTitleHold       time.Duration
@@ -69,6 +72,9 @@ type Config struct {
 	Memory Memory
 	// Schedules runs the schedule tools; nil keeps them off.
 	Schedules ScheduleTools
+	// Places is where a user is today; nil plans outdoor windows only where
+	// the user names.
+	Places Places
 	// ReasoningTitleHold bounds how long the first answer word waits for its
 	// round's reasoning title; ReasoningTitleStartBytes is how much reasoning
 	// must have streamed before that title generates. Zero keeps the defaults;
@@ -100,6 +106,7 @@ func New(c Config) *Engine {
 		projectSummaryTokenBudget:  c.ProjectSummaryTokenBudget,
 		memory:                     memory,
 		schedules:                  c.Schedules,
+		places:                     c.Places,
 		reasoningTitleHold:         c.ReasoningTitleHold,
 		reasoningTitleStartBytes:   c.ReasoningTitleStartBytes,
 		turnGateTimeout:            c.TurnGateTimeout,

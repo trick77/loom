@@ -26,7 +26,7 @@ func TestExecuteBuiltInToolReportsInvalidArgumentsForEveryArgTool(t *testing.T) 
 		}
 		call := llm.ToolCall{ID: "c1", Type: "function", Function: llm.ToolCallFunction{Name: name, Arguments: "{not json"}}
 		run := offeredRun(s, chat.Thread{ID: "t1"}, toolGate{category: "general"})
-		output, resp, handled := run.executeBuiltInTool(context.Background(), call)
+		output, resp, handled := run.executeBuiltInTool(context.Background(), call, nil)
 		if !handled || resp != nil {
 			t.Fatalf("%s: handled=%v resp=%v, want handled with no artifact", name, handled, resp)
 		}
@@ -83,20 +83,20 @@ func TestExecuteBuiltInToolFollowsWhatWasOffered(t *testing.T) {
 
 	t.Run("MCP tool of a gated-off built-in's name reaches MCP", func(t *testing.T) {
 		e := newEngine(ProjectThreadsToolName)
-		if _, _, handled := offeredRun(e, outside, gate).executeBuiltInTool(context.Background(), call(ProjectThreadsToolName)); handled {
+		if _, _, handled := offeredRun(e, outside, gate).executeBuiltInTool(context.Background(), call(ProjectThreadsToolName), nil); handled {
 			t.Fatal("handled, want the call left to MCP")
 		}
 	})
 	t.Run("built-in wins over an MCP tool of its name", func(t *testing.T) {
 		e := newEngine(ProjectThreadsToolName)
-		if _, _, handled := offeredRun(e, inProject, gate).executeBuiltInTool(context.Background(), call(ProjectThreadsToolName)); !handled {
+		if _, _, handled := offeredRun(e, inProject, gate).executeBuiltInTool(context.Background(), call(ProjectThreadsToolName), nil); !handled {
 			t.Fatal("not handled, want the built-in run")
 		}
 	})
 	t.Run("built-in never offered is not dispatched", func(t *testing.T) {
 		run := offeredRun(newEngine(), outside, gate)
 		for _, name := range []string{sandboxToolName, ProjectThreadsToolName, "docgen__create_text_file"} {
-			if _, _, handled := run.executeBuiltInTool(context.Background(), call(name)); handled {
+			if _, _, handled := run.executeBuiltInTool(context.Background(), call(name), nil); handled {
 				t.Errorf("%s: handled, want it left to MCP", name)
 			}
 		}

@@ -67,7 +67,8 @@ type Hour struct {
 	WindDirection            *int     `json:"windDirection,omitempty"`
 	ApparentTemperature      *float64 `json:"apparentTemperature,omitempty"`
 	Humidity                 *int     `json:"humidity,omitempty"`
-	UVIndex                  *float64 `json:"uvIndex,omitempty"`
+	// SunshineMinutes is the hour's sunshine, 0-60.
+	SunshineMinutes *int `json:"sunshineMinutes,omitempty"`
 }
 
 type Day struct {
@@ -202,7 +203,7 @@ func (w *weather) mcpServer(version string) mcpserver.Server {
 		Name:  forecastTool,
 		Title: "Weather forecast",
 		Description: fmt.Sprintf("The weather forecast for a point, as JSON: hourly temperature and feels-like (°C), WMO weather code, "+
-			"chance (%%) and amount (mm) of precipitation, wind and gusts (km/h) with direction, humidity (%%) and UV index for the "+
+			"chance (%%) and amount (mm) of precipitation, wind and gusts (km/h) with direction, humidity (%%) and minutes of sunshine for the "+
 			"first %d days at most; each day's high, low, code, chance and sum of precipitation, UV index, sunshine hours and wind. "+
 			"Look the place up with %s first when you only have its name.", hourlyDays, geocodeTool),
 		Schema: mcpserver.ObjectSchema(map[string]any{

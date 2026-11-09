@@ -16,6 +16,7 @@ import (
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/location"
+	"github.com/trick77/loom/internal/weather"
 )
 
 // fakeLocationLLM reads a home from the first "Lives …" fact and a stay from
@@ -67,7 +68,7 @@ type geocoder struct {
 func (g *geocoder) call(_ context.Context, name string, args map[string]any) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if name != geocodeTool {
+	if name != weather.GeocodeTool {
 		return "", errors.New("unexpected tool " + name)
 	}
 	q, _ := args["query"].(string)
@@ -106,7 +107,7 @@ func newLocationFixture(t *testing.T) *locationFixture {
 		Usage:       stubUsageStore{},
 		LLM:         &fakeChatClient{},
 		Users:       fakeUserStore{user: testUser, ok: true},
-		MCP:         fakeMCPService{Available: map[string]bool{geocodeTool: true}, CallFunc: f.geo.call},
+		MCP:         fakeMCPService{Available: map[string]bool{weather.GeocodeTool: true}, CallFunc: f.geo.call},
 		Locations:   f.places,
 		LocationLLM: f.llm,
 	}
@@ -175,7 +176,7 @@ func TestResolveLocationOffOrFailing(t *testing.T) {
 	if err := f.s.resolveLocation(ctx, testUser); err != nil || f.llm.calls != 0 {
 		t.Fatalf("off: calls=%d, %v", f.llm.calls, err)
 	}
-	f.s.mcp = fakeMCPService{Available: map[string]bool{geocodeTool: true}, CallFunc: f.geo.call}
+	f.s.mcp = fakeMCPService{Available: map[string]bool{weather.GeocodeTool: true}, CallFunc: f.geo.call}
 	// A failed read keeps nothing, so the next sweep tries again.
 	f.llm.err = errors.New("gate down")
 	if err := f.s.resolveLocation(ctx, testUser); err == nil {
@@ -324,12 +325,7 @@ func TestSetLocation(t *testing.T) {
 	}
 }
 
-func TestGeocodeLanguageAndToday(t *testing.T) {
-	for lang, want := range map[string]string{"de": "de", "de-CH": "de", "": "en", "German": "en"} {
-		if got := geocodeLanguage(auth.User{ResponseLanguage: lang}); got != want {
-			t.Errorf("geocodeLanguage(%q) = %q, want %q", lang, got, want)
-		}
-	}
+func TestUserToday(t *testing.T) {
 	late := time.Date(2026, 11, 11, 23, 30, 0, 0, time.UTC)
 	if got := userToday(auth.User{Timezone: "Europe/Zurich"}, late); got != "2026-11-12" {
 		t.Errorf("Zurich after 23:30 UTC = %s", got)

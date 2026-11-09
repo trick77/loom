@@ -32,10 +32,12 @@ var attribution = Attribution{Text: "Weather data by Open-Meteo.com", URL: "http
 const maxProviderBody = 1 << 20
 
 // Each request asks at most 10 variables: past that the provider counts one
-// request as more than one call against the free tier's daily limit.
+// request as more than one call against the free tier's daily limit. The
+// hours carry sunshine, not the UV index: loom picks sunny hours for going
+// out, and the days still carry the UV peak.
 const (
 	hourlyVariables = "temperature_2m,weather_code,precipitation_probability,precipitation,wind_speed_10m," +
-		"wind_gusts_10m,wind_direction_10m,apparent_temperature,relative_humidity_2m,uv_index"
+		"wind_gusts_10m,wind_direction_10m,apparent_temperature,relative_humidity_2m,sunshine_duration"
 	dailyVariables = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max," +
 		"precipitation_sum,uv_index_max,sunshine_duration,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant"
 )
@@ -85,7 +87,7 @@ func (p openMeteo) hourly(ctx context.Context, lat, lon float64, timezone string
 			Direction     []*float64 `json:"wind_direction_10m"`
 			Apparent      []*float64 `json:"apparent_temperature"`
 			Humidity      []*float64 `json:"relative_humidity_2m"`
-			UV            []*float64 `json:"uv_index"`
+			Sunshine      []*float64 `json:"sunshine_duration"`
 		} `json:"hourly"`
 	}
 	if err := p.get(ctx, p.forecastURL+"/v1/forecast?"+q.Encode(), &raw); err != nil {
@@ -101,7 +103,7 @@ func (p openMeteo) hourly(ctx context.Context, lat, lon float64, timezone string
 		out.Hourly = append(out.Hourly, Hour{Time: t, Temperature: *temp, Code: *code,
 			PrecipitationProbability: at(h.Probability, i), Precipitation: at(h.Precipitation, i),
 			WindSpeed: at(h.Wind, i), WindGusts: at(h.Gusts, i), WindDirection: whole(at(h.Direction, i)),
-			ApparentTemperature: at(h.Apparent, i), Humidity: whole(at(h.Humidity, i)), UVIndex: at(h.UV, i)})
+			ApparentTemperature: at(h.Apparent, i), Humidity: whole(at(h.Humidity, i)), SunshineMinutes: minutes(at(h.Sunshine, i))})
 	}
 	if len(out.Hourly) == 0 {
 		return forecastPart{}, fmt.Errorf("weather provider sent no forecast")
@@ -239,6 +241,15 @@ func hours(seconds *float64) *float64 {
 	}
 	h := math.Round(*seconds/360) / 10
 	return &h
+}
+
+// minutes turns the provider's sunshine seconds of an hour into minutes.
+func minutes(seconds *float64) *int {
+	if seconds == nil {
+		return nil
+	}
+	m := int(math.Round(*seconds / 60))
+	return &m
 }
 
 func (p openMeteo) geocode(ctx context.Context, query, country, language string) ([]Place, error) {
