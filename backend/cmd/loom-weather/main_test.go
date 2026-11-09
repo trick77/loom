@@ -27,7 +27,8 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.addr != defaultAddr || cfg.forecastURL != defaultForecastURL || cfg.geocodingURL != defaultGeocodingURL {
+	if cfg.addr != defaultAddr || cfg.forecastURL != defaultForecastURL || cfg.geocodingURL != defaultGeocodingURL ||
+		cfg.airQualityURL != defaultAirQualityURL {
 		t.Fatalf("defaults %+v", cfg)
 	}
 	// No token: the sidecar starts and refuses every tool call.
@@ -46,6 +47,7 @@ func TestLoadConfig(t *testing.T) {
 		"short token":       {"WEATHER_TOKEN": "short"},
 		"bad forecast url":  {"WEATHER_TOKEN": testToken, "WEATHER_FORECAST_URL": "api.example"},
 		"bad geocoding url": {"WEATHER_TOKEN": testToken, "WEATHER_GEOCODING_URL": "ftp://x"},
+		"bad air url":       {"WEATHER_TOKEN": testToken, "WEATHER_AIR_QUALITY_URL": "x"},
 	} {
 		if _, err := loadConfig(vars(values)); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -62,19 +64,68 @@ func TestServerNeedsTheToken(t *testing.T) {
 	}
 }
 
-const forecastReply = `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich","utc_offset_seconds":3600,
-"hourly":{"time":["2026-11-09T08:00","2026-11-09T09:00","2026-11-09T10:00"],
- "temperature_2m":[5.1,6.2,null],"weather_code":[3,2,1],"precipitation_probability":[10,null,0],"wind_speed_10m":[8.5,9,10]},
-"daily":{"time":["2026-11-09","2026-11-10"],"temperature_2m_max":[11.2,9],"temperature_2m_min":[3.1,null],
- "weather_code":[3,61],"precipitation_probability_max":[10,80]}}`
+const hourlyReply = `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich","utc_offset_seconds":3600,
+"hourly":{"time":["2026-11-09T08:00","2026-11-09T09:00","2026-11-09T10:00","2026-11-10T08:00","2026-11-11T08:00"],
+ "temperature_2m":[5.1,6.2,null,4,3],"weather_code":[3,2,1,61,0],"precipitation_probability":[10,null,0,80,0],
+ "precipitation":[0,null,0,1.2,0],"wind_speed_10m":[8.5,9,10,20,5],"wind_gusts_10m":[20.1,null,22,45,12],
+ "wind_direction_10m":[250,251,null,270,90],"apparent_temperature":[2.4,null,4,0.5,1],
+ "relative_humidity_2m":[87,null,80,95,70],"uv_index":[0.4,null,1.5,0.2,0.9]}}`
+
+// dailyReply starts a day early, as a reply kept over midnight does.
+const dailyReply = `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich","utc_offset_seconds":3600,
+"daily":{"time":["2026-11-08","2026-11-09","2026-11-10","2026-11-11","2026-11-12"],
+ "temperature_2m_max":[10,11.2,9,8,7],"temperature_2m_min":[2,3.1,null,1,0],"weather_code":[1,3,61,2,0],
+ "precipitation_probability_max":[0,10,80,null,5],"precipitation_sum":[0,0.3,null,0,0],
+ "uv_index_max":[1,1.6,null,2,2],"sunshine_duration":[3600,16200,null,0,25000],
+ "wind_speed_10m_max":[10,12.5,null,8,6],"wind_gusts_10m_max":[25,31,null,20,15],
+ "wind_direction_10m_dominant":[200,248,null,90,100]}}`
+
+// airReply is two days of air from midnight in Zurich: birch the first day
+// only, grass every other hour, no alder at all.
+func airReply() string {
+	var times, aqi, birch, grass, nulls []string
+	for i := range 48 {
+		times = append(times, fmt.Sprintf(`"2026-11-%02dT%02d:00"`, 9+i/24, i%24))
+		aqi = append(aqi, fmt.Sprint(10+i))
+		nulls = append(nulls, "null")
+		b, g := "null", "0"
+		if i < 24 {
+			b = "20"
+		}
+		if i%2 == 1 {
+			g = "10"
+		}
+		birch, grass = append(birch, b), append(grass, g)
+	}
+	j := func(v []string) string { return "[" + strings.Join(v, ",") + "]" }
+	return `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich","utc_offset_seconds":3600,"hourly":{"time":` + j(times) +
+		`,"european_aqi":` + j(aqi) + `,"alder_pollen":` + j(nulls) + `,"birch_pollen":` + j(birch) +
+		`,"grass_pollen":` + j(grass) + `,"mugwort_pollen":` + j(nulls) + `,"olive_pollen":` + j(nulls) +
+		`,"ragweed_pollen":` + j(nulls) + `}}`
+}
 
 // fakeProvider answers the forecast and geocoding paths, counts the calls
 // and can be slowed or failed.
 type fakeProvider struct {
-	forecasts, lookups atomic.Int32
-	status             int
-	gate               chan struct{}
-	query              string
+	hourly, daily, air, lookups atomic.Int32
+	status                      int
+	// dailyStatus fails the days alone.
+	dailyStatus int
+	gate        chan struct{}
+	mu          sync.Mutex
+	queries     []string
+}
+
+// query is the provider's last query whose parameters hold part.
+func (f *fakeProvider) query(part string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := len(f.queries) - 1; i >= 0; i-- {
+		if strings.Contains(f.queries[i], part) {
+			return f.queries[i]
+		}
+	}
+	return ""
 }
 
 func (f *fakeProvider) server(t *testing.T) *httptest.Server {
@@ -87,14 +138,23 @@ func (f *fakeProvider) server(t *testing.T) *httptest.Server {
 			http.Error(w, `{"error":true,"reason":"nope"}`, f.status)
 			return
 		}
-		switch r.URL.Path {
-		case "/v1/forecast":
-			f.forecasts.Add(1)
-			f.query = r.URL.RawQuery
-			_, _ = w.Write([]byte(forecastReply))
-		case "/v1/search":
+		f.mu.Lock()
+		f.queries = append(f.queries, r.URL.RawQuery)
+		f.mu.Unlock()
+		switch {
+		case r.URL.Path == "/v1/forecast" && r.URL.Query().Has("hourly"):
+			f.hourly.Add(1)
+			_, _ = w.Write([]byte(hourlyReply))
+		case r.URL.Path == "/v1/forecast" && r.URL.Query().Has("daily") && f.dailyStatus != 0:
+			http.Error(w, `{"error":true,"reason":"too many"}`, f.dailyStatus)
+		case r.URL.Path == "/v1/forecast" && r.URL.Query().Has("daily"):
+			f.daily.Add(1)
+			_, _ = w.Write([]byte(dailyReply))
+		case r.URL.Path == "/v1/air-quality":
+			f.air.Add(1)
+			_, _ = w.Write([]byte(airReply()))
+		case r.URL.Path == "/v1/search":
 			f.lookups.Add(1)
-			f.query = r.URL.RawQuery
 			_, _ = w.Write([]byte(`{"results":[{"name":"Baden","latitude":47.47,"longitude":8.3,"timezone":"Europe/Zurich","country":"Schweiz","country_code":"CH","admin1":"Aargau"}]}`))
 		default:
 			http.NotFound(w, r)
@@ -107,7 +167,7 @@ func (f *fakeProvider) server(t *testing.T) *httptest.Server {
 // loomService is loom's own MCP client on a sidecar in front of the fake.
 func loomService(t *testing.T, provider string, now func() time.Time) *mcp.Service {
 	t.Helper()
-	cfg := config{token: testToken, forecastURL: provider, geocodingURL: provider}
+	cfg := config{token: testToken, forecastURL: provider, geocodingURL: provider, airQualityURL: provider}
 	srv := httptest.NewServer(newServerAt(cfg, http.DefaultClient, "test", now))
 	t.Cleanup(srv.Close)
 	svc, err := mcp.NewServiceFromConfigs(context.Background(), mcp.Config{}, mcp.Config{Servers: map[string]mcp.ServerConfig{
@@ -122,7 +182,77 @@ func loomService(t *testing.T, provider string, now func() time.Time) *mcp.Servi
 var (
 	forecastName = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool)
 	geocodeName  = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherGeocodeTool)
+	airName      = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherAirQualityTool)
 )
+
+func TestAirQuality(t *testing.T) {
+	fake := &fakeProvider{}
+	// 08:30 in Zurich.
+	clock := time.Date(2026, 11, 9, 7, 30, 0, 0, time.UTC)
+	var mu sync.Mutex
+	now := func() time.Time { mu.Lock(); defer mu.Unlock(); return clock }
+	svc := loomService(t, fake.server(t).URL, now)
+	args := map[string]any{"latitude": 47.377, "longitude": 8.542, "timezone": "Europe/Zurich"}
+	res, err := svc.CallToolResult(context.Background(), airName, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got AirQuality
+	if err := json.Unmarshal([]byte(res.Text), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, res.Text)
+	}
+	// The hours from the current one, a day of them.
+	if len(got.Hourly) != 24 || got.Hourly[0].Time != "2026-11-09T08:00" || *got.Hourly[0].AQI != 18 {
+		t.Fatalf("hours = %+v", got.Hourly)
+	}
+	// Two days by default; pollen as each day's mean, a kind without values
+	// (or a day without any) left out.
+	if len(got.Daily) != 2 {
+		t.Fatalf("days = %+v", got.Daily)
+	}
+	d0, d1 := got.Daily[0], got.Daily[1]
+	if d0.Date != "2026-11-09" || *d0.AQIMax != 33 || len(d0.Pollen) != 2 || d0.Pollen["birch"] != 20 || d0.Pollen["grass"] != 5 {
+		t.Fatalf("first day = %+v", d0)
+	}
+	if d1.Date != "2026-11-10" || *d1.AQIMax != 57 || len(d1.Pollen) != 1 || d1.Pollen["grass"] != 5 {
+		t.Fatalf("second day = %+v", d1)
+	}
+	if strings.Contains(res.Text, "alder") || got.Attribution.Text == "" || len(res.Sources) != 1 ||
+		!strings.Contains(got.Attribution.Text, "CAMS") {
+		t.Fatalf("answer = %s, sources %+v", res.Text, res.Sources)
+	}
+	query := fake.query("european_aqi")
+	for _, part := range []string{"latitude=47.377", "forecast_days=5", "timezone=Europe%2FZurich", "birch_pollen"} {
+		if !strings.Contains(query, part) {
+			t.Fatalf("provider query %q lacks %q", query, part)
+		}
+	}
+	// Kept until the next six-hour mark (UTC): the models behind it run once
+	// or twice a day.
+	for _, step := range []struct {
+		to   time.Time
+		want int32
+	}{
+		{time.Date(2026, 11, 9, 11, 59, 0, 0, time.UTC), 1},
+		{time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC), 2},
+	} {
+		mu.Lock()
+		clock = step.to
+		mu.Unlock()
+		if _, err := svc.CallTool(context.Background(), airName, args); err != nil || fake.air.Load() != step.want {
+			t.Fatalf("at %s: %d calls, %v; want %d", step.to.Format("15:04"), fake.air.Load(), err, step.want)
+		}
+	}
+	for name, a := range map[string]map[string]any{
+		"days":     {"latitude": 1, "longitude": 2, "days": 5},
+		"no point": {"latitude": 1},
+		"timezone": {"latitude": 1, "longitude": 2, "timezone": "../x"},
+	} {
+		if _, err := svc.CallTool(context.Background(), airName, a); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
 
 func TestForecast(t *testing.T) {
 	fake := &fakeProvider{}
@@ -133,7 +263,8 @@ func TestForecast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, firstQuery := res.Text, fake.query
+	text := res.Text
+	hourlyQuery, dailyQuery := fake.query("hourly="), fake.query("daily=")
 	var got Forecast
 	if err := json.Unmarshal([]byte(text), &got); err != nil {
 		t.Fatalf("not JSON: %v\n%s", err, text)
@@ -152,30 +283,119 @@ func TestForecast(t *testing.T) {
 	if err != nil || strings.Contains(text2, "2026-11-09T08:00") || !strings.Contains(text2, "2026-11-09T09:00") {
 		t.Fatalf("an hour later: %s, %v", text2, err)
 	}
-	// An hour or day missing a value it cannot do without is left out; a
-	// missing probability stays missing, never 0.
-	if got.Timezone != "Europe/Zurich" || len(got.Hourly) != 2 || len(got.Daily) != 1 {
+	// Two days by default: the hours of today and tomorrow, an hour or day
+	// missing a value it cannot do without left out, a day before today's
+	// dropped; a missing value stays missing, never 0.
+	if got.Timezone != "Europe/Zurich" || len(got.Hourly) != 3 || len(got.Daily) != 1 {
 		t.Fatalf("forecast = %+v", got)
 	}
 	h := got.Hourly[0]
-	if h.Time != "2026-11-09T08:00" || h.Temperature != 5.1 || h.Code != 3 || h.PrecipitationProbability == nil ||
-		*h.PrecipitationProbability != 10 || h.WindSpeed == nil || *h.WindSpeed != 8.5 {
+	if h.Time != "2026-11-09T08:00" || h.Temperature != 5.1 || h.Code != 3 || *h.PrecipitationProbability != 10 ||
+		*h.WindSpeed != 8.5 || *h.Precipitation != 0 || *h.WindGusts != 20.1 || *h.WindDirection != 250 ||
+		*h.ApparentTemperature != 2.4 || *h.Humidity != 87 || *h.UVIndex != 0.4 {
 		t.Fatalf("first hour = %+v", h)
 	}
-	if got.Hourly[1].PrecipitationProbability != nil || !strings.Contains(text, `"code":2,"windSpeed":9}`) {
-		t.Fatalf("an unknown probability was sent: %s", text)
+	if !strings.Contains(text, `{"time":"2026-11-09T09:00","temperature":6.2,"code":2,"windSpeed":9,"windDirection":251}`) {
+		t.Fatalf("an unknown value was sent: %s", text)
 	}
 	d := got.Daily[0]
-	if d.Date != "2026-11-09" || d.High != 11.2 || d.Low != 3.1 || d.Code != 3 || d.PrecipitationProbability == nil || *d.PrecipitationProbability != 10 {
+	if d.Date != "2026-11-09" || d.High != 11.2 || d.Low != 3.1 || d.Code != 3 || *d.PrecipitationProbability != 10 ||
+		*d.PrecipitationSum != 0.3 || *d.UVIndexMax != 1.6 || *d.SunshineHours != 4.5 || *d.WindSpeedMax != 12.5 ||
+		*d.WindGustsMax != 31 || *d.WindDirection != 248 {
 		t.Fatalf("days = %+v", got.Daily)
 	}
 	if got.Attribution.Text == "" || !strings.HasPrefix(got.Attribution.URL, "https://") {
 		t.Fatalf("attribution = %+v", got.Attribution)
 	}
-	for _, part := range []string{"latitude=47.377", "longitude=8.542", "forecast_days=2", "timezone=Europe%2FZurich"} {
-		if !strings.Contains(firstQuery, part) {
-			t.Fatalf("provider query %q lacks %q", firstQuery, part)
+	// The hours are fetched for three days, the days for seven, whatever
+	// the call asked: one fetch of each serves every call for the place.
+	for query, parts := range map[string][]string{
+		hourlyQuery: {"latitude=47.377", "longitude=8.542", "forecast_days=4", "timezone=Europe%2FZurich"},
+		dailyQuery:  {"latitude=47.377", "longitude=8.542", "forecast_days=8", "timezone=Europe%2FZurich"},
+	} {
+		for _, part := range parts {
+			if !strings.Contains(query, part) {
+				t.Fatalf("provider query %q lacks %q", query, part)
+			}
 		}
+	}
+	if strings.Contains(hourlyQuery, "daily=") || strings.Contains(dailyQuery, "hourly=") {
+		t.Fatalf("hours and days asked together: %q, %q", hourlyQuery, dailyQuery)
+	}
+}
+
+// A part kept over the clock change reads the place's clock from its zone,
+// not from the offset it was fetched with; a zone this host does not know
+// falls back to that offset.
+func TestPlaceClockFollowsTheZone(t *testing.T) {
+	// 01:30 UTC on 29 March: Zurich went from +1 to +2 at 01:00 UTC.
+	now := time.Date(2026, 3, 29, 1, 30, 0, 0, time.UTC)
+	for range 2 { // the second from the kept zone
+		if local := placeClock(now, "Europe/Zurich", 3600); hourStamp(local) != "2026-03-29T03:00" || dateAfter(local, 2) != "2026-03-31" {
+			t.Fatalf("zone: %s", local)
+		}
+	}
+	if local := placeClock(now, "Nowhere/Unknown", 3600); hourStamp(local) != "2026-03-29T02:00" {
+		t.Fatalf("offset fallback: %s", local)
+	}
+}
+
+// The days are kept longer than the hours: a day's range takes in its kept
+// hours, so the temperature now never falls outside it.
+func TestForecastDayRangeTakesInItsHours(t *testing.T) {
+	hourly := forecastPart{Timezone: "Europe/Zurich", Hourly: []Hour{
+		{Time: "2026-11-09T07:00", Temperature: 2}, {Time: "2026-11-09T14:00", Temperature: 13.5},
+		{Time: "2026-11-10T08:00", Temperature: 5},
+	}}
+	daily := forecastPart{Daily: []Day{{Date: "2026-11-09", High: 11, Low: 3}, {Date: "2026-11-10", High: 9, Low: 1}}}
+	got := forecastOf(hourly, daily, 2, time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC))
+	if d := got.Daily; len(d) != 2 || d[0].High != 13.5 || d[0].Low != 2 || d[1].High != 9 || d[1].Low != 1 {
+		t.Fatalf("days = %+v", got.Daily)
+	}
+}
+
+// Days the provider will not give cost the days, never the hours.
+func TestForecastWithoutTheDays(t *testing.T) {
+	fake := &fakeProvider{dailyStatus: http.StatusTooManyRequests}
+	at := func() time.Time { return time.Date(2026, 11, 9, 7, 30, 0, 0, time.UTC) }
+	svc := loomService(t, fake.server(t).URL, at)
+	args := map[string]any{"latitude": 47.377, "longitude": 8.542}
+	text, err := svc.CallTool(context.Background(), forecastName, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Forecast
+	if err := json.Unmarshal([]byte(text), &got); err != nil || len(got.Hourly) == 0 || got.Daily == nil || len(got.Daily) != 0 {
+		t.Fatalf("forecast = %s, %v", text, err)
+	}
+	// Not kept: the next call asks for the days again.
+	fake.dailyStatus = 0
+	if _, err := svc.CallTool(context.Background(), forecastName, args); err != nil || fake.daily.Load() != 1 {
+		t.Fatalf("days asked again: %d answered, %v", fake.daily.Load(), err)
+	}
+}
+
+// days bounds the answer: the hours cover at most the first three days, the
+// days all asked for that the provider has.
+func TestForecastDays(t *testing.T) {
+	fake := &fakeProvider{}
+	at := func() time.Time { return time.Date(2026, 11, 9, 7, 30, 0, 0, time.UTC) }
+	svc := loomService(t, fake.server(t).URL, at)
+	for days, want := range map[int][2]int{1: {2, 1}, 3: {4, 2}, 7: {4, 3}} {
+		text, err := svc.CallTool(context.Background(), forecastName, map[string]any{"latitude": 47.377, "longitude": 8.542, "days": days})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got Forecast
+		if err := json.Unmarshal([]byte(text), &got); err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Hourly) != want[0] || len(got.Daily) != want[1] {
+			t.Errorf("days %d: %d hours, %d days; want %v", days, len(got.Hourly), len(got.Daily), want)
+		}
+	}
+	if fake.hourly.Load() != 1 || fake.daily.Load() != 1 {
+		t.Fatalf("provider calls for 1, 3 and 7 days = %d hourly, %d daily; want one each", fake.hourly.Load(), fake.daily.Load())
 	}
 }
 
@@ -205,21 +425,32 @@ func TestForecastIsFetchedOncePerPlaceAndHour(t *testing.T) {
 	for err := range errs {
 		t.Fatal(err)
 	}
-	if n := fake.forecasts.Load(); n != 1 {
-		t.Fatalf("provider calls for 50 concurrent requests = %d, want 1", n)
+	if h, d := fake.hourly.Load(), fake.daily.Load(); h != 1 || d != 1 {
+		t.Fatalf("provider calls for 50 concurrent requests = %d hourly, %d daily; want 1 each", h, d)
 	}
 
-	mu.Lock()
-	clock = clock.Add(45 * time.Minute) // 08:59
-	mu.Unlock()
-	if _, err := svc.CallTool(context.Background(), forecastName, args); err != nil || fake.forecasts.Load() != 1 {
-		t.Fatalf("within the hour: calls = %d, %v", fake.forecasts.Load(), err)
-	}
-	mu.Lock()
-	clock = clock.Add(2 * time.Minute) // 09:01
-	mu.Unlock()
-	if _, err := svc.CallTool(context.Background(), forecastName, args); err != nil || fake.forecasts.Load() != 2 {
-		t.Fatalf("after the hour: calls = %d, %v", fake.forecasts.Load(), err)
+	// The hours are kept until the top of the hour, the days until the next
+	// three-hour mark (UTC): the models behind them run every three hours.
+	for _, step := range []struct {
+		to            string
+		hourly, daily int32
+	}{
+		{"08:59", 1, 1},
+		{"09:01", 2, 2}, // 09:00 is a three-hour mark
+		{"10:01", 3, 2},
+		{"11:59", 4, 2},
+		{"12:00", 5, 3},
+	} {
+		mu.Lock()
+		hm, _ := time.Parse("15:04", step.to)
+		clock = time.Date(2026, 11, 9, hm.Hour(), hm.Minute(), 0, 0, time.UTC)
+		mu.Unlock()
+		if _, err := svc.CallTool(context.Background(), forecastName, args); err != nil {
+			t.Fatal(err)
+		}
+		if h, d := fake.hourly.Load(), fake.daily.Load(); h != step.hourly || d != step.daily {
+			t.Fatalf("at %s: %d hourly, %d daily; want %d, %d", step.to, h, d, step.hourly, step.daily)
+		}
 	}
 }
 
@@ -238,9 +469,10 @@ func TestGeocode(t *testing.T) {
 	if got.Places[0] != (Place{Name: "Baden", Region: "Aargau", Country: "Schweiz", CountryCode: "CH", Latitude: 47.47, Longitude: 8.3, Timezone: "Europe/Zurich"}) {
 		t.Fatalf("place = %+v", got.Places[0])
 	}
+	query := fake.query("name=")
 	for _, part := range []string{"name=Baden", "countryCode=CH", "language=de", fmt.Sprintf("count=%d", maxPlaces)} {
-		if !strings.Contains(fake.query, part) {
-			t.Fatalf("provider query %q lacks %q", fake.query, part)
+		if !strings.Contains(query, part) {
+			t.Fatalf("provider query %q lacks %q", query, part)
 		}
 	}
 	// The same lookup is kept.
@@ -349,7 +581,8 @@ func TestCachePrunes(t *testing.T) {
 // loom addresses the contract by its own copy of the names: they must match
 // the server's.
 func TestContractNamesMatchLoom(t *testing.T) {
-	if mcp.WeatherServer != serverName || mcp.WeatherForecastTool != forecastTool || mcp.WeatherGeocodeTool != geocodeTool {
+	if mcp.WeatherServer != serverName || mcp.WeatherForecastTool != forecastTool || mcp.WeatherGeocodeTool != geocodeTool ||
+		mcp.WeatherAirQualityTool != airQualityTool {
 		t.Fatal("loom's weather contract names drifted from loom-weather's")
 	}
 }

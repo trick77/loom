@@ -8,26 +8,29 @@ import (
 )
 
 const (
-	defaultAddr         = ":8100"
-	defaultForecastURL  = "https://api.open-meteo.com"
-	defaultGeocodingURL = "https://geocoding-api.open-meteo.com"
+	defaultAddr          = ":8100"
+	defaultForecastURL   = "https://api.open-meteo.com"
+	defaultGeocodingURL  = "https://geocoding-api.open-meteo.com"
+	defaultAirQualityURL = "https://air-quality-api.open-meteo.com"
 )
 
 type config struct {
-	addr         string
-	token        string
-	forecastURL  string
-	geocodingURL string
+	addr          string
+	token         string
+	forecastURL   string
+	geocodingURL  string
+	airQualityURL string
 }
 
 // loadConfig reads WEATHER_* through kit's env reader: trimmed, empty is unset.
 func loadConfig(getenv func(string) string) (config, error) {
 	r := env.New(getenv)
 	cfg := config{
-		addr:         r.String("WEATHER_ADDR", defaultAddr),
-		token:        r.String("WEATHER_TOKEN", ""),
-		forecastURL:  r.String("WEATHER_FORECAST_URL", defaultForecastURL),
-		geocodingURL: r.String("WEATHER_GEOCODING_URL", defaultGeocodingURL),
+		addr:          r.String("WEATHER_ADDR", defaultAddr),
+		token:         r.String("WEATHER_TOKEN", ""),
+		forecastURL:   r.String("WEATHER_FORECAST_URL", defaultForecastURL),
+		geocodingURL:  r.String("WEATHER_GEOCODING_URL", defaultGeocodingURL),
+		airQualityURL: r.String("WEATHER_AIR_QUALITY_URL", defaultAirQualityURL),
 	}
 	// The provider's free tier is rate-limited per IP and whoever calls spends
 	// it, so every tool route needs the token. Without one the sidecar answers
@@ -36,7 +39,8 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if msg := sidecar.TokenProblem("WEATHER_TOKEN", cfg.token); cfg.token != "" && msg != "" {
 		r.Fail("%s", msg)
 	}
-	for name, raw := range map[string]string{"WEATHER_FORECAST_URL": cfg.forecastURL, "WEATHER_GEOCODING_URL": cfg.geocodingURL} {
+	for name, raw := range map[string]string{"WEATHER_FORECAST_URL": cfg.forecastURL, "WEATHER_GEOCODING_URL": cfg.geocodingURL,
+		"WEATHER_AIR_QUALITY_URL": cfg.airQualityURL} {
 		if u, err := url.Parse(raw); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			r.Fail("%s must be an absolute http(s) URL", name)
 		}

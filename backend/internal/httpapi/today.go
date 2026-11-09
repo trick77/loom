@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
@@ -17,8 +18,12 @@ import (
 	"github.com/trick77/ship/kit/httpx"
 )
 
-// forecastTool is the weather sidecar's forecast (docs/weather.md).
-var forecastTool = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool)
+// forecastTool and airQualityTool are the weather sidecar's (docs/weather.md);
+// the air is optional.
+var (
+	forecastTool   = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool)
+	airQualityTool = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherAirQualityTool)
+)
 
 const (
 	// forecastTimeout bounds the start page's forecast: the whole answer,
@@ -38,6 +43,16 @@ const (
 	eveningHour = 20
 	// tomorrowFrom and tomorrowTo bound tomorrow's hours shown and warned of.
 	tomorrowFrom, tomorrowTo = 6, 22
+	// rainHours is how many hours from now the rain card shows today.
+	rainHours = 12
+	// outlookDays is how many days after the shown one the outlook lists.
+	outlookDays = 5
+	// forecastDays is what the page asks the forecast for: today, tomorrow
+	// and the outlook after tomorrow, which in the evening is shown.
+	forecastDays = outlookDays + 2
+	// airNowHours is how far ahead "now" may take the air index from when
+	// the current hour has none.
+	airNowHours = 3
 )
 
 // The day the page shows.
@@ -54,6 +69,7 @@ type todayResponse struct {
 	AskLocation bool            `json:"askLocation"`
 	Sun         *todaySun       `json:"sun"`
 	Weather     *todayWeather   `json:"weather"`
+	Air         *todayAir       `json:"air"`
 	Warning     *todayWarning   `json:"warning"`
 	Runs        []todayRun      `json:"runs"`
 	// RefreshAt is when the day shown changes next: the page reloads then.
@@ -75,9 +91,41 @@ type todayWeather struct {
 	// Now is the weather this hour; nil when the page shows tomorrow.
 	Now *todayNow `json:"now"`
 	// Day is the shown day's high, low and weather.
-	Day         todayDay    `json:"day"`
-	Hours       []todayHour `json:"hours"`
-	Attribution attribution `json:"attribution"`
+	Day   todayDay    `json:"day"`
+	Hours []todayHour `json:"hours"`
+	// Details, Rain and Outlook are the tile's further cards, each nil when
+	// the forecast has no values for it.
+	Details     *todayDetails  `json:"details"`
+	Rain        []todayRain    `json:"rain"`
+	Outlook     []todayOutlook `json:"outlook"`
+	Attribution attribution    `json:"attribution"`
+}
+
+// todayDetails is the shown day in numbers: today the air and wind now,
+// tomorrow the wind at its strongest; both the day's UV, rain and sun.
+type todayDetails struct {
+	FeelsLike        *float64 `json:"feelsLike"`
+	Humidity         *int     `json:"humidity"`
+	Wind             *float64 `json:"wind"`
+	Gusts            *float64 `json:"gusts"`
+	WindDirection    *int     `json:"windDirection"`
+	UVMax            *float64 `json:"uvMax"`
+	PrecipitationSum *float64 `json:"precipitationSum"`
+	SunshineHours    *float64 `json:"sunshineHours"`
+}
+
+type todayRain struct {
+	Time          string   `json:"time"`
+	Precipitation *float64 `json:"precipitation"`
+	Probability   *int     `json:"probability"`
+}
+
+type todayOutlook struct {
+	Date                     string  `json:"date"`
+	High                     float64 `json:"high"`
+	Low                      float64 `json:"low"`
+	Code                     int     `json:"code"`
+	PrecipitationProbability *int    `json:"precipitationProbability"`
 }
 
 type todayNow struct {
@@ -97,6 +145,39 @@ type todayHour struct {
 	Temperature              float64 `json:"temperature"`
 	Code                     int     `json:"code"`
 	PrecipitationProbability *int    `json:"precipitationProbability"`
+}
+
+// todayAir is the air on the shown day: today the index now, tomorrow its
+// highest (Max), and the pollen worth a load class.
+type todayAir struct {
+	AQI   *int   `json:"aqi"`
+	Level string `json:"level"`
+	Max   bool   `json:"max"`
+	// Pollen is nil where the forecast has none at all (outside Europe, out
+	// of season), empty where it has some but none worth a class: "hardly
+	// any" must not stand for "unknown".
+	Pollen      []todayPollen `json:"pollen"`
+	Attribution attribution   `json:"attribution"`
+}
+
+type todayPollen struct {
+	Kind  string `json:"kind"`
+	Level string `json:"level"`
+}
+
+// airAnswer is the air_quality tool's answer, as far as the page reads it.
+// The index is read as a number: another server may send fractions.
+type airAnswer struct {
+	Hourly []struct {
+		Time string   `json:"time"`
+		AQI  *float64 `json:"aqi"`
+	} `json:"hourly"`
+	Daily []struct {
+		Date   string             `json:"date"`
+		AQIMax *float64           `json:"aqiMax"`
+		Pollen map[string]float64 `json:"pollen"`
+	} `json:"daily"`
+	Attribution attribution `json:"attribution"`
 }
 
 type attribution struct {
@@ -119,22 +200,40 @@ type todayRun struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// forecast is the weather sidecar's answer, as far as the start page reads it.
+// forecast is the weather sidecar's answer, as far as the start page reads it
+// (docs/weather.md): beyond time, temperature and code every value may be
+// missing.
 type forecast struct {
-	Hourly []struct {
-		Time                     string  `json:"time"`
-		Temperature              float64 `json:"temperature"`
-		Code                     int     `json:"code"`
-		PrecipitationProbability *int    `json:"precipitationProbability"`
-	} `json:"hourly"`
-	Daily []struct {
-		Date                     string  `json:"date"`
-		High                     float64 `json:"high"`
-		Low                      float64 `json:"low"`
-		Code                     int     `json:"code"`
-		PrecipitationProbability *int    `json:"precipitationProbability"`
-	} `json:"daily"`
-	Attribution attribution `json:"attribution"`
+	Hourly      []forecastHour `json:"hourly"`
+	Daily       []forecastDay  `json:"daily"`
+	Attribution attribution    `json:"attribution"`
+}
+
+type forecastHour struct {
+	Time                     string   `json:"time"`
+	Temperature              float64  `json:"temperature"`
+	Code                     int      `json:"code"`
+	PrecipitationProbability *int     `json:"precipitationProbability"`
+	Precipitation            *float64 `json:"precipitation"`
+	WindSpeed                *float64 `json:"windSpeed"`
+	WindGusts                *float64 `json:"windGusts"`
+	WindDirection            *int     `json:"windDirection"`
+	ApparentTemperature      *float64 `json:"apparentTemperature"`
+	Humidity                 *int     `json:"humidity"`
+}
+
+type forecastDay struct {
+	Date                     string   `json:"date"`
+	High                     float64  `json:"high"`
+	Low                      float64  `json:"low"`
+	Code                     int      `json:"code"`
+	PrecipitationProbability *int     `json:"precipitationProbability"`
+	PrecipitationSum         *float64 `json:"precipitationSum"`
+	UVIndexMax               *float64 `json:"uvIndexMax"`
+	SunshineHours            *float64 `json:"sunshineHours"`
+	WindSpeedMax             *float64 `json:"windSpeedMax"`
+	WindGustsMax             *float64 `json:"windGustsMax"`
+	WindDirection            *int     `json:"windDirection"`
 }
 
 // handleToday is the start page's day: the user's place, its weather and sun,
@@ -186,12 +285,31 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 	out.RefreshAt = &refreshAt
 	if p := out.Location; p != nil {
 		out.Sun = sunOn(now, shown, p, loc)
+		// Both wait together: the page waits on the slower, not the sum. The
+		// air shows on the weather's tile only: without the weather it is
+		// called off and left out.
+		airCtx, cancelAir := context.WithCancel(ctx)
+		var air *todayAir
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			if a, ok := s.airFor(airCtx, p, loc); ok {
+				air = airOn(a, local, shown, tomorrow)
+			}
+		})
 		if f, ok := s.forecastFor(ctx, p, loc); ok {
 			if tomorrow {
 				out.Weather, out.Warning = tomorrowForecast(f, local, shown)
 			} else {
 				out.Weather, out.Warning = todayForecast(f, local)
 			}
+		}
+		if out.Weather == nil {
+			cancelAir()
+		}
+		wg.Wait()
+		cancelAir()
+		if out.Weather != nil {
+			out.Air = air
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
@@ -292,7 +410,7 @@ func (s *server) forecastFor(ctx context.Context, p *location.Place, loc *time.L
 	ctx, cancel := context.WithTimeout(ctx, forecastTimeout)
 	defer cancel()
 	text, err := s.mcp.CallTool(ctx, forecastTool, map[string]any{
-		"latitude": p.Latitude, "longitude": p.Longitude, "timezone": loc.String(), "days": 2,
+		"latitude": p.Latitude, "longitude": p.Longitude, "timezone": loc.String(), "days": forecastDays,
 	})
 	if err != nil {
 		slog.Warn("forecast failed", "err", err)
@@ -306,13 +424,145 @@ func (s *server) forecastFor(ctx context.Context, p *location.Place, loc *time.L
 	return f, true
 }
 
+// airFor asks the weather sidecar for the air at the place; ok is false when
+// it cannot say or has no such tool.
+func (s *server) airFor(ctx context.Context, p *location.Place, loc *time.Location) (airAnswer, bool) {
+	if !s.mcp.HasTool(airQualityTool) {
+		return airAnswer{}, false
+	}
+	ctx, cancel := context.WithTimeout(ctx, forecastTimeout)
+	defer cancel()
+	text, err := s.mcp.CallTool(ctx, airQualityTool, map[string]any{
+		"latitude": p.Latitude, "longitude": p.Longitude, "timezone": loc.String(), "days": 2,
+	})
+	if err != nil {
+		slog.Warn("air quality failed", "err", err)
+		return airAnswer{}, false
+	}
+	var a airAnswer
+	if err := json.Unmarshal([]byte(text), &a); err != nil {
+		slog.Warn("air quality unreadable", "err", err)
+		return airAnswer{}, false
+	}
+	return a, true
+}
+
+// airOn is the air on the shown day: today the index this hour, tomorrow its
+// highest; nil when neither the index nor any pollen is known.
+func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
+	date := shown.Format(time.DateOnly)
+	out := &todayAir{Attribution: a.Attribution, Max: tomorrow}
+	var aqi *float64
+	if !tomorrow {
+		// The first hour from now with an index, within airNowHours: an
+		// hour the provider has none for is skipped, a later one is not now.
+		current, seen := hourStamp(local), 0
+		for _, h := range a.Hourly {
+			if h.Time < current {
+				continue
+			}
+			if seen++; seen > airNowHours {
+				break
+			}
+			if h.AQI != nil {
+				aqi = h.AQI
+				break
+			}
+		}
+	}
+	for _, d := range a.Daily {
+		if d.Date != date {
+			continue
+		}
+		if tomorrow {
+			aqi = d.AQIMax
+		}
+		for _, kind := range pollenOrder {
+			v, ok := d.Pollen[kind]
+			if !ok {
+				continue
+			}
+			if out.Pollen == nil {
+				out.Pollen = []todayPollen{}
+			}
+			if level := pollenLevel(kind, v); level != "" {
+				out.Pollen = append(out.Pollen, todayPollen{Kind: kind, Level: level})
+			}
+		}
+	}
+	if aqi != nil {
+		v := int(math.Round(*aqi))
+		out.AQI, out.Level = &v, aqiLevel(v)
+	}
+	if out.AQI == nil && len(out.Pollen) == 0 {
+		return nil
+	}
+	return out
+}
+
+// hourStamp is local's hour as the forecasts write their times.
+func hourStamp(local time.Time) string {
+	return local.Truncate(time.Hour).Format("2006-01-02T15:04")
+}
+
+// aqiLevel is the European air quality index's band (EEA): good to 20, fair
+// to 40, moderate to 60, poor to 80, very poor to 100, extremely poor above.
+func aqiLevel(aqi int) string {
+	switch {
+	case aqi <= 20:
+		return "good"
+	case aqi <= 40:
+		return "fair"
+	case aqi <= 60:
+		return "moderate"
+	case aqi <= 80:
+		return "poor"
+	case aqi <= 100:
+		return "veryPoor"
+	}
+	return "extremelyPoor"
+}
+
+// pollenOrder is the kinds the page shows, in the season's order; olive has
+// no class here (it barely flies north of the Alps).
+var pollenOrder = []string{"alder", "birch", "grass", "mugwort", "ragweed"}
+
+// pollenClasses are where a kind's moderate, high and very high loads start,
+// in grains/m³ as a daily mean; low is from 1. MeteoSwiss, "Threshold values
+// for pollen load classes of allergenic pollen types" (2024-01-10).
+var pollenClasses = map[string][3]float64{
+	"alder":   {11, 70, 250},
+	"birch":   {11, 70, 300},
+	"grass":   {20, 50, 150},
+	"mugwort": {6, 15, 50},
+	"ragweed": {6, 11, 40},
+}
+
+// pollenLevel is a kind's load class for a day's mean; "" when below low or
+// the kind has no classes.
+func pollenLevel(kind string, mean float64) string {
+	classes, ok := pollenClasses[kind]
+	v := math.Round(mean)
+	switch {
+	case !ok || v < 1:
+		return ""
+	case v >= classes[2]:
+		return "veryHigh"
+	case v >= classes[1]:
+		return "high"
+	case v >= classes[0]:
+		return "moderate"
+	}
+	return "low"
+}
+
 // todayForecast reads the start page's weather off the forecast from the
 // current hour on: "now" between it and the next, five hours three apart,
 // today's high and low, and a warning for the next hours. The contract does
 // not promise the hours start now, so the current one is looked up; a
 // forecast with no hour from now on is none.
 func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
-	current := now.Truncate(time.Hour).Format("2006-01-02T15:04")
+	current := hourStamp(now)
 	start := currentHour(f, now)
 	if start < 0 {
 		return nil, nil
@@ -325,14 +575,21 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 		temp += (f.Hourly[1].Temperature - temp) * frac
 	}
 	day, ok := dayOf(f, now)
+	ownDay := day
 	if !ok {
-		// A daily list that does not name today: its first day stands in.
+		// A daily list that does not name today: its first day stands in for
+		// the range, never for the details (its UV, rain and sun are another
+		// day's).
 		day, _ = dayOf(f, time.Time{})
+		ownDay = forecastDay{}
 	}
 	out := &todayWeather{
 		Now:         &todayNow{Temperature: math.Round(temp*10) / 10, Code: first.Code},
-		Day:         day,
+		Day:         dayView(day),
 		Hours:       []todayHour{},
+		Details:     detailsOf(&first, ownDay),
+		Rain:        rainIn(f.Hourly[:min(rainHours, len(f.Hourly))]),
+		Outlook:     outlookAfter(f, now),
 		Attribution: f.Attribution,
 	}
 	for i := 1; i < len(f.Hourly) && len(out.Hours) < 5; i += 3 {
@@ -371,7 +628,14 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *to
 	if from < 0 || to < from {
 		return nil, nil
 	}
-	out := &todayWeather{Day: day, Hours: []todayHour{}, Attribution: f.Attribution}
+	out := &todayWeather{
+		Day:         dayView(day),
+		Hours:       []todayHour{},
+		Details:     detailsOf(nil, day),
+		Rain:        rainIn(f.Hourly[from : to+1]),
+		Outlook:     outlookAfter(f, tomorrow),
+		Attribution: f.Attribution,
+	}
 	for i := from; i <= to && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))
 	}
@@ -385,7 +649,7 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *to
 // currentHour is the index of the forecast's hour that holds local, or the
 // first after it; -1 when the forecast ended before.
 func currentHour(f forecast, local time.Time) int {
-	current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
+	current := hourStamp(local)
 	for i, h := range f.Hourly {
 		if h.Time >= current {
 			return i
@@ -396,7 +660,7 @@ func currentHour(f forecast, local time.Time) int {
 
 // dayOf is the forecast's day on date; ok is false when the forecast does
 // not name it, the first day returned then. A zero date asks for the first.
-func dayOf(f forecast, date time.Time) (todayDay, bool) {
+func dayOf(f forecast, date time.Time) (forecastDay, bool) {
 	day, ok := f.Daily[0], date.IsZero()
 	for _, d := range f.Daily {
 		if !date.IsZero() && d.Date == date.Format(time.DateOnly) {
@@ -404,7 +668,55 @@ func dayOf(f forecast, date time.Time) (todayDay, bool) {
 			break
 		}
 	}
-	return todayDay{High: day.High, Low: day.Low, Code: day.Code, PrecipitationProbability: day.PrecipitationProbability}, ok
+	return day, ok
+}
+
+func dayView(d forecastDay) todayDay {
+	return todayDay{High: d.High, Low: d.Low, Code: d.Code, PrecipitationProbability: d.PrecipitationProbability}
+}
+
+// detailsOf is the details card: with now (today) the air and wind this
+// hour, without (tomorrow) the day's strongest wind; nil when the forecast
+// carries none of it.
+func detailsOf(now *forecastHour, day forecastDay) *todayDetails {
+	d := todayDetails{UVMax: day.UVIndexMax, PrecipitationSum: day.PrecipitationSum, SunshineHours: day.SunshineHours,
+		Wind: day.WindSpeedMax, Gusts: day.WindGustsMax, WindDirection: day.WindDirection}
+	if now != nil {
+		d.FeelsLike, d.Humidity = now.ApparentTemperature, now.Humidity
+		d.Wind, d.Gusts, d.WindDirection = now.WindSpeed, now.WindGusts, now.WindDirection
+	}
+	if d == (todayDetails{}) {
+		return nil
+	}
+	return &d
+}
+
+// rainIn is the rain card's hours; nil when none says how much or how likely.
+func rainIn(hours []forecastHour) []todayRain {
+	var out []todayRain
+	known := false
+	for _, h := range hours {
+		known = known || h.Precipitation != nil || h.PrecipitationProbability != nil
+		out = append(out, todayRain{Time: clock(h.Time), Precipitation: h.Precipitation, Probability: h.PrecipitationProbability})
+	}
+	if !known {
+		return nil
+	}
+	return out
+}
+
+// outlookAfter is up to outlookDays days after shown; nil when the forecast
+// ends with it.
+func outlookAfter(f forecast, shown time.Time) []todayOutlook {
+	date := shown.Format(time.DateOnly)
+	var out []todayOutlook
+	for _, d := range f.Daily {
+		if d.Date > date && len(out) < outlookDays {
+			out = append(out, todayOutlook{Date: d.Date, High: d.High, Low: d.Low, Code: d.Code,
+				PrecipitationProbability: d.PrecipitationProbability})
+		}
+	}
+	return out
 }
 
 func hourOf(f forecast, i int) todayHour {

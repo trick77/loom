@@ -12,6 +12,9 @@ const (
 	WeatherServer       = "weather"
 	WeatherForecastTool = "forecast"
 	WeatherGeocodeTool  = "geocode"
+	// WeatherAirQualityTool is optional: a replacement server without it
+	// costs the start page its air card only.
+	WeatherAirQualityTool = "air_quality"
 )
 
 // WeatherServerConfig is the loom-weather sidecar's endpoint. Best-effort like
