@@ -458,6 +458,12 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		defer cancelSummary()
 		body := s.runSummary(summaryCtx, user, sch, result.Content)
 		costs.Settle(detached)
+		// The run was recorded before the summary: its row gets the summary's
+		// spending too, so it matches the thread's cost.
+		cost, _ := usageTotal.Cost()
+		if err := s.schedules.SetRunUsage(detached, user.ID, runID, int64(usageTotal.Total().TotalTokens), cost); err != nil {
+			slog.Warn("record run usage failed", "schedule_id", sch.ID, "err", err)
+		}
 		s.notify(detached, user.ID, schedule.Notification{
 			Kind:       schedule.KindScheduleRun,
 			ScheduleID: &sch.ID,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -65,11 +66,22 @@ func (s *server) resolveLocation(ctx context.Context, user auth.User) error {
 		return err
 	}
 	hash := location.HashFacts(facts)
-	if kept, err := s.locations.FactsHash(ctx, user.ID); err != nil || kept == hash {
+	kept, err := s.locations.FactsHash(ctx, user.ID)
+	if err != nil || kept == hash {
+		return err
+	}
+	// Saved only if nobody saved places since they were read here: the user
+	// may set a home while the model is still reading the facts.
+	save := func(home, current *location.Place) error {
+		err := s.locations.SaveIf(ctx, user.ID, kept, hash, home, current)
+		if errors.Is(err, location.ErrStale) {
+			slog.Info("user location changed during its derivation, left as set", "user_id", user.ID)
+			return nil
+		}
 		return err
 	}
 	if len(facts) == 0 {
-		return s.locations.Save(ctx, user.ID, hash, nil, nil)
+		return save(nil, nil)
 	}
 	home, current, _, err := s.locations.Places(ctx, user.ID)
 	if err != nil {
@@ -78,7 +90,8 @@ func (s *server) resolveLocation(ctx context.Context, user auth.User) error {
 	ctx, cancel := context.WithTimeout(ctx, locationTimeout)
 	defer cancel()
 	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "user_location", Round: 1}
-	read, err := s.locationLLM.ResolveUserLocation(llm.WithInferenceMetadata(ctx, inference), factInputs(facts), userToday(user, s.clock()))
+	loc := placeZone(&location.Place{}, user)
+	read, err := s.locationLLM.ResolveUserLocation(llm.WithInferenceMetadata(ctx, inference), factInputsIn(facts, loc), userToday(user, s.clock()))
 	if err != nil {
 		return fmt.Errorf("read location: %w", err)
 	}
@@ -91,7 +104,18 @@ func (s *server) resolveLocation(ctx context.Context, user auth.User) error {
 		return err
 	}
 	slog.Info("user location derived", "user_id", user.ID, "home", newHome != nil, "current", newCurrent != nil)
-	return s.locations.Save(ctx, user.ID, hash, newHome, newCurrent)
+	return save(newHome, newCurrent)
+}
+
+// factInputsIn is factInputs with each fact's last-seen day in the user's
+// zone, the zone "today" is in: a stay reckoned from it starts on the day the
+// user said it, not the UTC one.
+func factInputsIn(facts []chat.UserFact, loc *time.Location) []llm.FactInput {
+	out := factInputs(facts)
+	for i, f := range facts {
+		out[i].LastSeen = f.LastSeen.In(loc).Format(time.DateOnly)
+	}
+	return out
 }
 
 // placeFor turns a place the facts name into a town's centre. One kept from
@@ -238,8 +262,15 @@ func (s *server) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"place": home})
 }
 
-// rememberHome keeps the home as a fact: the one naming the home so far is
-// rewritten, an identical one left as it is, else a new one is added.
+// homeFact matches a fact this page wrote ("Lives Zürich, Schweiz"): one
+// that says nothing else, so it may be rewritten whole.
+var homeFact = regexp.MustCompile(`^Lives [^,]+(, [^,]+)?$`)
+
+// rememberHome keeps the home as a fact: an identical one is left as it is,
+// the one naming the home so far is rewritten when this page wrote it, else a
+// new one is added. A fact the model wrote may say more than where the user
+// lives ("Lives Bern with Anna, works at X"): it stays, and the model reads
+// the newer fact as the home.
 func (s *server) rememberHome(ctx context.Context, user auth.User, home *location.Place) (chat.UserFact, error) {
 	name := home.Name
 	if home.Country != "" {
@@ -260,7 +291,7 @@ func (s *server) rememberHome(ctx context.Context, user auth.User, home *locatio
 		}
 	}
 	for _, f := range facts {
-		if kept != nil && f.ID == kept.FactID {
+		if kept != nil && f.ID == kept.FactID && homeFact.MatchString(f.Content) {
 			updated, found, err := s.thread.UpdateUserFact(ctx, user.ID, "", f.ID, content)
 			if err != nil || found {
 				return updated, err

@@ -573,8 +573,10 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 			// Nor when its tools are offered: an override that names no
 			// categories keeps the built-in's; "categories": [] offers it on
 			// every turn.
-			if server.Categories == nil {
+			if server.Categories == nil && existing.Categories != nil {
 				server.Categories = existing.Categories
+				slog.Warn("MCP servers file override keeps the built-in's categories; set \"categories\": [] to offer it on every turn",
+					"server", name, "categories", existing.Categories)
 			}
 		}
 		out.FileServers.Servers[name] = server

@@ -41,10 +41,7 @@ export function LocationPrompt({ onSaved }: { onSaved(): void }) {
       className="mx-auto flex w-full max-w-[480px] flex-col items-center gap-2.5"
       onSubmit={(event) => void save(event)}
     >
-      <label
-        className="text-center text-[13px] text-[#97958c]"
-        htmlFor={inputId}
-      >
+      <label className="text-center text-[13px] text-muted" htmlFor={inputId}>
         {t("today.location.ask")}
       </label>
       <div className="flex w-full gap-2">
@@ -52,7 +49,7 @@ export function LocationPrompt({ onSaved }: { onSaved(): void }) {
           aria-describedby={error === "" ? undefined : errorId}
           aria-invalid={error === "" ? undefined : true}
           autoComplete="address-level2"
-          className="h-10 min-w-0 flex-1 rounded-[10px] border border-[#343432] bg-[#242422] px-3.5 text-sm text-ink outline-none placeholder:text-[#8f8b82] focus:border-[#4b4a46]"
+          className="h-10 min-w-0 flex-1 rounded-[10px] border border-border bg-card px-3.5 text-sm text-ink outline-none placeholder:text-muted focus:border-border-strong"
           id={inputId}
           onChange={(event) => setPlace(event.target.value)}
           placeholder={t("today.location.placeholder")}
@@ -72,7 +69,7 @@ export function LocationPrompt({ onSaved }: { onSaved(): void }) {
           {error}
         </div>
       )}
-      <span className="text-center text-xs text-[#8f8b82]">
+      <span className="text-center text-xs text-muted">
         {t("today.location.note")}
       </span>
     </form>

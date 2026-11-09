@@ -1,11 +1,10 @@
 import type { TodayWarning } from "../api/today";
 import type { Condition } from "./weatherCodes";
 
-// The sun's gold and the sky's grey have no theme token; the warning is the
-// accent.
-export const SUN_COLOR = "#e0b46a";
-const SUN_CLASS = "text-[#e0b46a]";
-const SKY_CLASS = "text-[#c7c5bd]";
+// Icons draw in currentColor: the sun's gold, the sky's soft grey, the
+// warning's accent.
+const SUN_CLASS = "text-sun";
+const SKY_CLASS = "text-ink-dim";
 const WARN_CLASS = "text-accent-strong";
 
 const SUN = (
@@ -172,12 +171,12 @@ export function SunTimeIcon({ rising }: { rising: boolean }) {
       height={18}
       viewBox="0 0 24 24"
       fill="none"
-      stroke={SUN_COLOR}
+      stroke="currentColor"
       strokeWidth={1.8}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
-      className="shrink-0"
+      className={`shrink-0 ${SUN_CLASS}`}
     >
       <path d="M3 18h18M6.5 18a5.5 5.5 0 0 1 11 0" />
       <path

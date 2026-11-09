@@ -30,10 +30,10 @@ export function LocationChip({
         aria-controls={open ? dialogId : undefined}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className={`ui-control-text flex items-center gap-1.5 rounded-full text-[13px] transition-colors hover:bg-[#2a2a28] ${
+        className={`ui-control-text flex items-center gap-1.5 rounded-full text-[13px] transition-colors hover:bg-raised ${
           compact
-            ? "h-8 px-2 text-[#97958c]"
-            : "h-[30px] border border-[#343432] px-2.5 text-[#d5d2c9]"
+            ? "h-8 px-2 text-muted"
+            : "h-[30px] border border-border px-2.5 text-ink-warm"
         }`}
         onClick={() => setOpen((value) => !value)}
         type="button"
@@ -43,7 +43,7 @@ export function LocationChip({
         {/* The space is for the accessible name; flex drops it on screen. */}
         {!compact && " "}
         {!compact && (
-          <span className="text-[#8f8b82]">
+          <span className="text-muted">
             · {t("today.location.fromMemories")}
           </span>
         )}
@@ -55,14 +55,14 @@ export function LocationChip({
             // The compact chip sits mid-line, on a phone mid-screen: centered
             // under it the popover fits; the header chip sits at the right.
             compact ? "left-1/2 -translate-x-1/2" : "right-0"
-          } w-[min(320px,calc(100vw-32px))] flex-col gap-2.5 rounded-2xl border border-[rgba(226,225,218,0.15)] bg-active p-4 text-sm text-[#d5d2c9] shadow-[0_12px_32px_rgba(0,0,0,0.4)]`}
+          } w-[min(320px,calc(100vw-32px))] flex-col gap-2.5 rounded-2xl border border-[rgba(226,225,218,0.15)] bg-active p-4 text-sm text-ink-warm shadow-[0_12px_32px_rgba(0,0,0,0.4)]`}
           id={dialogId}
           role="dialog"
         >
           <div className="font-medium text-ink">
             {t("today.location.title")}
           </div>
-          <p className="text-[#c7c5bd]">
+          <p className="text-ink-dim">
             {t(
               location.kind === "current"
                 ? "today.location.current"

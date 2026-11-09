@@ -72,6 +72,20 @@
   --color-accent-strong: #d97757;
   --color-success: #5fa97a;
   --color-danger: #d9534f;
+  /* Cards on the page (the start page's tiles), a hover a step above the page,
+     the stronger border of inputs, the arc track; softer inks for secondary
+     text; the sun's gold and the unread gold (sidebar dot, news badge). */
+  --color-card: #242422;
+  --color-raised: #2a2a28;
+  --color-border-strong: #4b4a46;
+  --color-track: #3a3a37;
+  --color-ink-bright: #f3f0e8;
+  --color-ink-soft: #e8e6dc;
+  --color-ink-warm: #d5d2c9;
+  --color-ink-dim: #c7c5bd;
+  --color-sun: #e0b46a;
+  --color-unread: #c9a25f;
+  --color-unread-ink: #e0c48f;
   --font-sans:
     "Anthropic Sans", system-ui, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;

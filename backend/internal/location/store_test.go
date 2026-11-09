@@ -3,6 +3,7 @@ package location_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -53,6 +54,30 @@ func TestStoreSavesAndReplacesPlaces(t *testing.T) {
 	}
 	if h, c, hash, err := st.Places(ctx, "u1"); err != nil || h != nil || c != nil || hash != "h2" {
 		t.Fatalf("after clearing: %v %v %q %v", h, c, hash, err)
+	}
+}
+
+// A derivation that read the places before someone saved them must not
+// overwrite them.
+func TestSaveIfLeavesNewerPlaces(t *testing.T) {
+	ctx := context.Background()
+	st := location.NewStore(openDB(t))
+	userSet := &location.Place{Name: "Zürich", FactID: "f2"}
+	if err := st.Save(ctx, "u1", "after", userSet, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveIf(ctx, "u1", "before", "derived", nil, nil); !errors.Is(err, location.ErrStale) {
+		t.Fatalf("stale SaveIf = %v, want ErrStale", err)
+	}
+	if home, _, hash, _ := st.Places(ctx, "u1"); home == nil || home.Name != "Zürich" || hash != "after" {
+		t.Fatalf("places overwritten: %+v %q", home, hash)
+	}
+	if err := st.SaveIf(ctx, "u1", "after", "derived", nil, nil); err != nil {
+		t.Fatalf("current SaveIf = %v", err)
+	}
+	// Never derived: the read hash is "".
+	if err := st.SaveIf(ctx, "u2", "", "first", nil, nil); err != nil {
+		t.Fatalf("first SaveIf = %v", err)
 	}
 }
 

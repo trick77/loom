@@ -25,13 +25,13 @@ export function ScheduleNews({
     <section aria-labelledby={headingId} className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-3">
         <h2
-          className="flex items-center gap-2 text-[13px] font-medium tracking-[0.02em] text-[#97958c]"
+          className="flex items-center gap-2 text-[13px] font-medium tracking-[0.02em] text-muted"
           id={headingId}
         >
           {t("today.news.title")}
           <span
             aria-hidden
-            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[rgba(201,162,95,0.16)] px-1.5 text-xs text-[#e0c48f]"
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-unread/16 px-1.5 text-xs text-unread-ink"
             data-testid="news-count"
           >
             {runs.length}
@@ -41,7 +41,7 @@ export function ScheduleNews({
           </span>
         </h2>
         <button
-          className="ui-control-text h-11 rounded-lg px-2.5 text-[13px] text-[#c7c5bd] transition-colors hover:bg-[#2a2a28] sm:h-[30px]"
+          className="ui-control-text h-11 rounded-lg px-2.5 text-[13px] text-ink-dim transition-colors hover:bg-raised sm:h-[30px]"
           onClick={onMarkAllRead}
           type="button"
         >
@@ -51,28 +51,28 @@ export function ScheduleNews({
       <ul className="flex flex-col gap-2.5">
         {runs.map((run) => (
           <li key={run.id}>
-            <article className="flex items-start gap-3.5 rounded-2xl border border-border bg-[#242422] py-3.5 pr-1.5 pl-[18px] sm:pr-3.5">
+            <article className="flex items-start gap-3.5 rounded-2xl border border-border bg-card py-3.5 pr-1.5 pl-[18px] sm:pr-3.5">
               <span
                 aria-hidden
-                className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[#c9a25f]"
+                className="mt-2 h-2 w-2 shrink-0 rounded-full bg-unread"
               />
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <div className="flex flex-wrap items-baseline gap-x-2.5">
                   <h3 className="text-[15px] font-medium text-ink">
                     {run.title}
                   </h3>
-                  <span className="text-xs text-[#8f8b82]">
+                  <span className="text-xs text-muted">
                     {formatTimeAgo(run.createdAt)}
                   </span>
                 </div>
                 {run.body !== "" && (
-                  <p className="text-sm leading-normal text-[#c7c5bd]">
+                  <p className="text-sm leading-normal text-ink-dim">
                     {run.body}
                   </p>
                 )}
                 {run.threadId !== null && (
                   <button
-                    className="mt-1 self-start text-[13px] font-medium text-[#e8e6dc] hover:text-white hover:underline"
+                    className="mt-1 self-start text-[13px] font-medium text-ink-soft hover:text-white hover:underline"
                     onClick={() => onOpenThread(run.threadId as string)}
                     type="button"
                   >
@@ -82,7 +82,7 @@ export function ScheduleNews({
               </div>
               <button
                 aria-label={t("today.news.markRead")}
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] text-[#97958c] transition-colors hover:bg-[#2a2a28] hover:text-[#f3f0e8]"
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-[10px] text-muted transition-colors hover:bg-raised hover:text-ink-bright"
                 onClick={() => onMarkRead(run.id)}
                 title={t("today.news.markRead")}
                 type="button"

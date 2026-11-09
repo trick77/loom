@@ -869,6 +869,7 @@ export const de = {
   today: {
     title: "Heute",
     heading: "Heute · {{date}}",
+    headingTomorrow: "Morgen · {{date}}",
     temperature: "{{value}}°",
     highLow: "H {{high}}° · T {{low}}°",
     rainChance: "Regen {{percent}} %",
@@ -889,6 +890,12 @@ export const de = {
       storm: "Ab {{from}} Gewitter",
       frost: "Ab {{from}} Frost",
     },
+    warningTomorrow: {
+      rain: "Morgen ab {{from}} Regen",
+      snow: "Morgen ab {{from}} Schnee",
+      storm: "Morgen ab {{from}} Gewitter",
+      frost: "Morgen ab {{from}} Frost",
+    },
     sun: {
       sunrise: "Sonnenaufgang",
       sunset: "Sonnenuntergang",
@@ -902,6 +909,12 @@ export const de = {
       shorter_one: "{{count}} min kürzer als gestern",
       shorter_other: "{{count}} min kürzer als gestern",
       same: "gleich lang wie gestern",
+      longerThanToday_one: "{{count}} min länger als heute",
+      longerThanToday_other: "{{count}} min länger als heute",
+      shorterThanToday_one: "{{count}} min kürzer als heute",
+      shorterThanToday_other: "{{count}} min kürzer als heute",
+      sameAsToday: "gleich lang wie heute",
+      times: "Sonnenaufgang {{rise}}, Sonnenuntergang {{set}}",
       beforeRise: "Sonnenstand: noch nicht aufgegangen",
       up: "Sonnenstand: noch {{duration}} Tageslicht",
       afterSet: "Sonnenstand: untergegangen",

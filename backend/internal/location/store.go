@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -72,14 +73,38 @@ FROM user_locations WHERE user_id = ?`, userID)
 	return home, current, factsHash, nil
 }
 
+// ErrStale reports a SaveIf whose places were derived from facts someone has
+// saved places for since.
+var ErrStale = errors.New("places changed since they were read")
+
 // Save replaces the user's places with home and current (either may be nil)
 // and records the facts they came from.
 func (s *Store) Save(ctx context.Context, userID, factsHash string, home, current *Place) error {
+	return s.save(ctx, userID, nil, factsHash, home, current)
+}
+
+// SaveIf is Save, but only while the places are still the ones derived from
+// readHash: a derivation that waited on the model must not overwrite places
+// the user set meanwhile. ErrStale when they changed.
+func (s *Store) SaveIf(ctx context.Context, userID, readHash, factsHash string, home, current *Place) error {
+	return s.save(ctx, userID, &readHash, factsHash, home, current)
+}
+
+func (s *Store) save(ctx context.Context, userID string, readHash *string, factsHash string, home, current *Place) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("save places: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if readHash != nil {
+		var kept string
+		if err := tx.QueryRowContext(ctx, `SELECT facts_hash FROM user_location_state WHERE user_id = ?`, userID).Scan(&kept); err != nil && err != sql.ErrNoRows {
+			return fmt.Errorf("save places: read state: %w", err)
+		}
+		if kept != *readHash {
+			return ErrStale
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user_locations WHERE user_id = ?`, userID); err != nil {
 		return fmt.Errorf("save places: clear: %w", err)
 	}

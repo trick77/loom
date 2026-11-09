@@ -10,7 +10,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import * as api from "../api";
 import { UserFacingError } from "../api/http";
-import { todayFixture } from "../test/today";
+import { todayFixture, tomorrowFixture } from "../test/today";
 import { TodaySection } from "./TodaySection";
 
 vi.mock("../api", async () => {
@@ -30,10 +30,16 @@ function show(overrides: Partial<api.Today> = {}) {
   return render(<TodaySection today={todayFixture(overrides)} {...handlers} />);
 }
 
-// line is the folded weather: the one button that names a temperature.
-function line() {
-  return screen.getByRole("button", { name: /°/ });
+function showTomorrow(overrides: Partial<api.Today> = {}) {
+  return render(
+    <TodaySection today={tomorrowFixture(overrides)} {...handlers} />,
+  );
 }
+
+const hourItems = () =>
+  within(screen.getByRole("list", { name: "Next hours" })).getAllByRole(
+    "listitem",
+  );
 
 beforeEach(() => {
   for (const handler of Object.values(handlers)) handler.mockReset();
@@ -43,19 +49,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function stubNarrow(narrow: boolean) {
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn().mockImplementation((query: string) => ({
-      matches: narrow,
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })),
-  );
-}
-
-test("the first visit shows the weather and sun tiles", () => {
+test("today shows the weather and sun tiles, nothing to fold", () => {
   show();
   const section = screen.getByRole("region", {
     name: "Today · Monday, November 9",
@@ -65,7 +59,11 @@ test("the first visit shows the weather and sun tiles", () => {
       name: "Zürich · from your memories",
     }),
   ).toBeInTheDocument();
-  expect(within(section).queryByRole("button", { name: /°/ })).toBeNull();
+  // The place chip is the only disclosure: no line to expand.
+  const toggles = within(section)
+    .getAllByRole("button")
+    .filter((button) => button.hasAttribute("aria-expanded"));
+  expect(toggles).toHaveLength(1);
   expect(within(section).getByText("10°")).toBeInTheDocument();
   expect(
     within(section).getByRole("img", { name: "Partly cloudy" }),
@@ -73,13 +71,9 @@ test("the first visit shows the weather and sun tiles", () => {
   expect(
     within(section).getByText("H 11° · L 3° · Rain 10%"),
   ).toBeInTheDocument();
-  const hours = within(section).getByRole("list", { name: "Next hours" });
-  expect(within(hours).getAllByRole("listitem")).toHaveLength(5);
+  expect(hourItems()).toHaveLength(5);
   // 21:00 is after sunset: the clear sky is a moon.
-  expect(within(hours).getAllByRole("listitem")[4]).toHaveAttribute(
-    "title",
-    "Clear",
-  );
+  expect(hourItems()[4]).toHaveAttribute("title", "Clear");
   expect(within(section).getByText("07:25")).toBeInTheDocument();
   expect(within(section).getByText("16:58")).toBeInTheDocument();
   expect(
@@ -92,6 +86,7 @@ test("the first visit shows the weather and sun tiles", () => {
       name: "Sun position: 6 h 41 min of daylight left",
     }),
   ).toBeInTheDocument();
+  expect(within(section).getByTestId("sun-dot")).toBeInTheDocument();
   const credit = within(section).getByRole("link", {
     name: "Weather data by Open-Meteo.com",
   });
@@ -100,56 +95,86 @@ test("the first visit shows the weather and sun tiles", () => {
   expect(credit).toHaveAttribute("rel", "noopener");
 });
 
-test("a later visit folds the weather into a line that unfolds the tiles", () => {
-  show({ view: "line" });
-  const section = screen.getByRole("region", { name: "Today" });
-  const line = within(section).getByRole("button", { name: /°/ });
-  expect(line).toHaveAttribute("aria-expanded", "false");
-  expect(line).toHaveTextContent("10° Partly cloudy");
-  expect(line).toHaveTextContent("Sunset 16:58");
+test("a phone gets the same tiles", () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  show();
+  expect(screen.getByRole("region", { name: /^Today · / })).toBeInTheDocument();
+  expect(hourItems()).toHaveLength(5);
+  expect(screen.getByText("07:25")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /°/ })).toBeNull();
+});
+
+test("from the evening on, tomorrow: its range, sky and sun times", () => {
+  showTomorrow();
+  const section = screen.getByRole("region", {
+    name: "Tomorrow · Tuesday, November 10",
+  });
+  expect(within(section).getByTestId("day-range")).toHaveTextContent(
+    "12° / 4°",
+  );
   expect(
-    within(section).queryByRole("list", { name: "Next hours" }),
-  ).toBeNull();
+    within(section).getByRole("img", { name: "Cloudy" }),
+  ).toBeInTheDocument();
+  expect(within(section).getByText("Rain 40%")).toBeInTheDocument();
+  expect(within(section).queryByText(/^H /)).toBeNull();
+  expect(hourItems()[0]).toHaveTextContent("06:00");
+  // No "now" tomorrow: the arc has no sun on it.
+  expect(within(section).queryByTestId("sun-dot")).toBeNull();
   expect(
-    within(section).getByRole("link", {
-      name: "Weather data by Open-Meteo.com",
+    within(section).getByRole("img", {
+      name: "Sunrise 07:25, sunset 16:58",
     }),
   ).toBeInTheDocument();
-  fireEvent.click(line);
-  expect(line).toHaveAttribute("aria-expanded", "true");
   expect(
-    within(section).getByRole("list", { name: "Next hours" }),
+    within(section).getByText(
+      "Day length 9 h 33 min · 2 min shorter than today",
+    ),
   ).toBeInTheDocument();
-  fireEvent.click(line);
-  expect(line).toHaveAttribute("aria-expanded", "false");
 });
 
-test("a phone starts with the line even on the first visit", () => {
-  stubNarrow(true);
-  show({ view: "tiles" });
-  expect(line()).toHaveTextContent("10° Partly cloudy");
-  expect(screen.queryByRole("list", { name: "Next hours" })).toBeNull();
+test("tomorrow without a rain chance, longer or as long as today", () => {
+  const base = tomorrowFixture();
+  const { unmount } = showTomorrow({
+    sun: { ...base.sun!, deltaMinutes: 1 },
+    weather: {
+      ...base.weather!,
+      day: { ...base.weather!.day, precipitationProbability: null },
+    },
+  });
+  expect(screen.queryByText(/^Rain/)).toBeNull();
+  expect(
+    screen.getByText("Day length 9 h 33 min · 1 min longer than today"),
+  ).toBeInTheDocument();
+  unmount();
+  showTomorrow({ sun: { ...base.sun!, deltaMinutes: 0 } });
+  expect(
+    screen.getByText("Day length 9 h 33 min · same as today"),
+  ).toBeInTheDocument();
 });
 
-test("a warning stands out in the line and in the tile", () => {
-  show({ view: "line", warning: { kind: "rain", from: "17:00" } });
-  const warning = screen.getByTestId("line-warning");
+test("a warning stands out in the tile, today and tomorrow", () => {
+  const { unmount } = show({ warning: { kind: "rain", from: "17:00" } });
+  const warning = screen.getByTestId("weather-warning");
   expect(warning).toHaveTextContent("Rain from 17:00");
   expect(warning).toHaveClass("text-accent-strong");
   expect(warning.querySelector("svg")).toHaveAttribute("data-warning", "rain");
-  fireEvent.click(line());
-  expect(screen.getByTestId("weather-warning")).toHaveTextContent(
-    "Rain from 17:00",
-  );
-  expect(screen.getByTestId("weather-warning")).toHaveClass(
-    "text-accent-strong",
-  );
   // The rainy 18:00 slot is drawn in the accent, the sunny ones are not.
-  const hours = within(
-    screen.getByRole("list", { name: "Next hours" }),
-  ).getAllByRole("listitem");
-  expect(hours[3].querySelector("svg")).toHaveClass("text-accent-strong");
-  expect(hours[1].querySelector("svg")).toHaveClass("text-[#e0b46a]");
+  expect(hourItems()[3].querySelector("svg")).toHaveClass("text-accent-strong");
+  expect(hourItems()[1].querySelector("svg")).toHaveClass("text-sun");
+  unmount();
+
+  showTomorrow({ warning: { kind: "rain", from: "09:00" } });
+  expect(screen.getByTestId("weather-warning")).toHaveTextContent(
+    "Rain tomorrow from 09:00",
+  );
 });
 
 test.each([
@@ -157,8 +182,8 @@ test.each([
   ["snow", "Snow from 06:00"],
   ["storm", "Thunderstorms from 06:00"],
 ] as const)("a %s warning draws its own icon", (kind, text) => {
-  show({ view: "line", warning: { kind, from: "06:00" } });
-  const warning = screen.getByTestId("line-warning");
+  show({ warning: { kind, from: "06:00" } });
+  const warning = screen.getByTestId("weather-warning");
   expect(warning).toHaveTextContent(text);
   expect(warning.querySelector("svg")).toHaveAttribute("data-warning", kind);
 });
@@ -186,7 +211,8 @@ test("the place chip explains the memory and opens the memories", () => {
 
 test("a stay elsewhere reads as the current place", () => {
   show({
-    view: "line",
+    weather: null,
+    runs: [],
     location: { name: "Lisbon", kind: "current", until: "2026-11-15" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Lisbon" }));
@@ -209,20 +235,17 @@ test("before sunrise the sun is not on its arc", () => {
   ).toBeInTheDocument();
 });
 
-test("the line names the sunrise before it, the polar day as such", () => {
+test("after sunset the sun is set; the polar day keeps it up", () => {
   const sun = todayFixture().sun!;
-  const { unmount } = show({
-    view: "line",
-    sun: { ...sun, progress: -0.2, deltaMinutes: 0 },
-  });
-  expect(line()).toHaveTextContent("Sunrise 07:25");
-  fireEvent.click(line());
+  const { unmount } = show({ sun: { ...sun, progress: 1.3, deltaMinutes: 0 } });
+  expect(
+    screen.getByRole("img", { name: "Sun position: set" }),
+  ).toBeInTheDocument();
   expect(
     screen.getByText("Day length 9 h 33 min · same as yesterday"),
   ).toBeInTheDocument();
   unmount();
   show({
-    view: "tiles",
     sun: {
       ...sun,
       rise: null,
@@ -236,36 +259,47 @@ test("the line names the sunrise before it, the polar day as such", () => {
   expect(screen.getByTestId("sun-dot")).toBeInTheDocument();
 });
 
-test("after sunset the sun is set; the polar night has no sun", () => {
-  const sun = todayFixture().sun!;
-  const { unmount } = show({ sun: { ...sun, progress: 1.3 } });
-  expect(
-    screen.getByRole("img", { name: "Sun position: set" }),
-  ).toBeInTheDocument();
-  unmount();
-  show({
-    view: "line",
-    sun: { ...sun, rise: null, set: null, polar: "night", dayMinutes: 0 },
-  });
-  expect(line()).toHaveTextContent("Polar night");
-});
-
-test("the line names the next sun time: sunset by day, sunrise after it", () => {
-  const sun = todayFixture().sun!;
-  const { unmount } = show({ view: "line", sun: { ...sun, progress: 0.5 } });
-  expect(line()).toHaveTextContent("Sunset 16:58");
-  unmount();
-  show({ view: "line", sun: { ...sun, progress: 1.3 } });
-  expect(line()).toHaveTextContent("Sunrise 07:25");
-  expect(line()).not.toHaveTextContent("Sunset");
-});
-
 test("without weather the sun times show alone", () => {
-  show({ weather: null, runs: [] });
+  const sun = todayFixture().sun!;
+  const { unmount } = show({ weather: null, runs: [] });
   const group = screen.getByRole("group", { name: "Today" });
   expect(group).toHaveTextContent("Sunrise 07:25");
   expect(group).toHaveTextContent("Sunset 16:58");
   expect(screen.queryByRole("link")).toBeNull();
+  unmount();
+
+  show({
+    weather: null,
+    runs: [],
+    sun: { ...sun, rise: null, set: null, polar: "night", dayMinutes: 0 },
+  });
+  expect(screen.getByRole("group", { name: "Today" })).toHaveTextContent(
+    "Polar night",
+  );
+});
+
+test("the sun line names the one sun time it knows", () => {
+  const sun = todayFixture().sun!;
+  const cases: [Partial<api.TodaySun>, string][] = [
+    [{ rise: null }, "Sunset 16:58"],
+    [{ set: null }, "Sunrise 07:25"],
+    [{ set: null, progress: 1.3 }, "Sunrise 07:25"],
+  ];
+  for (const [change, text] of cases) {
+    const { unmount } = show({
+      weather: null,
+      runs: [],
+      sun: { ...sun, ...change },
+    });
+    expect(screen.getByRole("group", { name: "Today" })).toHaveTextContent(
+      text,
+    );
+    unmount();
+  }
+  show({ weather: null, runs: [], sun: { ...sun, rise: null, set: null } });
+  expect(screen.getByRole("group", { name: "Today" })).not.toHaveTextContent(
+    /Sun/,
+  );
 });
 
 test("without anything to show the section is empty", () => {

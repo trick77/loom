@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 
 import type { TodaySun } from "../api/today";
 import { formatDuration } from "./format";
-import { SUN_COLOR } from "./WeatherIcon";
 import { TILE } from "./WeatherTile";
 
 // The arc is the upper half of an ellipse from sunrise (left) to sunset
@@ -26,6 +25,11 @@ export function sunPoint(p: number): { x: number; y: number } {
 function positionLabel(sun: TodaySun, t: TFunction): string {
   if (sun.polar === "day") return t("today.sun.polarDay");
   if (sun.polar === "night") return t("today.sun.polarNight");
+  if (sun.progress === null)
+    return t("today.sun.times", {
+      rise: sun.rise ?? "–",
+      set: sun.set ?? "–",
+    });
   if (sun.progress < 0) return t("today.sun.beforeRise");
   if (sun.progress > 1) return t("today.sun.afterSet");
   return t("today.sun.up", {
@@ -33,26 +37,45 @@ function positionLabel(sun: TodaySun, t: TFunction): string {
   });
 }
 
-// dayLengthLine is "Day length 9 h 33 min · 2 min shorter than yesterday".
-export function dayLengthLine(sun: TodaySun, t: TFunction): string {
+// dayLengthLine is "Day length 9 h 33 min · 2 min shorter than yesterday";
+// for tomorrow the day before is today.
+export function dayLengthLine(
+  sun: TodaySun,
+  day: "today" | "tomorrow",
+  t: TFunction,
+): string {
   const delta = Math.round(sun.deltaMinutes);
+  const tomorrow = day === "tomorrow";
   const change =
     delta > 0
-      ? t("today.sun.longer", { count: delta })
+      ? t(tomorrow ? "today.sun.longerThanToday" : "today.sun.longer", {
+          count: delta,
+        })
       : delta < 0
-        ? t("today.sun.shorter", { count: -delta })
-        : t("today.sun.same");
+        ? t(tomorrow ? "today.sun.shorterThanToday" : "today.sun.shorter", {
+            count: -delta,
+          })
+        : t(tomorrow ? "today.sun.sameAsToday" : "today.sun.same");
   return `${t("today.sun.dayLength", { duration: formatDuration(sun.dayMinutes, t) })} · ${change}`;
 }
 
-// SunTile draws the sun's position on its arc, the sun times and the day's
-// length against yesterday.
-export function SunTile({ sun }: { sun: TodaySun }) {
+// SunTile draws the sun's arc with its position now (not for tomorrow), the
+// sun times and the day's length against the day before.
+export function SunTile({
+  sun,
+  day,
+}: {
+  sun: TodaySun;
+  day: "today" | "tomorrow";
+}) {
   const { t } = useTranslation();
+  const progress = sun.progress;
   const up =
     sun.polar === "day" ||
-    (sun.polar === "" && sun.progress >= 0 && sun.progress <= 1);
-  const point = sunPoint(sun.polar === "day" ? 0.5 : sun.progress);
+    (sun.polar === "" && progress !== null && progress >= 0 && progress <= 1);
+  const point = sunPoint(sun.polar === "day" ? 0.5 : (progress ?? 0));
+  // Tomorrow has no "now": no dot on the arc.
+  const dot = up && day === "today";
   // A polar day lights the whole arc; otherwise it fills up to the sun.
   const lit =
     sun.polar === "day"
@@ -72,13 +95,13 @@ export function SunTile({ sun }: { sun: TodaySun }) {
           y1={CY}
           x2="214"
           y2={CY}
-          stroke="#3a3a37"
+          className="stroke-track"
           strokeWidth="1"
         />
         <path
           d={`M${CX - RX} ${CY} A${RX} ${RY} 0 0 1 ${CX + RX} ${CY}`}
           fill="none"
-          stroke="#3a3a37"
+          className="stroke-track"
           strokeWidth="2"
           strokeDasharray="3 5"
         />
@@ -87,22 +110,26 @@ export function SunTile({ sun }: { sun: TodaySun }) {
             <path
               d={lit}
               fill="none"
-              stroke={SUN_COLOR}
+              className="stroke-sun"
               strokeWidth="2.5"
               strokeLinecap="round"
             />
+          </>
+        )}
+        {dot && (
+          <>
             <circle
               cx={point.x}
               cy={point.y}
               r="6"
-              fill={SUN_COLOR}
+              className="fill-sun"
               data-testid="sun-dot"
             />
             <circle
               cx={point.x}
               cy={point.y}
               r="11"
-              fill={SUN_COLOR}
+              className="fill-sun"
               opacity="0.18"
             />
           </>
@@ -111,11 +138,11 @@ export function SunTile({ sun }: { sun: TodaySun }) {
       {sun.polar === "" ? (
         <div className="flex justify-between text-[13px]">
           <span className="flex flex-col">
-            <span className="text-[#97958c]">{t("today.sun.sunrise")}</span>
+            <span className="text-muted">{t("today.sun.sunrise")}</span>
             <span className="text-lg text-ink">{sun.rise ?? "–"}</span>
           </span>
           <span className="flex flex-col text-right">
-            <span className="text-[#97958c]">{t("today.sun.sunset")}</span>
+            <span className="text-muted">{t("today.sun.sunset")}</span>
             <span className="text-lg text-ink">{sun.set ?? "–"}</span>
           </span>
         </div>
@@ -126,7 +153,7 @@ export function SunTile({ sun }: { sun: TodaySun }) {
           )}
         </div>
       )}
-      <div className="text-[13px] text-[#97958c]">{dayLengthLine(sun, t)}</div>
+      <div className="text-[13px] text-muted">{dayLengthLine(sun, day, t)}</div>
     </div>
   );
 }

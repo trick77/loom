@@ -47,10 +47,11 @@ export function isNightAt(time: string, sun: TodaySun | null): boolean {
   return time < sun.rise || time >= sun.set;
 }
 
-// isNightNow reads the sun's position now.
+// isNightNow reads the sun's position now; without one (tomorrow) it is day.
 export function isNightNow(sun: TodaySun | null): boolean {
   if (sun === null) return false;
   if (sun.polar !== "") return sun.polar === "night";
+  if (sun.progress === null) return false;
   return sun.progress < 0 || sun.progress > 1;
 }
 
