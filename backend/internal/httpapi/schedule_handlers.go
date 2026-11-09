@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,26 +21,45 @@ const timezoneHeader = "X-Loom-Timezone"
 // rememberTimezone keeps the timezone the user's browser last sent, so a
 // schedule created from chat draws its slot in it and a turn started without
 // a request (queued, handed off) reads its date in it. It returns the
-// request's own zone, else the one kept; "" when neither.
+// request's own zone, else the one kept; "" when neither. A changed zone is
+// written through to the user row so a restart keeps it.
 func (s *server) rememberTimezone(userID string, r *http.Request) string {
+	ctx := r.Context()
 	tz := strings.TrimSpace(r.Header.Get(timezoneHeader))
 	if tz == "" || len(tz) > 64 {
-		return s.timezoneFor(userID)
+		return s.timezoneFor(ctx, userID)
 	}
 	if _, err := schedule.LoadLocation(tz); err != nil {
-		return s.timezoneFor(userID)
+		return s.timezoneFor(ctx, userID)
+	}
+	if s.timezoneFor(ctx, userID) == tz {
+		return tz
 	}
 	s.timezones.Store(userID, tz)
+	if s.users != nil {
+		if err := s.users.SetTimezone(ctx, userID, tz); err != nil {
+			slog.Warn("keep timezone", "user_id", userID, "err", err)
+		}
+	}
 	return tz
 }
 
 // timezoneFor is the timezone rememberTimezone kept for the user; "" when
-// none, which schedules read as UTC.
-func (s *server) timezoneFor(userID string) string {
+// none, which schedules read as UTC. The in-memory copy fronts the user row.
+func (s *server) timezoneFor(ctx context.Context, userID string) string {
 	if tz, ok := s.timezones.Load(userID); ok {
 		return tz.(string)
 	}
-	return ""
+	if s.users == nil {
+		return ""
+	}
+	tz, err := s.users.Timezone(ctx, userID)
+	if err != nil {
+		slog.Warn("read timezone", "user_id", userID, "err", err)
+		return ""
+	}
+	s.timezones.Store(userID, tz)
+	return tz
 }
 
 // scheduleResponse is a schedule as the UI shows it: the stored fields, its

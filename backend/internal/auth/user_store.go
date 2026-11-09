@@ -104,6 +104,27 @@ WHERE id = ?`,
 	return nil
 }
 
+// Timezone returns the IANA timezone kept for the user; "" when none.
+func (s *UserStore) Timezone(ctx context.Context, id string) (string, error) {
+	var tz string
+	err := s.db.QueryRowContext(ctx, `SELECT timezone FROM users WHERE id = ?`, id).Scan(&tz)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("read timezone: %w", err)
+	}
+	return tz, nil
+}
+
+// SetTimezone keeps the IANA timezone the user's browser sent.
+func (s *UserStore) SetTimezone(ctx context.Context, id, tz string) error {
+	if _, err := s.db.ExecContext(ctx, `UPDATE users SET timezone = ? WHERE id = ?`, tz, id); err != nil {
+		return fmt.Errorf("set timezone: %w", err)
+	}
+	return nil
+}
+
 // ListUsers returns all app-local users ordered for the admin user list.
 func (s *UserStore) ListUsers(ctx context.Context) ([]User, error) {
 	rows, err := s.db.QueryContext(ctx, `

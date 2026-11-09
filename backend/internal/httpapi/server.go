@@ -313,6 +313,8 @@ type UserService interface {
 	UpsertFromClaims(context.Context, auth.Claims, string) (auth.User, error)
 	ListUsers(context.Context) ([]auth.User, error)
 	UpdateResponseLanguage(ctx context.Context, id, language string) error
+	Timezone(ctx context.Context, id string) (string, error)
+	SetTimezone(ctx context.Context, id, tz string) error
 }
 
 // newServer builds the server struct from its dependencies.
