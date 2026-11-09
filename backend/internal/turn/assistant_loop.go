@@ -282,7 +282,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			} else {
 				var created []artifact.Response
 				var handled bool
-				output, created, handled = t.executeBuiltInTool(ctx, call)
+				output, created, handled = t.executeBuiltInTool(ctx, call, reg)
 				if handled {
 					for _, response := range created {
 						artifacts = append(artifacts, response)

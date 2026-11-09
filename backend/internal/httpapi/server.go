@@ -382,8 +382,13 @@ func newServer(d Deps) *server {
 		s.runs = newScheduleRuns()
 		scheduleTools = scheduleToolRunner{s: s}
 	}
+	var places turn.Places
+	if s.locations != nil {
+		places = enginePlaces{s: s}
+	}
 	s.engine = turn.New(turn.Config{
 		Schedules:                  scheduleTools,
+		Places:                     places,
 		Thread:                     d.Thread,
 		Usage:                      d.Usage,
 		Artifacts:                  d.Artifacts,

@@ -2,27 +2,18 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/location"
-	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/sun"
+	"github.com/trick77/loom/internal/weather"
 	"github.com/trick77/ship/kit/httpx"
-)
-
-// forecastTool and airQualityTool are the weather sidecar's (docs/weather.md);
-// the air is optional.
-var (
-	forecastTool   = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool)
-	airQualityTool = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherAirQualityTool)
 )
 
 const (
@@ -100,10 +91,10 @@ type todayWeather struct {
 	Hours []todayHour `json:"hours"`
 	// Details, Rain and Outlook are the tile's further cards, each nil when
 	// the forecast has no values for it.
-	Details     *todayDetails  `json:"details"`
-	Rain        []todayRain    `json:"rain"`
-	Outlook     []todayOutlook `json:"outlook"`
-	Attribution attribution    `json:"attribution"`
+	Details     *todayDetails       `json:"details"`
+	Rain        []todayRain         `json:"rain"`
+	Outlook     []todayOutlook      `json:"outlook"`
+	Attribution weather.Attribution `json:"attribution"`
 }
 
 // todayDetails is the shown day in numbers: today the air and wind now,
@@ -178,25 +169,6 @@ type todayPollen struct {
 	Level string `json:"level"`
 }
 
-// airAnswer is the air_quality tool's answer, as far as the page reads it.
-// The index is read as a number: another server may send fractions.
-type airAnswer struct {
-	Hourly []struct {
-		Time string   `json:"time"`
-		AQI  *float64 `json:"aqi"`
-	} `json:"hourly"`
-	Daily []struct {
-		Date   string             `json:"date"`
-		AQIMax *float64           `json:"aqiMax"`
-		Pollen map[string]float64 `json:"pollen"`
-	} `json:"daily"`
-}
-
-type attribution struct {
-	Text string `json:"text"`
-	URL  string `json:"url"`
-}
-
 type todayWarning struct {
 	Kind string `json:"kind"`
 	From string `json:"from"`
@@ -212,42 +184,6 @@ type todayRun struct {
 	Title     string    `json:"title"`
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"createdAt"`
-}
-
-// forecast is the weather sidecar's answer, as far as the start page reads it
-// (docs/weather.md): beyond time, temperature and code every value may be
-// missing.
-type forecast struct {
-	Hourly      []forecastHour `json:"hourly"`
-	Daily       []forecastDay  `json:"daily"`
-	Attribution attribution    `json:"attribution"`
-}
-
-type forecastHour struct {
-	Time                     string   `json:"time"`
-	Temperature              float64  `json:"temperature"`
-	Code                     int      `json:"code"`
-	PrecipitationProbability *int     `json:"precipitationProbability"`
-	Precipitation            *float64 `json:"precipitation"`
-	WindSpeed                *float64 `json:"windSpeed"`
-	WindGusts                *float64 `json:"windGusts"`
-	WindDirection            *int     `json:"windDirection"`
-	ApparentTemperature      *float64 `json:"apparentTemperature"`
-	Humidity                 *int     `json:"humidity"`
-}
-
-type forecastDay struct {
-	Date                     string   `json:"date"`
-	High                     float64  `json:"high"`
-	Low                      float64  `json:"low"`
-	Code                     int      `json:"code"`
-	PrecipitationProbability *int     `json:"precipitationProbability"`
-	PrecipitationSum         *float64 `json:"precipitationSum"`
-	UVIndexMax               *float64 `json:"uvIndexMax"`
-	SunshineHours            *float64 `json:"sunshineHours"`
-	WindSpeedMax             *float64 `json:"windSpeedMax"`
-	WindGustsMax             *float64 `json:"windGustsMax"`
-	WindDirection            *int     `json:"windDirection"`
 }
 
 // handleToday is the start page's day: the user's place, its weather and sun,
@@ -285,7 +221,7 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 	// there), else the browser's. refreshAt tells the page when it turns.
 	loc := userZone(user)
 	if out.Location != nil {
-		loc = placeZone(out.Location, user)
+		loc = weather.Zone(out.Location.Timezone, user.Timezone)
 	}
 	local := now.In(loc)
 	tomorrow := local.Hour() >= eveningHour
@@ -299,31 +235,21 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 	out.RefreshAt = &refreshAt
 	if p := out.Location; p != nil {
 		out.Sun = sunOn(now, shown, p, loc)
-		// Both wait together: the page waits on the slower, not the sum. The
-		// air shows on the weather's tile only: without the weather it is
-		// called off and left out.
-		airCtx, cancelAir := context.WithCancel(ctx)
-		var air *todayAir
-		var wg sync.WaitGroup
-		wg.Go(func() {
-			if a, ok := s.airFor(airCtx, p, loc); ok {
-				air = airOn(a, local, shown, tomorrow)
-			}
-		})
-		if f, ok := s.forecastFor(ctx, p, loc); ok {
-			if tomorrow {
-				out.Weather, out.Warning, out.Tonight = tomorrowForecast(f, local, shown)
-			} else {
-				out.Weather, out.Warning = todayForecast(f, local)
-			}
+		// The air shows on the weather's tile only: without the weather it is
+		// left out.
+		weatherCtx, cancel := context.WithTimeout(ctx, forecastTimeout)
+		report, err := weather.GetWeather(weatherCtx, s.mcp, p.Latitude, p.Longitude, loc.String(), forecastDays)
+		cancel()
+		switch f := report.Forecast; {
+		case err != nil || len(f.Daily) == 0:
+			slog.Warn("forecast failed", "err", err, "days", len(f.Daily))
+		case tomorrow:
+			out.Weather, out.Warning, out.Tonight = tomorrowForecast(f, local, shown)
+		default:
+			out.Weather, out.Warning = todayForecast(f, local)
 		}
-		if out.Weather == nil {
-			cancelAir()
-		}
-		wg.Wait()
-		cancelAir()
-		if out.Weather != nil {
-			out.Air = air
+		if out.Weather != nil && report.Air != nil {
+			out.Air = airOn(*report.Air, local, shown, tomorrow)
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
@@ -380,16 +306,6 @@ func (s *server) todayRuns(ctx context.Context, user auth.User) []todayRun {
 	return runs
 }
 
-// placeZone is the zone the place's times read in: its own, else the user's.
-func placeZone(p *location.Place, user auth.User) *time.Location {
-	for _, name := range []string{p.Timezone, user.Timezone} {
-		if loc, err := time.LoadLocation(name); name != "" && err == nil {
-			return loc
-		}
-	}
-	return time.UTC
-}
-
 // sunOn is the sun on the shown day (a time on it, in loc), against the day
 // before it; where the sun is now only when the shown day is today.
 func sunOn(now, shown time.Time, p *location.Place, loc *time.Location) *todaySun {
@@ -418,52 +334,9 @@ func sameDay(a, b time.Time) bool {
 	return a.Format(time.DateOnly) == b.Format(time.DateOnly)
 }
 
-// forecastFor asks the weather sidecar for the place's forecast; ok is false
-// when it cannot say.
-func (s *server) forecastFor(ctx context.Context, p *location.Place, loc *time.Location) (forecast, bool) {
-	ctx, cancel := context.WithTimeout(ctx, forecastTimeout)
-	defer cancel()
-	text, err := s.mcp.CallTool(ctx, forecastTool, map[string]any{
-		"latitude": p.Latitude, "longitude": p.Longitude, "timezone": loc.String(), "days": forecastDays,
-	})
-	if err != nil {
-		slog.Warn("forecast failed", "err", err)
-		return forecast{}, false
-	}
-	var f forecast
-	if err := json.Unmarshal([]byte(text), &f); err != nil || len(f.Hourly) == 0 || len(f.Daily) == 0 {
-		slog.Warn("forecast unreadable", "err", err)
-		return forecast{}, false
-	}
-	return f, true
-}
-
-// airFor asks the weather sidecar for the air at the place; ok is false when
-// it cannot say or has no such tool.
-func (s *server) airFor(ctx context.Context, p *location.Place, loc *time.Location) (airAnswer, bool) {
-	if !s.mcp.HasTool(airQualityTool) {
-		return airAnswer{}, false
-	}
-	ctx, cancel := context.WithTimeout(ctx, forecastTimeout)
-	defer cancel()
-	text, err := s.mcp.CallTool(ctx, airQualityTool, map[string]any{
-		"latitude": p.Latitude, "longitude": p.Longitude, "timezone": loc.String(), "days": 2,
-	})
-	if err != nil {
-		slog.Warn("air quality failed", "err", err)
-		return airAnswer{}, false
-	}
-	var a airAnswer
-	if err := json.Unmarshal([]byte(text), &a); err != nil {
-		slog.Warn("air quality unreadable", "err", err)
-		return airAnswer{}, false
-	}
-	return a, true
-}
-
 // airOn is the air on the shown day: today the index this hour, tomorrow its
 // highest; nil when neither the index nor any pollen is known.
-func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
+func airOn(a weather.Air, local, shown time.Time, tomorrow bool) *todayAir {
 	date := shown.Format(time.DateOnly)
 	out := &todayAir{Max: tomorrow, Hours: airHoursOn(a, local, date, tomorrow)}
 	var aqi *float64
@@ -491,7 +364,7 @@ func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
 		if tomorrow {
 			aqi = d.AQIMax
 		}
-		for _, kind := range pollenOrder {
+		for _, kind := range weather.PollenOrder {
 			v, ok := d.Pollen[kind]
 			if !ok {
 				continue
@@ -499,14 +372,14 @@ func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
 			if out.Pollen == nil {
 				out.Pollen = []todayPollen{}
 			}
-			if level := pollenLevel(kind, v); level != "" {
+			if level := weather.PollenLevel(kind, v); level != "" {
 				out.Pollen = append(out.Pollen, todayPollen{Kind: kind, Level: level})
 			}
 		}
 	}
 	if aqi != nil {
 		v := int(math.Round(*aqi))
-		out.AQI, out.Level = &v, aqiLevel(v)
+		out.AQI, out.Level = &v, weather.AQILevel(v)
 	}
 	if out.AQI == nil && len(out.Pollen) == 0 {
 		return nil
@@ -517,7 +390,7 @@ func airOn(a airAnswer, local, shown time.Time, tomorrow bool) *todayAir {
 // airHoursOn is the index hour by hour: today airCurveHours from now,
 // tomorrow from tomorrowFrom to tomorrowTo as far as the answer reaches (the
 // air tool lists 24 hours from now: from 20:00 tomorrow's end is cut).
-func airHoursOn(a airAnswer, local time.Time, date string, tomorrow bool) []todayAirHour {
+func airHoursOn(a weather.Air, local time.Time, date string, tomorrow bool) []todayAirHour {
 	out := []todayAirHour{}
 	current := hourStamp(local)
 	for _, h := range a.Hourly {
@@ -549,63 +422,12 @@ func hourStamp(local time.Time) string {
 	return local.Truncate(time.Hour).Format("2006-01-02T15:04")
 }
 
-// aqiLevel is the European air quality index's band (EEA): good to 20, fair
-// to 40, moderate to 60, poor to 80, very poor to 100, extremely poor above.
-func aqiLevel(aqi int) string {
-	switch {
-	case aqi <= 20:
-		return "good"
-	case aqi <= 40:
-		return "fair"
-	case aqi <= 60:
-		return "moderate"
-	case aqi <= 80:
-		return "poor"
-	case aqi <= 100:
-		return "veryPoor"
-	}
-	return "extremelyPoor"
-}
-
-// pollenOrder is the kinds the page shows, in the season's order; olive has
-// no class here (it barely flies north of the Alps).
-var pollenOrder = []string{"alder", "birch", "grass", "mugwort", "ragweed"}
-
-// pollenClasses are where a kind's moderate, high and very high loads start,
-// in grains/m³ as a daily mean; low is from 1. MeteoSwiss, "Threshold values
-// for pollen load classes of allergenic pollen types" (2024-01-10).
-var pollenClasses = map[string][3]float64{
-	"alder":   {11, 70, 250},
-	"birch":   {11, 70, 300},
-	"grass":   {20, 50, 150},
-	"mugwort": {6, 15, 50},
-	"ragweed": {6, 11, 40},
-}
-
-// pollenLevel is a kind's load class for a day's mean; "" when below low or
-// the kind has no classes.
-func pollenLevel(kind string, mean float64) string {
-	classes, ok := pollenClasses[kind]
-	v := math.Round(mean)
-	switch {
-	case !ok || v < 1:
-		return ""
-	case v >= classes[2]:
-		return "veryHigh"
-	case v >= classes[1]:
-		return "high"
-	case v >= classes[0]:
-		return "moderate"
-	}
-	return "low"
-}
-
 // todayForecast reads the start page's weather off the forecast from the
 // current hour on: "now" between it and the next, five hours three apart,
 // today's high and low, and a warning for the next hours. The contract does
 // not promise the hours start now, so the current one is looked up; a
 // forecast with no hour from now on is none.
-func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
+func todayForecast(f weather.Forecast, now time.Time) (*todayWeather, *todayWarning) {
 	current := hourStamp(now)
 	start := currentHour(f, now)
 	if start < 0 {
@@ -625,7 +447,7 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 		// the range, never for the details (its UV, rain and sun are another
 		// day's).
 		day, _ = dayOf(f, time.Time{})
-		ownDay = forecastDay{}
+		ownDay = weather.Day{}
 	}
 	out := &todayWeather{
 		Now:         &todayNow{Temperature: math.Round(temp*10) / 10, Code: first.Code},
@@ -648,7 +470,7 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 // page shows tonight on its own, under tomorrow's heading it read as
 // tomorrow's. A forecast that does not reach tomorrow, or whose days do not
 // name it, is none: never today's numbers under tomorrow's name.
-func tomorrowForecast(f forecast, local, tomorrow time.Time) (weather *todayWeather, warning, tonight *todayWarning) {
+func tomorrowForecast(f weather.Forecast, local, tomorrow time.Time) (weather *todayWeather, warning, tonight *todayWarning) {
 	day, ok := dayOf(f, tomorrow)
 	if !ok {
 		return nil, nil, nil
@@ -697,7 +519,7 @@ func tomorrowForecast(f forecast, local, tomorrow time.Time) (weather *todayWeat
 
 // currentHour is the index of the forecast's hour that holds local, or the
 // first after it; -1 when the forecast ended before.
-func currentHour(f forecast, local time.Time) int {
+func currentHour(f weather.Forecast, local time.Time) int {
 	current := hourStamp(local)
 	for i, h := range f.Hourly {
 		if h.Time >= current {
@@ -709,7 +531,7 @@ func currentHour(f forecast, local time.Time) int {
 
 // dayOf is the forecast's day on date; ok is false when the forecast does
 // not name it, the first day returned then. A zero date asks for the first.
-func dayOf(f forecast, date time.Time) (forecastDay, bool) {
+func dayOf(f weather.Forecast, date time.Time) (weather.Day, bool) {
 	day, ok := f.Daily[0], date.IsZero()
 	for _, d := range f.Daily {
 		if !date.IsZero() && d.Date == date.Format(time.DateOnly) {
@@ -720,14 +542,14 @@ func dayOf(f forecast, date time.Time) (forecastDay, bool) {
 	return day, ok
 }
 
-func dayView(d forecastDay) todayDay {
+func dayView(d weather.Day) todayDay {
 	return todayDay{High: d.High, Low: d.Low, Code: d.Code, PrecipitationProbability: d.PrecipitationProbability}
 }
 
 // detailsOf is the details card: with now (today) the air and wind this
 // hour, without (tomorrow) the day's strongest wind; nil when the forecast
 // carries none of it.
-func detailsOf(now *forecastHour, day forecastDay) *todayDetails {
+func detailsOf(now *weather.Hour, day weather.Day) *todayDetails {
 	d := todayDetails{UVMax: day.UVIndexMax, PrecipitationSum: day.PrecipitationSum, SunshineHours: day.SunshineHours,
 		Wind: day.WindSpeedMax, Gusts: day.WindGustsMax, WindDirection: day.WindDirection}
 	if now != nil {
@@ -741,7 +563,7 @@ func detailsOf(now *forecastHour, day forecastDay) *todayDetails {
 }
 
 // rainIn is the rain card's hours; nil when none says how much or how likely.
-func rainIn(hours []forecastHour) []todayRain {
+func rainIn(hours []weather.Hour) []todayRain {
 	var out []todayRain
 	known := false
 	for _, h := range hours {
@@ -756,7 +578,7 @@ func rainIn(hours []forecastHour) []todayRain {
 
 // outlookAfter is up to outlookDays days after shown; nil when the forecast
 // ends with it.
-func outlookAfter(f forecast, shown time.Time) []todayOutlook {
+func outlookAfter(f weather.Forecast, shown time.Time) []todayOutlook {
 	date := shown.Format(time.DateOnly)
 	var out []todayOutlook
 	for _, d := range f.Daily {
@@ -768,7 +590,7 @@ func outlookAfter(f forecast, shown time.Time) []todayOutlook {
 	return out
 }
 
-func hourOf(f forecast, i int) todayHour {
+func hourOf(f weather.Forecast, i int) todayHour {
 	h := f.Hourly[i]
 	return todayHour{Time: clock(h.Time), Temperature: h.Temperature, Code: h.Code, PrecipitationProbability: h.PrecipitationProbability}
 }
@@ -776,7 +598,7 @@ func hourOf(f forecast, i int) todayHour {
 // warningIn is the first warning in the hours from start through start+span:
 // precipitation likely enough, else frost; its Day says whether it falls on
 // local's day or the next.
-func warningIn(f forecast, start, span int, local time.Time) *todayWarning {
+func warningIn(f weather.Forecast, start, span int, local time.Time) *todayWarning {
 	today := local.Format(time.DateOnly)
 	at := func(kind, t string) *todayWarning {
 		day := dayTomorrow

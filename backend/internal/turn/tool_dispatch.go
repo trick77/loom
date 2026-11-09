@@ -392,7 +392,7 @@ func (s *Engine) countToolCall(ctx context.Context, user auth.User, toolName str
 // the only way dispatch runs a built-in (see executeBuiltInTool), and the
 // offered document tools. A name both claim stays the built-in's.
 func (t *Run) offer(gate toolGate) []llm.Tool {
-	tools, builtIns := t.e.offerTools(t.thread, gate, t.e.offeredMCPTools(t.user, gate))
+	tools, builtIns := t.e.offerTools(t.user, t.thread, gate, t.e.offeredMCPTools(t.user, gate))
 	tools, t.offered = t.allowTools(tools, builtIns)
 	t.offeredDocTools = map[string]bool{}
 	for _, tool := range tools {
@@ -404,14 +404,14 @@ func (t *Run) offer(gate toolGate) []llm.Tool {
 }
 
 // offerTools is offer's built-ins and MCP tools, before allowTools.
-func (s *Engine) offerTools(thread chat.Thread, gate toolGate, mcpTools []llm.Tool) ([]llm.Tool, map[string]*toolSpec) {
+func (s *Engine) offerTools(user auth.User, thread chat.Thread, gate toolGate, mcpTools []llm.Tool) ([]llm.Tool, map[string]*toolSpec) {
 	tools := []llm.Tool(nil)
 	builtIns := map[string]*toolSpec{}
 	names := map[string]string{}
 	specs, _ := s.registry()
 	for i := range specs {
 		spec := &specs[i]
-		if spec.offered != nil && !spec.offered(s, thread, gate) {
+		if spec.offered != nil && !spec.offered(s, thread, gate) || spec.allowed != nil && !spec.allowed(s, user) {
 			continue
 		}
 		// A copy of the shared definition; its Parameters map is never written.
@@ -535,22 +535,50 @@ func (s *Engine) findImageTool(tools []llm.Tool) *llm.Tool {
 // model-facing output, the artifacts the call created (run_python can write
 // several) and whether the call was a built-in's. Only a built-in this turn
 // offered under the name runs, so a call reaches the tool whose definition the
-// model saw; any other name is left to MCP.
-func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall) (string, []artifact.Response, bool) {
+// model saw; any other name is left to MCP. The sources a built-in cites
+// (toolSpec.cites) join the turn's [n] sources in reg; nil drops them.
+func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall, reg *webSourceRegistry) (string, []artifact.Response, bool) {
 	spec := t.offered[call.Function.Name]
-	if spec == nil || spec.run == nil {
+	if spec == nil || (spec.run == nil && spec.cites == nil) {
 		return "", nil, false
 	}
 	if spec.userIntent && t.readOutside {
 		return userIntentAfterOutside, nil, true
 	}
-	output, created := spec.run(ctx, t, call)
+	var output string
+	var created []artifact.Response
+	if spec.cites != nil {
+		output = t.runCiting(ctx, spec, call, reg)
+	} else {
+		output, created = spec.run(ctx, t, call)
+	}
 	// Every other built-in can bring in text the user did not write: another
 	// thread, a memory, a file, a program's output.
 	if !spec.userIntent && !spec.sharesIntent {
 		t.readOutside = true
 	}
 	return output, created, true
+}
+
+// runCiting runs a citing built-in: its sources numbered in reg and named
+// above its answer, as relabelStructuredSources does for an MCP result.
+func (t *Run) runCiting(ctx context.Context, spec *toolSpec, call llm.ToolCall, reg *webSourceRegistry) string {
+	args, err := parseToolArguments(call.Function.Arguments)
+	if err != nil {
+		return capToolOutput("tool failed: invalid arguments: " + err.Error())
+	}
+	start := time.Now()
+	output, sources := spec.cites(ctx, t, args)
+	logArgs := []any{"tool", call.Function.Name, "args", summarizeForLog(call.Function.Arguments), "duration_ms", time.Since(start).Milliseconds()}
+	if strings.HasPrefix(output, toolFailedPrefix) {
+		slog.Warn("tool call failed", append(logArgs, "err", output)...)
+	} else {
+		slog.Info("tool call completed", append(logArgs, "result_bytes", len(output))...)
+	}
+	if reg != nil && len(sources) > 0 {
+		output = relabelStructuredSources(output, sources, reg)
+	}
+	return capToolOutput(output)
 }
 
 // userIntentAfterOutside refuses a userIntent tool in a turn that already

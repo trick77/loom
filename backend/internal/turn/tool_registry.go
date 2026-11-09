@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
@@ -24,9 +25,16 @@ type toolSpec struct {
 	tool llm.Tool
 	// offered reports whether the turn gets the tool; nil means always.
 	offered func(e *Engine, thread chat.Thread, gate toolGate) bool
+	// allowed limits a built-in to the accounts it can serve (one backed by
+	// a server limited to some accounts); nil means every account.
+	allowed func(e *Engine, user auth.User) bool
 	// run executes a call and returns the model-facing output and the
 	// artifacts it created; nil for an MCP tool.
 	run toolRunFunc
+	// cites runs a built-in whose answer cites sources, in place of run:
+	// dispatch numbers them with the turn's [n] sources, as an MCP
+	// result's are (outdoor_windows: the weather's credit).
+	cites func(ctx context.Context, t *Run, args map[string]any) (string, []mcp.Source)
 	// capPerRound bounds how many calls of the tool one round runs; 0 means
 	// maxToolCallsPerRound.
 	capPerRound int
@@ -248,7 +256,7 @@ func indexTools(tools []toolSpec) map[string]*toolSpec {
 // built-in's definition. On a duplicate name the first spec wins.
 func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 	s.toolsOnce.Do(func() {
-		tools := slices.Concat(coreTools, scheduleToolSpecs, []toolSpec{sandboxToolSpec})
+		tools := slices.Concat(coreTools, []toolSpec{outdoorToolSpec}, scheduleToolSpecs, []toolSpec{sandboxToolSpec})
 		for i := range tools {
 			tools[i].tool = tools[i].schema()
 		}

@@ -131,8 +131,8 @@ var catalog = []struct {
 		block: "Give a structured plan, numbered or grouped into phases. Call out a thing people commonly forget, and include one contingency.",
 	}},
 	{Weather, entry{
-		gloss: "weather forecasts, air quality, pollen levels",
-		block: "Keep it very short — give only the forecast, air or pollen reading, or say so if the data isn't available. When the user asks without naming a place and their location is known, use it.",
+		gloss: "weather forecasts, air quality, pollen levels, and when the weather suits going out for a run or a ride",
+		block: "Keep it very short — give only the forecast, air or pollen reading, or say so if the data isn't available. When the user asks without naming a place and their location is known, use it. For when to go out for a run or a ride, when the outdoor_windows tool is offered, give only the windows it returns.",
 	}},
 	{Translation, entry{
 		gloss: "translating text between languages",

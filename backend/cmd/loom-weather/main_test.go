@@ -69,7 +69,7 @@ const hourlyReply = `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zuric
  "temperature_2m":[5.1,6.2,null,4,3],"weather_code":[3,2,1,61,0],"precipitation_probability":[10,null,0,80,0],
  "precipitation":[0,null,0,1.2,0],"wind_speed_10m":[8.5,9,10,20,5],"wind_gusts_10m":[20.1,null,22,45,12],
  "wind_direction_10m":[250,251,null,270,90],"apparent_temperature":[2.4,null,4,0.5,1],
- "relative_humidity_2m":[87,null,80,95,70],"uv_index":[0.4,null,1.5,0.2,0.9]}}`
+ "relative_humidity_2m":[87,null,80,95,70],"sunshine_duration":[1530,null,3600,0,2400]}}`
 
 // dailyReply starts a day early, as a reply kept over midnight does.
 const dailyReply = `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich","utc_offset_seconds":3600,
@@ -292,7 +292,7 @@ func TestForecast(t *testing.T) {
 	h := got.Hourly[0]
 	if h.Time != "2026-11-09T08:00" || h.Temperature != 5.1 || h.Code != 3 || *h.PrecipitationProbability != 10 ||
 		*h.WindSpeed != 8.5 || *h.Precipitation != 0 || *h.WindGusts != 20.1 || *h.WindDirection != 250 ||
-		*h.ApparentTemperature != 2.4 || *h.Humidity != 87 || *h.UVIndex != 0.4 {
+		*h.ApparentTemperature != 2.4 || *h.Humidity != 87 || *h.SunshineMinutes != 26 {
 		t.Fatalf("first hour = %+v", h)
 	}
 	if !strings.Contains(text, `{"time":"2026-11-09T09:00","temperature":6.2,"code":2,"windSpeed":9,"windDirection":251}`) {
@@ -310,7 +310,7 @@ func TestForecast(t *testing.T) {
 	// The hours are fetched for three days, the days for seven, whatever
 	// the call asked: one fetch of each serves every call for the place.
 	for query, parts := range map[string][]string{
-		hourlyQuery: {"latitude=47.377", "longitude=8.542", "forecast_days=4", "timezone=Europe%2FZurich"},
+		hourlyQuery: {"latitude=47.377", "longitude=8.542", "forecast_days=4", "timezone=Europe%2FZurich", "sunshine_duration"},
 		dailyQuery:  {"latitude=47.377", "longitude=8.542", "forecast_days=8", "timezone=Europe%2FZurich"},
 	} {
 		for _, part := range parts {
