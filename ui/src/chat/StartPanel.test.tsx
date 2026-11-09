@@ -390,12 +390,21 @@ describe("returning to the tab", () => {
     ).toBeInTheDocument();
   });
 
-  test("crossing 18:00 reloads tomorrow, even within half an hour", async () => {
+  test("a passed refreshAt reloads, even within half an hour", async () => {
+    // A sleeping tab can miss the timer; coming back catches up.
     vi.setSystemTime(new Date(2026, 10, 9, 17, 50));
-    vi.mocked(api.getToday).mockResolvedValue(todayFixture({ runs: [] }));
+    vi.mocked(api.getToday).mockResolvedValue(
+      todayFixture({
+        runs: [],
+        refreshAt: new Date(2026, 10, 9, 18, 0).toISOString(),
+      }),
+    );
     renderStart();
     await screen.findByRole("region", { name: /^Today · / });
     vi.mocked(api.getToday).mockResolvedValue(tomorrowFixture({ runs: [] }));
+    comeBack(new Date(2026, 10, 9, 17, 55));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.getToday).toHaveBeenCalledOnce();
     comeBack(new Date(2026, 10, 9, 18, 5));
     expect(
       await screen.findByRole("region", {
@@ -403,21 +412,89 @@ describe("returning to the tab", () => {
       }),
     ).toBeInTheDocument();
   });
+});
 
-  test("crossing midnight reloads too", async () => {
-    vi.setSystemTime(new Date(2026, 10, 9, 23, 50));
-    vi.mocked(api.getToday).mockResolvedValue(tomorrowFixture({ runs: [] }));
-    renderStart();
-    await screen.findByRole("region", { name: /^Tomorrow · / });
+describe("the shown day's end", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date(2026, 10, 9, 17, 59));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // tick runs the clock and lets the loads it starts answer.
+  async function tick(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  test("reloads at refreshAt and shows tomorrow", async () => {
     vi.mocked(api.getToday).mockResolvedValue(
-      todayFixture({ date: "2026-11-10", runs: [] }),
-    );
-    comeBack(new Date(2026, 10, 10, 0, 10));
-    expect(
-      await screen.findByRole("region", {
-        name: "Today · Tuesday, November 10",
+      todayFixture({
+        runs: [],
+        refreshAt: new Date(2026, 10, 9, 18, 0).toISOString(),
       }),
+    );
+    renderStart();
+    await tick(0);
+    expect(
+      screen.getByRole("region", { name: /^Today · / }),
     ).toBeInTheDocument();
+    vi.mocked(api.getToday).mockResolvedValue(tomorrowFixture({ runs: [] }));
+    await tick(59_000);
+    expect(api.getToday).toHaveBeenCalledOnce();
+    await tick(1_000);
+    expect(api.getToday).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByRole("region", { name: "Tomorrow · Tuesday, November 10" }),
+    ).toBeInTheDocument();
+  });
+
+  test.each([
+    ["past", new Date(2026, 10, 9, 17, 0).toISOString()],
+    ["absent", null],
+    ["not a time", "soon"],
+  ])("a %s refreshAt schedules nothing", async (_, refreshAt) => {
+    vi.mocked(api.getToday).mockResolvedValue(
+      todayFixture({ runs: [], refreshAt }),
+    );
+    renderStart();
+    await tick(0);
+    expect(api.getToday).toHaveBeenCalledOnce();
+    await tick(12 * 60 * 60_000);
+    expect(api.getToday).toHaveBeenCalledOnce();
+  });
+
+  test("a far refreshAt is capped at six hours", async () => {
+    vi.mocked(api.getToday).mockResolvedValue(
+      todayFixture({
+        runs: [],
+        refreshAt: new Date(2026, 10, 10, 18, 0).toISOString(),
+      }),
+    );
+    renderStart();
+    await tick(0);
+    await tick(6 * 60 * 60_000 - 1);
+    expect(api.getToday).toHaveBeenCalledOnce();
+    await tick(1);
+    expect(api.getToday).toHaveBeenCalledTimes(2);
+  });
+
+  test("leaving the start page drops the timer", async () => {
+    vi.mocked(api.getToday).mockResolvedValue(
+      todayFixture({
+        runs: [],
+        refreshAt: new Date(2026, 10, 9, 18, 0).toISOString(),
+      }),
+    );
+    const { unmount } = renderStart();
+    await tick(0);
+    unmount();
+    await tick(60_000);
+    expect(api.getToday).toHaveBeenCalledOnce();
   });
 });
 

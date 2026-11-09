@@ -17,28 +17,30 @@ export type TodayState =
 // STALE_MS is how old a load may get before a return to the tab reloads it.
 export const STALE_MS = 30 * 60_000;
 
-// TOMORROW_FROM is the local hour the server starts showing tomorrow.
-const TOMORROW_FROM = 18;
+// MAX_REFRESH_MS caps the wait for refreshAt: a far or odd time from the
+// server still gets a reload, which then schedules the next one.
+export const MAX_REFRESH_MS = 6 * 60 * 60_000;
 
-// dayBucket names what the server would show now: the browser's date and
-// whether it is past TOMORROW_FROM. A change means the shown day may flip.
-function dayBucket(now = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  return `${date}/${now.getHours() >= TOMORROW_FROM ? "evening" : "day"}`;
+// refreshTime reads refreshAt as epoch milliseconds; null when absent or not
+// a time.
+function refreshTime(refreshAt: string | null): number | null {
+  if (refreshAt === null) return null;
+  const at = Date.parse(refreshAt);
+  return Number.isNaN(at) ? null : at;
 }
 
 // useToday loads the start page's "Today" and keeps it current: it reloads
-// when news is read elsewhere (the bell, a thread) and when the tab comes
-// back after the shown day may have flipped (midnight, 18:00) or after a
-// while, and reads runs itself with the card gone before the server answers.
+// when the shown day changes (the server's refreshAt: 18:00, midnight), when
+// news is read elsewhere (the bell, a thread), and when the tab comes back
+// after that moment or after a while; it reads runs itself with the card
+// gone before the server answers.
 export function useToday() {
   const [state, setState] = useState<TodayState>({ status: "loading" });
   // Runs read here stay hidden even if a reload races the read.
   const [read, setRead] = useState<ReadonlySet<string>>(() => new Set());
   const alive = useRef(true);
-  // When and in which day bucket the last load answered.
-  const loaded = useRef<{ at: number; bucket: string } | null>(null);
+  // When the last load answered, and when its shown day ends.
+  const loaded = useRef<{ at: number; refreshAt: number | null } | null>(null);
   // True while this hook announces: the bell and sidebar need those events,
   // a reload here does not (the cards are already gone). dispatchEvent runs
   // the listeners synchronously, so the flag covers exactly those events.
@@ -56,7 +58,8 @@ export function useToday() {
       const fresh = await getToday();
       if (!alive.current || mine < applied.current) return;
       applied.current = mine;
-      loaded.current = { at: Date.now(), bucket: dayBucket() };
+      const refreshAt = refreshTime(fresh.refreshAt);
+      loaded.current = { at: Date.now(), refreshAt };
       setState({ status: "ready", today: fresh });
     } catch {
       if (!alive.current || mine < applied.current) return;
@@ -86,7 +89,12 @@ export function useToday() {
         if (sent.current > 0 && pending.current === 0) void load();
         return;
       }
-      if (last.bucket !== dayBucket() || Date.now() - last.at > STALE_MS)
+      // A sleeping tab may have missed the refreshAt timer.
+      const now = Date.now();
+      if (
+        now - last.at > STALE_MS ||
+        (last.refreshAt !== null && now >= last.refreshAt)
+      )
         void load();
     };
     window.addEventListener(NOTIFICATIONS_CHANGED, onChanged);
@@ -100,6 +108,22 @@ export function useToday() {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [load]);
+
+  // Reload when the shown day changes (refreshAt). Every load sets a new
+  // state, so the timer is reset per load; a past or missing time schedules
+  // nothing.
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    const at = refreshTime(state.today.refreshAt);
+    if (at === null) return;
+    const wait = at - Date.now();
+    if (wait <= 0) return;
+    const timer = window.setTimeout(
+      () => void load(),
+      Math.min(wait, MAX_REFRESH_MS),
+    );
+    return () => window.clearTimeout(timer);
+  }, [state, load]);
 
   // markRead reads the given runs, and only those: "mark all" here means
   // the cards shown, not news the user never saw. A card whose read failed

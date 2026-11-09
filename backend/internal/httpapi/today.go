@@ -32,8 +32,9 @@ const (
 	// warningRainChance is the chance of precipitation from which an hour
 	// with rain, snow or a storm is a warning.
 	warningRainChance = 50
-	// eveningHour is when the page turns to tomorrow (local to the place):
-	// in the evening the day ahead is what is worth knowing.
+	// eveningHour is when the page turns to tomorrow, local to the place (to
+	// the browser while no place is known): in the evening the day ahead is
+	// what is worth knowing.
 	eveningHour = 18
 	// tomorrowFrom and tomorrowTo bound tomorrow's hours shown and warned of.
 	tomorrowFrom, tomorrowTo = 6, 22
@@ -55,6 +56,8 @@ type todayResponse struct {
 	Weather     *todayWeather   `json:"weather"`
 	Warning     *todayWarning   `json:"warning"`
 	Runs        []todayRun      `json:"runs"`
+	// RefreshAt is when the day shown changes next: the page reloads then.
+	RefreshAt *time.Time `json:"refreshAt"`
 }
 
 type todaySun struct {
@@ -104,6 +107,8 @@ type attribution struct {
 type todayWarning struct {
 	Kind string `json:"kind"`
 	From string `json:"from"`
+	// Day is the day From falls on: in the evening a warning may be tonight's.
+	Day string `json:"day"`
 }
 
 type todayRun struct {
@@ -162,30 +167,45 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 		// would add a second home fact.
 		out.Location, out.AskLocation = place, err == nil && place == nil && s.locationSettled(ctx, user)
 	}
-	// The evening is the user's own (their browser's clock), the clock the
-	// page reloads by; the weather's hours read in the place's zone.
-	userLocal := now.In(userZone(user))
-	tomorrow := userLocal.Hour() >= eveningHour
-	shownDay := userLocal
+	// One clock for the day shown, its evening, the sun and the weather: the
+	// place's when a place is known (its evening is the user's, they are
+	// there), else the browser's. refreshAt tells the page when it turns.
+	loc := userZone(user)
+	if out.Location != nil {
+		loc = placeZone(out.Location, user)
+	}
+	local := now.In(loc)
+	tomorrow := local.Hour() >= eveningHour
+	shown := local
 	out.Day = dayToday
 	if tomorrow {
-		shownDay, out.Day = userLocal.AddDate(0, 0, 1), dayTomorrow
+		shown, out.Day = local.AddDate(0, 0, 1), dayTomorrow
 	}
-	out.Date = shownDay.Format(time.DateOnly)
+	out.Date = shown.Format(time.DateOnly)
+	refreshAt := nextTurn(local)
+	out.RefreshAt = &refreshAt
 	if p := out.Location; p != nil {
-		loc := placeZone(p, user)
-		y, m, d := shownDay.Date()
-		shown := time.Date(y, m, d, 12, 0, 0, 0, loc)
 		out.Sun = sunOn(now, shown, p, loc)
 		if f, ok := s.forecastFor(ctx, p, loc); ok {
 			if tomorrow {
-				out.Weather, out.Warning = tomorrowForecast(f, shown)
+				out.Weather, out.Warning = tomorrowForecast(f, local, shown)
 			} else {
-				out.Weather, out.Warning = todayForecast(f, now.In(loc))
+				out.Weather, out.Warning = todayForecast(f, local)
 			}
 		}
 	}
 	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+// nextTurn is when the day shown next changes after local: at eveningHour
+// to tomorrow, at midnight the shown tomorrow becomes today.
+func nextTurn(local time.Time) time.Time {
+	y, m, d := local.Date()
+	evening := time.Date(y, m, d, eveningHour, 0, 0, 0, local.Location())
+	if local.Before(evening) {
+		return evening
+	}
+	return time.Date(y, m, d+1, 0, 0, 0, 0, local.Location())
 }
 
 // locationSettled reports whether the facts as they are now were read for a
@@ -293,13 +313,7 @@ func (s *server) forecastFor(ctx context.Context, p *location.Place, loc *time.L
 // forecast with no hour from now on is none.
 func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 	current := now.Truncate(time.Hour).Format("2006-01-02T15:04")
-	start := -1
-	for i, h := range f.Hourly {
-		if h.Time >= current {
-			start = i
-			break
-		}
-	}
+	start := currentHour(f, now)
 	if start < 0 {
 		return nil, nil
 	}
@@ -324,14 +338,15 @@ func todayForecast(f forecast, now time.Time) (*todayWeather, *todayWarning) {
 	for i := 1; i < len(f.Hourly) && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))
 	}
-	return out, warningIn(f, 0, warningHours)
+	return out, warningIn(f, 0, warningHours, now)
 }
 
 // tomorrowForecast reads tomorrow off the forecast: its high and low, five
-// hours from tomorrowFrom three apart, and a warning for its daytime. A
-// forecast that does not reach tomorrow, or whose days do not name it, is
-// none: never today's numbers under tomorrow's name.
-func tomorrowForecast(f forecast, tomorrow time.Time) (*todayWeather, *todayWarning) {
+// hours from tomorrowFrom three apart, and a warning from now (local) through
+// tomorrow's daytime, tonight's included. A forecast that does not reach
+// tomorrow, or whose days do not name it, is none: never today's numbers
+// under tomorrow's name.
+func tomorrowForecast(f forecast, local, tomorrow time.Time) (*todayWeather, *todayWarning) {
 	day, ok := dayOf(f, tomorrow)
 	if !ok {
 		return nil, nil
@@ -360,7 +375,23 @@ func tomorrowForecast(f forecast, tomorrow time.Time) (*todayWeather, *todayWarn
 	for i := from; i <= to && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))
 	}
-	return out, warningIn(f, from, to-from)
+	tonight := currentHour(f, local)
+	if tonight < 0 || tonight > from {
+		tonight = from
+	}
+	return out, warningIn(f, tonight, to-tonight, local)
+}
+
+// currentHour is the index of the forecast's hour that holds local, or the
+// first after it; -1 when the forecast ended before.
+func currentHour(f forecast, local time.Time) int {
+	current := local.Truncate(time.Hour).Format("2006-01-02T15:04")
+	for i, h := range f.Hourly {
+		if h.Time >= current {
+			return i
+		}
+	}
+	return -1
 }
 
 // dayOf is the forecast's day on date; ok is false when the forecast does
@@ -382,16 +413,25 @@ func hourOf(f forecast, i int) todayHour {
 }
 
 // warningIn is the first warning in the hours from start through start+span:
-// precipitation likely enough, else frost.
-func warningIn(f forecast, start, span int) *todayWarning {
+// precipitation likely enough, else frost; its Day says whether it falls on
+// local's day or the next.
+func warningIn(f forecast, start, span int, local time.Time) *todayWarning {
+	today := local.Format(time.DateOnly)
+	at := func(kind, t string) *todayWarning {
+		day := dayTomorrow
+		if len(t) >= 10 && t[:10] == today {
+			day = dayToday
+		}
+		return &todayWarning{Kind: kind, From: clock(t), Day: day}
+	}
 	var warning *todayWarning
 	for i := start; i < len(f.Hourly) && i <= start+span; i++ {
 		h := f.Hourly[i]
 		if kind := precipitation(h.Code); kind != "" && h.PrecipitationProbability != nil && *h.PrecipitationProbability >= warningRainChance {
-			return &todayWarning{Kind: kind, From: clock(h.Time)}
+			return at(kind, h.Time)
 		}
 		if warning == nil && h.Temperature <= 0 {
-			warning = &todayWarning{Kind: "frost", From: clock(h.Time)}
+			warning = at("frost", h.Time)
 		}
 	}
 	return warning

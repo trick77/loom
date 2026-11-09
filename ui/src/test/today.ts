@@ -86,6 +86,7 @@ export function todayFixture(overrides: Partial<Today> = {}): Today {
       },
     },
     warning: null,
+    refreshAt: null,
     runs: [
       {
         id: "n1",

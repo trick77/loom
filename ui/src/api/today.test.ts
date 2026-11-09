@@ -25,6 +25,7 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
     weather: null,
     warning: null,
     runs: [],
+    refreshAt: null,
   });
   // One plain URL for every screen: no compact flag.
   expect(fetchMock).toHaveBeenCalledWith("/api/today", {
@@ -50,13 +51,26 @@ test("getToday keeps a full answer and survives a null one", async () => {
       progress: null,
     },
     weather: { now: null, day: dayRange, hours: [], attribution },
-    warning: { kind: "rain", from: "09:00" },
+    warning: { kind: "rain", from: "20:00", day: "today" },
     runs: [{ id: "n1", threadId: null, title: "t", body: "b", createdAt: "x" }],
+    refreshAt: "2026-11-10T00:00:00+01:00",
   };
   stubFetch(Response.json(full));
   await expect(getToday()).resolves.toEqual(full);
-  stubFetch(Response.json({ ...full, day: "yesterday" }));
-  await expect(getToday()).resolves.toMatchObject({ day: "today" });
+  // A warning without its day is for the shown day.
+  stubFetch(
+    Response.json({ ...full, warning: { kind: "rain", from: "09:00" } }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    warning: { kind: "rain", from: "09:00", day: "tomorrow" },
+  });
+  stubFetch(
+    Response.json({ ...full, day: "yesterday", refreshAt: 1, warning: null }),
+  );
+  await expect(getToday()).resolves.toMatchObject({
+    day: "today",
+    refreshAt: null,
+  });
   stubFetch(Response.json(null));
   await expect(getToday()).resolves.toMatchObject({
     date: "",
