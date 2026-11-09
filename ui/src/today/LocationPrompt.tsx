@@ -52,7 +52,7 @@ export function LocationPrompt({ onSaved }: { onSaved(): void }) {
           aria-describedby={error === "" ? undefined : errorId}
           aria-invalid={error === "" ? undefined : true}
           autoComplete="address-level2"
-          className="h-10 min-w-0 flex-1 rounded-[10px] border border-[#343432] bg-[#242422] px-3.5 text-sm text-[#faf9f5] outline-none placeholder:text-[#8f8b82] focus:border-[#4b4a46]"
+          className="h-10 min-w-0 flex-1 rounded-[10px] border border-[#343432] bg-[#242422] px-3.5 text-sm text-ink outline-none placeholder:text-[#8f8b82] focus:border-[#4b4a46]"
           id={inputId}
           onChange={(event) => setPlace(event.target.value)}
           placeholder={t("today.location.placeholder")}
@@ -60,7 +60,7 @@ export function LocationPrompt({ onSaved }: { onSaved(): void }) {
           value={place}
         />
         <button
-          className="h-10 shrink-0 rounded-[10px] bg-[rgba(255,255,255,0.1)] px-3.5 text-sm text-[#faf9f5] transition-colors hover:bg-[rgba(255,255,255,0.16)] disabled:opacity-50"
+          className="h-10 shrink-0 rounded-[10px] bg-[rgba(255,255,255,0.1)] px-3.5 text-sm text-ink transition-colors hover:bg-[rgba(255,255,255,0.16)] disabled:opacity-50"
           disabled={saving || place.trim() === ""}
           type="submit"
         >
@@ -68,7 +68,7 @@ export function LocationPrompt({ onSaved }: { onSaved(): void }) {
         </button>
       </div>
       {error !== "" && (
-        <div className="text-[13px] text-[#d9534f]" id={errorId} role="alert">
+        <div className="text-[13px] text-danger" id={errorId} role="alert">
           {error}
         </div>
       )}

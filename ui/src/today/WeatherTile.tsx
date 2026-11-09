@@ -12,7 +12,7 @@ import {
 import { WeatherIcon } from "./WeatherIcon";
 
 export const TILE =
-  "rounded-2xl border border-[#323230] bg-[#242422] p-[18px] text-[#faf9f5]";
+  "rounded-2xl border border-border bg-[#242422] p-[18px] text-ink";
 
 // WeatherTile shows the sky now, today's range and the next hours. A warning
 // takes the condition's place, in the accent color.
@@ -58,7 +58,7 @@ export function WeatherTile({
               <span className="text-[#e8e6dc]">{label}</span>
             ) : (
               <span
-                className="font-medium text-[#d97757]"
+                className="font-medium text-accent-strong"
                 data-testid="weather-warning"
               >
                 {t(`today.warning.${warning.kind}`, { from: warning.from })}

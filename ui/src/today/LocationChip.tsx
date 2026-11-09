@@ -55,11 +55,11 @@ export function LocationChip({
             // The compact chip sits mid-line, on a phone mid-screen: centered
             // under it the popover fits; the header chip sits at the right.
             compact ? "left-1/2 -translate-x-1/2" : "right-0"
-          } w-[min(320px,calc(100vw-32px))] flex-col gap-2.5 rounded-2xl border border-[rgba(226,225,218,0.15)] bg-[#2c2c2a] p-4 text-sm text-[#d5d2c9] shadow-[0_12px_32px_rgba(0,0,0,0.4)]`}
+          } w-[min(320px,calc(100vw-32px))] flex-col gap-2.5 rounded-2xl border border-[rgba(226,225,218,0.15)] bg-active p-4 text-sm text-[#d5d2c9] shadow-[0_12px_32px_rgba(0,0,0,0.4)]`}
           id={dialogId}
           role="dialog"
         >
-          <div className="font-medium text-[#faf9f5]">
+          <div className="font-medium text-ink">
             {t("today.location.title")}
           </div>
           <p className="text-[#c7c5bd]">
@@ -73,7 +73,7 @@ export function LocationChip({
           </p>
           <div>
             <button
-              className="ui-control-text h-8 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 text-[13px] text-[#faf9f5] transition-colors hover:bg-[rgba(255,255,255,0.16)]"
+              className="ui-control-text h-8 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 text-[13px] text-ink transition-colors hover:bg-[rgba(255,255,255,0.16)]"
               onClick={() => {
                 setOpen(false);
                 onOpenMemory();

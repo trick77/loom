@@ -1,8 +1,12 @@
+import type { TodayWarning } from "../api/today";
 import type { Condition } from "./weatherCodes";
 
+// The sun's gold and the sky's grey have no theme token; the warning is the
+// accent.
 export const SUN_COLOR = "#e0b46a";
-export const WARN_COLOR = "#d97757";
-const SKY_COLOR = "#c7c5bd";
+const SUN_CLASS = "text-[#e0b46a]";
+const SKY_CLASS = "text-[#c7c5bd]";
+const WARN_CLASS = "text-accent-strong";
 
 const SUN = (
   <>
@@ -41,6 +45,14 @@ const SNOW = (
   <>
     {HIGH_CLOUD}
     <path d="M8 19v.01M12 18v.01M16 19v.01M10 21.5v.01M14 21.5v.01" />
+  </>
+);
+// FROST is a thermometer with a snowflake beside it.
+const FROST = (
+  <>
+    <path d="M10 13.5V5a2 2 0 0 0-4 0v8.5a4 4 0 1 0 4 0z" />
+    <path d="M8 15v-4" />
+    <path d="M18 4v8M14.5 6l7 4M14.5 10l7-4" />
   </>
 );
 const STORM = (
@@ -85,17 +97,17 @@ export function WeatherIcon({
   label?: string;
 }) {
   const color = warn
-    ? WARN_COLOR
+    ? WARN_CLASS
     : condition === "clear" && !night
-      ? SUN_COLOR
-      : SKY_COLOR;
+      ? SUN_CLASS
+      : SKY_CLASS;
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
       fill="none"
-      stroke={color}
+      stroke="currentColor"
       strokeWidth={size >= 32 ? 1.5 : 1.8}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -104,9 +116,50 @@ export function WeatherIcon({
       {...(label === undefined
         ? { "aria-hidden": true }
         : { role: "img", "aria-label": label })}
-      className="shrink-0"
+      className={`shrink-0 ${color}`}
     >
       {glyph(condition, night)}
+    </svg>
+  );
+}
+
+function warningGlyph(kind: TodayWarning["kind"]) {
+  switch (kind) {
+    case "rain":
+      return RAIN;
+    case "snow":
+      return SNOW;
+    case "storm":
+      return STORM;
+    case "frost":
+      return FROST;
+  }
+}
+
+// WarningIcon marks a weather warning, in the accent color: next to text that
+// names it, so it is decoration.
+export function WarningIcon({
+  kind,
+  size,
+}: {
+  kind: TodayWarning["kind"];
+  size: number;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      data-warning={kind}
+      className={`shrink-0 ${WARN_CLASS}`}
+    >
+      {warningGlyph(kind)}
     </svg>
   );
 }

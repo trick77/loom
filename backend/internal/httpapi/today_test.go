@@ -166,6 +166,31 @@ func TestTodayWithoutAPlace(t *testing.T) {
 	if !got.AskLocation || got.Location != nil || got.Weather != nil || got.Sun != nil || got.Runs == nil {
 		t.Fatalf("no place = %+v", got)
 	}
+	// No weather to show: the day's tiles are left for a visit that has some.
+	if got.View != "line" || len(tf.users.seen) != 0 {
+		t.Fatalf("view %q, seen %v", got.View, tf.users.seen)
+	}
+}
+
+// The contract does not promise the forecast starts now: the current hour is
+// looked up, and a forecast that ended is none.
+func TestTodayForecastFindsTheCurrentHour(t *testing.T) {
+	var f forecast
+	if err := json.Unmarshal([]byte(todayForecastJSON()), &f); err != nil {
+		t.Fatal(err)
+	}
+	// 14:30: the forecast starts at 08:00.
+	weather, warning := todayForecast(f, time.Date(2026, 11, 9, 14, 30, 0, 0, time.UTC))
+	if weather == nil || weather.Now.Temperature != 10.5 || weather.Hours[0].Time != "15:00" || warning == nil || warning.From != "17:00" {
+		t.Fatalf("at 14:30: %+v, %+v", weather, warning)
+	}
+	// 07:30, before the first hour: no interpolation into it.
+	if weather, _ := todayForecast(f, time.Date(2026, 11, 9, 7, 30, 0, 0, time.UTC)); weather == nil || weather.Now.Temperature != 5 {
+		t.Fatalf("at 07:30: %+v", weather)
+	}
+	if weather, warning := todayForecast(f, time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)); weather != nil || warning != nil {
+		t.Fatalf("after the forecast: %+v, %+v", weather, warning)
+	}
 }
 
 func TestTodayWithoutTheWeather(t *testing.T) {

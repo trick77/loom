@@ -112,15 +112,15 @@ export function SunTile({ sun }: { sun: TodaySun }) {
         <div className="flex justify-between text-[13px]">
           <span className="flex flex-col">
             <span className="text-[#97958c]">{t("today.sun.sunrise")}</span>
-            <span className="text-lg text-[#faf9f5]">{sun.rise ?? "–"}</span>
+            <span className="text-lg text-ink">{sun.rise ?? "–"}</span>
           </span>
           <span className="flex flex-col text-right">
             <span className="text-[#97958c]">{t("today.sun.sunset")}</span>
-            <span className="text-lg text-[#faf9f5]">{sun.set ?? "–"}</span>
+            <span className="text-lg text-ink">{sun.set ?? "–"}</span>
           </span>
         </div>
       ) : (
-        <div className="text-lg text-[#faf9f5]">
+        <div className="text-lg text-ink">
           {t(
             sun.polar === "day" ? "today.sun.polarDay" : "today.sun.polarNight",
           )}
