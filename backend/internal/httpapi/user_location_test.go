@@ -179,8 +179,10 @@ func TestResolveLocationOffOrFailing(t *testing.T) {
 	if _, current, _, _ := f.places.Places(ctx, testUser.ID); current != nil {
 		t.Fatalf("an unknown place was kept: %+v", current)
 	}
-	f.addFact(t, "In Broken this week")
-	if err := f.s.resolveLocation(ctx, testUser); err == nil {
+	// Facts seen in the same second come in no set order: one stay per user.
+	broken := newLocationFixture(t)
+	broken.addFact(t, "In Broken this week")
+	if err := broken.s.resolveLocation(ctx, testUser); err == nil {
 		t.Fatal("an unreadable lookup gave no error")
 	}
 }
