@@ -633,7 +633,7 @@ func (f *ThreadStore) ListSharesForUser(_ context.Context, _ string) ([]chat.Sha
 
 // ReplaceableScheduleThreads returns the ids in RunThreads, or fails with
 // RunThreadsErr.
-func (f *ThreadStore) ReplaceableScheduleThreads(context.Context, string, string, string) ([]string, error) {
+func (f *ThreadStore) ReplaceableScheduleThreads(context.Context, string, string, string, bool) ([]string, error) {
 	ids := make([]string, len(f.RunThreads))
 	for i, ref := range f.RunThreads {
 		ids[i] = ref.ThreadID

@@ -252,7 +252,7 @@ func (s *server) deleteSchedule(ctx context.Context, userID, id string) error {
 		runs[0].Status == schedule.StatusRunning && runs[0].ThreadID != nil {
 		keep = *runs[0].ThreadID
 	}
-	s.replaceRunThreads(ctx, userID, id, keep)
+	s.replaceRunThreads(ctx, userID, id, keep, false)
 	return s.schedules.DeleteSchedule(ctx, userID, id)
 }
 

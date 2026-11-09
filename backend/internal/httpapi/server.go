@@ -189,7 +189,7 @@ type ThreadStore interface {
 	SetThreadTitleIfUnchanged(context.Context, string, string, string, string) (chat.Thread, bool, error)
 	SetThreadArchived(context.Context, string, string, bool) (bool, error)
 	DeleteThread(context.Context, string, string) (bool, error)
-	ReplaceableScheduleThreads(context.Context, string, string, string) ([]string, error)
+	ReplaceableScheduleThreads(context.Context, string, string, string, bool) ([]string, error)
 	IsUntouchedRunThread(context.Context, string, string) (bool, error)
 	StaleScheduleThreads(context.Context, time.Time, int) ([]chat.ThreadRef, error)
 

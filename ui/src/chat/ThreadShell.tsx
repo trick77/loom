@@ -431,6 +431,17 @@ export function ThreadShell({
     setProjectThreads,
     setThreads,
   ]);
+  // Unread news opened from the bell: the bell reads it as it opens, so the
+  // thread may load already read. It still opens at the answer, once.
+  const [newsThreadID, setNewsThreadID] = useState<string | null>(null);
+  const openAtAnswer =
+    openedThreadUnread ||
+    (openedThreadID !== null && openedThreadID === newsThreadID);
+  useEffect(() => {
+    if (openedThreadID !== null && openedThreadID === newsThreadID)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- consumed once the thread opened
+      setNewsThreadID(null);
+  }, [newsThreadID, openedThreadID]);
   // News read in the bell, or newly arrived, reloads the sidebar's dots.
   useEffect(() => {
     window.addEventListener(THREAD_NEWS_CHANGED, reloadThreads);
@@ -782,6 +793,11 @@ export function ThreadShell({
       ) {
         navigateToSchedule(notification.scheduleId);
       } else if (notification.threadId !== null) {
+        if (
+          notification.kind === "schedule_run" &&
+          notification.readAt === null
+        )
+          setNewsThreadID(notification.threadId);
         void selectThread(notification.threadId);
       } else if (notification.scheduleId !== null) {
         navigateToSchedule(notification.scheduleId);
@@ -1868,6 +1884,7 @@ export function ThreadShell({
         ) : (
           <ThreadPanel
             thread={activeThread}
+            openAtAnswer={openAtAnswer}
             threadProject={activeThreadProject}
             share={activeShare}
             onShareChange={handleShareChange}

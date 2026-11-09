@@ -227,6 +227,75 @@ func TestDisable(t *testing.T) {
 	}
 }
 
+func TestUnreadRuns(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	st := schedule.NewStore(db)
+	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
+	other, _ := st.CreateSchedule(ctx, newSchedule("u1", "o", nil))
+	seedThread(t, db, "u1", "th1")
+	seedThread(t, db, "u1", "th2")
+	// news stores a run's news on the thread and checks the unread count.
+	news := func(userID, scheduleID, threadID string, count bool, want int) {
+		t.Helper()
+		n, err := st.CreateRunNews(ctx, userID, schedule.Notification{ScheduleID: &scheduleID, ThreadID: &threadID, Title: "n"}, count)
+		if err != nil || n != want {
+			t.Fatalf("CreateRunNews = %d, %v; want %d", n, err, want)
+		}
+	}
+	news("u1", sch.ID, "th1", true, 1)
+	news("u1", sch.ID, "th1", true, 2)
+	// A run by hand is news, but no unread run.
+	news("u1", sch.ID, "th1", false, 0)
+	if list, _ := st.ListUnread(ctx, "u1", schedule.KindScheduleRun, 10); len(list) != 3 {
+		t.Fatalf("unread run news = %+v, want 3", list)
+	}
+	// Another user's count is not theirs to move.
+	news("u2", sch.ID, "th1", true, 0)
+
+	// Reading one of the schedule's run news starts the count anew; another
+	// schedule's news leaves it be.
+	news("u1", other.ID, "th2", true, 1)
+	if err := st.MarkThreadRead(ctx, "u1", "th1"); err != nil {
+		t.Fatal(err)
+	}
+	news("u1", sch.ID, "th1", true, 1)
+	news("u1", other.ID, "th2", true, 2)
+	list, _ := st.ListNotifications(ctx, "u1", 10)
+	if err := st.MarkRead(ctx, "u1", list[0].ID); err != nil { // other's news
+		t.Fatal(err)
+	}
+	news("u1", other.ID, "th2", true, 1)
+	if err := st.MarkRead(ctx, "u1", ""); err != nil {
+		t.Fatal(err)
+	}
+	news("u1", sch.ID, "th1", true, 1)
+	// A read notice that the schedule was disabled is no read run.
+	_ = st.CreateNotification(ctx, "u1", schedule.Notification{Kind: schedule.KindScheduleDisabled, ScheduleID: &sch.ID, Title: "off"})
+	if err := st.MarkRead(ctx, "u1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.MarkThreadRead(ctx, "u1", "th1"); err != nil {
+		t.Fatal(err)
+	}
+	news("u1", sch.ID, "th1", true, 1)
+	news("u1", sch.ID, "th1", true, 2)
+
+	// An edit or re-enable starts it anew too.
+	if _, err := st.SaveSchedule(ctx, sch); err != nil {
+		t.Fatal(err)
+	}
+	news("u1", sch.ID, "th2", true, 1)
+
+	// News superseded by a newer run goes; read news and other threads stay.
+	if err := st.DeleteThreadNews(ctx, "u1", "th1"); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := st.ListUnread(ctx, "u1", schedule.KindScheduleRun, 10); len(list) != 1 || *list[0].ThreadID != "th2" {
+		t.Fatalf("unread after dropping th1's news = %+v, want th2's only", list)
+	}
+}
+
 func TestRunThreadLink(t *testing.T) {
 	ctx := context.Background()
 	db := openDB(t)

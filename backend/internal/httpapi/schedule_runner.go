@@ -250,8 +250,9 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	// be; a timed one drops its own thread too.
 	var replacing string
 	var nothingNew bool
-	// announce, once set, tells the user about the run after it is recorded.
-	var announce func()
+	// announce, once set, tells the user about the run after it is recorded;
+	// it reports whether the news landed.
+	var announce func() bool
 	finish := func() {
 		run.DurationMS = s.clock().Sub(start).Milliseconds()
 		if err := s.schedules.FinishRun(detached, sch.UserID, run, s.clock()); err != nil {
@@ -283,11 +284,11 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 			}
 		}
 		finish()
+		// The news lands before the earlier threads go: only news that
+		// reached the user replaces unread news.
+		announced := announce != nil && announce()
 		if replacing != "" {
-			s.replaceRunThreads(detached, sch.UserID, sch.ID, replacing)
-		}
-		if announce != nil {
-			announce()
+			s.replaceRunThreads(detached, sch.UserID, sch.ID, replacing, announced)
 		}
 	}()
 
@@ -452,7 +453,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	// The summary is written after the run is recorded: its call counts
 	// neither toward the run's duration (which the next run's prompt reads)
 	// nor keeps the thread refusing replies as still running.
-	announce = func() {
+	announce = func() bool {
 		summaryCtx, cancelSummary := context.WithTimeout(
 			llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), summaryTimeout)
 		defer cancelSummary()
@@ -464,7 +465,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		if err := s.schedules.SetRunUsage(detached, user.ID, runID, int64(usageTotal.Total().TotalTokens), cost); err != nil {
 			slog.Warn("record run usage failed", "schedule_id", sch.ID, "err", err)
 		}
-		s.notify(detached, user.ID, schedule.Notification{
+		return s.announceRun(detached, user, sch, thread, trigger, schedule.Notification{
 			Kind:       schedule.KindScheduleRun,
 			ScheduleID: &sch.ID,
 			ThreadID:   &thread.ID,
@@ -473,6 +474,49 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 			Body:       body,
 		})
 	}
+}
+
+// unreadRunLimit is how many runs with news in a row may go unread before the
+// schedule turns itself off: nobody reads it any more, it only costs.
+const unreadRunLimit = 5
+
+// announceRun stores and pushes a run's news, and reports whether it landed.
+// A timed run's news counts as unread; the schedule turns off once
+// unreadRunLimit runs in a row went unread. A run by hand never counts: the
+// user asked for it.
+func (s *server) announceRun(ctx context.Context, user auth.User, sch schedule.Schedule, thread chat.Thread, trigger runTrigger, news schedule.Notification) bool {
+	unread, err := s.schedules.CreateRunNews(ctx, user.ID, news, trigger == timedRun)
+	if err != nil {
+		slog.Warn("create run news failed", "schedule_id", sch.ID, "err", err)
+		return false
+	}
+	s.pushNotification(ctx, user.ID, news)
+	if unread >= unreadRunLimit {
+		s.disableAfterUnread(ctx, user, sch, thread)
+	}
+	return true
+}
+
+// disableAfterUnread turns a schedule off whose news went unread
+// unreadRunLimit runs in a row, says so in its thread and tells the user.
+func (s *server) disableAfterUnread(ctx context.Context, user auth.User, sch schedule.Schedule, thread chat.Thread) {
+	// A schedule off by now (paused during the run) is not turned off again;
+	// the user's own pause stays theirs.
+	if current, err := s.schedules.GetSchedule(ctx, user.ID, sch.ID); err != nil || !current.Enabled {
+		return
+	}
+	if err := s.schedules.Disable(ctx, user.ID, sch.ID, schedule.DisabledUnread, s.clock()); err != nil {
+		slog.Warn("disable schedule failed", "schedule_id", sch.ID, "err", err)
+		return
+	}
+	s.persistRunNote(ctx, user.ID, thread.ID, fmt.Sprintf("The news of %d runs in a row went unread, so the schedule was disabled.", unreadRunLimit))
+	s.notify(ctx, user.ID, schedule.Notification{
+		Kind:       schedule.KindScheduleDisabled,
+		ScheduleID: &sch.ID,
+		ThreadID:   &thread.ID,
+		Title:      sch.Name + " was disabled",
+		Body:       fmt.Sprintf("The news of %d runs in a row went unread. Open the schedule to enable it again.", unreadRunLimit),
+	})
 }
 
 // runSummary is a run's notification body: the model's short summary of the
@@ -563,14 +607,21 @@ func (s *server) dropEmptyRunThread(ctx context.Context, userID, threadID string
 
 // replaceRunThreads deletes the schedule's run threads before keepThreadID
 // that the user never took up. One they asked something in, starred, filed
-// or shared stays.
-func (s *server) replaceRunThreads(ctx context.Context, userID, scheduleID, keepThreadID string) {
-	ids, err := s.thread.ReplaceableScheduleThreads(ctx, userID, scheduleID, keepThreadID)
+// or shared stays. Unread news goes only for news (withNews): a failed run
+// must not make the last news vanish unseen. Replaced news leaves the bell.
+func (s *server) replaceRunThreads(ctx context.Context, userID, scheduleID, keepThreadID string, withNews bool) {
+	ids, err := s.thread.ReplaceableScheduleThreads(ctx, userID, scheduleID, keepThreadID, withNews)
 	if err != nil {
 		slog.Warn("list replaceable run threads failed", "schedule_id", scheduleID, "err", err)
 		return
 	}
 	for _, id := range ids {
+		if withNews {
+			if err := s.schedules.DeleteThreadNews(ctx, userID, id); err != nil {
+				slog.Warn("drop replaced run news failed", "thread_id", id, "err", err)
+				continue
+			}
+		}
 		if _, err := s.deleteThreadWithData(ctx, userID, id); err != nil {
 			slog.Warn("replace run thread failed", "thread_id", id, "err", err)
 		}

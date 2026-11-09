@@ -32,6 +32,7 @@ import {
   formatRunDate,
   RUN_MINUTES,
   slotText,
+  UNREAD_RUN_LIMIT,
 } from "./scheduleText";
 
 type Tab = "all" | "active" | "paused";
@@ -194,12 +195,18 @@ export function DeleteScheduleModal({
 export function ScheduleSlotLine({ schedule }: { schedule: Schedule }) {
   const { t, i18n } = useTranslation();
   let tail: string;
+  const disabledDate = schedule.disabledAt
+    ? formatDay(schedule.disabledAt, i18n.language)
+    : "";
   if (schedule.disabledReason === "timeout") {
     tail = t("schedules.disabledNote", {
-      date: schedule.disabledAt
-        ? formatDay(schedule.disabledAt, i18n.language)
-        : "",
+      date: disabledDate,
       minutes: RUN_MINUTES,
+    });
+  } else if (schedule.disabledReason === "unread") {
+    tail = t("schedules.disabledNoteUnread", {
+      date: disabledDate,
+      runs: UNREAD_RUN_LIMIT,
     });
   } else {
     const slot = slotText(schedule.cron, schedule.summary, i18n.language, t);

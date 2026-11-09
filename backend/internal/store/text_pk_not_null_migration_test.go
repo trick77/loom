@@ -93,7 +93,9 @@ func TestMigration0054_textPrimaryKeysNotNull(t *testing.T) {
 	colsBefore := tableShapes(t, db)
 	sqlBefore := tableSQL(t, db)
 
-	if err := migrate(db); err != nil {
+	// Up to 0055 only: a later migration that adds a column would read as
+	// a shape change of the rebuild.
+	if err := migrateFS(db, migrationsUpTo(t, "0055_message_fts_triggers.sql")); err != nil {
 		t.Fatalf("apply 0054 and 0055: %v", err)
 	}
 

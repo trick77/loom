@@ -169,6 +169,23 @@ test("an auto-disabled schedule offers to enable again", async () => {
   );
 });
 
+test("a schedule disabled for unread news offers to enable again", async () => {
+  vi.mocked(api.getSchedule).mockResolvedValue(
+    makeSchedule({
+      enabled: false,
+      disabledReason: "unread",
+      disabledAt: "2026-10-23T10:00:00Z",
+    }),
+  );
+  render(<ScheduleDetailPage {...props()} />);
+  expect(
+    await screen.findByText(/The news of 5 runs in a row went unread/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Enable again" }),
+  ).toBeInTheDocument();
+});
+
 test("run now, edit and delete", async () => {
   vi.mocked(api.runScheduleNow).mockResolvedValue();
   vi.mocked(api.deleteSchedule).mockResolvedValue();
