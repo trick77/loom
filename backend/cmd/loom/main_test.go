@@ -105,6 +105,22 @@ func TestToolConfigForConfigAddsSearchSidecar(t *testing.T) {
 	}
 }
 
+// The weather sidecar is a best-effort built-in, its tools offered on weather
+// questions only.
+func TestToolConfigForConfigAddsWeatherSidecar(t *testing.T) {
+	tc, err := toolConfigForConfig(config.Config{WeatherURL: "http://weather:8100", WeatherToken: strings.Repeat("t", 32)}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, ok := tc.FileServers.Servers[mcp.WeatherServer]
+	if !ok || !sc.BuiltIn || sc.URL != "http://weather:8100/mcp" || len(sc.Categories) != 1 || sc.Categories[0] != "weather" {
+		t.Fatalf("weather = %+v (present %v)", sc, ok)
+	}
+	if _, ok := mustToolConfig(t, config.Config{}).Servers[mcp.WeatherServer]; ok {
+		t.Fatal("weather registered without its URL")
+	}
+}
+
 // An upgraded install that still sets the Tavily key, but no sidecar, is told
 // where web search went.
 func TestWarnOrphanedSearchKey(t *testing.T) {

@@ -19,6 +19,8 @@ images:
   - { suffix: "-imagegen", containerfile: imagegen/Containerfile }
   # Web search sidecar (docs/search.md), same version as loom.
   - { suffix: "-search", containerfile: search/Containerfile }
+  # Weather sidecar (docs/weather.md), same version as loom.
+  - { suffix: "-weather", containerfile: weather/Containerfile }
   # Document tools sidecar (docs/docgen.md), same version as loom.
   - { suffix: "-docgen", containerfile: docgen/Containerfile }
 visibility: public
