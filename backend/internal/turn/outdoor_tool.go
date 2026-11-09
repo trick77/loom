@@ -74,10 +74,11 @@ func outdoorWindowsTool() llm.Tool {
 			Name: outdoorWindowsToolName,
 			Description: "When to go out for a run or a bike ride today or tomorrow: the best windows by the forecast, best first, " +
 				"each wholly in daylight (never before sunrise or after sunset, never already begun), dry ones before wet, then " +
-				"sunnier, then milder and calmer, with sunrise, sunset and the time now at the place, and the air when it is worth " +
-				"a word. Call it for every question about when to run, jog, ride or cycle; never work such a time out from the " +
-				"forecast yourself and never propose a time outside the windows it returns. Without place it plans where the user " +
-				"is; with place it plans there.",
+				"sunnier, then milder and calmer (wind and gusts weigh more on a ride), with sunrise, sunset and the time now at " +
+				"the place, the wind and the air when worth a word; or, for the week, its days ranked for going out. Call it for " +
+				"every question about when or whether to run, jog, ride or cycle; never work such a time out from the forecast " +
+				"yourself and never propose a time outside the windows it returns. Without place it plans where the user is; " +
+				"with place it plans there.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -85,7 +86,8 @@ func outdoorWindowsTool() llm.Tool {
 						"description": "run (also jog, walk) or ride (bike)."},
 					"minutes": map[string]any{"type": "integer", "minimum": 15, "maximum": 480,
 						"description": "How long, when the user says; by default a run 60, a ride 120."},
-					"day": map[string]any{"type": "string", "enum": []string{"today", "tomorrow"}, "description": "Default today."},
+					"day": map[string]any{"type": "string", "enum": []string{"today", "tomorrow", "week"},
+						"description": "Default today; week ranks the next 7 days (which day, not what time)."},
 					"place": map[string]any{"type": "string",
 						"description": "A town or postal code the user names, e.g. Luzern; leave out for where the user is."},
 					"country": map[string]any{"type": "string", "description": "ISO 3166-1 alpha-2 code of the place's country, e.g. CH."},
@@ -97,20 +99,34 @@ func outdoorWindowsTool() llm.Tool {
 }
 
 // outdoorAnswer is what the model reads: the place, what was asked and the
-// day's outlook.
+// day's outlook, or the week's days.
 type outdoorAnswer struct {
 	Place    string `json:"place"`
 	Activity string `json:"activity"`
 	Minutes  int    `json:"minutes"`
-	weather.Outlook
-	Guide string `json:"guide"`
+	*weather.Outlook
+	Week []weather.DayOutlook `json:"week,omitempty"`
+	// Limits are the activity's wind thresholds (km/h).
+	Limits weather.Limits `json:"windLimits"`
+	Guide  string         `json:"guide"`
 }
 
 // outdoorGuide tells the model how to read the answer.
 const outdoorGuide = "Times are the place's. Give the first window as the answer (from-to) with its reason in a sentence, " +
-	"the others briefly. dry false on a window means no dry one is left: say it rains. none: dark (polar night), short " +
-	"(daylight shorter than the activity), over (too little daylight left today: offer tomorrow), noForecast. Mention " +
-	"air only when given."
+	"the others briefly. dry false on a window means no dry one is left: say it rains. wind windy: name it (windMax km/h " +
+	"from windFrom, gusts); strong: warn, on a ride above all. none: dark (polar night), short (daylight shorter than the " +
+	"activity), over (too little daylight left today: offer tomorrow), noForecast. week: days by rank (1 best; a day " +
+	"with none ranks last, then strong wind, rain, wind, sun); name the best day or two and why; times can be planned " +
+	"for today and tomorrow only. Mention air only when given."
+
+// outdoorChartsGuide joins the guide when the chart files came along.
+const outdoorChartsGuide = " The chart files: loomcharts.outdoor_day (the day asked: its hours, windows and wind " +
+	"against the limits), outdoor_compare (the next two days with daylight), outdoor_week (the week); offer one when " +
+	"it helps, draw it when asked."
+
+// outdoorDays is how many days the forecast is asked: the week. The
+// sidecar keeps 8, so the week costs no extra provider call.
+const outdoorDays = 7
 
 // Bounds on the length the model may ask; one outside is clamped.
 const (
@@ -139,27 +155,64 @@ func (t *Run) outdoorWindows(ctx context.Context, args map[string]any) (string, 
 	// The place's zone, else the user's: as the start page reads it.
 	loc := weather.Zone(place.Timezone, t.user.Timezone)
 	now := t.now().In(loc)
-	day := now
-	if strings.EqualFold(strings.TrimSpace(stringArg(args, "day")), "tomorrow") {
-		day = time.Date(now.Year(), now.Month(), now.Day()+1, 12, 0, 0, 0, loc)
-	}
-	report, err := weather.GetWeather(ctx, t.e.mcp, place.Latitude, place.Longitude, loc.String(), 2)
+	report, err := weather.GetWeather(ctx, t.e.mcp, place.Latitude, place.Longitude, loc.String(), outdoorDays)
 	if err != nil {
 		return "tool failed: " + err.Error(), nil
 	}
-	in := weather.WindowsInput{Forecast: report.Forecast, Air: report.Air, Day: day, Now: now, Loc: loc, Minutes: minutes,
-		Activity: activity, Sun: sun.On(day, place.Latitude, place.Longitude, loc)}
-	out := outdoorAnswer{Place: placeName(place), Activity: string(activity), Minutes: minutes, Outlook: weather.Windows(in),
-		Guide: outdoorGuide}
+	plan := func(day time.Time) weather.Outlook {
+		return weather.Windows(weather.WindowsInput{Forecast: report.Forecast, Air: report.Air, Day: day, Now: now, Loc: loc,
+			Minutes: minutes, Activity: activity, Sun: sun.On(day, place.Latitude, place.Longitude, loc)})
+	}
+	day := strings.ToLower(strings.TrimSpace(stringArg(args, "day")))
+	charts := t.takesToolFiles()
+	// Both days are planned only when the week or the chart files need
+	// them; the week reads them for today and tomorrow, outdoor_compare too.
+	var outlooks []weather.Outlook
+	switch {
+	case charts || day == "week":
+		outlooks = []weather.Outlook{plan(now), plan(time.Date(now.Year(), now.Month(), now.Day()+1, 12, 0, 0, 0, loc))}
+	case day == "tomorrow":
+		outlooks = []weather.Outlook{{}, plan(time.Date(now.Year(), now.Month(), now.Day()+1, 12, 0, 0, 0, loc))}
+	default:
+		outlooks = []weather.Outlook{plan(now)}
+	}
+	var week []weather.DayOutlook
+	if charts || day == "week" {
+		week = weather.Week(weather.WeekInput{Forecast: report.Forecast, Now: now, Loc: loc, Latitude: place.Latitude,
+			Longitude: place.Longitude, Activity: activity, Minutes: minutes, Planned: outlooks})
+	}
+	guide := outdoorGuide
+	if charts {
+		guide += outdoorChartsGuide
+	}
+	out := outdoorAnswer{Place: placeName(place), Activity: string(activity), Minutes: minutes, Limits: activity.Limits(),
+		Guide: guide}
+	switch day {
+	case "week":
+		out.Week = week
+	case "tomorrow":
+		out.Outlook = &outlooks[1]
+	default:
+		out.Outlook = &outlooks[0]
+	}
 	sources := report.Sources
-	if out.Air != nil {
+	if out.Outlook != nil && out.Air != nil {
 		sources = append(sources, report.AirSources...)
 	}
 	text, err := json.Marshal(out)
 	if err != nil {
 		return "tool failed: " + err.Error(), nil
 	}
-	return string(text), sources
+	if !charts {
+		return string(text), sources
+	}
+	asked := outlooks[0].Date
+	if out.Outlook != nil {
+		asked = out.Date
+	}
+	files := weather.ChartFiles(weather.ChartInput{Forecast: report.Forecast, Loc: loc, Activity: activity,
+		Minutes: minutes, Date: asked, Outlooks: outlooks, Week: week})
+	return string(text) + t.keepToolFiles(files), sources
 }
 
 // outdoorPlace is the place named, else where the user is today; nil with

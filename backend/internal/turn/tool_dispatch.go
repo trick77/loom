@@ -165,7 +165,7 @@ const (
 // never persisted or shown; of their content only a CSV's header line
 // (csvColumns) reaches the prompt.
 func (t *Run) keepToolFiles(files []mcp.File) string {
-	if len(files) == 0 || t.offered[sandboxToolName] == nil {
+	if len(files) == 0 || !t.takesToolFiles() {
 		return ""
 	}
 	if t.toolFiles == nil {
@@ -186,6 +186,12 @@ func (t *Run) keepToolFiles(files []mcp.File) string {
 		return ""
 	}
 	return "\n\n[run_python can read these files in this turn only (pass the name in run_python's files; in a later turn, call this tool again first): " + strings.Join(kept, ", ") + "]"
+}
+
+// takesToolFiles reports whether this turn keeps tool files: only one that
+// offers run_python can read them. A built-in builds its files only then.
+func (t *Run) takesToolFiles() bool {
+	return t.offered[sandboxToolName] != nil
 }
 
 // maxColumnsBytes bounds the header line csvColumns repeats to the model.

@@ -72,7 +72,13 @@ func (w *weatherServer) service() fakeMCPService {
 					hours = append(hours, fmt.Sprintf(`{"time":%q,"temperature":%d,"code":3,"precipitationProbability":0,"sunshineMinutes":0}`,
 						t.Format("2006-01-02T15:04"), 4+i%24/3))
 				}
-				return `{"hourly":[` + strings.Join(hours, ",") + `],"daily":[]}`, nil
+				var days []string
+				for i := range 7 {
+					days = append(days, fmt.Sprintf(`{"date":"2026-11-%02d","high":%d,"low":2,"code":3,"precipitationSum":%d,`+
+						`"precipitationProbability":10,"sunshineHours":%d,"windSpeedMax":%d,"windGustsMax":30,"windDirection":250}`,
+						9+i, 8+i, i%2*5, i, 10+i*4))
+				}
+				return `{"hourly":[` + strings.Join(hours, ",") + `],"daily":[` + strings.Join(days, ",") + `]}`, nil
 			}
 			return "", errors.New("unknown tool")
 		},
@@ -200,6 +206,54 @@ func TestOutdoorWindowsElsewhere(t *testing.T) {
 	}
 	if out := callOutdoor(t, r, `{"activity":"run","place":"Nowhere"}`, nil); !strings.Contains(out, "no place called") {
 		t.Fatalf("unknown place = %s", out)
+	}
+}
+
+// The week ranks its days; the wind limits come with every answer.
+func TestOutdoorWindowsWeek(t *testing.T) {
+	w := &weatherServer{}
+	r := outdoorRun(&Engine{mcp: w.service(), places: fakePlaces{place: home}}, morning)
+	a := answerOf(t, callOutdoor(t, r, `{"activity":"ride","day":"week"}`, nil))
+	if a.Outlook != nil || len(a.Week) != 7 || a.Limits.Wind != 15 || a.Limits.GustsStrong != 45 {
+		t.Fatalf("week = %+v", a)
+	}
+	best := 0
+	for _, d := range a.Week {
+		if d.Rank == 1 {
+			best++
+			if d.Rain != weather.RainDry {
+				t.Fatalf("best day = %+v", d)
+			}
+		}
+	}
+	if best != 1 || w.args[0]["days"] != 7 {
+		t.Fatalf("week = %+v, asked %v", a.Week, w.args)
+	}
+}
+
+// With run_python on the turn, the chart files come along and are named.
+func TestOutdoorWindowsChartFiles(t *testing.T) {
+	w := &weatherServer{}
+	r := outdoorRun(&Engine{mcp: w.service(), places: fakePlaces{place: home}}, morning)
+	out := callOutdoor(t, r, `{"activity":"run"}`, nil)
+	if strings.Contains(out, weather.ChartHours) || strings.Contains(out, "loomcharts") {
+		t.Fatalf("files or charts named without run_python: %s", out)
+	}
+	r.offered[sandboxToolName] = &toolSpec{name: sandboxToolName}
+	out = callOutdoor(t, r, `{"activity":"run"}`, nil)
+	for _, name := range []string{weather.ChartHours, weather.ChartWindows, weather.ChartDays, weather.ChartLimits} {
+		if !strings.Contains(out, name) || r.toolFiles[name].Data == nil {
+			t.Fatalf("%s missing: %s", name, out)
+		}
+	}
+	// The answer still reads: the note follows the JSON.
+	if a := answerOf(t, strings.SplitN(out, "\n\n[run_python", 2)[0]); a.Date != "2026-11-09" {
+		t.Fatalf("answer = %+v", a)
+	}
+	// The day asked is the one outdoor_day draws by default.
+	callOutdoor(t, r, `{"activity":"run","day":"tomorrow"}`, nil)
+	if limits := string(r.toolFiles[weather.ChartLimits].Data); !strings.Contains(limits, ",2026-11-10,") {
+		t.Fatalf("limits = %s", limits)
 	}
 }
 

@@ -261,6 +261,97 @@ func TestGustsSteerTheRide(t *testing.T) {
 	}
 }
 
+func windFrom(from, to int, kmh float64, direction int) hourFn {
+	return func(i int, h *Hour) {
+		if i >= from && i < to {
+			w, d := kmh, direction
+			h.WindSpeed, h.WindDirection = &w, &d
+		}
+	}
+}
+
+// Wind is worth a word from 15 km/h on a ride, 20 on a run, or from gusts of
+// 30 and 40; a warning from 39 or gusts of 45 and 55. The window says so,
+// with where it blows from.
+func TestWindIsNoted(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		activity Activity
+		shape    hourFn
+		want     string
+	}{
+		{"ride at 16", Ride, windFrom(0, 48, 16, 250), WindWindy},
+		{"ride at 14", Ride, windFrom(0, 48, 14, 250), ""},
+		{"run at 16", Run, windFrom(0, 48, 16, 250), ""},
+		{"run at 21", Run, windFrom(0, 48, 21, 250), WindWindy},
+		{"ride at 40", Ride, windFrom(0, 48, 40, 250), WindStrong},
+		{"run at 40", Run, windFrom(0, 48, 40, 250), WindStrong},
+		{"ride in gusts of 32", Ride, gustsFrom(0, 48, 32), WindWindy},
+		{"ride in gusts of 46", Ride, gustsFrom(0, 48, 46), WindStrong},
+		{"run in gusts of 32", Run, gustsFrom(0, 48, 32), ""},
+		{"run in gusts of 42", Run, gustsFrom(0, 48, 42), WindWindy},
+		{"run in gusts of 56", Run, gustsFrom(0, 48, 56), WindStrong},
+	} {
+		o := plan(t, WindowsInput{Forecast: day(tc.shape), Now: at(0, 8, 0), Minutes: tc.activity.DefaultMinutes(), Activity: tc.activity})
+		w := o.Windows[0]
+		if w.Wind != tc.want {
+			t.Errorf("%s: wind %q, want %q (%+v)", tc.name, w.Wind, tc.want, w)
+		}
+	}
+	o := plan(t, WindowsInput{Forecast: day(windFrom(0, 48, 18, 250)), Now: at(0, 8, 0), Minutes: 120, Activity: Ride})
+	if w := o.Windows[0]; w.WindMax == nil || *w.WindMax != 18 || w.WindFrom != "W" {
+		t.Fatalf("wind = %+v", w)
+	}
+}
+
+// A ride keeps out of the wind when the rest is even; strong wind sinks a
+// window below a colder calm one.
+func TestWindSteersTheRide(t *testing.T) {
+	f := day(sunFrom(9, 17, 50), windFrom(11, 15, 28, 90))
+	ride := plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: 120, Activity: Ride})
+	if w := ride.Windows[0]; w.Wind != "" || w.From >= "09:15" && w.From < "15:00" {
+		t.Fatalf("the ride sits in the wind: %v", spans(ride))
+	}
+	storm := day(windFrom(12, 17, 45, 270))
+	run := plan(t, WindowsInput{Forecast: storm, Now: at(0, 8, 0), Minutes: 60, Activity: Run})
+	if w := run.Windows[0]; w.Wind != "" || w.From >= "11:15" {
+		t.Fatalf("the run sits in the storm: %v", spans(run))
+	}
+	// A sunny afternoon in strong gusts loses to a grey calm morning, and one
+	// strong hour sinks a window below one windy throughout.
+	sunnyStorm := day(sunFrom(12, 17, 55), gustsFrom(12, 17, 50))
+	ride = plan(t, WindowsInput{Forecast: sunnyStorm, Now: at(0, 8, 0), Minutes: 120, Activity: Ride})
+	if w := ride.Windows[0]; w.Wind == WindStrong {
+		t.Fatalf("the ride sits in strong gusts: %+v", ride.Windows)
+	}
+	// On a wet day too: less rain does not buy strong gusts.
+	wet := day(rainFrom(0, 48), func(i int, h *Hour) {
+		if i >= 12 && i < 14 {
+			mm := 0.4
+			h.Precipitation = &mm
+		}
+	}, gustsFrom(12, 14, 50))
+	ride = plan(t, WindowsInput{Forecast: wet, Now: at(0, 8, 0), Minutes: 120, Activity: Ride})
+	if w := ride.Windows[0]; w.Wind == WindStrong || w.Dry {
+		t.Fatalf("a wet ride sits in strong gusts: %+v", ride.Windows)
+	}
+	mixed := day(windFrom(8, 10, 35, 270), gustsFrom(8, 10, 44), gustsFrom(14, 15, 46))
+	ride = plan(t, WindowsInput{Forecast: mixed, Now: at(0, 8, 0), Minutes: 120, Activity: Ride})
+	for _, w := range ride.Windows[:1] {
+		if w.Wind == WindStrong {
+			t.Fatalf("a strong window leads: %+v", ride.Windows)
+		}
+	}
+}
+
+func TestCompass(t *testing.T) {
+	for deg, want := range map[int]string{0: "N", 22: "N", 23: "NE", 90: "E", 180: "S", 250: "W", 300: "NW", 338: "N", 360: "N"} {
+		if got := compass(deg); got != want {
+			t.Errorf("compass(%d) = %s, want %s", deg, got, want)
+		}
+	}
+}
+
 // In the heat the sun is no draw: a hazy cool morning beats a sunny
 // sweltering noon.
 func TestHeatOutweighsSun(t *testing.T) {

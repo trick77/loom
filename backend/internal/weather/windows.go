@@ -26,17 +26,62 @@ func (a Activity) DefaultMinutes() int {
 	return 60
 }
 
-// comfort is the feels-like band an activity is pleasant in, and the gusts
-// it shrugs off: a ride is colder (its own wind) and catches more of the gusts.
+// comfort is the feels-like band an activity is pleasant in and the wind it
+// takes. A ride is colder (its own wind) and catches far more of the wind.
 type comfort struct {
-	low, high, gusts, gustWeight float64
+	low, high  float64
+	limits     Limits
+	windWeight float64
 }
 
 func (a Activity) comfort() comfort {
 	if a == Ride {
-		return comfort{low: 15, high: 24, gusts: 30, gustWeight: 2}
+		return comfort{low: 15, high: 24, limits: a.Limits(), windWeight: 2}
 	}
-	return comfort{low: 12, high: 20, gusts: 40, gustWeight: 1}
+	return comfort{low: 12, high: 20, limits: a.Limits(), windWeight: 1}
+}
+
+// Wind levels: past Limits' first pair the wind is worth a word, past the
+// second a warning.
+const (
+	WindWindy  = "windy"
+	WindStrong = "strong"
+)
+
+// Limits are an activity's wind thresholds in km/h, as forecast (10 m above
+// ground; at body height it is about a third less in the open). Sustained
+// wind: a rider feels 10 km/h and works hard at 20 (felt), so 15 forecast is
+// worth a word; a runner's cost grows with the square of the wind and
+// barely shows below Beaufort 4 (20). Both find Beaufort 6 (39) the edge of
+// bearable. Gusts are the danger on a bike (a side gust throws it across the
+// lane): a word from 30, a warning from 45; a runner from 40 and 55, short
+// of the 63 the DWD calls stormy.
+type Limits struct {
+	Wind        float64 `json:"wind"`
+	WindStrong  float64 `json:"windStrong"`
+	Gusts       float64 `json:"gusts"`
+	GustsStrong float64 `json:"gustsStrong"`
+}
+
+// Limits are the activity's wind thresholds.
+func (a Activity) Limits() Limits {
+	if a == Ride {
+		return Limits{Wind: 15, WindStrong: 39, Gusts: 30, GustsStrong: 45}
+	}
+	return Limits{Wind: 20, WindStrong: 39, Gusts: 40, GustsStrong: 55}
+}
+
+// Level is the wind level of a wind and its gusts (either may be unknown):
+// WindStrong, WindWindy or "".
+func (l Limits) Level(wind, gusts *float64) string {
+	past := func(v *float64, at float64) bool { return v != nil && *v >= at }
+	switch {
+	case past(wind, l.WindStrong) || past(gusts, l.GustsStrong):
+		return WindStrong
+	case past(wind, l.Wind) || past(gusts, l.Gusts):
+		return WindWindy
+	}
+	return ""
 }
 
 // Why a day has no window.
@@ -111,11 +156,17 @@ type Window struct {
 	SunMinutes int `json:"sunMinutes"`
 	// RainChance is its highest chance of precipitation, Precipitation its
 	// total in mm.
-	RainChance    int      `json:"rainChance"`
-	Precipitation float64  `json:"precipitation"`
-	FeelsLikeMin  float64  `json:"feelsLikeMin"`
-	FeelsLikeMax  float64  `json:"feelsLikeMax"`
-	GustsMax      *float64 `json:"gustsMax,omitempty"`
+	RainChance    int     `json:"rainChance"`
+	Precipitation float64 `json:"precipitation"`
+	FeelsLikeMin  float64 `json:"feelsLikeMin"`
+	FeelsLikeMax  float64 `json:"feelsLikeMax"`
+	// WindMax is the window's strongest wind (km/h), WindFrom where that
+	// blows from (8-point compass), GustsMax its strongest gust. Wind is
+	// their level for the activity (WindWindy, WindStrong, "").
+	WindMax  *float64 `json:"windMax,omitempty"`
+	WindFrom string   `json:"windFrom,omitempty"`
+	GustsMax *float64 `json:"gustsMax,omitempty"`
+	Wind     string   `json:"wind,omitempty"`
 
 	start time.Time
 	// sun is the sunshine that draws: none from hours already too warm.
@@ -315,19 +366,36 @@ func window(hours map[int64]Hour, start time.Time, dur time.Duration, c comfort)
 		}
 		w.FeelsLikeMin, w.FeelsLikeMax = min(w.FeelsLikeMin, feels), max(w.FeelsLikeMax, feels)
 		pain := max(0, c.low-feels) + max(0, feels-c.high)
+		if hour.WindSpeed != nil {
+			v := *hour.WindSpeed
+			if w.WindMax == nil || v > *w.WindMax {
+				w.WindMax, w.WindFrom = &v, ""
+				if hour.WindDirection != nil {
+					w.WindFrom = compass(*hour.WindDirection)
+				}
+			}
+			pain += max(0, v-c.limits.Wind) / 5 * c.windWeight
+		}
 		if hour.WindGusts != nil {
 			g := *hour.WindGusts
 			if w.GustsMax == nil || g > *w.GustsMax {
 				w.GustsMax = &g
 			}
-			pain += max(0, g-c.gusts) / 5 * c.gustWeight
+			pain += max(0, g-c.limits.Gusts) / 5 * c.windWeight
 		}
 		w.pain += pain * share
 	}
+	w.Wind = c.limits.Level(w.WindMax, w.GustsMax)
 	w.pain /= dur.Hours()
 	w.SunMinutes = int(math.Round(sunAll))
 	w.Precipitation = math.Round(w.Precipitation*10) / 10
 	return w, true
+}
+
+// compass is where a wind of deg degrees blows from, on 8 points.
+func compass(deg int) string {
+	points := [...]string{"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
+	return points[int(math.Round(float64(((deg%360)+360)%360)/45))%8]
 }
 
 // pick ranks the windows and keeps the best that do not overlap: the dry
@@ -341,6 +409,15 @@ func pick(all []Window, dur time.Duration) []Window {
 		limit = maxWetWindows
 	}
 	slices.SortStableFunc(all, func(a, b Window) int {
+		// Strong wind anywhere in a window sinks it below every other: no
+		// sun, and no less rain, makes up for a gust that throws a bike
+		// across the lane.
+		if sa, sb := a.Wind == WindStrong, b.Wind == WindStrong; sa != sb {
+			if sa {
+				return 1
+			}
+			return -1
+		}
 		if !dry {
 			if a.Precipitation != b.Precipitation {
 				return cmp(a.Precipitation, b.Precipitation)
