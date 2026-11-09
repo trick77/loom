@@ -118,6 +118,7 @@ Virtual table: `fts5(message_id UNINDEXED, thread_id UNINDEXED, user_id UNINDEXE
 
 | Column | Type | Null | Default | PK |
 | --- | --- | --- | --- | --- |
+| `rowid` | INTEGER | no |  | 1 |
 | `message_id` |  | yes |  |  |
 | `thread_id` |  | yes |  |  |
 | `user_id` |  | yes |  |  |
@@ -1003,6 +1004,7 @@ erDiagram
         TEXT full_text
     }
     message_fts {
+        INTEGER rowid PK
         ANY message_id
         ANY thread_id
         ANY user_id
