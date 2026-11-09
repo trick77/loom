@@ -71,6 +71,22 @@ test("lists schedules with their slot and last run", async () => {
   expect(p.onOpenSchedule).toHaveBeenCalledWith("s1");
 });
 
+test("a schedule disabled for unread news says so", async () => {
+  vi.mocked(api.listSchedules).mockResolvedValue([
+    makeSchedule({
+      enabled: false,
+      disabledReason: "unread",
+      disabledAt: "2026-10-23T10:00:00Z",
+      lastRun: null,
+    }),
+  ]);
+  render(<SchedulesPage {...props()} />);
+  expect(await screen.findByText("disabled · unread")).toBeInTheDocument();
+  expect(
+    screen.getByText(/the news of 5 runs in a row went unread/),
+  ).toBeInTheDocument();
+});
+
 test("shows the empty state", async () => {
   vi.mocked(api.listSchedules).mockResolvedValue([]);
   render(<SchedulesPage {...props()} />);

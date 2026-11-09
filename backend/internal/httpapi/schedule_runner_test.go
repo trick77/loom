@@ -917,6 +917,124 @@ func TestManualNothingNewRunKeepsBothThreads(t *testing.T) {
 	}
 }
 
+// newsRun runs sch once with news to report and returns the run's thread.
+func newsRun(t *testing.T, f *scheduleFixture, client *fakeToolChatClient, sch schedule.Schedule, trigger runTrigger) string {
+	t.Helper()
+	f.sllm.findings = []llm.Finding{{Key: "dune-part-three", Label: "Dune: Part Three", Source: 1}}
+	client.Results, client.Plain = researchRound("Dune: Part Three [1]."), "Dune: Part Three [1]."
+	newRunnerServer(t, f, client).runSchedule(context.Background(), sch, trigger)
+	return lastRunThread(t, f, sch)
+}
+
+func TestNewsRunReplacesUnreadNews(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := researchClient("")
+	sch := newRunnerSchedule(t, f)
+	first := newsRun(t, f, client, sch, timedRun)
+	second := newsRun(t, f, client, sch, timedRun)
+
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, first); found {
+		t.Fatal("newer news kept the unread thread before it")
+	}
+	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
+	if len(notes) != 1 || notes[0].ThreadID == nil || *notes[0].ThreadID != second {
+		t.Fatalf("notifications = %+v, want the newer news only", notes)
+	}
+}
+
+func TestFailedRunKeepsUnreadNews(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	sch := newRunnerSchedule(t, f)
+	first := newsRun(t, f, researchClient(""), sch, timedRun)
+
+	f.deps.LLM = &fakeChatClient{StreamErr: errors.New("upstream down")}
+	newServer(f.deps).runSchedule(ctx, sch, timedRun)
+	if _, found, _ := f.chat.GetThread(ctx, testUser.ID, first); !found {
+		t.Fatal("a failed run dropped unread news")
+	}
+	if n, _ := f.store.UnreadCount(ctx, testUser.ID); n != 1 {
+		t.Fatalf("unread = %d, want the first run's news", n)
+	}
+}
+
+func TestUnreadNewsRunsDisableTheSchedule(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := researchClient("")
+	sch := newRunnerSchedule(t, f)
+	enabled := func(want bool) schedule.Schedule {
+		t.Helper()
+		got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID)
+		if got.Enabled != want {
+			t.Fatalf("schedule enabled = %v, want %v: %+v", got.Enabled, want, got)
+		}
+		return got
+	}
+
+	// Reading the news in between starts the count anew; a run by hand
+	// does not count, the user asked for it.
+	for range 4 {
+		newsRun(t, f, client, sch, timedRun)
+	}
+	if err := f.store.MarkThreadRead(ctx, testUser.ID, lastRunThread(t, f, sch)); err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		newsRun(t, f, client, sch, timedRun)
+	}
+	newsRun(t, f, client, sch, manualRun)
+	enabled(true)
+
+	thread := newsRun(t, f, client, sch, timedRun)
+	got := enabled(false)
+	if got.DisabledReason != schedule.DisabledUnread || got.DisabledAt == nil || got.NextRunAt != nil {
+		t.Fatalf("schedule after the fifth unread run = %+v", got)
+	}
+	notes, _ := f.store.ListNotifications(ctx, testUser.ID, 10)
+	if len(notes) == 0 || notes[0].Kind != schedule.KindScheduleDisabled || notes[0].ThreadID == nil || *notes[0].ThreadID != thread ||
+		!strings.Contains(notes[0].Body, "5 runs") {
+		t.Fatalf("notifications = %+v, want the disable notice on the last run's thread", notes)
+	}
+	// The last news stays readable, the note after it.
+	messages, _, _ := f.chat.ListMessages(ctx, testUser.ID, thread)
+	if len(messages) != 3 || messages[1].Content != "Dune: Part Three [1]." || !strings.Contains(messages[2].Content, "disabled") {
+		t.Fatalf("thread = %+v", messages)
+	}
+
+	// Enabled again, it runs on: the count starts anew.
+	got.Enabled, got.DisabledReason, got.DisabledAt = true, "", nil
+	if _, err := f.store.SaveSchedule(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	newsRun(t, f, client, got, timedRun)
+	enabled(true)
+}
+
+func TestUnreadRunsLeaveAScheduleAlreadyOff(t *testing.T) {
+	ctx := context.Background()
+	f := newScheduleFixture(t)
+	client := researchClient("")
+	sch := newRunnerSchedule(t, f)
+	// Paused by the user while its fifth unread run went on: the pause stays
+	// theirs, no reason of loom's replaces it.
+	paused := sch
+	paused.Enabled = false
+	if _, err := f.store.SaveSchedule(ctx, paused); err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		if _, err := f.store.CountUnreadRun(ctx, testUser.ID, sch.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newsRun(t, f, client, sch, timedRun)
+	if got, _ := f.store.GetSchedule(ctx, testUser.ID, sch.ID); got.Enabled || got.DisabledReason != "" {
+		t.Fatalf("paused schedule = %+v, want the user's pause kept", got)
+	}
+}
+
 func TestFailedScheduledRunStillReplacesTheThreadBefore(t *testing.T) {
 	ctx := context.Background()
 	f := newScheduleFixture(t)
@@ -1040,7 +1158,7 @@ func TestRunThreadCleanupSurvivesStoreFailures(t *testing.T) {
 	ctx := context.Background()
 	store := &fakeThreadStore{RunThreadsErr: errors.New("db down")}
 	s := newServer(Deps{Thread: store})
-	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
+	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep", false)
 	s.pruneRunThreads(ctx, time.Now())
 	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, "a"); dropped || takenUp || len(store.DeletedThreads) != 0 {
 		t.Fatalf("deleted %v after the listing failed (taken up %v)", store.DeletedThreads, takenUp)
@@ -1048,7 +1166,7 @@ func TestRunThreadCleanupSurvivesStoreFailures(t *testing.T) {
 
 	store.RunThreadsErr = nil
 	store.RunThreads = []chat.ThreadRef{{UserID: testUser.ID, ThreadID: "a"}, {UserID: testUser.ID, ThreadID: "b"}}
-	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
+	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep", false)
 	s.pruneRunThreads(ctx, time.Now())
 	if want := []string{"a", "b", "a", "b"}; !slices.Equal(store.DeletedThreads, want) {
 		t.Fatalf("deleted %v, want %v", store.DeletedThreads, want)
@@ -1060,7 +1178,7 @@ func TestRunThreadCleanupSurvivesStoreFailures(t *testing.T) {
 		t.Fatal("an untouched thread was not dropped")
 	}
 	store.DeleteThreadErr = errors.New("locked")
-	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep")
+	s.replaceRunThreads(ctx, testUser.ID, "s1", "keep", false)
 	s.pruneRunThreads(ctx, time.Now())
 	if dropped, takenUp := s.dropEmptyRunThread(ctx, testUser.ID, "a"); dropped || takenUp || len(store.DeletedThreads) != 5 {
 		t.Fatalf("failed deletes recorded: %v (dropped %v, taken up %v)", store.DeletedThreads, dropped, takenUp)
@@ -1201,8 +1319,12 @@ func TestScheduleToolRunStartsARun(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := tools.Run(ctx, testUser, map[string]any{"id": sch.ID})
-	if !strings.HasPrefix(out, `Started a run of "Cinema scout"`) || !strings.Contains(out, "new thread") || !strings.Contains(out, "stays off") {
+	if !strings.HasPrefix(out, `Started a run of "Cinema scout"`) || !strings.Contains(out, "new thread") || !strings.Contains(out, "stays off") ||
+		!strings.Contains(out, "time limit") {
 		t.Fatalf("run = %q", out)
+	}
+	if got := (scheduleToolRunner{s: s}).disabledNote(schedule.Schedule{DisabledReason: schedule.DisabledUnread}); !strings.Contains(got, "5 runs in a row went unread") {
+		t.Fatalf("note for unread runs = %q", got)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -1245,6 +1367,12 @@ func TestScheduleToolRunner(t *testing.T) {
 	}
 	if out := tools.List(ctx, testUser); !strings.Contains(out, "off, disabled automatically: two runs in a row") {
 		t.Fatalf("list after a timeout = %q", out)
+	}
+	if err := f.store.Disable(ctx, testUser.ID, id, schedule.DisabledUnread, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if out := tools.List(ctx, testUser); !strings.Contains(out, "off, disabled automatically: the news of 5 runs in a row went unread") {
+		t.Fatalf("list after unread runs = %q", out)
 	}
 	if out := tools.Update(ctx, testUser, "", map[string]any{"id": id, "enabled": true}); !strings.Contains(out, ", on.") {
 		t.Fatalf("enable = %q", out)

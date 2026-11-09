@@ -177,9 +177,17 @@ function useNotifications(onOpen: (notification: AppNotification) => void) {
         );
         setUnread((n) => Math.max(0, n - 1));
         known.current = Math.max(0, (known.current ?? 1) - 1);
-        void markNotificationRead(notification.id)
-          .then(() => announce(THREAD_NEWS_CHANGED))
-          .catch(() => undefined);
+        // Run news is read by opening its thread, which reads it then: read
+        // here first, the thread would load already read and open at its
+        // end instead of at the answer.
+        if (
+          notification.kind !== "schedule_run" ||
+          notification.threadId === null
+        ) {
+          void markNotificationRead(notification.id)
+            .then(() => announce(THREAD_NEWS_CHANGED))
+            .catch(() => undefined);
+        }
       }
       onOpen(notification);
     },

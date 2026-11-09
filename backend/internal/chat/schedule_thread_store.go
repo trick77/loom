@@ -6,24 +6,32 @@ import (
 	"time"
 )
 
-// untouchedRunThread matches a scheduled run's thread the user never took up:
+// untakenRunThread matches a scheduled run's thread the user never took up:
 // no question after the run's prompt, nothing queued, not starred, archived,
-// filed into a project or shared, and no unread notification pointing at it
-// (its news would vanish unseen). Such a thread is replaced by the schedule's
-// next run and purged once old; every other run thread is the user's to keep.
-var untouchedRunThread = `t.schedule_id IS NOT NULL
+// filed into a project or shared. Every other run thread is the user's to keep.
+var untakenRunThread = `t.schedule_id IS NOT NULL
   AND t.starred = 0
   AND t.archived_at IS NULL
   AND t.project_id IS NULL
-  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = t.user_id AND n.thread_id = t.id AND n.read_at IS NULL)
   AND NOT ` + scheduleReplied("t") + `
   AND NOT EXISTS (SELECT 1 FROM queued_messages q WHERE q.user_id = t.user_id AND q.thread_id = t.id)
   AND NOT EXISTS (SELECT 1 FROM shared_threads sh WHERE sh.user_id = t.user_id AND sh.thread_id = t.id AND sh.shared = 1)`
 
+// untouchedRunThread is an untaken run thread with no unread notification
+// pointing at it (its news would vanish unseen). Such a thread is replaced by
+// the schedule's next run and purged once old.
+var untouchedRunThread = untakenRunThread + `
+  AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.user_id = t.user_id AND n.thread_id = t.id AND n.read_at IS NULL)`
+
 // ReplaceableScheduleThreads lists the schedule's untouched run threads other
-// than keepThreadID, the run that replaces them.
-func (s *Store) ReplaceableScheduleThreads(ctx context.Context, userID, scheduleID, keepThreadID string) ([]string, error) {
-	refs, err := s.untouchedRunThreads(ctx, `t.user_id = ? AND t.schedule_id = ? AND t.id != ?`, userID, scheduleID, keepThreadID)
+// than keepThreadID, the run that replaces them. withUnread, set when that run
+// brings news of its own, takes unread news too: the newer news supersedes it.
+func (s *Store) ReplaceableScheduleThreads(ctx context.Context, userID, scheduleID, keepThreadID string, withUnread bool) ([]string, error) {
+	match := untouchedRunThread
+	if withUnread {
+		match = untakenRunThread
+	}
+	refs, err := s.runThreads(ctx, match, `t.user_id = ? AND t.schedule_id = ? AND t.id != ?`, userID, scheduleID, keepThreadID)
 	ids := make([]string, len(refs))
 	for i, ref := range refs {
 		ids[i] = ref.ThreadID
@@ -53,9 +61,14 @@ ORDER BY t.created_at LIMIT ?`, before.UTC().Format(time.DateTime), limit)
 // untouchedRunThreads lists the untouched run threads that also match where,
 // which may end in ORDER BY and LIMIT.
 func (s *Store) untouchedRunThreads(ctx context.Context, where string, args ...any) ([]ThreadRef, error) {
+	return s.runThreads(ctx, untouchedRunThread, where, args...)
+}
+
+// runThreads lists the threads matching both match and where.
+func (s *Store) runThreads(ctx context.Context, match, where string, args ...any) ([]ThreadRef, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT t.user_id, t.id FROM threads t
-WHERE `+untouchedRunThread+` AND `+where, args...)
+WHERE `+match+` AND `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list untouched run threads: %w", err)
 	}

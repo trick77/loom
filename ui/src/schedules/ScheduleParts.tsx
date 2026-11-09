@@ -24,6 +24,7 @@ import {
   RUN_MINUTES,
   RUN_TOKEN_LIMIT,
   slotText,
+  UNREAD_RUN_LIMIT,
 } from "./scheduleText";
 
 const pillTone: Record<string, string> = {
@@ -33,6 +34,7 @@ const pillTone: Record<string, string> = {
   failed: "bg-[rgba(184,92,82,0.18)] text-[#e59a90]",
   timeout: "bg-[rgba(217,83,79,0.14)] text-[#ec8f8b]",
   disabled: "bg-[rgba(217,83,79,0.14)] text-[#ec8f8b]",
+  disabled_unread: "bg-[rgba(217,83,79,0.14)] text-[#ec8f8b]",
   running: "bg-[#363632] text-[#d6d3ca]",
   paused: "bg-[#2e2e2c] text-[#8f8b82]",
 };
@@ -43,15 +45,20 @@ const pillIcon: Partial<Record<string, IconName>> = {
   failed: "alertCircle",
   timeout: "alertCircle",
   disabled: "alertCircle",
+  disabled_unread: "alertCircle",
   paused: "pause",
 };
+
+// ScheduleState is a schedule's state when it says more than its last run:
+// paused, or auto-disabled for its time or for unread news.
+type ScheduleState = "paused" | "disabled" | "disabled_unread";
 
 // StatusPill names a run's outcome, or the schedule's state when that says
 // more (paused, auto-disabled).
 export function StatusPill({
   status,
 }: {
-  status: ScheduleRunStatus | "paused" | "disabled";
+  status: ScheduleRunStatus | ScheduleState;
 }) {
   const { t } = useTranslation();
   const icon = pillIcon[status];
@@ -68,8 +75,9 @@ export function StatusPill({
 // scheduleStatus is what a schedule's pill shows.
 export function scheduleStatus(
   schedule: Schedule,
-): ScheduleRunStatus | "paused" | "disabled" | null {
+): ScheduleRunStatus | ScheduleState | null {
   if (schedule.disabledReason === "timeout") return "disabled";
+  if (schedule.disabledReason === "unread") return "disabled_unread";
   if (!schedule.enabled) return "paused";
   if (schedule.running) return "running";
   return schedule.lastRun?.status ?? null;
@@ -114,7 +122,8 @@ export function DisabledBanner({
   busy: boolean;
 }) {
   const { t, i18n } = useTranslation();
-  if (schedule.disabledReason !== "timeout") return null;
+  const reason = schedule.disabledReason;
+  if (reason !== "timeout" && reason !== "unread") return null;
   return (
     <div className="flex items-center gap-2.5 rounded-[10px] border border-[#5a3631] bg-[#2c2422] px-3 py-2.5">
       <Icon
@@ -129,7 +138,9 @@ export function DisabledBanner({
             : "",
         })}
         <div className="text-[12.5px] text-[#a9918c]">
-          {t("schedules.disabled.body", { minutes: RUN_MINUTES })}
+          {reason === "unread"
+            ? t("schedules.disabled.bodyUnread", { runs: UNREAD_RUN_LIMIT })
+            : t("schedules.disabled.body", { minutes: RUN_MINUTES })}
         </div>
       </div>
       <button

@@ -284,7 +284,7 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 		}
 		finish()
 		if replacing != "" {
-			s.replaceRunThreads(detached, sch.UserID, sch.ID, replacing)
+			s.replaceRunThreads(detached, sch.UserID, sch.ID, replacing, announce != nil)
 		}
 		if announce != nil {
 			announce()
@@ -472,7 +472,45 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 			Title:      sch.Name,
 			Body:       body,
 		})
+		if trigger == timedRun {
+			s.countUnreadRun(detached, user, sch, thread)
+		}
 	}
+}
+
+// unreadRunLimit is how many runs with news in a row may go unread before the
+// schedule turns itself off: nobody reads it any more, it only costs.
+const unreadRunLimit = 5
+
+// countUnreadRun counts a timed run's news as unread, and turns the schedule
+// off once unreadRunLimit runs in a row went unread. A run by hand never
+// counts: the user asked for it.
+func (s *server) countUnreadRun(ctx context.Context, user auth.User, sch schedule.Schedule, thread chat.Thread) {
+	n, err := s.schedules.CountUnreadRun(ctx, user.ID, sch.ID)
+	if err != nil {
+		slog.Warn("count unread run failed", "schedule_id", sch.ID, "err", err)
+		return
+	}
+	if n < unreadRunLimit {
+		return
+	}
+	// A schedule off by now (paused during the run) is not turned off again;
+	// the user's own pause stays theirs.
+	if current, err := s.schedules.GetSchedule(ctx, user.ID, sch.ID); err != nil || !current.Enabled {
+		return
+	}
+	if err := s.schedules.Disable(ctx, user.ID, sch.ID, schedule.DisabledUnread, s.clock()); err != nil {
+		slog.Warn("disable schedule failed", "schedule_id", sch.ID, "err", err)
+		return
+	}
+	s.persistRunNote(ctx, user.ID, thread.ID, fmt.Sprintf("The news of %d runs in a row went unread, so the schedule was disabled.", unreadRunLimit))
+	s.notify(ctx, user.ID, schedule.Notification{
+		Kind:       schedule.KindScheduleDisabled,
+		ScheduleID: &sch.ID,
+		ThreadID:   &thread.ID,
+		Title:      sch.Name + " was disabled",
+		Body:       fmt.Sprintf("The news of %d runs in a row went unread. Open the schedule to enable it again.", unreadRunLimit),
+	})
 }
 
 // runSummary is a run's notification body: the model's short summary of the
@@ -563,14 +601,21 @@ func (s *server) dropEmptyRunThread(ctx context.Context, userID, threadID string
 
 // replaceRunThreads deletes the schedule's run threads before keepThreadID
 // that the user never took up. One they asked something in, starred, filed
-// or shared stays.
-func (s *server) replaceRunThreads(ctx context.Context, userID, scheduleID, keepThreadID string) {
-	ids, err := s.thread.ReplaceableScheduleThreads(ctx, userID, scheduleID, keepThreadID)
+// or shared stays. Unread news goes only for news (withNews): a failed run
+// must not make the last news vanish unseen. Replaced news leaves the bell.
+func (s *server) replaceRunThreads(ctx context.Context, userID, scheduleID, keepThreadID string, withNews bool) {
+	ids, err := s.thread.ReplaceableScheduleThreads(ctx, userID, scheduleID, keepThreadID, withNews)
 	if err != nil {
 		slog.Warn("list replaceable run threads failed", "schedule_id", scheduleID, "err", err)
 		return
 	}
 	for _, id := range ids {
+		if withNews {
+			if err := s.schedules.DeleteThreadNews(ctx, userID, id); err != nil {
+				slog.Warn("drop replaced run news failed", "thread_id", id, "err", err)
+				continue
+			}
+		}
 		if _, err := s.deleteThreadWithData(ctx, userID, id); err != nil {
 			slog.Warn("replace run thread failed", "thread_id", id, "err", err)
 		}

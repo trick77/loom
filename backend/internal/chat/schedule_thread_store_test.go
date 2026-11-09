@@ -75,7 +75,8 @@ func TestReplaceableScheduleThreads(t *testing.T) {
 	if _, err := st.SetThreadArchived(ctx, alice, archived.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	// News the user has not read keeps its thread; read news does not.
+	// News the user has not read keeps its thread unless newer news replaces
+	// it; read news does not.
 	unread := runThread(t, st, alice, "s1")
 	read := runThread(t, st, alice, "s1")
 	if _, err := db.Exec(`INSERT INTO notifications (id, user_id, kind, thread_id, title) VALUES
@@ -91,7 +92,7 @@ func TestReplaceableScheduleThreads(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := st.ReplaceableScheduleThreads(ctx, alice, "s1", current.ID)
+	got, err := st.ReplaceableScheduleThreads(ctx, alice, "s1", current.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,6 +101,18 @@ func TestReplaceableScheduleThreads(t *testing.T) {
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Fatalf("replaceable = %v, want only the untouched threads %v", got, want)
+	}
+	// A run with news of its own replaces unread news too; a taken-up thread
+	// still stays.
+	got, err = st.ReplaceableScheduleThreads(ctx, alice, "s1", current.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(got)
+	want = []string{untouched.ID, read.ID, unread.ID}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("replaceable with unread = %v, want %v", got, want)
 	}
 
 	// IsUntouchedRunThread asks the same of one thread, the user's own only.
@@ -173,7 +186,7 @@ func TestUntouchedRunThreadsReportsAStoreFailure(t *testing.T) {
 	db := openTestDB(t)
 	st := NewStore(db)
 	_ = db.Close()
-	if _, err := st.ReplaceableScheduleThreads(context.Background(), "u", "s", "t"); err == nil {
+	if _, err := st.ReplaceableScheduleThreads(context.Background(), "u", "s", "t", false); err == nil {
 		t.Fatal("ReplaceableScheduleThreads on a closed database returned no error")
 	}
 	if _, err := st.IsUntouchedRunThread(context.Background(), "u", "t"); err == nil {

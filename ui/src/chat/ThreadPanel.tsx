@@ -74,8 +74,12 @@ export function ThreadPanel({
   onToggleThreadMenu,
   onCloseThreadMenu,
   onOpenSchedule,
+  openAtAnswer = false,
 }: {
   thread: Thread | null;
+  /** The thread holds unread schedule news: it opens at the start of the
+   *  latest answer, not at the end. Read once, as the thread opens. */
+  openAtAnswer?: boolean;
   threadProject: Project | null;
   share: ShareInfo | null;
   onShareChange(next: ShareInfo | null): void;
@@ -120,6 +124,14 @@ export function ThreadPanel({
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
+  // The latest run's answer: the message after the last prompt.
+  const answerStartRef = useRef<HTMLDivElement | null>(null);
+  const answerStartIndex = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === "user") return index + 1;
+    }
+    return 0;
+  }, [messages]);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   // Per-bubble derived data in one pass: the per-row helpers walked the
   // transcript from the start for every bubble, quadratic on long threads and
@@ -369,12 +381,40 @@ export function ThreadPanel({
     [onRetry, pinToLatest],
   );
 
+  // Unread news opens at the start of its answer: a long report read from its
+  // end is read backwards. The flag is read only as the thread opens, the
+  // read that follows clears it.
+  const openedThreadRef = useRef<string | null | undefined>(undefined);
   useLayoutEffect(() => {
+    const threadID = thread?.id ?? null;
+    if (openedThreadRef.current === threadID) return;
+    openedThreadRef.current = threadID;
+    const transcript = transcriptRef.current;
+    const answer = answerStartRef.current;
+    if (openAtAnswer && transcript !== null) {
+      shouldStickToBottomRef.current = false;
+      if (scrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+      const padding = parseFloat(getComputedStyle(transcript).paddingTop) || 0;
+      transcript.scrollTop =
+        answer === null
+          ? 0
+          : Math.max(
+              0,
+              transcript.scrollTop +
+                answer.getBoundingClientRect().top -
+                transcript.getBoundingClientRect().top -
+                padding,
+            );
+      setShowJumpToBottom(!isNearBottom(transcript));
+      return;
+    }
     shouldStickToBottomRef.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- a reset keyed on the thread changing
     setShowJumpToBottom(false);
     scrollToLatest();
-  }, [scrollToLatest, thread?.id]);
+  }, [openAtAnswer, scrollToLatest, thread?.id]);
 
   useLayoutEffect(() => {
     if (shouldStickToBottomRef.current) {
@@ -531,6 +571,8 @@ export function ThreadPanel({
                 // reconcile to the persisted id) so the bubble's DOM node is stable.
                 <div
                   key={message.clientKey ?? message.id}
+                  ref={index === answerStartIndex ? answerStartRef : undefined}
+                  data-message-id={message.id}
                   className="space-y-6"
                 >
                   <MessageBubble

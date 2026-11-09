@@ -721,12 +721,15 @@ export const en = {
     pausedNote: "paused",
     disabledNote:
       "disabled {{date}}: two runs in a row took longer than {{minutes}} minutes",
+    disabledNoteUnread:
+      "disabled {{date}}: the news of {{runs}} runs in a row went unread",
     status: {
       new: "reported",
       nothing_new: "nothing to report",
       token_limit: "token limit reached",
       timeout: "timeout",
       disabled: "disabled · timeout",
+      disabled_unread: "disabled · unread",
       failed: "failed",
       running: "running",
       paused: "paused",
@@ -783,6 +786,8 @@ export const en = {
     disabled: {
       title: "Disabled automatically on {{date}}",
       body: "Two runs in a row took longer than {{minutes}} minutes. Simplify the prompt, or enable it again as it is.",
+      bodyUnread:
+        "The news of {{runs}} runs in a row went unread. Enable it again if you still want it.",
       enable: "Enable again",
     },
     detail: {

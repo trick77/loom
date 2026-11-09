@@ -33,9 +33,12 @@ const (
 	StatusFailed     = "failed"
 )
 
-// DisabledTimeout is the reason loom gives a schedule it disabled after a run
-// went past the time limit.
-const DisabledTimeout = "timeout"
+// Reasons loom gives a schedule it disabled: runs went past the time limit,
+// or their news went unread.
+const (
+	DisabledTimeout = "timeout"
+	DisabledUnread  = "unread"
+)
 
 // Notification kinds.
 const (
@@ -54,6 +57,7 @@ type DBTX interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 }
 
 // Store persists schedules, their runs and memory, and notifications. Every
@@ -184,7 +188,8 @@ func (st *Store) ListSchedules(ctx context.Context, userID string) ([]Schedule, 
 }
 
 // SaveSchedule writes the editable fields of s back: name, prompt, interval,
-// cron, timezone, enabled, next run and the disabled reason.
+// cron, timezone, enabled, next run and the disabled reason. The user's edit
+// starts the unread run count anew.
 func (st *Store) SaveSchedule(ctx context.Context, s Schedule) (Schedule, error) {
 	var reason any
 	if s.DisabledReason != "" {
@@ -193,7 +198,7 @@ func (st *Store) SaveSchedule(ctx context.Context, s Schedule) (Schedule, error)
 	res, err := st.db.ExecContext(ctx, `
 UPDATE schedules
 SET name = ?, prompt = ?, interval_text = ?, cron_template = ?, cron = ?, timezone = ?, enabled = ?,
-    next_run_at = ?, disabled_reason = ?, disabled_at = ?, updated_at = datetime('now')
+    next_run_at = ?, disabled_reason = ?, disabled_at = ?, unread_runs = 0, updated_at = datetime('now')
 WHERE user_id = ? AND id = ?`,
 		s.Name, s.Prompt, s.IntervalText, s.CronTemplate, s.Cron, s.Timezone, s.Enabled,
 		nullTS(s.NextRunAt), reason, nullTS(s.DisabledAt), s.UserID, s.ID)
@@ -288,6 +293,23 @@ WHERE user_id = ? AND id = ?`, reason, ts(at), userID, id)
 		return fmt.Errorf("disable schedule: %w", err)
 	}
 	return nil
+}
+
+// CountUnreadRun counts one more run with news nobody has read yet and returns
+// the count: runs with news since the schedule's news was last read or the
+// schedule last saved. 0 when the schedule is not the user's.
+func (st *Store) CountUnreadRun(ctx context.Context, userID, id string) (int, error) {
+	var n int
+	err := st.db.QueryRowContext(ctx, `
+UPDATE schedules SET unread_runs = unread_runs + 1 WHERE user_id = ? AND id = ?
+RETURNING unread_runs`, userID, id).Scan(&n)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("count unread run: %w", err)
+	}
+	return n, nil
 }
 
 // ResetInterrupted clears every claim and fails every run left running: at
@@ -608,22 +630,64 @@ func (st *Store) UnreadCount(ctx context.Context, userID string) (int, error) {
 // MarkRead marks one notification read, or all of the user's when id is "".
 func (st *Store) MarkRead(ctx context.Context, userID, id string) error {
 	if id == "" {
-		return st.markRead(ctx, userID, "")
+		return st.markRead(ctx, readAll, userID)
 	}
-	return st.markRead(ctx, userID, ` AND id = ?`, id)
+	return st.markRead(ctx, readOne, userID, id)
 }
 
 // MarkThreadRead marks the run news pointing at a thread read; a notice that
 // the schedule was disabled stays for the bell.
 func (st *Store) MarkThreadRead(ctx context.Context, userID, threadID string) error {
-	return st.markRead(ctx, userID, ` AND thread_id = ? AND kind = ?`, threadID, KindScheduleRun)
+	return st.markRead(ctx, readThread, userID, threadID)
 }
 
-// markRead marks the user's unread notifications matching the extra clause.
-func (st *Store) markRead(ctx context.Context, userID, clause string, args ...any) error {
-	if _, err := st.db.ExecContext(ctx, `UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL`+clause,
-		append([]any{userID}, args...)...); err != nil {
+// readScope picks the unread notifications a read marks: reset starts the
+// unread run count of their schedules anew, mark marks them. Both take the
+// user id, then the scope's own argument.
+type readScope struct{ reset, mark string }
+
+const (
+	resetUnreadRuns = `UPDATE schedules SET unread_runs = 0
+WHERE user_id = ?1 AND id IN (
+  SELECT schedule_id FROM notifications
+  WHERE user_id = ?1 AND read_at IS NULL AND kind = 'schedule_run' AND schedule_id IS NOT NULL`
+	markUnread = `UPDATE notifications SET read_at = datetime('now') WHERE user_id = ?1 AND read_at IS NULL`
+)
+
+var (
+	readAll    = readScope{resetUnreadRuns + `)`, markUnread}
+	readOne    = readScope{resetUnreadRuns + ` AND id = ?2)`, markUnread + ` AND id = ?2`}
+	readThread = readScope{resetUnreadRuns + ` AND thread_id = ?2)`, markUnread + ` AND thread_id = ?2 AND kind = 'schedule_run'`}
+)
+
+// markRead marks the user's unread notifications in scope read. Reading a
+// schedule's run news starts its unread run count anew, in the same step: a
+// run counted between the two would be lost.
+func (st *Store) markRead(ctx context.Context, scope readScope, args ...any) error {
+	tx, err := st.db.BeginTx(ctx, nil)
+	if err != nil {
 		return fmt.Errorf("mark notifications read: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, scope.reset, args...); err != nil {
+		return fmt.Errorf("reset unread runs: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, scope.mark, args...); err != nil {
+		return fmt.Errorf("mark notifications read: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("mark notifications read: %w", err)
+	}
+	return nil
+}
+
+// DeleteThreadNews deletes the unread run news pointing at a thread a newer
+// run replaces: the newer news supersedes it, and its thread is gone.
+func (st *Store) DeleteThreadNews(ctx context.Context, userID, threadID string) error {
+	if _, err := st.db.ExecContext(ctx, `
+DELETE FROM notifications WHERE user_id = ? AND thread_id = ? AND kind = ? AND read_at IS NULL`,
+		userID, threadID, KindScheduleRun); err != nil {
+		return fmt.Errorf("delete thread news: %w", err)
 	}
 	return nil
 }

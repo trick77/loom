@@ -227,6 +227,76 @@ func TestDisable(t *testing.T) {
 	}
 }
 
+func TestUnreadRuns(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	st := schedule.NewStore(db)
+	sch, _ := st.CreateSchedule(ctx, newSchedule("u1", "s", nil))
+	other, _ := st.CreateSchedule(ctx, newSchedule("u1", "o", nil))
+	seedThread(t, db, "u1", "th1")
+	seedThread(t, db, "u1", "th2")
+	news := func(scheduleID, threadID string) {
+		t.Helper()
+		if err := st.CreateNotification(ctx, "u1", schedule.Notification{Kind: schedule.KindScheduleRun, ScheduleID: &scheduleID, ThreadID: &threadID, Title: "n"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bump := func(id string, want int) {
+		t.Helper()
+		if n, err := st.CountUnreadRun(ctx, "u1", id); err != nil || n != want {
+			t.Fatalf("CountUnreadRun = %d, %v; want %d", n, err, want)
+		}
+	}
+	bump(sch.ID, 1)
+	bump(sch.ID, 2)
+	// Another user's count is not theirs to move.
+	if n, _ := st.CountUnreadRun(ctx, "u2", sch.ID); n != 0 {
+		t.Fatalf("u2 counted u1's schedule: %d", n)
+	}
+
+	// Reading one of the schedule's run news starts the count anew; another
+	// schedule's news leaves it be.
+	news(sch.ID, "th1")
+	news(other.ID, "th2")
+	bump(other.ID, 1)
+	if err := st.MarkThreadRead(ctx, "u1", "th1"); err != nil {
+		t.Fatal(err)
+	}
+	bump(sch.ID, 1)
+	bump(other.ID, 2)
+	list, _ := st.ListNotifications(ctx, "u1", 10)
+	if err := st.MarkRead(ctx, "u1", list[0].ID); err != nil { // other's news
+		t.Fatal(err)
+	}
+	bump(other.ID, 1)
+	news(sch.ID, "th1")
+	if err := st.MarkRead(ctx, "u1", ""); err != nil {
+		t.Fatal(err)
+	}
+	bump(sch.ID, 1)
+	// A read notice that the schedule was disabled is no read run.
+	_ = st.CreateNotification(ctx, "u1", schedule.Notification{Kind: schedule.KindScheduleDisabled, ScheduleID: &sch.ID, Title: "off"})
+	_ = st.MarkRead(ctx, "u1", "")
+	bump(sch.ID, 2)
+
+	// An edit or re-enable starts it anew too.
+	if _, err := st.SaveSchedule(ctx, sch); err != nil {
+		t.Fatal(err)
+	}
+	bump(sch.ID, 1)
+
+	// News superseded by a newer run goes; read news and other threads stay.
+	news(sch.ID, "th1")
+	news(sch.ID, "th2")
+	if err := st.DeleteThreadNews(ctx, "u1", "th1"); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := st.UnreadCount(ctx, "u1"); n != 1 {
+		t.Fatalf("unread after dropping th1's news = %d, want th2's only", n)
+	}
+	bump(sch.ID, 2)
+}
+
 func TestRunThreadLink(t *testing.T) {
 	ctx := context.Background()
 	db := openDB(t)

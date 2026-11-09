@@ -108,13 +108,22 @@ func (t scheduleToolRunner) Run(ctx context.Context, user auth.User, args map[st
 	}
 	out := fmt.Sprintf("Started a run of %q. It runs in the background for up to %d minutes; its answer arrives in a new thread of its own, with a notification when it has something to report.",
 		sch.Name, int(schedule.RunTimeout/time.Minute))
-	switch {
-	case !sch.Enabled && sch.DisabledReason == schedule.DisabledTimeout:
-		out += " Tell the user: loom turned this schedule off because two runs in a row took longer than the time limit, so this run may too; the schedule stays off."
-	case !sch.Enabled:
-		out += " The schedule itself stays off."
+	if !sch.Enabled {
+		out += t.disabledNote(sch)
 	}
 	return out
+}
+
+// disabledNote tells the model, after a run by hand, that the schedule stays
+// off, and why when loom turned it off.
+func (t scheduleToolRunner) disabledNote(sch schedule.Schedule) string {
+	switch sch.DisabledReason {
+	case schedule.DisabledTimeout:
+		return " Tell the user: loom turned this schedule off because two runs in a row took longer than the time limit, so this run may too; the schedule stays off."
+	case schedule.DisabledUnread:
+		return fmt.Sprintf(" Tell the user: loom turned this schedule off because the news of %d runs in a row went unread; the schedule stays off.", unreadRunLimit)
+	}
+	return " The schedule itself stays off."
 }
 
 // describe is one schedule for the model: what loom resolved, never what the
@@ -125,6 +134,8 @@ func (t scheduleToolRunner) describe(sch schedule.Schedule) string {
 	switch {
 	case sch.DisabledReason == schedule.DisabledTimeout:
 		state = "off, disabled automatically: two runs in a row took longer than the time limit"
+	case sch.DisabledReason == schedule.DisabledUnread:
+		state = fmt.Sprintf("off, disabled automatically: the news of %d runs in a row went unread", unreadRunLimit)
 	case !sch.Enabled:
 		state = "off"
 	}

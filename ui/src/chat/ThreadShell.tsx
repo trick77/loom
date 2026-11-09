@@ -1868,6 +1868,7 @@ export function ThreadShell({
         ) : (
           <ThreadPanel
             thread={activeThread}
+            openAtAnswer={openedThreadUnread}
             threadProject={activeThreadProject}
             share={activeShare}
             onShareChange={handleShareChange}

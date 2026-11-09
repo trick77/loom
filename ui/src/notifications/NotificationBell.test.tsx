@@ -100,7 +100,9 @@ test("shows a dot while anything is unread, the inbox on click", async () => {
 
   fireEvent.click(screen.getByText("Cinema scout"));
   expect(onOpen).toHaveBeenCalledWith(run);
-  expect(api.markNotificationRead).toHaveBeenCalledWith("n1");
+  // Opening the run's thread reads its news: read here first, the thread
+  // would load already read and open at its end, not at the answer.
+  expect(api.markNotificationRead).not.toHaveBeenCalled();
   await waitFor(() =>
     expect(screen.queryByTestId("notification-dot")).not.toBeInTheDocument(),
   );
@@ -111,6 +113,22 @@ test("shows a dot while anything is unread, the inbox on click", async () => {
     await screen.findByRole("button", { name: /Manage schedules/ }),
   );
   expect(onManage).toHaveBeenCalled();
+});
+
+test("opening news without a thread reads it here", async () => {
+  vi.mocked(api.unreadNotificationCount).mockResolvedValue(1);
+  const off = { ...disabled, readAt: null };
+  vi.mocked(api.listNotifications).mockResolvedValue([off]);
+  const onOpen = vi.fn();
+  render(
+    <Bell placement="header" onOpen={onOpen} onManageSchedules={vi.fn()} />,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: /some unread/ }));
+  fireEvent.click(
+    await screen.findByText("Hallenstadion tickets was disabled"),
+  );
+  expect(onOpen).toHaveBeenCalledWith(off);
+  expect(api.markNotificationRead).toHaveBeenCalledWith("n2");
 });
 
 test("mark all read clears the dot", async () => {
