@@ -26,6 +26,9 @@ const (
 	schedulePruneEvery = time.Hour
 	// findingsTimeout bounds the gate call that lists a run's findings.
 	findingsTimeout = time.Minute
+	// summaryTimeout bounds the call that summarizes a run for its
+	// notification; past it the answer's first line stands in.
+	summaryTimeout = time.Minute
 	// runThreadRetention is how long a run thread the user never took up
 	// outlives its run, e.g. the last one of a paused schedule.
 	runThreadRetention = 30 * 24 * time.Hour
@@ -441,14 +444,28 @@ func (s *server) runSchedule(ctx context.Context, sch schedule.Schedule, trigger
 	if len(reported) == 0 {
 		return
 	}
+	summaryCtx, cancelSummary := context.WithTimeout(
+		llm.WithUsageAccumulator(llm.WithInferenceMetadata(ctx, inference), usageTotal), summaryTimeout)
+	defer cancelSummary()
 	s.notify(detached, user.ID, schedule.Notification{
 		Kind:       schedule.KindScheduleRun,
 		ScheduleID: &sch.ID,
 		ThreadID:   &thread.ID,
 		MessageID:  &assistant.ID,
 		Title:      sch.Name,
-		Body:       schedule.Teaser(result.Content),
+		Body:       s.runSummary(summaryCtx, user, sch, result.Content),
 	})
+}
+
+// runSummary is a run's notification body: the model's short summary of the
+// answer, or the answer's first line when that fails.
+func (s *server) runSummary(ctx context.Context, user auth.User, sch schedule.Schedule, answer string) string {
+	summary, err := s.scheduleLLM.SummarizeRun(ctx, sch.Prompt, answer, user.ResponseLanguageName())
+	if err != nil {
+		slog.Warn("summarize scheduled run failed", "schedule_id", sch.ID, "err", err)
+		return schedule.Teaser(answer)
+	}
+	return summary
 }
 
 // recordFindings lists the items the answer reported: whether there are any
