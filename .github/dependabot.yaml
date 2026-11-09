@@ -8,6 +8,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     # `// indirect` too: by default Dependabot bumps only direct requirements,
     # and an indirect one stays at whatever floor a dependency set (a
@@ -44,6 +46,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       # First matching group wins, so the specific groups come first and the
@@ -95,6 +99,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       docker-non-major:
@@ -118,6 +124,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       docker-non-major:
@@ -141,6 +149,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       docker-non-major:
@@ -164,6 +174,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       docker-non-major:
@@ -187,6 +199,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       docker-non-major:
@@ -210,6 +224,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       docker-non-major:
@@ -233,6 +249,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       docker-non-major:
@@ -256,6 +274,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       docker-non-major:
@@ -279,6 +299,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       compose-non-major:
@@ -301,6 +323,8 @@ updates:
       day: sunday
       time: "07:00"
       timezone: Europe/Zurich
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       actions-non-major:
