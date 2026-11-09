@@ -96,7 +96,12 @@ func todayHandler(srv *server) http.Handler {
 
 func (tf *todayFixture) get(t *testing.T) todayResponse {
 	t.Helper()
-	req := authenticatedRequest(http.MethodGet, "/api/today", "")
+	return tf.getAt(t, "/api/today")
+}
+
+func (tf *todayFixture) getAt(t *testing.T, target string) todayResponse {
+	t.Helper()
+	req := authenticatedRequest(http.MethodGet, target, "")
 	req.Header.Set(timezoneHeader, "Europe/Zurich")
 	rec := httptest.NewRecorder()
 	tf.handler.ServeHTTP(rec, req)
@@ -129,6 +134,10 @@ func TestToday(t *testing.T) {
 		}
 	}
 
+	// A phone shows the line: its visit leaves the day's tiles.
+	if phone := tf.getAt(t, "/api/today?compact=1"); phone.View != "line" || phone.Weather == nil || len(tf.users.seen) != 0 {
+		t.Fatalf("compact visit: view %q, seen %v", phone.View, tf.users.seen)
+	}
 	got := tf.get(t)
 	if got.Date != "2026-11-09" || got.View != "tiles" || got.AskLocation || got.Location == nil || got.Location.Name != "Zürich" {
 		t.Fatalf("today = %+v", got)
@@ -169,6 +178,17 @@ func TestTodayWithoutAPlace(t *testing.T) {
 	// No weather to show: the day's tiles are left for a visit that has some.
 	if got.View != "line" || len(tf.users.seen) != 0 {
 		t.Fatalf("view %q, seen %v", got.View, tf.users.seen)
+	}
+}
+
+// Just past midnight after the clocks went forward, "yesterday" is still the
+// local day before, not two days back.
+func TestSunOnAcrossAClockChange(t *testing.T) {
+	zurich, _ := time.LoadLocation("Europe/Zurich")
+	p := &location.Place{Latitude: 47.3769, Longitude: 8.5417}
+	got := sunOn(time.Date(2026, 3, 29, 22, 30, 0, 0, time.UTC), p, zurich) // 00:30 CEST on the 30th
+	if got.DeltaMinutes < 2 || got.DeltaMinutes > 4 {
+		t.Fatalf("delta = %d min, want one day's change (about 3)", got.DeltaMinutes)
 	}
 }
 

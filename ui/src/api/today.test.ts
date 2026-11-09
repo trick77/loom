@@ -31,6 +31,14 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
   });
 });
 
+test("getToday asks compact for a phone", async () => {
+  const fetchMock = stubFetch(Response.json({}));
+  await getToday({ compact: true });
+  expect(fetchMock).toHaveBeenCalledWith("/api/today?compact=1", {
+    headers: { "X-Loom-Timezone": browserTimezone() },
+  });
+});
+
 test("getToday keeps a full answer and survives a null one", async () => {
   const full = {
     date: "2026-11-09",

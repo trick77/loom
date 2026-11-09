@@ -10,10 +10,8 @@ import { LocationPrompt } from "./LocationPrompt";
 import { ScheduleNews } from "./ScheduleNews";
 import { SunTile } from "./SunTile";
 import { SunLine, TodayLine } from "./TodayLine";
+import { NARROW } from "./useToday";
 import { WeatherTile } from "./WeatherTile";
-
-// Below Tailwind's sm the tiles start folded into the line.
-const NARROW = "(max-width: 639px)";
 
 function Tiles({ today, weather }: { today: Today; weather: TodayWeather }) {
   return (

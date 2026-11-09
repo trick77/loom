@@ -211,12 +211,10 @@ func (s *server) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "place not found", "code": "not_found"})
 		return
 	}
-	release, ok := s.inflight.tryAcquire("location:" + user.ID)
-	if !ok {
-		httpx.WriteError(w, http.StatusConflict, "the location is being updated, try again")
-		return
-	}
-	defer release()
+	// No lock against a derivation in flight (the start page starts one on
+	// every visit, and it may wait on the model for long): the user's answer
+	// is saved now. A derivation that read the facts before it saves under
+	// their old hash, so the next one reads the new fact.
 	fact, err := s.rememberHome(ctx, user, home)
 	if err != nil {
 		serverError(w, r, err, "remember place failed")

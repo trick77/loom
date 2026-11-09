@@ -81,9 +81,14 @@ export class PlaceNotFoundError extends Error {
   }
 }
 
-export async function getToday(): Promise<Today> {
+// getToday loads the start page's "Today". compact is for a phone, which shows
+// the line anyway: the server then answers "line" and keeps the day's tiles
+// for a wider screen.
+export async function getToday(
+  options: { compact?: boolean } = {},
+): Promise<Today> {
   const raw = await requestJSON<Partial<Today> | null>(
-    `/api/today`,
+    options.compact ? `/api/today?compact=1` : `/api/today`,
     "failed to load today",
     { headers: { "X-Loom-Timezone": browserTimezone() } },
   );
