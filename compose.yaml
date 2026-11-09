@@ -34,6 +34,9 @@ services:
       # Web search sidecar (docs/search.md), always on. BACKEND_SEARCH_TOKEN
       # comes in through env_file.
       BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-http://search:8030}"
+      # Weather sidecar (docs/weather.md), always on. BACKEND_WEATHER_TOKEN
+      # comes in through env_file.
+      BACKEND_WEATHER_URL: "${BACKEND_WEATHER_URL:-http://weather:8100}"
       # The Tavily key is the sidecar's alone: over what env_file loads, loom
       # sees only whether one is set (it warns when the sidecar is not configured).
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"
@@ -344,6 +347,35 @@ services:
       start_interval: 5s
       retries: 3
     # The loom network: reachable from loom only, with egress to Tavily.
+    networks:
+      - loom
+    labels:
+      traefik.enable: "false"
+
+  weather:
+    # loom's weather over MCP (docs/weather.md): Open-Meteo answers, no key.
+    # Every route needs WEATHER_TOKEN: the provider's free tier is limited per
+    # IP. Keeps forecasts per place and hour in memory. Stateless: no volume.
+    image: ghcr.io/trick77/loom-weather:latest
+    restart: unless-stopped
+    # Small Go service proxying JSON to Open-Meteo.
+    mem_limit: 128m
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      GOMEMLIMIT: "115MiB" # ~90% of mem_limit, see loom
+      WEATHER_TOKEN: "${BACKEND_WEATHER_TOKEN:-}"
+    healthcheck:
+      test: ["CMD", "/loom-weather", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+    # The loom network: reachable from loom only, with egress to Open-Meteo.
     networks:
       - loom
     labels:

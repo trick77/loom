@@ -272,6 +272,27 @@ func TestLoadImagegenSidecarProblems(t *testing.T) {
 	}
 }
 
+func TestLoadWeatherSidecar(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_WEATHER_URL", "http://weather:8100")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_WEATHER_TOKEN must be at least 32") {
+		t.Fatalf("no token: %v", err)
+	}
+	t.Setenv("BACKEND_WEATHER_TOKEN", strings.Repeat("a", 32))
+	if cfg, err := Load(); err != nil || cfg.WeatherURL != "http://weather:8100" || cfg.WeatherToken != strings.Repeat("a", 32) {
+		t.Fatalf("configured: %+v, %v", cfg, err)
+	}
+	t.Setenv("BACKEND_WEATHER_URL", "weather:8100")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_WEATHER_URL must be an absolute") {
+		t.Fatalf("relative url: %v", err)
+	}
+	t.Setenv("BACKEND_WEATHER_URL", "off")
+	t.Setenv("BACKEND_WEATHER_TOKEN", "")
+	if cfg, err := Load(); err != nil || cfg.WeatherURL != "" {
+		t.Fatalf("off: %+v, %v", cfg, err)
+	}
+}
+
 func TestLoadSearchSidecar(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_SEARCH_URL", "http://search:8030")

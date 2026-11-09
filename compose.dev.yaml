@@ -41,6 +41,9 @@ services:
       # Web search sidecar, published on a localhost port.
       BACKEND_SEARCH_URL: "${BACKEND_SEARCH_URL:-http://localhost:8030}"
       BACKEND_SEARCH_TOKEN: dev-search-token-please-change-0123456789
+      # Weather sidecar, published on a localhost port.
+      BACKEND_WEATHER_URL: "${BACKEND_WEATHER_URL:-http://localhost:8100}"
+      BACKEND_WEATHER_TOKEN: dev-weather-token-please-change-012345678
       # The Tavily key is the sidecar's alone: over what env_file loads, loom
       # sees only whether one is set (it warns when the sidecar is not configured).
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"
@@ -91,6 +94,8 @@ services:
         # one-shot MCP discovery at startup → wait for Obscura's native MCP server
         condition: service_healthy
       search:
+        condition: service_healthy
+      weather:
         condition: service_healthy
       imagegen:
         # Opt-in profile, so not required; discovered at boot once healthy.
@@ -218,6 +223,29 @@ services:
       - "127.0.0.1:8030:8030"
     healthcheck:
       test: ["CMD", "/loom-search", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+
+  weather:
+    # Weather sidecar, built from source, published on a localhost port.
+    build:
+      context: .
+      dockerfile: weather/Containerfile
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Same value as loom's BACKEND_WEATHER_TOKEN above.
+      WEATHER_TOKEN: dev-weather-token-please-change-012345678
+    ports:
+      - "127.0.0.1:8100:8100"
+    healthcheck:
+      test: ["CMD", "/loom-weather", "healthcheck"]
       interval: 60s
       timeout: 5s
       start_period: 30s

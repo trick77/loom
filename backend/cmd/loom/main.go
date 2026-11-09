@@ -533,6 +533,11 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	if searchConfigured(cfg) {
 		out.FileServers.Servers[mcp.SearchServer] = mcp.SearchServerConfig(cfg.SearchURL, cfg.SearchToken)
 	}
+	// loom-weather likewise (docs/weather.md): a dead sidecar costs the
+	// weather. An mcp.json server named weather replaces it.
+	if strings.TrimSpace(cfg.WeatherURL) != "" {
+		out.FileServers.Servers[mcp.WeatherServer] = mcp.WeatherServerConfig(cfg.WeatherURL, cfg.WeatherToken)
+	}
 	// loom-docgen likewise (docs/docgen.md): a dead sidecar costs the
 	// document tools. An mcp.json server named docgen replaces it.
 	if docgenConfigured(cfg) {
