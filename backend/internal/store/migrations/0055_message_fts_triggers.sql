@@ -1,5 +1,5 @@
--- Restore messages' search triggers, dropped with the table by 0053's
--- rebuild. kit splits a no-transaction file like 0053 on each semicolon
+-- Restore messages' search triggers, dropped with the table by 0054's
+-- rebuild. kit splits a no-transaction file like 0054 on each semicolon
 -- outside quotes and comments, which cuts a BEGIN … END body apart, so they
 -- live in this transactional file. Same text as 0024.
 
