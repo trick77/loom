@@ -14,6 +14,7 @@ import (
 	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/turn"
@@ -88,6 +89,10 @@ type Deps struct {
 	// subscriptions PushStore keeps. Either nil keeps push off.
 	Push      PushSender
 	PushStore *webpush.Store
+	// Locations keeps where users are, LocationLLM reads it from their facts.
+	// Either nil, or no weather lookup, keeps places off.
+	Locations   *location.Store
+	LocationLLM LocationLLM
 }
 
 // ScheduleLLM is the model work scheduled tasks need beyond a chat turn;
@@ -138,6 +143,9 @@ type server struct {
 	scheduleSvc *schedule.Service
 	scheduleLLM ScheduleLLM
 	runs        *scheduleRuns
+	// locations and locationLLM are nil while places are off.
+	locations   *location.Store
+	locationLLM LocationLLM
 	// push and pushStore are nil while push notifications are off.
 	push      PushSender
 	pushStore *webpush.Store
@@ -356,6 +364,9 @@ func newServer(d Deps) *server {
 	if s.indexHTML == nil {
 		s.indexHTML = web.IndexHTML
 	}
+	if d.Locations != nil && d.LocationLLM != nil {
+		s.locations, s.locationLLM = d.Locations, d.LocationLLM
+	}
 	var scheduleTools turn.ScheduleTools
 	if d.Schedules != nil && d.ScheduleLLM != nil {
 		s.schedules, s.scheduleLLM = d.Schedules, d.ScheduleLLM
@@ -410,6 +421,7 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("PATCH /api/me", s.requireAuth(http.HandlerFunc(s.handleUpdateMe)))
 	mux.Handle("GET /api/me/usage", s.requireAuth(http.HandlerFunc(s.handleGetUsage)))
 	mux.Handle("GET /api/me/facts", s.requireAuth(http.HandlerFunc(s.handleGetUserFacts)))
+	mux.Handle("POST /api/me/location", s.requireAuth(http.HandlerFunc(s.handleSetLocation)))
 	mux.Handle("GET /api/me/directives", s.requireAuth(http.HandlerFunc(s.handleGetUserDirectives)))
 	mux.Handle("GET /api/me/apple-music", s.requireAuth(http.HandlerFunc(s.handleAppleMusicStatus)))
 	mux.Handle("POST /api/me/apple-music/check", s.requireAuth(http.HandlerFunc(s.handleAppleMusicCheck)))

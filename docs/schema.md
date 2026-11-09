@@ -2,7 +2,7 @@
 
 # Database schema
 
-26 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
+28 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
 
 ## artifacts
 
@@ -620,6 +620,45 @@ Checks:
 - `CHECK (origin IN ('extracted', 'tool', 'converted'))`
 - `CHECK (retire_reason IN ('superseded', 'user', 'thread_deleted'))`
 
+## user_location_state
+
+| Column | Type | Null | Default | PK |
+| --- | --- | --- | --- | --- |
+| `user_id` | TEXT | yes |  | 1 |
+| `facts_hash` | TEXT | no |  |  |
+| `resolved_at` | TEXT | no | `datetime('now')` |  |
+
+Foreign keys:
+
+- `user_id` → `users` (`id`), on delete CASCADE
+
+## user_locations
+
+Go types:
+
+- `location.Place` (internal/location): Place is a town's centre: where the user lives, or where they are for a while.
+
+| Column | Type | Null | Default | PK |
+| --- | --- | --- | --- | --- |
+| `user_id` | TEXT | no |  | 1 |
+| `kind` | TEXT | no |  | 2 |
+| `name` | TEXT | no |  |  |
+| `region` | TEXT | no | `''` |  |
+| `country` | TEXT | no | `''` |  |
+| `latitude` | REAL | no |  |  |
+| `longitude` | REAL | no |  |  |
+| `timezone` | TEXT | no | `''` |  |
+| `until` | TEXT | yes |  |  |
+| `fact_id` | TEXT | yes |  |  |
+
+Foreign keys:
+
+- `user_id` → `users` (`id`), on delete CASCADE
+
+Checks:
+
+- `CHECK (kind IN ('home', 'current'))`
+
 ## user_usage_totals
 
 Go types:
@@ -1165,6 +1204,23 @@ erDiagram
         TEXT created_at
         TEXT updated_at
     }
+    user_location_state {
+        TEXT user_id PK, FK
+        TEXT facts_hash
+        TEXT resolved_at
+    }
+    user_locations {
+        TEXT user_id PK, FK
+        TEXT kind PK
+        TEXT name
+        TEXT region
+        TEXT country
+        REAL latitude
+        REAL longitude
+        TEXT timezone
+        TEXT until
+        TEXT fact_id
+    }
     user_usage_totals {
         TEXT user_id PK, FK
         INTEGER prompt_tokens
@@ -1246,6 +1302,8 @@ erDiagram
     user_fact_sources }o--|| threads : "user_id, thread_id"
     user_fact_sources }o--|| user_facts : "fact_id"
     user_facts }o--|| users : "user_id"
+    user_location_state }o--o| users : "user_id"
+    user_locations }o--|| users : "user_id"
     user_usage_totals }o--o| users : "user_id"
     vector_refused }o--|| chunks : "chunk_id"
 ```

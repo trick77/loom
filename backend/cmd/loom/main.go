@@ -29,6 +29,7 @@ import (
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/httpapi"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/rag"
 	"github.com/trick77/loom/internal/sandbox"
@@ -266,6 +267,10 @@ func runServer() error {
 	if llmClient != nil {
 		deps.Schedules = schedule.NewStore(db)
 		deps.ScheduleLLM = llmClient
+		// Places are read from the facts with the model and looked up with
+		// the weather sidecar: off while either is.
+		deps.Locations = location.NewStore(db)
+		deps.LocationLLM = llmClient
 		// Push carries the schedules' notifications to the users' devices.
 		vapid, err := webpush.DeriveVAPID(cfg.SessionSecret, pushSubject(cfg.PublicURL))
 		if err != nil {
