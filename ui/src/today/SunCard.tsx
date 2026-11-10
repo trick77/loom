@@ -1,7 +1,9 @@
 import type { TFunction } from "i18next";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { TodaySun } from "../api/today";
+import { useMediaQuery } from "../chat/useMediaQuery";
 import { formatDuration } from "./format";
 
 // The arc is the upper half of an ellipse from sunrise (left) to sunset
@@ -21,6 +23,69 @@ export function sunPoint(p: number): { x: number; y: number } {
     x: Math.round((CX + RX * Math.cos(angle)) * 10) / 10,
     y: Math.round((CY - RY * Math.sin(angle)) * 10) / 10,
   };
+}
+
+// SWEEP_MS is how long the sun takes from sunrise to where it stands.
+export const SWEEP_MS = 1200;
+
+// sweepAt is the sun's progress elapsed ms into its sweep to target: fast
+// off the horizon, settling at its place (ease-out cubic).
+export function sweepAt(target: number, elapsed: number): number {
+  const share = Math.min(1, Math.max(0, elapsed / SWEEP_MS));
+  return share === 1 ? target : target * (1 - (1 - share) ** 3);
+}
+
+// SEEN is the share of the card in view that counts as seen: the observer
+// reports any overlap, a sliver below the fold would sweep unseen.
+const SEEN = 0.6;
+
+// useSunSweep is the progress to draw: the sun runs from sunrise to target
+// the first time the card is in view, once per mount. The carousel keeps
+// every card mounted, so a sweep on mount would mostly run unseen. Until
+// then the sun waits at sunrise, where the sweep starts. Reduced motion or
+// no observer: target at once. Not enabled (no sun drawn): no sweep, and a
+// sun that rises later still gets its own.
+function useSunSweep(target: number, enabled: boolean) {
+  const ref = useRef<SVGSVGElement>(null);
+  const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
+  // null until the card is seen; then ms into the sweep.
+  const [elapsed, setElapsed] = useState<number | null>(() =>
+    typeof IntersectionObserver === "undefined" ? SWEEP_MS : null,
+  );
+  const moving = enabled && !reduced;
+  const waiting = elapsed === null;
+  useEffect(() => {
+    const node = ref.current;
+    if (!waiting || !moving || node === null) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.intersectionRatio >= SEEN)) return;
+        observer.disconnect();
+        setElapsed(0);
+      },
+      { threshold: SEEN },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [waiting, moving]);
+  const running = moving && elapsed !== null && elapsed < SWEEP_MS;
+  useEffect(() => {
+    if (!running) return;
+    let start: number | null = null;
+    let frame = requestAnimationFrame(function step(now) {
+      start ??= now;
+      const ms = now - start;
+      setElapsed(ms);
+      if (ms < SWEEP_MS) frame = requestAnimationFrame(step);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [running]);
+  const shown = !moving
+    ? target
+    : elapsed === null
+      ? 0
+      : sweepAt(target, elapsed);
+  return { ref, shown };
 }
 
 function positionLabel(sun: TodaySun, t: TFunction): string {
@@ -55,9 +120,13 @@ export function SunCard({
   const up =
     sun.polar === "day" ||
     (sun.polar === "" && progress !== null && progress >= 0 && progress <= 1);
-  const point = sunPoint(sun.polar === "day" ? 0.5 : (progress ?? 0));
   // Tomorrow has no "now": no dot on the arc.
   const dot = up && day === "today";
+  const { ref, shown } = useSunSweep(
+    sun.polar === "day" ? 0.5 : (progress ?? 0),
+    dot,
+  );
+  const point = sunPoint(shown);
   // A polar day lights the whole arc; otherwise it fills up to the sun.
   const lit =
     sun.polar === "day"
@@ -66,6 +135,7 @@ export function SunCard({
   return (
     <div className="flex flex-col gap-2.5">
       <svg
+        ref={ref}
         viewBox={`0 0 220 ${HEIGHT}`}
         width="100%"
         height={HEIGHT}
