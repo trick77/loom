@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import type { Project } from "../api";
@@ -224,5 +225,86 @@ describe("StartProjectPicker", () => {
     expect(within(chip).getByText("Malaga City Trip")).toBeInTheDocument();
     fireEvent.click(chip);
     expect(props.onSelect).toHaveBeenCalledWith(null);
+  });
+
+  test("removing the chip hands focus to the trigger that replaces it", () => {
+    function Harness() {
+      const [picked, setPicked] = useState<Project | null>(projects[0]);
+      return (
+        <StartProjectPicker
+          projects={projects}
+          selectedProject={picked}
+          onSelect={(id) =>
+            setPicked(projects.find((p) => p.id === id) ?? null)
+          }
+          onCreateProject={vi.fn()}
+        />
+      );
+    }
+    render(<Harness />);
+    const chip = screen.getByRole("button", {
+      name: "Remove Malaga City Trip",
+    });
+    chip.focus();
+    fireEvent.click(chip);
+    expect(screen.getByRole("button", { name: "Project" })).toHaveFocus();
+  });
+
+  test("New project puts focus on the trigger before the dialog opens", () => {
+    let focusedAtCreate: Element | null = null;
+    renderPicker({
+      onCreateProject: vi.fn(() => {
+        focusedAtCreate = document.activeElement;
+      }),
+    });
+    open();
+    const search = screen.getByRole("combobox", { name: "Search projects" });
+    fireEvent.keyDown(search, { key: "ArrowUp" });
+    fireEvent.keyDown(search, { key: "Enter" });
+    // The dialog reads this as its opener and hands focus back on close.
+    expect(focusedAtCreate).toBe(
+      screen.getByRole("button", { name: "Project" }),
+    );
+  });
+
+  test("a pick hands focus to the chip", () => {
+    function Harness() {
+      const [picked, setPicked] = useState<Project | null>(null);
+      return (
+        <StartProjectPicker
+          projects={projects}
+          selectedProject={picked}
+          onSelect={(id) =>
+            setPicked(projects.find((p) => p.id === id) ?? null)
+          }
+          onCreateProject={vi.fn()}
+        />
+      );
+    }
+    render(<Harness />);
+    open();
+    fireEvent.click(screen.getByRole("option", { name: "Malaga City Trip" }));
+    expect(
+      screen.getByRole("button", { name: "Remove Malaga City Trip" }),
+    ).toHaveFocus();
+  });
+
+  test("Enter that confirms an IME composition picks nothing", () => {
+    const props = renderPicker();
+    open();
+    const search = screen.getByRole("combobox", { name: "Search projects" });
+    fireEvent.keyDown(search, { key: "Enter", isComposing: true });
+    // Safari: the committing Enter comes with isComposing false, keyCode 229.
+    fireEvent.keyDown(search, { key: "Enter", keyCode: 229 });
+    expect(props.onSelect).not.toHaveBeenCalled();
+    expect(props.onCreateProject).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  test("with no projects and no search there is no 'no matches' line", () => {
+    renderPicker({ projects: [] });
+    open();
+    expect(screen.queryByText("No matching projects")).not.toBeInTheDocument();
+    expect(optionNames()).toEqual(["New project"]);
   });
 });

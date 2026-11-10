@@ -41,3 +41,18 @@ test("a popstate re-reads the location", () => {
 
   expect(result.current.route).toEqual({ view: "projects" });
 });
+
+test("the ref holds the new route as soon as go returns, before a render", () => {
+  window.history.replaceState({}, "", "/new");
+  const { result } = renderHook(() => useRouteState());
+  const { go, routeRef } = result.current;
+
+  // No act: nothing renders in between, as for a stream event landing between
+  // the navigation and the commit.
+  go({ view: "project", projectID: "p2" });
+  expect(routeRef.current).toEqual({ view: "project", projectID: "p2" });
+
+  window.history.pushState({}, "", "/projects");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+  expect(routeRef.current).toEqual({ view: "projects" });
+});

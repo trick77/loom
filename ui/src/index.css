@@ -79,6 +79,9 @@
   --color-raised: #2a2a28;
   --color-border-strong: #4b4a46;
   --color-track: #3a3a37;
+  /* Popover surface (start project picker) and the checkmark of a picked option. */
+  --color-popover: #2f2f2c;
+  --color-select: #4f8cff;
   --color-ink-bright: #f3f0e8;
   --color-ink-soft: #e8e6dc;
   --color-ink-warm: #d5d2c9;

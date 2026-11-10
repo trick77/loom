@@ -21,7 +21,9 @@ export function useRouteState() {
       setRoute({ view: "new" });
     }
     function handlePopState() {
-      setRoute(routeFromLocation());
+      const next = routeFromLocation();
+      routeRef.current = next;
+      setRoute(next);
     }
     window.addEventListener("popstate", handlePopState);
     return () => {
@@ -29,8 +31,11 @@ export function useRouteState() {
     };
   }, []);
 
+  // The ref moves with the navigation, not a render later: a stream event
+  // landing in between must already see where the user went.
   const go = useCallback((next: RouteState) => {
     navigate(next);
+    routeRef.current = next;
     setRoute(next);
   }, []);
 

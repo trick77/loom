@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Project } from "../api";
@@ -32,6 +32,27 @@ export function ProjectDialog({
     setName(project?.name ?? "");
     setDescription(project?.description ?? "");
   }, [project]);
+
+  // Closing hands focus back to whatever opened the dialog (read before the
+  // name field took it), so keyboard users keep their place instead of
+  // landing on <body>. Deferred and checked: StrictMode runs this cleanup
+  // once right after mount, and restoring then pulled focus out of the name
+  // field into the opener behind the dialog.
+  const [opener] = useState(() =>
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null,
+  );
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      queueMicrotask(() => {
+        if (!mounted.current && opener?.isConnected) opener.focus();
+      });
+    };
+  }, [opener]);
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(0,0,0,0.5)] px-4 backdrop-blur-[2px]">
