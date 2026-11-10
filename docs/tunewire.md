@@ -7,7 +7,9 @@
 | `tunewire` | `/mcp/library` | `list_playlists`, `get_playlist`, `recently_played`, `new_music`, `new_releases` | `BACKEND_TUNEWIRE_USERS` only, each their own account |
 | `applemusic` | `/mcp/catalog` | `search_catalog` (songs, albums, artists with links and cover art) | every user |
 
-Both are best-effort: loom boots without the sidecar and offers the tools while it answers.
+Both are best-effort: loom boots without the sidecar and offers the tools while it answers. Both ride only on music
+and recommendation turns (`music`, `entertainment_recs`): the catalog was once offered everywhere for links in any
+answer, but 90 production days had all its 164 calls in those two categories.
 
 Listening tools (the caller's storefront, all GET):
 

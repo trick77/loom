@@ -1,6 +1,7 @@
 package turn
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/trick77/loom/internal/classifier"
@@ -31,14 +32,19 @@ type toolGate struct {
 
 // newToolGate builds the gate from the sticky category, the fresh per-turn
 // classification (may be empty when drift detection was skipped), and the current
-// user message. Keyword matching is substring-based on the lowercased message so
-// it tolerates inflection and is limited to explicit, language-spanning format
-// nouns (see docgenKeywords).
+// user message. Keyword matching is limited to explicit, language-spanning
+// format nouns, as whole words (see docgenKeywords).
+//
+// The memory tools are not gated: tried with a keyword gate, a standing
+// instruction phrased otherwise ("keine Emojis mehr", another language, a
+// "yes" to the model's follow-up) lost its tool with no fallback (the
+// background extraction takes facts only), and the memory blocks of the
+// prompt name the tools on every turn.
 func newToolGate(category, turnCategory, message string) toolGate {
 	return toolGate{
 		category:        category,
 		turnCategory:    turnCategory,
-		escalatedDocgen: containsAny(strings.ToLower(message), docgenKeywords),
+		escalatedDocgen: docgenKeywords.MatchString(message),
 	}
 }
 
@@ -50,7 +56,7 @@ func (g toolGate) widenAll() bool {
 	return strings.TrimSpace(g.category) == "" && strings.TrimSpace(g.turnCategory) == ""
 }
 
-// docgenEnabled reports whether the file-generation tools (the ~7 KB schema
+// docgenEnabled reports whether the file-generation tools (the ~9 KB schema
 // chunk) should be injected: no category signal at all, an explicit file request
 // in the message, or a document-plausible sticky/turn category.
 func (g toolGate) docgenEnabled() bool {
@@ -95,9 +101,10 @@ func categoryGrantsCodingDocs(category string) bool {
 
 // docgenCategories are the classifier categories for which a user asking to
 // produce a downloadable document/spreadsheet/presentation is plausible. Other
-// categories only get the file tools via an explicit format request. The
-// FileToolGuardrail already stops the model from creating files unprompted, so
-// this list can stay generous without spurious artifacts.
+// categories only get the file tools via an explicit format request. Coding,
+// how-to and science/math are left out: long threads that rarely want a file
+// (code is offered for download anyway), and each turn there carried the
+// whole file-tool chunk.
 var docgenCategories = map[classifier.Category]bool{
 	classifier.WritingEditing:   true,
 	classifier.Summarization:    true,
@@ -105,9 +112,6 @@ var docgenCategories = map[classifier.Category]bool{
 	classifier.Planning:         true,
 	classifier.Brainstorming:    true,
 	classifier.AcademicResearch: true,
-	classifier.HowTo:            true,
-	classifier.Coding:           true,
-	classifier.ScienceMath:      true,
 	classifier.Translation:      true,
 }
 
@@ -118,28 +122,38 @@ var docgenCategories = map[classifier.Category]bool{
 // ("erstelle eine Präsentation", "mach ein Word draus") gates the same as its
 // English equivalent. Bare "file"/"datei" are excluded — too common in unrelated
 // contexts — while the specific artifact/format words are unambiguous.
-var docgenKeywords = []string{
-	// formats / extensions (language-neutral)
-	"pdf", "docx", "xlsx", "pptx", "csv",
-	// word processor / document
-	"document", "dokument", "word",
+//
+// Whole words, each with its own inflections, never substrings: a substring
+// "word" escalated on "password", "document" on "documentation", "report" on
+// "reporting", each pulling the whole file-tool chunk into the turn. German
+// compounds count where the format word is a part (Exceldatei,
+// Worddokument, Berichtsvorlage), so does a text format named with a file
+// ("a yaml file", "als Markdown-Datei"); a bare format or "file" does not,
+// both are everyday words in a coding thread.
+var docgenKeywords = wholeWords(
+	// formats / extensions (language-neutral); a compound starting with one
+	`pdf\p{L}*`, `docx`, `xlsx`, `pptx`, `csv`, `excel\p{L}*`, `powerpoint\p{L}*`,
+	// word processor / document; German compounds end in -dokument
+	`documents?`, `\p{L}*dokumente?n?`, `word`,
 	// spreadsheet
-	"spreadsheet", "tabelle", "tabellenkalkulation", "excel",
+	`spreadsheets?`, `\p{L}*tabellen?`, `tabellen\p{L}+`,
 	// presentation
-	"presentation", "präsentation", "praesentation", "powerpoint", "slides", "folien",
-	// report
-	"report", "bericht",
+	`presentations?`, `pr(?:ä|ae)sentation\p{L}*`, `slides`, `\p{L}*folien?`,
+	// report; not "Berichterstattung" (news coverage)
+	`reports?`, `\p{L}*bericht(?:e|en)?`, `berichts\p{L}+`,
 	// export / download / save-as
-	"export", "exportier", "download", "herunterlad", "save as", "speichern als", "speicher als",
-	"handout",
-}
+	`export\p{L}*`, `download\p{L}*`, `herunterlad\p{L}*`, `save as`, `speichern? als`,
+	`handouts?`,
+	// a new file, named as one: "a yaml file", "a .md file", "in a file",
+	// "Markdown-Datei", "in eine Datei". Only the indefinite article: "add
+	// this to the file" is everyday coding talk.
+	`\.?(?:md|markdown|json|ya?ml|txt|text|html|xml|log|config) files?`,
+	`(?:in|into|to|as) (?:a|an) (?:\.?\p{L}+ )?files?`,
+	`\p{L}+-?dateie?n?`, `(?:als|in eine?) datei`,
+)
 
-// containsAny reports whether lower (already lowercased) contains any needle.
-func containsAny(lower string, needles []string) bool {
-	for _, n := range needles {
-		if strings.Contains(lower, n) {
-			return true
-		}
-	}
-	return false
+// wholeWords is a case-insensitive regexp matching any of alts as a whole
+// word: no letter or digit right before or after.
+func wholeWords(alts ...string) *regexp.Regexp {
+	return regexp.MustCompile(`(?i)(?:^|[^\p{L}\p{N}])(?:` + strings.Join(alts, "|") + `)(?:$|[^\p{L}\p{N}])`)
 }

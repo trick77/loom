@@ -278,9 +278,8 @@ func TestToolConfigForConfigTunewireIsBestEffortAndRestricted(t *testing.T) {
 			t.Errorf("%s: BuiltIn %v TrustInstructions %v", sc.URL, sc.BuiltIn, sc.TrustInstructions)
 		}
 	}
-	// The library only in music and recommendation turns; catalog search
-	// (links for anything named) in every turn.
-	if !reflect.DeepEqual(lib.Categories, []string{"music", "entertainment_recs"}) || len(cat.Categories) != 0 {
+	// Library and catalog search only in music and recommendation turns.
+	if !reflect.DeepEqual(lib.Categories, []string{"music", "entertainment_recs"}) || !reflect.DeepEqual(cat.Categories, []string{"music", "entertainment_recs"}) {
 		t.Errorf("categories: library %v, catalog %v", lib.Categories, cat.Categories)
 	}
 

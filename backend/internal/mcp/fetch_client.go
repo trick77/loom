@@ -73,67 +73,32 @@ func (c *fetchClient) ListTools(context.Context) ([]Tool, error) {
 		OriginalName: fetchClientToolName,
 		Description:  c.description(),
 		ServerName:   c.serverName,
-		// Schema mirrors the JSON Schema upstream's pydantic model emits, plus
-		// loom-specific options (include_metadata, full_page, selector,
-		// exclude_selectors) that surface webfetch options the sidecar never had.
-		// PDF extraction is not a model choice: when Tika is configured, fetched
-		// PDFs always go to it (see NewFetchClient).
+		// Upstream's pydantic schema plus webfetch options the sidecar never
+		// had (include_metadata, full_page, selector, exclude_selectors). It
+		// rides in every turn, so it carries no pydantic noise (titles, bounds,
+		// format) and explains the options once, in the description; the
+		// arguments are parsed leniently (argInt, argBool) whatever the schema
+		// says. PDF extraction is not a model choice: when Tika is configured,
+		// fetched PDFs always go to it (see NewFetchClient).
 		InputSchema: map[string]any{
-			"type":  "object",
-			"title": "Fetch",
+			"type": "object",
 			"properties": map[string]any{
-				"url": map[string]any{
-					"description": "URL to fetch",
-					"format":      "uri",
-					"minLength":   1,
-					"title":       "Url",
-					"type":        "string",
-				},
+				"url": map[string]any{"type": "string"},
 				"max_length": map[string]any{
-					"default":          5000,
-					"description":      "Maximum number of characters to return.",
-					"exclusiveMaximum": 1000000,
-					"exclusiveMinimum": 0,
-					"title":            "Max Length",
-					"type":             "integer",
+					"type":        "integer",
+					"default":     5000,
+					"description": "Maximum characters returned.",
 				},
 				"start_index": map[string]any{
-					"default":     0,
-					"description": "On return output starting at this character index, useful if a previous fetch was truncated and more context is required.",
-					"minimum":     0,
-					"title":       "Start Index",
 					"type":        "integer",
+					"default":     0,
+					"description": "Continue a truncated fetch from this character.",
 				},
-				"raw": map[string]any{
-					"default":     false,
-					"description": "Get the actual HTML content of the requested page, without simplification.",
-					"title":       "Raw",
-					"type":        "boolean",
-				},
-				"include_metadata": map[string]any{
-					"default":     false,
-					"description": "Prepend a frontmatter block (title, author, published date, site, language) to extracted HTML content.",
-					"title":       "Include Metadata",
-					"type":        "boolean",
-				},
-				"full_page": map[string]any{
-					"default":     false,
-					"description": "Convert the whole page to markdown instead of extracting just the main article. Use when the default extraction drops content you need (tables, sidebars, docs pages). Ignored if 'selector' is set.",
-					"title":       "Full Page",
-					"type":        "boolean",
-				},
-				"selector": map[string]any{
-					"default":     "",
-					"description": "Convert only the element(s) matching this CSS selector, skipping main-article extraction. Takes precedence over 'full_page'.",
-					"title":       "Selector",
-					"type":        "string",
-				},
-				"exclude_selectors": map[string]any{
-					"description": "CSS selectors whose matching elements are removed before conversion (e.g. strip nav/cookie banners). Works with the default extraction and with full_page/selector.",
-					"title":       "Exclude Selectors",
-					"type":        "array",
-					"items":       map[string]any{"type": "string"},
-				},
+				"raw":               map[string]any{"type": "boolean"},
+				"include_metadata":  map[string]any{"type": "boolean"},
+				"full_page":         map[string]any{"type": "boolean", "description": "Ignored if selector is set."},
+				"selector":          map[string]any{"type": "string", "description": "CSS selector."},
+				"exclude_selectors": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "CSS selectors to remove."},
 			},
 			"required": []any{"url"},
 		},

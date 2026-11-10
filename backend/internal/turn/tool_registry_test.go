@@ -53,7 +53,7 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 	mcpNames := []string{"fetch__fetch", searchToolName, "obscura__browser_navigate"}
 	core := []string{"conversation_search", "read_thread", "remember_user_directive", "forget_user_directive", "update_user_directive", "remember_user_fact", "update_user_fact", "forget_user_fact"}
 	project := "p1"
-	docgenOn := newToolGate(string(classifier.Coding), "", "")
+	docgenOn := newToolGate(string(classifier.WritingEditing), "", "")
 	docgenOff := newToolGate(string(classifier.General), string(classifier.General), "just chatting")
 	withSandbox := func(g toolGate) toolGate { g.sandbox = true; return g }
 	concat := func(parts ...[]string) []string {
@@ -278,7 +278,7 @@ func TestDocgenToolsWidenToolCallIdleTimeout(t *testing.T) {
 
 	e := &Engine{artifacts: fakeArtifactStore{}, usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: docToolDefs(), Artifacts: turntest.DocgenArtifacts()}}
 	offered := map[string]llm.Tool{}
-	for _, tool := range e.availableTools(chat.Thread{}, newToolGate(string(classifier.Coding), "", "")) {
+	for _, tool := range e.availableTools(chat.Thread{}, newToolGate(string(classifier.WritingEditing), "", "")) {
 		offered[tool.Function.Name] = tool
 	}
 	// Each case waits out the server's pause, so they run in parallel: the
