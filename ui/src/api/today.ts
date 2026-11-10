@@ -86,8 +86,6 @@ export type TodayWeather = {
   rain: TodayRain[] | null;
   /** The days after the shown one. */
   outlook: TodayOutlookDay[] | null;
-  /** The weather data licence asks for this wherever the data shows. */
-  attribution: { text: string; url: string };
 };
 
 export type TodayPollen = {
@@ -207,7 +205,6 @@ function normalizeWeather(raw: unknown): TodayWeather | null {
     details: weather.details ?? null,
     rain: nonEmpty(weather.rain),
     outlook: nonEmpty(weather.outlook),
-    attribution: weather.attribution ?? { text: "", url: "" },
   };
 }
 

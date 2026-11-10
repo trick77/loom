@@ -175,9 +175,7 @@ test("marking a run read removes its card and tells the bell and sidebar", async
   await new Promise((r) => setTimeout(r, 20));
   expect(api.getToday).toHaveBeenCalledOnce();
   // The run left has no thread to open.
-  expect(
-    screen.queryByRole("button", { name: "Open full result →" }),
-  ).toBeNull();
+  expect(screen.queryByRole("button", { name: "Flats in Zürich" })).toBeNull();
 });
 
 test("a failed read brings the card back", async () => {
@@ -202,9 +200,7 @@ test("mark all read clears the news and the starters come back", async () => {
   const news = await screen.findByRole("region", {
     name: /New from your schedules/,
   });
-  fireEvent.click(
-    within(news).getByRole("button", { name: "Open full result →" }),
-  );
+  fireEvent.click(within(news).getByRole("button", { name: "Tech briefing" }));
   expect(onOpenThread).toHaveBeenCalledWith("th1");
   vi.mocked(api.getToday).mockResolvedValue(
     todayFixture({ weather: null, runs: [] }),

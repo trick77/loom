@@ -2,8 +2,8 @@ import { expect, test } from "vitest";
 
 import i18n from "../i18n";
 import type { TodaySun } from "../api/today";
-import { degrees, formatDay, formatDuration, safeURL } from "./format";
-import { sunPoint } from "./SunTile";
+import { degrees, formatDay, formatDuration } from "./format";
+import { sunPoint } from "./SunCard";
 import {
   conditionFor,
   conditionLabelKey,
@@ -119,6 +119,4 @@ test("format helpers", () => {
   expect(formatDay("2026-11-09", "de")).toBe("Montag, 9. November");
   expect(formatDay("garbage", "en")).toBe("garbage");
   expect(degrees(7.6)).toBe(8);
-  expect(safeURL("https://open-meteo.com/")).toBe("https://open-meteo.com/");
-  expect(safeURL("javascript:alert(1)")).toBeNull();
 });

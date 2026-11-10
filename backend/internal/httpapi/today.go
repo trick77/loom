@@ -91,10 +91,9 @@ type todayWeather struct {
 	Hours []todayHour `json:"hours"`
 	// Details, Rain and Outlook are the tile's further cards, each nil when
 	// the forecast has no values for it.
-	Details     *todayDetails       `json:"details"`
-	Rain        []todayRain         `json:"rain"`
-	Outlook     []todayOutlook      `json:"outlook"`
-	Attribution weather.Attribution `json:"attribution"`
+	Details *todayDetails  `json:"details"`
+	Rain    []todayRain    `json:"rain"`
+	Outlook []todayOutlook `json:"outlook"`
 }
 
 // todayDetails is the shown day in numbers: today the air and wind now,
@@ -450,13 +449,12 @@ func todayForecast(f weather.Forecast, now time.Time) (*todayWeather, *todayWarn
 		ownDay = weather.Day{}
 	}
 	out := &todayWeather{
-		Now:         &todayNow{Temperature: math.Round(temp*10) / 10, Code: first.Code},
-		Day:         dayView(day),
-		Hours:       []todayHour{},
-		Details:     detailsOf(&first, ownDay),
-		Rain:        rainIn(f.Hourly[:min(rainHours, len(f.Hourly))]),
-		Outlook:     outlookAfter(f, now),
-		Attribution: f.Attribution,
+		Now:     &todayNow{Temperature: math.Round(temp*10) / 10, Code: first.Code},
+		Day:     dayView(day),
+		Hours:   []todayHour{},
+		Details: detailsOf(&first, ownDay),
+		Rain:    rainIn(f.Hourly[:min(rainHours, len(f.Hourly))]),
+		Outlook: outlookAfter(f, now),
 	}
 	for i := 1; i < len(f.Hourly) && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))
@@ -499,12 +497,11 @@ func tomorrowForecast(f weather.Forecast, local, tomorrow time.Time) (weather *t
 		return nil, nil, nil
 	}
 	out := &todayWeather{
-		Day:         dayView(day),
-		Hours:       []todayHour{},
-		Details:     detailsOf(nil, day),
-		Rain:        rainIn(f.Hourly[from : to+1]),
-		Outlook:     outlookAfter(f, tomorrow),
-		Attribution: f.Attribution,
+		Day:     dayView(day),
+		Hours:   []todayHour{},
+		Details: detailsOf(nil, day),
+		Rain:    rainIn(f.Hourly[from : to+1]),
+		Outlook: outlookAfter(f, tomorrow),
 	}
 	for i := from; i <= to && len(out.Hours) < 5; i += 3 {
 		out.Hours = append(out.Hours, hourOf(f, i))

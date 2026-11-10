@@ -2,15 +2,13 @@ import { useId } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Today, TodayWeather } from "../api/today";
-import { Attribution } from "./Attribution";
 import { formatDay } from "./format";
 import { LocationChip } from "./LocationChip";
 import { LocationPrompt } from "./LocationPrompt";
 import { ScheduleNews } from "./ScheduleNews";
 import { SunLine } from "./SunLine";
-import { SunTile } from "./SunTile";
 import { TonightPill } from "./TonightPill";
-import { WeatherTile } from "./WeatherTile";
+import { WeatherTiles } from "./WeatherTile";
 
 // WeatherBlock is the day's tiles under a "Today"/"Tomorrow" heading: side
 // by side where they fit, stacked on a phone.
@@ -47,11 +45,7 @@ function WeatherBlock({
         )}
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
-        <WeatherTile today={today} weather={weather} />
-        {today.sun !== null && <SunTile day={today.day} sun={today.sun} />}
-      </div>
-      <div className="flex flex-col items-end">
-        <Attribution attribution={weather.attribution} className="text-right" />
+        <WeatherTiles today={today} weather={weather} />
       </div>
     </section>
   );

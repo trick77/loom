@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 
 import type { TodaySun } from "../api/today";
 import { formatDuration } from "./format";
-import { TILE } from "./WeatherTile";
 
 // The arc is the upper half of an ellipse from sunrise (left) to sunset
 // (right) over the horizon line.
@@ -59,9 +58,9 @@ export function dayLengthLine(
   return `${t("today.sun.dayLength", { duration: formatDuration(sun.dayMinutes, t) })} · ${change}`;
 }
 
-// SunTile draws the sun's arc with its position now (not for tomorrow), the
+// SunCard draws the sun's arc with its position now (not for tomorrow), the
 // sun times and the day's length against the day before.
-export function SunTile({
+export function SunCard({
   sun,
   day,
 }: {
@@ -82,7 +81,7 @@ export function SunTile({
       ? `M${CX - RX} ${CY} A${RX} ${RY} 0 0 1 ${CX + RX} ${CY}`
       : `M${CX - RX} ${CY} A${RX} ${RY} 0 0 1 ${point.x} ${point.y}`;
   return (
-    <div className={`${TILE} flex flex-col gap-2.5`}>
+    <div className="flex flex-col gap-2.5">
       <svg
         viewBox="0 0 220 96"
         width="100%"

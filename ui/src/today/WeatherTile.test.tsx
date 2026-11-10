@@ -18,11 +18,12 @@ import {
   untilMidnight,
   uvLevelKey,
 } from "./WeatherCards";
-import { AUTO_ADVANCE_MS, WeatherTile } from "./WeatherTile";
+import { STEP_MS } from "./useTileClock";
+import { WeatherTiles } from "./WeatherTile";
 
 function show(today: Today, weather: Partial<TodayWeather> = {}) {
   return render(
-    <WeatherTile today={today} weather={{ ...today.weather!, ...weather }} />,
+    <WeatherTiles today={today} weather={{ ...today.weather!, ...weather }} />,
   );
 }
 
@@ -31,43 +32,67 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const carousel = () => screen.getByRole("region", { name: "Weather" });
-const cardName = () => screen.getByTestId("card-name");
-const next = () =>
-  fireEvent.click(screen.getByRole("button", { name: "Next card" }));
+// left is the sky's course (now, rain, the days ahead), right the
+// conditions (sun, details, air).
+const left = () => screen.getByRole("region", { name: "Weather" });
+const right = () => screen.getByRole("region", { name: "Conditions" });
+const cardName = (tile = left()) => within(tile).getByTestId("card-name");
+const track = (tile = left()) => within(tile).getByTestId("carousel-track");
+const row = (tile = left()) => track(tile).firstElementChild as HTMLElement;
+const next = (tile = left()) =>
+  fireEvent.click(within(tile).getByRole("button", { name: "Next card" }));
 const open = (name: string) =>
   fireEvent.click(screen.getByRole("button", { name }));
+const wait = (ms: number) => act(() => vi.advanceTimersByTime(ms));
 // The card in view: the only slide not hidden.
-const shown = () => {
-  const slides = within(carousel()).getAllByRole("group");
+const shown = (tile = left()) => {
+  const slides = within(tile).getAllByRole("group");
   expect(slides).toHaveLength(1);
   return slides[0];
 };
 
-test("the tile opens on now, the other cards out of view", () => {
+test("the tiles open on now and the sun, the other cards out of view", () => {
   show(todayFixture());
   expect(cardName()).toHaveTextContent("Now");
-  expect(shown()).toHaveAccessibleName("Now, 1 of 5");
+  expect(shown()).toHaveAccessibleName("Now, 1 of 3");
   expect(within(shown()).getByText("10°")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Previous card" })).toBeDisabled();
+  expect(
+    within(left()).getByRole("button", { name: "Previous card" }),
+  ).toBeDisabled();
   expect(screen.getByRole("button", { name: "Now" })).toHaveAttribute(
     "aria-current",
     "true",
   );
+  expect(cardName(right())).toHaveTextContent("Sun");
+  expect(shown(right())).toHaveAccessibleName("Sun, 1 of 3");
+  expect(within(shown(right())).getByText("07:25")).toBeInTheDocument();
   // The rest are rendered beside it, inert: the tallest sets the height.
-  const hidden = within(carousel()).getAllByRole("group", { hidden: true });
-  expect(hidden).toHaveLength(5);
-  for (const slide of hidden.slice(1)) {
-    expect(slide).toHaveAttribute("aria-hidden", "true");
-    expect(slide).toHaveAttribute("inert");
+  for (const [tile, names] of [
+    [left(), ["Now", "Rain", "Next days"]],
+    [right(), ["Sun", "Details", "Air & pollen"]],
+  ] as const) {
+    const all = within(tile).getAllByRole("group", { hidden: true });
+    expect(all.map((slide) => slide.getAttribute("aria-label"))).toEqual(
+      names.map((name, i) => `${name}, ${i + 1} of 3`),
+    );
+    for (const slide of all.slice(1)) {
+      expect(slide).toHaveAttribute("aria-hidden", "true");
+      expect(slide).toHaveAttribute("inert");
+    }
   }
+});
+
+test("a side without cards leaves one tile", () => {
+  show(todayFixture({ sun: null, air: null }), { details: null });
+  expect(screen.getAllByRole("region")).toHaveLength(1);
+  expect(cardName()).toHaveTextContent("Now");
 });
 
 test("details: the wind leads, the rest in a strip", () => {
   show(todayFixture());
-  next();
-  expect(cardName()).toHaveTextContent("Details");
-  const card = shown();
+  next(right());
+  expect(cardName(right())).toHaveTextContent("Details");
+  const card = shown(right());
   const hero = within(card).getByTestId("details-hero");
   expect(hero).toHaveTextContent("12km/h");
   expect(hero).toHaveTextContent("Wind from the southwest");
@@ -95,8 +120,8 @@ test("details: the wind leads, the rest in a strip", () => {
 test("tomorrow's details are its day's: the strongest wind, no air now", () => {
   show(tomorrowFixture());
   expect(cardName()).toHaveTextContent("Overview");
-  next();
-  const card = shown();
+  next(right());
+  const card = shown(right());
   expect(within(card).queryByTitle("Feels like")).toBeNull();
   expect(within(card).queryByTitle("Humidity")).toBeNull();
   const hero = within(card).getByTestId("details-hero");
@@ -109,18 +134,18 @@ test("details without wind lead with how it feels; without either, a strip", () 
   const { unmount } = show(todayFixture(), {
     details: { ...details, wind: null, gusts: null },
   });
-  next();
-  expect(within(shown()).getByTestId("details-hero")).toHaveTextContent(
+  next(right());
+  expect(within(shown(right())).getByTestId("details-hero")).toHaveTextContent(
     "7°Feels like",
   );
-  expect(within(shown()).queryByTitle("Feels like")).toBeNull();
+  expect(within(shown(right())).queryByTitle("Feels like")).toBeNull();
   unmount();
   show(todayFixture(), {
     details: { ...details, wind: null, gusts: null, feelsLike: null },
   });
-  next();
-  expect(within(shown()).queryByTestId("details-hero")).toBeNull();
-  expect(within(shown()).getByTitle("Humidity")).toBeInTheDocument();
+  next(right());
+  expect(within(shown(right())).queryByTestId("details-hero")).toBeNull();
+  expect(within(shown(right())).getByTitle("Humidity")).toBeInTheDocument();
 });
 
 test("rain: the amount leads, bars hour by hour", () => {
@@ -206,10 +231,13 @@ test("a new shown day starts over on the first card", () => {
   const { rerender } = show(todayFixture());
   next();
   next();
-  expect(cardName()).toHaveTextContent("Rain");
+  next(right());
+  expect(cardName()).toHaveTextContent("Next days");
+  expect(cardName(right())).toHaveTextContent("Details");
   const tomorrow = tomorrowFixture();
-  rerender(<WeatherTile today={tomorrow} weather={tomorrow.weather!} />);
+  rerender(<WeatherTiles today={tomorrow} weather={tomorrow.weather!} />);
   expect(cardName()).toHaveTextContent("Overview");
+  expect(cardName(right())).toHaveTextContent("Sun");
 });
 
 test("outlook: the days after the shown one, as columns", () => {
@@ -238,8 +266,8 @@ test("outlook: the days after the shown one, as columns", () => {
 test("air: the index leads, its curve, the pollen by load class", () => {
   show(todayFixture());
   open("Air & pollen");
-  expect(cardName()).toHaveTextContent("Air & pollen");
-  const card = shown();
+  expect(cardName(right())).toHaveTextContent("Air & pollen");
+  const card = shown(right());
   expect(within(card).getByTestId("air-quality")).toHaveTextContent(
     "18Air goodup to 31 at 16:00",
   );
@@ -258,7 +286,7 @@ test("air: the index leads, its curve, the pollen by load class", () => {
 test("tomorrow's air is its worst; no pollen says so", () => {
   show(tomorrowFixture());
   open("Air & pollen");
-  const card = shown();
+  const card = shown(right());
   expect(within(card).getByTestId("air-quality")).toHaveTextContent(
     "64Air poor at worst",
   );
@@ -278,7 +306,7 @@ test("tomorrow's air is its worst; no pollen says so", () => {
     }),
   );
   open("Air & pollen");
-  expect(within(shown()).getByTestId("air-quality")).toHaveTextContent(
+  expect(within(shown(right())).getByTestId("air-quality")).toHaveTextContent(
     "64Air poor at worstaround 14:00",
   );
 });
@@ -287,7 +315,7 @@ test("air where pollen is unknown shows no pollen at all; no hours, no curve", (
   const base = todayFixture();
   show(todayFixture({ air: { ...base.air!, pollen: null, hours: [] } }));
   open("Air & pollen");
-  const card = shown();
+  const card = shown(right());
   expect(within(card).getByTestId("air-quality")).toHaveTextContent(
     "18Air good",
   );
@@ -314,7 +342,7 @@ test("today's air names today's peak, not tomorrow morning's", () => {
     }),
   );
   open("Air & pollen");
-  expect(within(shown()).getByTestId("air-quality")).toHaveTextContent(
+  expect(within(shown(right())).getByTestId("air-quality")).toHaveTextContent(
     "18Air goodup to 24 at 23:00",
   );
   expect(untilMidnight([{ time: "09:00", aqi: 1 }])).toHaveLength(1);
@@ -336,81 +364,200 @@ test("the air's curve: gaps break it, bands bound its height", () => {
 
 test("arrow keys and swipes turn the cards, within their ends", () => {
   show(todayFixture());
-  const track = screen.getByTestId("carousel-track");
-  fireEvent.keyDown(carousel(), { key: "ArrowLeft" });
+  fireEvent.keyDown(left(), { key: "ArrowLeft" });
   expect(cardName()).toHaveTextContent("Now");
-  fireEvent.keyDown(carousel(), { key: "ArrowRight" });
-  expect(cardName()).toHaveTextContent("Details");
+  fireEvent.keyDown(left(), { key: "ArrowRight" });
+  expect(cardName()).toHaveTextContent("Rain");
   // A swipe to the left turns on, one to the right back.
   const swipe = (dx: number, dy = 0) => {
-    fireEvent.pointerDown(track, { clientX: 200, clientY: 100 });
-    fireEvent.pointerUp(track, { clientX: 200 + dx, clientY: 100 + dy });
+    fireEvent.pointerDown(track(), { clientX: 200, clientY: 100 });
+    fireEvent.pointerUp(track(), { clientX: 200 + dx, clientY: 100 + dy });
   };
   swipe(-80);
-  expect(cardName()).toHaveTextContent("Rain");
+  expect(cardName()).toHaveTextContent("Next days");
   swipe(80);
-  expect(cardName()).toHaveTextContent("Details");
+  expect(cardName()).toHaveTextContent("Rain");
   // Too short, or mostly up and down (a scroll): no turn.
   swipe(-20);
   swipe(-60, 90);
-  expect(cardName()).toHaveTextContent("Details");
+  expect(cardName()).toHaveTextContent("Rain");
   // A canceled pointer turns nothing.
-  fireEvent.pointerDown(track, { clientX: 200, clientY: 100 });
-  fireEvent.pointerCancel(track);
-  fireEvent.pointerUp(track, { clientX: 50, clientY: 100 });
-  expect(cardName()).toHaveTextContent("Details");
+  fireEvent.pointerDown(track(), { clientX: 200, clientY: 100 });
+  fireEvent.pointerCancel(track());
+  fireEvent.pointerUp(track(), { clientX: 50, clientY: 100 });
+  expect(cardName()).toHaveTextContent("Rain");
 });
 
-test("the cards turn by themselves every 15 s and wrap around", () => {
+test("a click on a tile turns it on, from the last straight to the first", () => {
+  show(todayFixture());
+  fireEvent.click(track(right()));
+  expect(cardName(right())).toHaveTextContent("Details");
+  expect(cardName()).toHaveTextContent("Now");
+  expect(row(right())).toHaveClass("transition-transform");
+  fireEvent.click(track(right()));
+  expect(cardName(right())).toHaveTextContent("Air & pollen");
+  // Back to the first without sliding back past every card.
+  fireEvent.click(track(right()));
+  expect(cardName(right())).toHaveTextContent("Sun");
+  expect(row(right())).not.toHaveClass("transition-transform");
+  fireEvent.click(track(right()));
+  expect(row(right())).toHaveClass("transition-transform");
+  // The swipe's own click turns nothing more.
+  fireEvent.pointerDown(track(), { clientX: 200, clientY: 100 });
+  fireEvent.pointerUp(track(), { clientX: 120, clientY: 100 });
+  fireEvent.click(track());
+  expect(cardName()).toHaveTextContent("Rain");
+});
+
+test("a step back to the first card slides; only the wrap jumps", () => {
+  // Two cards: back from the second is one step, not a wrap.
+  show(todayFixture({ air: null }), { outlook: null });
+  next();
+  expect(cardName()).toHaveTextContent("Rain");
+  fireEvent.click(
+    within(left()).getByRole("button", { name: "Previous card" }),
+  );
+  expect(cardName()).toHaveTextContent("Now");
+  expect(row()).toHaveClass("transition-transform");
+  next();
+  fireEvent.click(screen.getByRole("button", { name: "Now" }));
+  expect(row()).toHaveClass("transition-transform");
+  // A click on the track from the last is the wrap.
+  next();
+  fireEvent.click(track());
+  expect(cardName()).toHaveTextContent("Now");
+  expect(row()).not.toHaveClass("transition-transform");
+});
+
+test("a turn that moves nothing leaves the beat alone", () => {
   vi.useFakeTimers();
   show(todayFixture());
-  expect(AUTO_ADVANCE_MS).toBe(15_000);
-  act(() => vi.advanceTimersByTime(14_999));
-  expect(cardName()).toHaveTextContent("Now");
-  act(() => vi.advanceTimersByTime(1));
-  expect(cardName()).toHaveTextContent("Details");
-  open("Air & pollen");
-  // A turn by hand starts the 15 s over.
-  act(() => vi.advanceTimersByTime(10_000));
-  expect(cardName()).toHaveTextContent("Air & pollen");
-  act(() => vi.advanceTimersByTime(5_000));
-  expect(cardName()).toHaveTextContent("Now");
+  wait(10_000);
+  // Already on the first: the key, the dot and the swipe go nowhere.
+  fireEvent.keyDown(left(), { key: "ArrowLeft" });
+  fireEvent.click(screen.getByRole("button", { name: "Now" }));
+  fireEvent.pointerDown(track(), { clientX: 100, clientY: 100 });
+  fireEvent.pointerUp(track(), { clientX: 200, clientY: 100 });
+  wait(5_000);
+  expect(cardName()).toHaveTextContent("Rain");
+  expect(cardName(right())).toHaveTextContent("Sun");
 });
 
-test("a mouse over the tile or keyboard focus in it holds the card", () => {
+test("new cards from a refresh keep the beat", () => {
+  vi.useFakeTimers();
+  const base = todayFixture();
+  const { rerender } = render(
+    <WeatherTiles
+      today={{ ...base, air: null }}
+      weather={{ ...base.weather!, details: null }}
+    />,
+  );
+  wait(10_000);
+  rerender(<WeatherTiles today={base} weather={base.weather!} />);
+  wait(5_000);
+  expect(cardName()).toHaveTextContent("Rain");
+});
+
+test("the tiles turn in turn: left at 15 s, right at 30 s, each card 30 s", () => {
+  vi.useFakeTimers();
+  show(todayFixture());
+  expect(STEP_MS).toBe(15_000);
+  wait(14_999);
+  expect(cardName()).toHaveTextContent("Now");
+  wait(1);
+  expect(cardName()).toHaveTextContent("Rain");
+  expect(cardName(right())).toHaveTextContent("Sun");
+  wait(15_000);
+  expect(cardName()).toHaveTextContent("Rain");
+  expect(cardName(right())).toHaveTextContent("Details");
+  wait(15_000);
+  expect(cardName()).toHaveTextContent("Next days");
+  wait(15_000);
+  expect(cardName(right())).toHaveTextContent("Air & pollen");
+  // After the last the first, straight.
+  wait(15_000);
+  expect(cardName()).toHaveTextContent("Now");
+  expect(row()).not.toHaveClass("transition-transform");
+});
+
+test("a turn by hand starts the beat over: the other tile turns 15 s later", () => {
+  vi.useFakeTimers();
+  show(todayFixture());
+  wait(10_000);
+  fireEvent.click(track(right()));
+  expect(cardName(right())).toHaveTextContent("Details");
+  wait(14_999);
+  expect(cardName()).toHaveTextContent("Now");
+  wait(1);
+  expect(cardName()).toHaveTextContent("Rain");
+  expect(cardName(right())).toHaveTextContent("Details");
+  wait(15_000);
+  expect(cardName(right())).toHaveTextContent("Air & pollen");
+});
+
+test("the card's bar fills over its 30 s; the tile due next starts half full", () => {
+  vi.useFakeTimers();
+  show(todayFixture());
+  const bar = (tile: HTMLElement) =>
+    within(tile).getByTestId("card-progress").firstElementChild!;
+  expect(bar(left()).getAttribute("style")).toContain(
+    "30000ms linear -15000ms",
+  );
+  expect(bar(right()).getAttribute("style")).toContain("30000ms linear 0ms");
+  wait(15_000);
+  expect(bar(left()).getAttribute("style")).toContain("30000ms linear 0ms");
+});
+
+test("a lone turning tile turns every 30 s", () => {
+  vi.useFakeTimers();
+  // The right tile has the sun alone: nothing to turn there.
+  show(todayFixture({ air: null }), { details: null });
+  expect(within(right()).queryByTestId("card-name")).toBeNull();
+  wait(15_000);
+  expect(cardName()).toHaveTextContent("Rain");
+  wait(15_000);
+  expect(cardName()).toHaveTextContent("Rain");
+  wait(15_000);
+  expect(cardName()).toHaveTextContent("Next days");
+});
+
+test("a mouse over either tile or keyboard focus in it holds both", () => {
   vi.useFakeTimers();
   show(todayFixture());
   // Turning by itself, the card's name is not announced.
   expect(cardName()).toHaveAttribute("aria-live", "off");
-  fireEvent.pointerEnter(carousel(), { pointerType: "mouse" });
-  act(() => vi.advanceTimersByTime(30_000));
+  fireEvent.pointerEnter(right(), { pointerType: "mouse" });
+  wait(60_000);
   expect(cardName()).toHaveTextContent("Now");
+  expect(cardName(right())).toHaveTextContent("Sun");
   expect(cardName()).toHaveAttribute("aria-live", "polite");
-  fireEvent.pointerLeave(carousel(), { pointerType: "mouse" });
-  act(() => vi.advanceTimersByTime(15_000));
-  expect(cardName()).toHaveTextContent("Details");
-  const button = screen.getByRole("button", { name: "Next card" });
+  fireEvent.pointerLeave(right(), { pointerType: "mouse" });
+  wait(15_000);
+  expect(cardName()).toHaveTextContent("Rain");
+  const button = within(left()).getByRole("button", { name: "Next card" });
   fireEvent.keyDown(document.body, { key: "Tab" });
   fireEvent.focus(button);
-  act(() => vi.advanceTimersByTime(30_000));
-  expect(cardName()).toHaveTextContent("Details");
+  wait(60_000);
+  expect(cardName(right())).toHaveTextContent("Sun");
   fireEvent.blur(button);
-  act(() => vi.advanceTimersByTime(15_000));
-  expect(cardName()).toHaveTextContent("Rain");
+  wait(15_000);
+  expect(cardName(right())).toHaveTextContent("Details");
 });
 
 test("a tap or click holds nothing for good", () => {
   vi.useFakeTimers();
   show(todayFixture());
   // A tap: its emulated enter has no leave, and it focuses the button.
-  fireEvent.pointerEnter(carousel(), { pointerType: "touch" });
-  const button = screen.getByRole("button", { name: "Next card" });
+  fireEvent.pointerEnter(left(), { pointerType: "touch" });
+  const button = within(left()).getByRole("button", { name: "Next card" });
   fireEvent.pointerDown(button, { pointerType: "touch" });
   fireEvent.focus(button);
   fireEvent.click(button);
-  expect(cardName()).toHaveTextContent("Details");
-  act(() => vi.advanceTimersByTime(15_000));
   expect(cardName()).toHaveTextContent("Rain");
+  wait(15_000);
+  expect(cardName(right())).toHaveTextContent("Details");
+  wait(15_000);
+  expect(cardName()).toHaveTextContent("Next days");
 });
 
 test("a hidden page or reduced motion turns nothing", () => {
@@ -420,8 +567,9 @@ test("a hidden page or reduced motion turns nothing", () => {
   act(() => {
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  act(() => vi.advanceTimersByTime(30_000));
+  wait(60_000);
   expect(cardName()).toHaveTextContent("Now");
+  expect(cardName(right())).toHaveTextContent("Sun");
   vi.restoreAllMocks();
   unmount();
   vi.stubGlobal(
@@ -434,12 +582,13 @@ test("a hidden page or reduced motion turns nothing", () => {
     })),
   );
   show(todayFixture());
-  act(() => vi.advanceTimersByTime(30_000));
+  wait(60_000);
   expect(cardName()).toHaveTextContent("Now");
+  expect(cardName(right())).toHaveTextContent("Sun");
 });
 
 test("without further cards there is nothing to turn", () => {
-  show(todayFixture({ air: null }), {
+  show(todayFixture({ air: null, sun: null }), {
     details: null,
     rain: null,
     outlook: null,

@@ -8,57 +8,87 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useMediaQuery } from "../chat/useMediaQuery";
+import { STEP_MS } from "./useTileClock";
 
 export type Slide = { key: string; name: string; content: ReactNode };
 
 // SWIPE_PX is how far a finger or mouse must travel sideways to turn a card.
 export const SWIPE_PX = 40;
 
-// Carousel shows one slide at a time, turned by the arrows, the dots, the
-// arrow keys or a swipe, and with autoAdvanceMs by itself, back to the first
-// after the last. Every slide stays rendered side by side, so the tallest
-// sets the height and the grid around it never jumps; the ones out of view
-// are inert. It always opens on the first: a warning lives there.
+// Clock is what the beat (useTileClock) tells a tile: whether it turns by
+// itself at all, whether it does right now, whether it is due next, and the
+// count of turns by hand, each of which starts its card's time over.
+export type Clock = {
+  auto: boolean;
+  running: boolean;
+  due: boolean;
+  epoch: number;
+};
+
+// Carousel shows one slide at a time, turned by a click on it, the arrows,
+// the dots, the arrow keys or a swipe; the beat turns it by itself. After the
+// last a click goes straight back to the first. Every slide stays rendered
+// side by side, so the tallest sets the height and the grid around it never
+// jumps; the ones out of view are inert.
 export function Carousel({
   label,
   slides,
-  autoAdvanceMs,
+  index,
+  onTurn,
+  onHold,
+  clock,
 }: {
   label: string;
   slides: Slide[];
-  autoAdvanceMs?: number;
+  index: number;
+  onTurn(to: number): void;
+  onHold(held: boolean): void;
+  clock: Clock;
 }) {
   const { t } = useTranslation();
-  const [index, setIndex] = useState(0);
   const start = useRef<{ x: number; y: number } | null>(null);
+  // swiped skips the click that ends a swipe: the swipe has turned already.
+  const swiped = useRef(false);
   const count = slides.length;
   const current = Math.min(index, count - 1);
-  const go = (to: number) => setIndex(Math.max(0, Math.min(count - 1, to)));
+  const auto = clock.auto && count > 1;
+  const running = auto && clock.running;
 
-  // It holds still while read: under the mouse, with keyboard focus inside
-  // (a keyboard or screen reader user), on a hidden page, and never turns for
-  // reduced motion.
+  // The wrap from the last back to the first jumps: sliding, it would run
+  // back past every card. A step by the arrows, keys, dots or a swipe always
+  // slides, even when it lands on the first.
+  const [shown, setShown] = useState({ index: current, jump: false });
+  const [stepping, setStepping] = useState(false);
+  if (shown.index !== current) {
+    setShown({
+      index: current,
+      jump: !stepping && shown.index === count - 1 && current === 0,
+    });
+    if (stepping) setStepping(false);
+  }
+  // A step that moves nothing (past an end, the shown card's dot) is no
+  // turn: it would start the beat over.
+  const go = (to: number) => {
+    const target = Math.max(0, Math.min(count - 1, to));
+    if (target === current) return;
+    setStepping(true);
+    onTurn(target);
+  };
+
+  // The bar fills over the card's two beats; the tile due next is one beat
+  // in. Fixed when the card's time starts, not on every beat.
+  const barKey = `${current}/${running}/${clock.epoch}`;
+  const [bar, setBar] = useState({ key: barKey, due: clock.due });
+  if (bar.key !== barKey) setBar({ key: barKey, due: clock.due });
+
+  // It holds still while read: under the mouse, or with keyboard focus inside
+  // (a keyboard or screen reader user).
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [hidden, setHidden] = useState(() => document.hidden);
-  const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
   useEffect(() => {
-    const onChange = () => setHidden(document.hidden);
-    document.addEventListener("visibilitychange", onChange);
-    return () => document.removeEventListener("visibilitychange", onChange);
-  }, []);
-  const auto = autoAdvanceMs !== undefined && count > 1 && !reduced;
-  const running = auto && !hovered && !focused && !hidden;
-  // Every turn, by hand or by itself, starts the time over.
-  useEffect(() => {
-    if (!running) return;
-    const timer = setTimeout(
-      () => setIndex((current + 1) % count),
-      autoAdvanceMs,
-    );
-    return () => clearTimeout(timer);
-  }, [running, current, count, autoAdvanceMs]);
+    onHold(hovered || focused);
+  }, [hovered, focused, onHold]);
+  useEffect(() => () => onHold(false), [onHold]);
   const onBlur = (event: FocusEvent) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
       setFocused(false);
@@ -80,6 +110,7 @@ export function Carousel({
 
   const onPointerDown = (event: PointerEvent) => {
     start.current = { x: event.clientX, y: event.clientY };
+    swiped.current = false;
   };
   const onPointerUp = (event: PointerEvent) => {
     const from = start.current;
@@ -88,7 +119,15 @@ export function Carousel({
     const dx = event.clientX - from.x;
     const dy = event.clientY - from.y;
     if (Math.abs(dx) < SWIPE_PX || Math.abs(dx) < Math.abs(dy)) return;
+    swiped.current = true;
     go(current + (dx < 0 ? 1 : -1));
+  };
+  const onClick = () => {
+    if (swiped.current) {
+      swiped.current = false;
+      return;
+    }
+    if (count > 1) onTurn((current + 1) % count);
   };
 
   if (count === 0) return null;
@@ -112,14 +151,15 @@ export function Carousel({
       }}
     >
       <div
-        className="flex-1 touch-pan-y overflow-hidden select-none"
+        className={`flex-1 touch-pan-y overflow-hidden select-none ${count > 1 ? "cursor-pointer" : ""}`}
         data-testid="carousel-track"
+        onClick={onClick}
         onPointerCancel={() => (start.current = null)}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
       >
         <div
-          className="flex h-full transition-transform duration-300 ease-out motion-reduce:transition-none"
+          className={`flex h-full ${shown.jump ? "" : "transition-transform duration-300 ease-out motion-reduce:transition-none"}`}
           style={{ transform: `translateX(-${current * 100}%)` }}
         >
           {slides.map((slide, i) => (
@@ -144,7 +184,7 @@ export function Carousel({
       {count > 1 && (
         <div className="flex items-center justify-between gap-2 text-[12px] text-muted">
           {/* Announced on a turn by hand only: turning by itself, it would
-              speak up every 15 s. */}
+              speak up on every beat. */}
           <span aria-live={running ? "off" : "polite"} data-testid="card-name">
             {slides[current].name}
           </span>
@@ -173,11 +213,11 @@ export function Carousel({
                   >
                     <span
                       className="w-full origin-left rounded-full bg-ink-soft"
-                      key={`${current}/${running}`}
+                      key={barKey}
                       style={
                         running
                           ? {
-                              animation: `card-progress ${autoAdvanceMs}ms linear forwards`,
+                              animation: `card-progress ${2 * STEP_MS}ms linear ${bar.due ? -STEP_MS : 0}ms forwards`,
                             }
                           : undefined
                       }

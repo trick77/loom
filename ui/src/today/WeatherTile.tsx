@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import type { Today, TodayWeather } from "../api/today";
 import { Carousel, type Slide } from "./Carousel";
 import { degrees } from "./format";
+import { SunCard } from "./SunCard";
+import { type Tile, useTileClock } from "./useTileClock";
 import { AirCard, DetailsCard, OutlookCard, RainCard } from "./WeatherCards";
 import {
   conditionFor,
@@ -14,65 +16,95 @@ import {
 } from "./weatherCodes";
 import { WarningIcon, WeatherIcon } from "./WeatherIcon";
 
-export const TILE =
-  "rounded-2xl border border-border bg-card p-[18px] text-ink";
-
-// AUTO_ADVANCE_MS is how long a weather card shows before the next.
-export const AUTO_ADVANCE_MS = 15_000;
+const TILE = "rounded-2xl border border-border bg-card p-[18px] text-ink";
 
 type WeatherTileProps = {
   weather: TodayWeather;
   today: Pick<Today, "date" | "day" | "sun" | "warning" | "air">;
 };
 
-// WeatherTile is the weather's cards to turn through: the sky now (or
-// tomorrow's) first, then whatever further cards the forecast has values
-// for.
-export function WeatherTile({ weather, today }: WeatherTileProps) {
+// WeatherTiles is the weather's cards over two tiles: the left the sky's
+// course (now or tomorrow's, the rain, the days ahead), the right the
+// conditions (the sun, the day in numbers, the air). Each card only when the
+// forecast has values for it; a side without any leaves its tile out.
+export function WeatherTiles({ weather, today }: WeatherTileProps) {
+  // A new shown day starts over on the first cards, where its warning is:
+  // the 20:00 turn to tomorrow keeps the page open.
+  return (
+    <TilePair
+      key={`${today.date}/${today.day}`}
+      today={today}
+      weather={weather}
+    />
+  );
+}
+
+function TilePair({ weather, today }: WeatherTileProps) {
   const { t } = useTranslation();
   const tomorrow = today.day === "tomorrow";
-  const slides: Slide[] = [
+  const course: Slide[] = [
     {
       key: "now",
       name: t(tomorrow ? "today.cards.overview" : "today.cards.now"),
       content: <NowCard today={today} weather={weather} />,
     },
   ];
-  if (weather.details !== null)
-    slides.push({
-      key: "details",
-      name: t("today.cards.details"),
-      content: <DetailsCard details={weather.details} tomorrow={tomorrow} />,
-    });
   if (weather.rain !== null)
-    slides.push({
+    course.push({
       key: "rain",
       name: t("today.cards.rain"),
       content: <RainCard outlook={weather.outlook} rain={weather.rain} />,
     });
   if (weather.outlook !== null)
-    slides.push({
+    course.push({
       key: "outlook",
       name: t("today.cards.outlook"),
       content: <OutlookCard days={weather.outlook} />,
     });
+  const conditions: Slide[] = [];
+  if (today.sun !== null)
+    conditions.push({
+      key: "sun",
+      name: t("today.cards.sun"),
+      content: <SunCard day={today.day} sun={today.sun} />,
+    });
+  if (weather.details !== null)
+    conditions.push({
+      key: "details",
+      name: t("today.cards.details"),
+      content: <DetailsCard details={weather.details} tomorrow={tomorrow} />,
+    });
   if (today.air)
-    slides.push({
+    conditions.push({
       key: "air",
       name: t("today.cards.air"),
       content: <AirCard air={today.air} />,
     });
-  return (
+
+  const clock = useTileClock([course.length, conditions.length]);
+  const tile = (n: Tile, label: string, slides: Slide[]) => (
     <div className={TILE}>
-      {/* A new shown day starts over on the first card, where its warning
-          is: the 20:00 turn to tomorrow keeps the page open. */}
       <Carousel
-        autoAdvanceMs={AUTO_ADVANCE_MS}
-        key={`${today.date}/${today.day}`}
-        label={t("today.cards.weather")}
+        clock={{
+          auto: clock.auto,
+          running: clock.running,
+          due: clock.due === n,
+          epoch: clock.epoch,
+        }}
+        index={clock.index[n]}
+        label={label}
+        onHold={n === 0 ? clock.holdLeft : clock.holdRight}
+        onTurn={(to) => clock.turn(n, to)}
         slides={slides}
       />
     </div>
+  );
+  return (
+    <>
+      {tile(0, t("today.cards.weather"), course)}
+      {conditions.length > 0 &&
+        tile(1, t("today.cards.conditions"), conditions)}
+    </>
   );
 }
 

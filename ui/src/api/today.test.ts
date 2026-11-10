@@ -36,7 +36,6 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
 });
 
 const dayRange = { high: 12, low: 4, code: 3, precipitationProbability: 40 };
-const attribution = { text: "Open-Meteo", url: "https://open-meteo.com/" };
 
 test("getToday keeps a full answer and survives a null one", async () => {
   const full = {
@@ -76,7 +75,6 @@ test("getToday keeps a full answer and survives a null one", async () => {
           precipitationProbability: null,
         },
       ],
-      attribution,
     },
     air: {
       aqi: 64,
@@ -147,9 +145,7 @@ test("getToday keeps a full answer and survives a null one", async () => {
 
 test("getToday reads the weather defensively", async () => {
   // The earlier `today` key stands in for `day`; a missing now is none.
-  stubFetch(
-    Response.json({ weather: { today: dayRange, hours: [], attribution } }),
-  );
+  stubFetch(Response.json({ weather: { today: dayRange, hours: [] } }));
   await expect(getToday()).resolves.toMatchObject({
     weather: { now: null, day: dayRange },
   });
@@ -235,7 +231,7 @@ test("getToday reads the weather defensively", async () => {
     }),
   );
   await expect(getToday()).resolves.toMatchObject({
-    weather: { hours: [], attribution: { text: "", url: "" } },
+    weather: { hours: [] },
     sun: { progress: null },
   });
 });
