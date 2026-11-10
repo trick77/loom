@@ -73,12 +73,13 @@ CSV contract (5 s resample in streams; empty cell = no value)
                                 (where it blows from)
     outdoor_windows.csv         date, rank (1 = best), from, to (HH:MM), dry (0/1), wind (empty,
                                 windy, strong), sun_min, rain_pct, wind_max_kmh, gust_max_kmh,
-                                wind_from (8-point compass)
+                                wind_from (8-point compass), cold (0/1: feels below the limit)
     outdoor_days.csv            date, sunrise, sunset, high_c, low_c, rain_mm, rain_pct, sun_h,
                                 wind_max_kmh, gust_max_kmh, wind_from, rain (dry, showers, wet),
-                                wind, rank
+                                wind, rank, cold (0/1)
     outdoor_limits.csv          activity (run, ride), minutes, date (the day asked), wind_kmh,
-                                wind_strong_kmh, gust_kmh, gust_strong_kmh
+                                wind_strong_kmh, gust_kmh, gust_strong_kmh, cold_c (feels-like
+                                below it is too cold), cold_sunny_c (the same when very sunny)
 """
 
 from ._style import BEST, BG, CONTEXT, INK, INK2, MEDIAN, MUTED, SERIES, THIS, ZONES, apply_style

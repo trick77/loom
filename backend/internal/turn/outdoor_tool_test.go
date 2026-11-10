@@ -213,8 +213,10 @@ func TestOutdoorWindowsElsewhere(t *testing.T) {
 func TestOutdoorWindowsWeek(t *testing.T) {
 	w := &weatherServer{}
 	r := outdoorRun(&Engine{mcp: w.service(), places: fakePlaces{place: home}}, morning)
-	a := answerOf(t, callOutdoor(t, r, `{"activity":"ride","day":"week"}`, nil))
-	if a.Outlook != nil || len(a.Week) != 7 || a.Limits.Wind != 15 || a.Limits.GustsStrong != 45 {
+	out := callOutdoor(t, r, `{"activity":"ride","day":"week"}`, nil)
+	a := answerOf(t, out)
+	if a.Outlook != nil || len(a.Week) != 7 || a.Limits.Wind != 15 || a.Limits.GustsStrong != 45 ||
+		a.Limits.Cold != 10 || a.Limits.ColdSunny != 7 || !strings.Contains(out, `"limits":{`) {
 		t.Fatalf("week = %+v", a)
 	}
 	best := 0
@@ -247,10 +249,49 @@ func TestOutdoorWindowsChartFiles(t *testing.T) {
 		}
 	}
 	// The answer still reads: the note follows the JSON.
-	if a := answerOf(t, strings.SplitN(out, "\n\n[run_python", 2)[0]); a.Date != "2026-11-09" {
+	a := answerOf(t, strings.SplitN(out, "\n\n[run_python", 2)[0])
+	if a.Date != "2026-11-09" {
 		t.Fatalf("answer = %+v", a)
 	}
+	// A day's answer has the day drawn unasked, with the exact call; the
+	// week's the week.
+	if !strings.Contains(a.Guide, "draw") || !strings.Contains(a.Guide, `loomcharts.outdoor_day("in/outdoor_hours.csv"`) ||
+		strings.Contains(a.Guide, `loomcharts.outdoor_week("in/`) {
+		t.Fatalf("day guide = %s", a.Guide)
+	}
+	// One chart a turn: a second call is not asked for another, nor does it
+	// replace the files the first one is drawn from.
+	drawn := string(r.toolFiles[weather.ChartLimits].Data)
+	again := callOutdoor(t, r, `{"activity":"ride","day":"tomorrow"}`, nil)
+	if strings.Contains(again, "loomcharts.outdoor_") || strings.Contains(again, "[run_python") ||
+		string(r.toolFiles[weather.ChartLimits].Data) != drawn {
+		t.Fatalf("second chart asked or files replaced: %s", again)
+	}
+	r.outdoorCharted = false
+	week := answerOf(t, strings.SplitN(callOutdoor(t, r, `{"activity":"run","day":"week"}`, nil), "\n\n[run_python", 2)[0])
+	if !strings.Contains(week.Guide, `loomcharts.outdoor_week("in/outdoor_days.csv"`) ||
+		strings.Contains(week.Guide, `loomcharts.outdoor_day("in/`) {
+		t.Fatalf("week guide = %s", week.Guide)
+	}
+	// Nothing to draw (tonight is over): the charts are named for the
+	// asking, none drawn; files the turn's cap dropped: none named.
+	late := outdoorRun(&Engine{mcp: w.service(), places: fakePlaces{place: home}}, morning.Add(12*time.Hour))
+	late.offered[sandboxToolName] = &toolSpec{name: sandboxToolName}
+	if a := answerOf(t, strings.SplitN(callOutdoor(t, late, `{"activity":"run"}`, nil), "\n\n[run_python", 2)[0]); a.None != weather.NoneOver ||
+		strings.Contains(a.Guide, "Before you answer") || !strings.Contains(a.Guide, "draw one when asked") || late.outdoorCharted {
+		t.Fatalf("over tonight = %+v", a)
+	}
+	full := outdoorRun(&Engine{mcp: w.service(), places: fakePlaces{place: home}}, morning)
+	full.offered[sandboxToolName] = &toolSpec{name: sandboxToolName}
+	full.toolFiles = map[string]mcp.File{}
+	for i := range maxTurnToolFiles {
+		full.toolFiles[fmt.Sprintf("other_%d.csv", i)] = mcp.File{Name: fmt.Sprintf("other_%d.csv", i), Data: []byte("a\n")}
+	}
+	if a := answerOf(t, strings.SplitN(callOutdoor(t, full, `{"activity":"run"}`, nil), "\n\n[run_python", 2)[0]); strings.Contains(a.Guide, "loomcharts.outdoor_") {
+		t.Fatalf("chart asked without its files: %s", a.Guide)
+	}
 	// The day asked is the one outdoor_day draws by default.
+	r.outdoorCharted = false
 	callOutdoor(t, r, `{"activity":"run","day":"tomorrow"}`, nil)
 	if limits := string(r.toolFiles[weather.ChartLimits].Data); !strings.Contains(limits, ",2026-11-10,") {
 		t.Fatalf("limits = %s", limits)

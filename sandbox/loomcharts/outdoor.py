@@ -11,13 +11,14 @@ from ._style import (BEST, CONTEXT, INK2, MEDIAN, MUTED, THIS, empty_chart, fmt_
 SUN = "#c98500"
 WIND = "#9085e9"
 STRONG = "#e66767"
+COLD = "#7fb8e8"
 NIGHT_ALPHA = 0.55
 COMPASS = {"N": 0, "NE": 45, "E": 90, "SE": 135, "S": 180, "SW": 225, "W": 270, "NW": 315}
 NOUNS = {"run": "run", "ride": "ride"}
 
 
 def _limits(limits):
-    """The activity's wind limits as a dict (km/h); empty when unknown."""
+    """The activity's wind (km/h) and cold (°C) limits as a dict; empty when unknown."""
     if limits is None:
         return {}
     try:
@@ -30,7 +31,7 @@ def _limits(limits):
     out = {"activity": str(row.get("activity", "") or "")}
     if isinstance(row.get("date"), str) and row.get("date"):
         out["date"] = row.get("date")
-    for k in ("minutes", "wind_kmh", "wind_strong_kmh", "gust_kmh", "gust_strong_kmh"):
+    for k in ("minutes", "wind_kmh", "wind_strong_kmh", "gust_kmh", "gust_strong_kmh", "cold_c", "cold_sunny_c"):
         v = pd.to_numeric(row.get(k), errors="coerce")
         if v is not None and not (isinstance(v, float) and math.isnan(v)):
             out[k] = float(v)
@@ -85,18 +86,49 @@ def _arrows(ax, x, deg, y, every=1):
               color=INK2, scale=34, width=0.0035, headwidth=4, headlength=4.5, pivot="middle", zorder=5)
 
 
-def _limit_line(ax, y, color, text):
+def _limit_line(ax, y, color, text, left=False):
     ax.axhline(y, color=color, lw=0.9, ls=(0, (4, 3)), zorder=1)
-    ax.annotate(text, (1, y), xycoords=("axes fraction", "data"), xytext=(-2, 2), textcoords="offset points",
-                ha="right", va="bottom", fontsize=7.5, color=color)
+    ax.annotate(text, (0 if left else 1, y), xycoords=("axes fraction", "data"), xytext=(2 if left else -2, 2),
+                textcoords="offset points", ha="left" if left else "right", va="bottom", fontsize=7.5, color=color)
 
 
-def _panels(axes, df, windows, lim, show_labels, right_labels=True, every=1):
+def _lowest(*values):
+    """The lowest of the arrays' values; NaN when they hold none."""
+    v = np.concatenate([np.asarray(a, dtype=float) for a in values])
+    v = v[~np.isnan(v)]
+    return float(v.min()) if len(v) else float("nan")
+
+
+def _cold_line(ax, lim, low, show_labels=True, of="feels", left=False):
+    """The cold limit on a temperature axis, kept in view; of: what it is read off.
+
+    low is the lowest temperature drawn: a day well above the limit (summer) leaves the line
+    out rather than stretch the axis down to it.
+    """
+    if "cold_c" not in lim or math.isnan(low) or low > lim["cold_c"] + 3:
+        return
+    cold = lim["cold_c"]
+    text = f"cold: {of} < {cold:g}°" if show_labels else ""
+    if show_labels and "cold_sunny_c" in lim:
+        text += f" ({lim['cold_sunny_c']:g}° in sun)"
+    _limit_line(ax, cold, COLD, text, left)
+    if ax.get_autoscaley_on():
+        # Through the data limits: a set_ylim would freeze the row other columns share.
+        x0 = ax.get_xlim()[0]
+        ax.update_datalim([(x0, cold - 1), (x0, cold + 1)])
+        ax.autoscale_view(scalex=False)
+    else:
+        lo, hi = ax.get_ylim()
+        ax.set_ylim(min(lo, cold - 1), max(hi, cold + 1))
+
+
+def _panels(axes, df, windows, lim, show_labels, right_labels=True, every=1, cold_low=None):
     """Temperature and sun, rain, wind: one day's hours on the three axes, windows banded, night shaded.
 
     show_labels: the left axis labels and the window numbers; right_labels: the rain
-    chance's scale on the right; every: an arrow every so many hours. Returns the rain and
-    wind axes' tops, so columns sharing them can take the highest.
+    chance's scale on the right; every: an arrow every so many hours; cold_low: the lowest
+    temperature of every column sharing the row, so they all draw the cold line or none
+    does. Returns the rain and wind axes' tops, so columns sharing them can take the highest.
     """
     t_ax, r_ax, w_ax = axes
     df = _around_daylight(df)
@@ -131,6 +163,7 @@ def _panels(axes, df, windows, lim, show_labels, right_labels=True, every=1):
     t_ax.plot(x, temp, color=THIS, lw=1.8, zorder=3, label="temperature")
     if not np.isnan(feels).all():
         t_ax.plot(x, feels, color=THIS, lw=1.1, ls=(0, (3, 2)), alpha=0.8, zorder=3, label="feels like")
+    _cold_line(t_ax, lim, _lowest(temp, feels) if cold_low is None else cold_low, show_labels)
     if show_labels:
         t_ax.set_ylabel("°C")
 
@@ -190,7 +223,7 @@ def outdoor_day(hours, out, windows=None, limits=None, date=None, title=None):
     """One day hour by hour: temperature and sun, rain, wind against the activity's limits.
 
     hours: in/outdoor_hours.csv; windows: in/outdoor_windows.csv (the recommended windows,
-    banded); limits: in/outdoor_limits.csv (wind lines). date: YYYY-MM-DD, default the day the
+    banded); limits: in/outdoor_limits.csv (wind and cold lines). date: YYYY-MM-DD, default the day the
     tool was asked about (limits' date), else the first day with hours (today).
     """
     df = _hours(hours)
@@ -230,11 +263,13 @@ def outdoor_compare(hours, out, windows=None, limits=None, title=None):
     fig = new_figure(6.2)
     axes = fig.subplots(3, len(dates), sharey="row", squeeze=False,
                         gridspec_kw={"height_ratios": [1.25, 0.8, 1.0], "hspace": 0.12, "wspace": 0.06})
+    shown = [_around_daylight(df[df["_date"] == d]) for d in dates]
+    low = _lowest(*(num(s, c).to_numpy() for s in shown for c in ("temp_c", "feels_c")))
     tops = []
     for i, date in enumerate(dates):
         w = wins[wins["date"].astype(str) == date] if wins is not None and "date" in wins.columns else None
         tops.append(_panels(axes[:, i], df[df["_date"] == date], w, lim, i == 0, right_labels=i == len(dates) - 1,
-                            every=2))
+                            every=2, cold_low=low))
         axes[0, i].set_title(fmt_day(date), fontsize=10, color=INK2, loc="left", pad=14)
     # The rows share their scales: the higher day's, or one day's rain or gusts are cut off.
     axes[1, 0].set_ylim(0, max(t[0] for t in tops))
@@ -248,7 +283,8 @@ def outdoor_week(days, out, limits=None, title=None):
     """The week ahead, a column a day: high and low, sun hours, rain, the day's strongest wind.
 
     days: in/outdoor_days.csv (rank 1 = best day to go out, marked); limits:
-    in/outdoor_limits.csv (wind lines). Wind is the day's strongest, night included.
+    in/outdoor_limits.csv (wind and cold lines; the cold is read off the high). Wind is the
+    day's strongest, night included.
     """
     df = frame(days)
     lim = _limits(limits)
@@ -283,6 +319,8 @@ def outdoor_week(days, out, limits=None, title=None):
         lo_t, hi_t = np.nanmin(temps), np.nanmax(temps)
         span = max(hi_t - lo_t, 5.0)
         t_ax.set_ylim(lo_t - span * 0.6, hi_t + span * 0.35)
+    # Left: on the right it meets the last day's high.
+    _cold_line(t_ax, lim, _lowest(high), of="high", left=True)
     t_ax.set_ylabel("°C")
     for xi in x[best]:
         t_ax.annotate("best", (xi, 1), xycoords=("data", "axes fraction"), xytext=(0, 2), textcoords="offset points",

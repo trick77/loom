@@ -73,6 +73,9 @@ type Run struct {
 	// no other user's run reaches them.
 	toolFiles     map[string]mcp.File
 	toolFileBytes int
+	// outdoorCharted is set once an outdoor_windows result asked for its
+	// chart: one chart a turn, not one per call (today, tomorrow, week).
+	outdoorCharted bool
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.

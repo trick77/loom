@@ -28,6 +28,8 @@ func (a Activity) DefaultMinutes() int {
 
 // comfort is the feels-like band an activity is pleasant in and the wind it
 // takes. A ride is colder (its own wind) and catches far more of the wind.
+// The band is soft: past its top a window only ranks lower, it never sinks
+// as a cold one does.
 type comfort struct {
 	low, high  float64
 	limits     Limits
@@ -36,9 +38,9 @@ type comfort struct {
 
 func (a Activity) comfort() comfort {
 	if a == Ride {
-		return comfort{low: 15, high: 24, limits: a.Limits(), windWeight: 2}
+		return comfort{low: 15, high: 30, limits: a.Limits(), windWeight: 2}
 	}
-	return comfort{low: 12, high: 20, limits: a.Limits(), windWeight: 1}
+	return comfort{low: 12, high: 24, limits: a.Limits(), windWeight: 1}
 }
 
 // Wind levels: past Limits' first pair the wind is worth a word, past the
@@ -56,19 +58,41 @@ const (
 // bearable. Gusts are the danger on a bike (a side gust throws it across the
 // lane): a word from 30, a warning from 45; a runner from 40 and 55, short
 // of the 63 the DWD calls stormy.
+//
+// Cold is the feels-like (°C) below which it is too cold to go out (a ride
+// 10, a run 5), ColdSunny the same when very sunny (sunnyShare of the time):
+// the sun makes up for a few degrees.
 type Limits struct {
 	Wind        float64 `json:"wind"`
 	WindStrong  float64 `json:"windStrong"`
 	Gusts       float64 `json:"gusts"`
 	GustsStrong float64 `json:"gustsStrong"`
+	Cold        float64 `json:"cold"`
+	ColdSunny   float64 `json:"coldSunny"`
 }
 
-// Limits are the activity's wind thresholds.
+// Limits are the activity's wind and cold thresholds.
 func (a Activity) Limits() Limits {
 	if a == Ride {
-		return Limits{Wind: 15, WindStrong: 39, Gusts: 30, GustsStrong: 45}
+		return Limits{Wind: 15, WindStrong: 39, Gusts: 30, GustsStrong: 45, Cold: 10, ColdSunny: 10 - sunnyWarmth}
 	}
-	return Limits{Wind: 20, WindStrong: 39, Gusts: 40, GustsStrong: 55}
+	return Limits{Wind: 20, WindStrong: 39, Gusts: 40, GustsStrong: 55, Cold: 5, ColdSunny: 5 - sunnyWarmth}
+}
+
+// sunnyShare of a window's (or a day's daylight) time in sunshine makes it
+// very sunny: the sun then stands in for sunnyWarmth °C.
+const (
+	sunnyShare  = 0.75
+	sunnyWarmth = 3
+)
+
+// TooCold reports whether feels (°C, the coldest) is below the cold limit,
+// the sunny one when sunny.
+func (l Limits) TooCold(feels float64, sunny bool) bool {
+	if sunny {
+		return feels < l.ColdSunny
+	}
+	return feels < l.Cold
 }
 
 // Level is the wind level of a wind and its gusts (either may be unknown):
@@ -167,11 +191,17 @@ type Window struct {
 	WindFrom string   `json:"windFrom,omitempty"`
 	GustsMax *float64 `json:"gustsMax,omitempty"`
 	Wind     string   `json:"wind,omitempty"`
+	// Cold: its coldest hour feels below the activity's cold limit (the
+	// sunny one when the window is very sunny).
+	Cold bool `json:"cold,omitempty"`
 
 	start time.Time
 	// sun is the sunshine that draws: none from hours already too warm.
 	sun  float64
 	pain float64
+	// coldest is the feels-like of its coldest hour it spends half an hour
+	// in at least: a quarter hour of a cold one makes no window cold.
+	coldest float64
 }
 
 // AirNote is the air worth a word in the best window: the index's band from
@@ -332,7 +362,7 @@ func dayAhead(hours map[int64]Hour, from, to time.Time) (dry, sunny bool) {
 func window(hours map[int64]Hour, start time.Time, dur time.Duration, c comfort) (Window, bool) {
 	end := start.Add(dur)
 	w := Window{From: start.Format("15:04"), To: end.Format("15:04"), Dry: true, start: start,
-		FeelsLikeMin: math.Inf(1), FeelsLikeMax: math.Inf(-1)}
+		FeelsLikeMin: math.Inf(1), FeelsLikeMax: math.Inf(-1), coldest: math.Inf(1)}
 	sunAll := 0.0
 	for h := hourStart(start); h.Before(end); h = h.Add(time.Hour) {
 		hour, ok := hours[h.Unix()]
@@ -365,6 +395,9 @@ func window(hours map[int64]Hour, start time.Time, dur time.Duration, c comfort)
 			w.Precipitation += *hour.Precipitation * share
 		}
 		w.FeelsLikeMin, w.FeelsLikeMax = min(w.FeelsLikeMin, feels), max(w.FeelsLikeMax, feels)
+		if share >= 0.5 {
+			w.coldest = min(w.coldest, feels)
+		}
 		pain := max(0, c.low-feels) + max(0, feels-c.high)
 		if hour.WindSpeed != nil {
 			v := *hour.WindSpeed
@@ -386,6 +419,11 @@ func window(hours map[int64]Hour, start time.Time, dur time.Duration, c comfort)
 		w.pain += pain * share
 	}
 	w.Wind = c.limits.Level(w.WindMax, w.GustsMax)
+	if math.IsInf(w.coldest, 1) {
+		// A window shorter than half an hour within one hour.
+		w.coldest = w.FeelsLikeMin
+	}
+	w.Cold = c.limits.TooCold(w.coldest, sunAll >= sunnyShare*dur.Minutes())
 	w.pain /= dur.Hours()
 	w.SunMinutes = int(math.Round(sunAll))
 	w.Precipitation = math.Round(w.Precipitation*10) / 10
@@ -412,11 +450,20 @@ func pick(all []Window, dur time.Duration) []Window {
 		// Strong wind anywhere in a window sinks it below every other: no
 		// sun, and no less rain, makes up for a gust that throws a bike
 		// across the lane.
-		if sa, sb := a.Wind == WindStrong, b.Wind == WindStrong; sa != sb {
-			if sa {
-				return 1
+		if n := sinks(a.Wind == WindStrong, b.Wind == WindStrong); n != 0 {
+			return n
+		}
+		// Then cold: below the activity's limit no sun or dryness makes a
+		// window worth it (the sunny limit has the sun's due already).
+		if n := sinks(a.Cold, b.Cold); n != 0 {
+			return n
+		}
+		// Among cold ones the warmest (by the degree) leads: the sun has had
+		// its due in the sunny limit.
+		if a.Cold {
+			if ca, cb := math.Round(a.coldest), math.Round(b.coldest); ca != cb {
+				return cmp(cb, ca)
 			}
-			return -1
 		}
 		if !dry {
 			if a.Precipitation != b.Precipitation {
@@ -455,6 +502,17 @@ func pick(all []Window, dur time.Duration) []Window {
 
 func sunQuarters(w Window, dur time.Duration) int {
 	return int(math.Round(w.sun / dur.Minutes() * 4))
+}
+
+// sinks orders a after b when only a is bad, before when only b is.
+func sinks(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	}
+	return -1
 }
 
 func cmp(a, b float64) int {

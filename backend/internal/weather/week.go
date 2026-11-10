@@ -60,11 +60,16 @@ type DayOutlook struct {
 	// activity.
 	Rain string `json:"rain"`
 	Wind string `json:"wind,omitempty"`
+	// Cold: the high is below the activity's cold limit (days carry no
+	// feels-like; the sunny limit with sun sunnyShare of daylight). Lenient
+	// next to a window's: a week day may pass that the day's windows fail.
+	Cold bool `json:"cold,omitempty"`
 	// None is why the day has no time to go out (NoneDark, NoneShort,
 	// NoneOver: today's daylight left is too short); such a day ranks last.
 	None string `json:"none,omitempty"`
 	// Rank is 1 for the best day to go out: one with time for it, then
-	// drier, then calmer, then sunnier, then milder, then sooner.
+	// no strong wind, then warm enough, then drier, then calmer, then
+	// sunnier, then milder, then sooner.
 	Rank int `json:"rank"`
 }
 
@@ -99,10 +104,12 @@ func Week(in WeekInput) []DayOutlook {
 		}
 		s := sun.On(date.Add(12*time.Hour), in.Latitude, in.Longitude, loc)
 		o.Polar = string(s.Polar)
+		daylight := 24.0
 		switch s.Polar {
 		case sun.PolarNight:
 			o.None = NoneDark
 		case sun.NotPolar:
+			daylight = s.Set.Sub(s.Rise).Hours()
 			o.Sunrise, o.Sunset = s.Rise.In(loc).Format("15:04"), s.Set.In(loc).Format("15:04")
 			if s.Set.Sub(s.Rise) < dur {
 				o.None = NoneShort
@@ -110,6 +117,10 @@ func Week(in WeekInput) []DayOutlook {
 				o.None = NoneOver
 			}
 		}
+		// The cold reads every day off its high, planned or not: a window's
+		// coldest feels-like is stricter than a high, and today and tomorrow
+		// judged so would sink below a later day as warm.
+		o.Cold = c.limits.TooCold(d.High, value(d.SunshineHours) >= sunnyShare*daylight)
 		if p, ok := planned[d.Date]; ok {
 			// The day's hours know better than its totals: the wind in
 			// daylight, not at 03:00, and the time left on the step grid.
@@ -124,18 +135,22 @@ func Week(in WeekInput) []DayOutlook {
 	}
 	order := slices.Clone(out)
 	slices.SortStableFunc(order, func(a, b DayOutlook) int {
-		if na, nb := a.None != "", b.None != ""; na != nb {
-			if na {
-				return 1
-			}
-			return -1
+		if n := sinks(a.None != "", b.None != ""); n != 0 {
+			return n
 		}
-		// Strong wind sinks a day below every other, as it does a window.
-		if sa, sb := a.Wind == WindStrong, b.Wind == WindStrong; sa != sb {
-			if sa {
-				return 1
+		// Strong wind sinks a day below every other, then cold, as they
+		// do a window.
+		if n := sinks(a.Wind == WindStrong, b.Wind == WindStrong); n != 0 {
+			return n
+		}
+		if n := sinks(a.Cold, b.Cold); n != 0 {
+			return n
+		}
+		// Among cold days the warmest leads, as among cold windows.
+		if a.Cold {
+			if ha, hb := math.Round(a.High), math.Round(b.High); ha != hb {
+				return cmp(hb, ha)
 			}
-			return -1
 		}
 		if ra, rb := rainRank(a.Rain), rainRank(b.Rain); ra != rb {
 			return ra - rb

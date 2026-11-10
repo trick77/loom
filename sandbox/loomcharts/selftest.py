@@ -383,11 +383,11 @@ def outdoor_files(d):
     pd.DataFrame(rows).to_csv(p["hours"], index=False)
     pd.DataFrame([
         {"date": "2026-11-09", "rank": 1, "from": "09:00", "to": "11:00", "dry": 1, "wind": "", "sun_min": 100,
-         "rain_pct": 10, "wind_max_kmh": 12, "gust_max_kmh": 24, "wind_from": "SW"},
+         "rain_pct": 10, "wind_max_kmh": 12, "gust_max_kmh": 24, "wind_from": "SW", "cold": 1},
         {"date": "2026-11-09", "rank": 2, "from": "16:00", "to": "17:00", "dry": 1, "wind": "", "sun_min": 30,
-         "rain_pct": 10, "wind_max_kmh": 9, "gust_max_kmh": 21, "wind_from": "S"},
+         "rain_pct": 10, "wind_max_kmh": 9, "gust_max_kmh": 21, "wind_from": "S", "cold": 1},
         {"date": "2026-11-10", "rank": 1, "from": "08:15", "to": "10:15", "dry": 1, "wind": "windy", "sun_min": 90,
-         "rain_pct": 10, "wind_max_kmh": 18, "gust_max_kmh": 31, "wind_from": "W"},
+         "rain_pct": 10, "wind_max_kmh": 18, "gust_max_kmh": 31, "wind_from": "W", "cold": 0},
     ]).to_csv(p["windows"], index=False)
     week = []
     for i in range(7):
@@ -397,10 +397,12 @@ def outdoor_files(d):
                      "sun_h": [1, 4, 7, 2, 5, 0, 6][i], "wind_max_kmh": [12, 36, 10, 14, 44, 20, 9][i],
                      "gust_max_kmh": [25, 58, 22, 28, 70, 40, 18][i], "wind_from": ["S", "W", "NE", "SW", "W", "S", "E"][i],
                      "rain": ["wet", "dry", "dry", "showers", "dry", "wet", "dry"][i],
-                     "wind": ["", "windy", "", "", "strong", "windy", ""][i], "rank": [6, 3, 1, 5, 4, 7, 2][i]})
+                     "wind": ["", "windy", "", "", "strong", "windy", ""][i], "rank": [6, 3, 1, 5, 4, 7, 2][i],
+                     "cold": int(8 + i % 4 < 10)})
     pd.DataFrame(week).to_csv(p["days"], index=False)
-    pd.DataFrame([{"activity": "ride", "minutes": 120, "date": "2026-11-10", "wind_kmh": 15, "wind_strong_kmh": 39,
-                   "gust_kmh": 30, "gust_strong_kmh": 45}]).to_csv(p["limits"], index=False)
+    limits = {"activity": "ride", "minutes": 120, "date": "2026-11-10", "wind_kmh": 15, "wind_strong_kmh": 39,
+              "gust_kmh": 30, "gust_strong_kmh": 45, "cold_c": 10, "cold_sunny_c": 7}
+    pd.DataFrame([limits]).to_csv(p["limits"], index=False)
     return p
 
 
