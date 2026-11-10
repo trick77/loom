@@ -8,6 +8,15 @@
 # (a 127.0.0.1 bind inside a bridge-network container is unreachable via -p).
 #
 # Web search: set BACKEND_TAVILY_API_KEY to enable it (the search sidecar holds the key).
+
+# The Go sidecars' one image; each service merges it and picks its binary by
+# command. One tag for all six: one image, not six (BuildKit shares the steps).
+x-sidecar-image: &sidecar-image
+  build:
+    context: .
+    dockerfile: sidecars/Containerfile
+  image: loom-sidecars:dev
+
 services:
   # Pre-creates the data volume with the right ownership for the distroless nonroot user (uid 65532).
   loom-init:
@@ -180,9 +189,8 @@ services:
 
   tunewire:
     # Apple Music sidecar, built from source, published on a localhost port.
-    build:
-      context: .
-      dockerfile: tunewire/Containerfile
+    <<: *sidecar-image
+    command: ["/loom-tunewire", "serve"]
     profiles: ["tunewire"]
     user: "65532:65532"
     read_only: true
@@ -207,9 +215,8 @@ services:
 
   search:
     # Web search sidecar, built from source, published on a localhost port.
-    build:
-      context: .
-      dockerfile: search/Containerfile
+    <<: *sidecar-image
+    command: ["/loom-search", "serve"]
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
@@ -231,9 +238,8 @@ services:
 
   weather:
     # Weather sidecar, built from source, published on a localhost port.
-    build:
-      context: .
-      dockerfile: weather/Containerfile
+    <<: *sidecar-image
+    command: ["/loom-weather", "serve"]
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
@@ -254,9 +260,8 @@ services:
 
   docgen:
     # Document tools sidecar, built from source, published on a localhost port.
-    build:
-      context: .
-      dockerfile: docgen/Containerfile
+    <<: *sidecar-image
+    command: ["/loom-docgen", "serve"]
     user: "65532:65532"
     read_only: true
     cap_drop: [ALL]
@@ -281,9 +286,8 @@ services:
 
   imagegen:
     # Image sidecar, built from source, published on a localhost port.
-    build:
-      context: .
-      dockerfile: imagegen/Containerfile
+    <<: *sidecar-image
+    command: ["/loom-imagegen", "serve"]
     profiles: ["imagegen"]
     stop_grace_period: 3m
     user: "65532:65532"
@@ -311,9 +315,8 @@ services:
 
   strava:
     # Strava sidecar, built from source, published on a localhost port.
-    build:
-      context: .
-      dockerfile: strava/Containerfile
+    <<: *sidecar-image
+    command: ["/loom-strava", "serve"]
     profiles: ["strava"]
     user: "65532:65532"
     read_only: true

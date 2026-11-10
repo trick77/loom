@@ -275,13 +275,7 @@ func TestObscuraUsesUpstreamNativeMCPImage(t *testing.T) {
 // .env via env_file (an environment entry would override that), obscura gets
 // the same .env value, with no default. Dev: one literal on both sides.
 func TestComposeSharesObscuraToken(t *testing.T) {
-	read := func(path string) string {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		return string(data)
-	}
+	read := func(path string) string { return readRepoFile(t, path) }
 
 	prod := read("../../../compose.yaml")
 	loom := composeService(t, prod, "loom")
@@ -521,7 +515,6 @@ func TestProductionComposeTunewire(t *testing.T) {
 	compose := string(data)
 	service := composeService(t, compose, "tunewire")
 	for _, want := range []string{
-		"image: ghcr.io/trick77/loom-tunewire:latest",
 		`profiles: ["tunewire"]`,
 		`user: "65532:65532"`,
 		"read_only: true",
@@ -561,11 +554,76 @@ func TestProductionComposeTunewire(t *testing.T) {
 		t.Fatalf("read compose.dev.yaml: %v", err)
 	}
 	devService := composeService(t, string(dev), "tunewire")
-	for _, want := range []string{"dockerfile: tunewire/Containerfile", `profiles: ["tunewire"]`, `- "127.0.0.1:8060:8060"`} {
+	for _, want := range []string{`profiles: ["tunewire"]`, `- "127.0.0.1:8060:8060"`} {
 		if !strings.Contains(devService, want) {
 			t.Fatalf("dev tunewire service missing %q", want)
 		}
 	}
+}
+
+// The Go sidecars ship as one image (one build, one scan, one signature per
+// release) and still run as one container each: their own secrets, volume,
+// memory limit and network. The service picks its binary by command, so a
+// sidecar left out of sidecars/Containerfile would not start.
+func TestGoSidecarsShareOneImage(t *testing.T) {
+	entries, err := os.ReadDir("../")
+	if err != nil {
+		t.Fatalf("read cmd: %v", err)
+	}
+	// Commands with an image of their own: loom is the app, the sandbox needs
+	// CPython and root. A new command that is no sidecar goes here too.
+	ownImage := map[string]bool{"loom": true, "loom-sandbox": true}
+	var sidecars []string
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "loom") && !ownImage[e.Name()] {
+			sidecars = append(sidecars, strings.TrimPrefix(e.Name(), "loom-"))
+		}
+	}
+	if len(sidecars) < 6 {
+		t.Fatalf("cmd scan found only %v", sidecars)
+	}
+
+	// Only the go build's own package list counts, not a COPY or a comment.
+	build := regexp.MustCompile(`(?s)go build .*?&& mkdir`).FindString(readRepoFile(t, "../../../sidecars/Containerfile"))
+	if build == "" {
+		t.Fatal("sidecars/Containerfile has no go build ... && mkdir step")
+	}
+	ship := readRepoFile(t, "../../../ship.yaml")
+	if !regexp.MustCompile(`(?m)^\s*- \{.*suffix: "-sidecars".*containerfile: sidecars/Containerfile.*\}$`).MatchString(ship) {
+		t.Fatal("ship.yaml must release the sidecars image")
+	}
+	prod := readRepoFile(t, "../../../compose.yaml")
+	dev := readRepoFile(t, "../../../compose.dev.yaml")
+	if !strings.Contains(dev, "\nx-sidecar-image: &sidecar-image\n  build:\n    context: .\n    dockerfile: sidecars/Containerfile\n  image: loom-sidecars:dev\n") {
+		t.Fatal("compose.dev.yaml must define the sidecar-image anchor: sidecars/Containerfile as loom-sidecars:dev")
+	}
+	for _, name := range sidecars {
+		if !regexp.MustCompile(`\s\./cmd/loom-` + regexp.QuoteMeta(name) + `\s`).MatchString(build) {
+			t.Errorf("sidecars/Containerfile's go build does not build loom-%s", name)
+		}
+		if _, err := os.Stat("../../../" + name + "/Containerfile"); err == nil {
+			t.Errorf("%s/Containerfile must go: loom-%s ships in the sidecars image", name, name)
+		}
+		if regexp.MustCompile(`containerfile: ` + regexp.QuoteMeta(name) + `/Containerfile\b`).MatchString(ship) {
+			t.Errorf("ship.yaml still releases a loom-%s image", name)
+		}
+		command := `command: ["/loom-` + name + `", "serve"]`
+		if s := composeService(t, prod, name); !strings.Contains(s, "image: ghcr.io/trick77/loom-sidecars:latest") || !strings.Contains(s, command) {
+			t.Errorf("compose.yaml %s must run %s from the sidecars image", name, command)
+		}
+		if s := composeService(t, dev, name); !strings.Contains(s, "\n    <<: *sidecar-image\n") || !strings.Contains(s, command) {
+			t.Errorf("compose.dev.yaml %s must merge *sidecar-image and run %s", name, command)
+		}
+	}
+}
+
+func readRepoFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
 }
 
 func TestBackendContainerfileBuildsAndEmbedsUI(t *testing.T) {

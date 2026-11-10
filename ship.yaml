@@ -11,18 +11,9 @@ images:
   # run_python's sidecar ships with every release under the same version, so
   # compose's pair always matches.
   - { suffix: "-sandbox", containerfile: sandbox/Containerfile }
-  # Apple Music sidecar (docs/tunewire.md), same version as loom.
-  - { suffix: "-tunewire", containerfile: tunewire/Containerfile }
-  # Strava sidecar (docs/strava.md), same version as loom.
-  - { suffix: "-strava", containerfile: strava/Containerfile }
-  # Image generation sidecar (docs/imagegen.md), same version as loom.
-  - { suffix: "-imagegen", containerfile: imagegen/Containerfile }
-  # Web search sidecar (docs/search.md), same version as loom.
-  - { suffix: "-search", containerfile: search/Containerfile }
-  # Weather sidecar (docs/weather.md), same version as loom.
-  - { suffix: "-weather", containerfile: weather/Containerfile }
-  # Document tools sidecar (docs/docgen.md), same version as loom.
-  - { suffix: "-docgen", containerfile: docgen/Containerfile }
+  # The Go sidecars (docgen, imagegen, search, strava, tunewire, weather) in
+  # one image, same version as loom; one container each, picked by command.
+  - { suffix: "-sidecars", containerfile: sidecars/Containerfile }
 visibility: public
 allow:
   - { rule: containerfile, image: "-sandbox", why: "loom-sandbox starts as root to drop each job to its own slot uid (cap_add SETUID/SETGID in compose)" }

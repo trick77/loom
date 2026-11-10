@@ -1,7 +1,7 @@
 # docgen: the document tools contract
 
 loom makes downloadable files through the MCP tools of the server `docgen` (`docgen__create_pdf_file` and so on). The
-`loom-docgen` sidecar (`backend/cmd/loom-docgen`, image `loom-docgen`) serves them, rendering PDFs with the Gotenberg
+`loom-docgen` sidecar (`backend/cmd/loom-docgen`, `/loom-docgen` in image `loom-sidecars`) serves them, rendering PDFs with the Gotenberg
 service; an `mcp.json` entry named `docgen` replaces the sidecar with any server that answers this contract. loom
 keeps the policy around the tools, never the generator:
 

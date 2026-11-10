@@ -1,7 +1,7 @@
 # search: the web search contract
 
 loom searches the web through one MCP tool, `web` on the server `search` (`search__web`). The `loom-search` sidecar
-(`backend/cmd/loom-search`, image `loom-search`) serves it with Tavily; an `mcp.json` entry named `search` replaces the
+(`backend/cmd/loom-search`, `/loom-search` in image `loom-sidecars`) serves it with Tavily; an `mcp.json` entry named `search` replaces the
 sidecar with any server that answers this contract. loom keeps the policy around the tool, never the provider:
 
 - it counts each call as `web_search` usage and runs a round's calls side by side;

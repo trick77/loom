@@ -1,6 +1,6 @@
 # loom-strava: Strava
 
-`loom-strava` (`backend/cmd/loom-strava`, image `loom-strava`) gives loom one MCP server, `strava`, over each user's
+`loom-strava` (`backend/cmd/loom-strava`, `/loom-strava` in image `loom-sidecars`) gives loom one MCP server, `strava`, over each user's
 own Strava data: profile and zones, totals, every activity (Only Me ones too), laps, splits, best and segment efforts,
 streams turned into metrics, gear, own routes, starred segments. Zwift rides arrive through Strava's own upload.
 
