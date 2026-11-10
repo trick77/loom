@@ -91,6 +91,9 @@ func TestScheduledRunDrawsAChartFromToolFiles(t *testing.T) {
 	if !strings.Contains(system, sandboxGuidancePrompt) || !strings.Contains(system, scheduledSandboxNote) {
 		t.Fatal("research prompt lacks the run_python guidance or the chart note")
 	}
+	if toolNames(client.Tools[0])[viewImageToolName] || strings.Contains(system, "view_image") {
+		t.Fatal("a scheduled run is offered or told about view_image")
+	}
 	if strings.Contains(system, secretAlias) {
 		t.Fatal("the guidance lists a user document")
 	}

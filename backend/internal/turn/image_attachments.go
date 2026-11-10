@@ -64,12 +64,9 @@ func (s *Engine) ResolveImageAttachments(ctx context.Context, userID, text strin
 		// artifact (e.g. a generated image, or any artifact referenced by id) must be
 		// an accepted image type, not merely image/*, so an out-of-allowlist format
 		// (e.g. image/bmp) can't slip into the model request via the attach path.
-		if !artifact.AllowedImageMIME(item.MIMEType) {
-			return nil, nil, fmt.Errorf("attachment is not a supported image type")
-		}
-		abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)
+		raw, err := s.readImageArtifact(userID, item)
 		if err != nil {
-			return nil, nil, fmt.Errorf("image attachment path rejected: %w", err)
+			return nil, nil, err
 		}
 		// OpenAI-compatible image input accepts data URLs, so the request path
 		// base64-encodes each upload in memory. This data URL rides on the message
@@ -77,12 +74,6 @@ func (s *Engine) ResolveImageAttachments(ctx context.Context, userID, text strin
 		// DownscaleForModel caps the longest side / recompresses to JPEG first, which
 		// turns a multi-MB original into a few hundred KB without losing signal the
 		// tiling vision model would use.
-		raw, err := os.ReadFile(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
-		if err != nil {
-			// The os error names the absolute volume path; that stays in the log.
-			slog.Warn("image attachment unreadable", "artifact_id", artifactID, "err", err)
-			return nil, nil, fmt.Errorf("image attachment is unreadable")
-		}
 		encoded, encodedMIME := imagescale.DownscaleForModel(raw, item.MIMEType)
 		parts = append(parts, llm.MessageContentPart{
 			Type: "image_url",
@@ -93,6 +84,31 @@ func (s *Engine) ResolveImageAttachments(ctx context.Context, userID, text strin
 	}
 	parts = append(parts, llm.MessageContentPart{Type: "text", Text: text})
 	return parts, items, nil
+}
+
+// readImageArtifact reads the bytes of an image artifact the caller already
+// looked up user-scoped. Only an allowlisted image type is read, so an
+// out-of-allowlist format (e.g. image/bmp) never reaches a model, and only
+// from under the user's root.
+func (s *Engine) readImageArtifact(userID string, item artifact.Artifact) ([]byte, error) {
+	// The errors name no attachment (view_image reads through here too, and
+	// a model told "attachment" asked the user to attach the file again) and
+	// no path: the os and resolve errors name the absolute volume path, which
+	// stays in the log.
+	if !artifact.AllowedImageMIME(item.MIMEType) {
+		return nil, fmt.Errorf("not a supported image type")
+	}
+	abs, err := artifact.ResolveExisting(s.usersDir, userID, item.VolumeRelPath)
+	if err != nil {
+		slog.Warn("image path rejected", "artifact_id", item.ID, "err", err)
+		return nil, fmt.Errorf("image path rejected")
+	}
+	raw, err := os.ReadFile(abs) //nolint:gosec // path comes from artifact.ResolveExisting, which rejects absolute paths and .. and verifies containment under the user root after symlink resolution
+	if err != nil {
+		slog.Warn("image unreadable", "artifact_id", item.ID, "err", err)
+		return nil, fmt.Errorf("image is unreadable")
+	}
+	return raw, nil
 }
 
 // maxEditSourceBytes is the largest source image loom forwards to the image

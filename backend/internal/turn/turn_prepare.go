@@ -348,7 +348,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		}
 	}
 	history := buildLLMHistory(t.user, t.now(), promptBlocks{
-		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.e.mcpServerGuidance(tools, t.offered)),
+		toolGuidance: joinNonEmptyBlocks(fileToolGuidance, sandboxGuidance, t.viewImageGuidance(), t.e.mcpServerGuidance(tools, t.offered)),
 		schedule:     scheduleBlock,
 		classifier:   classifier.Block(category),
 		user:         userContext,

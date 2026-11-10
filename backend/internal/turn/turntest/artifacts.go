@@ -114,22 +114,22 @@ func (f ArtifactStore) List(_ context.Context, userID string, _ artifact.ListOpt
 	return out, nil
 }
 
-// ListForThread returns the artifacts in the thread.
-func (f ArtifactStore) ListForThread(_ context.Context, _ string, threadID string) ([]artifact.Artifact, error) {
+// ListForThread returns the user's artifacts in the thread.
+func (f ArtifactStore) ListForThread(_ context.Context, userID string, threadID string) ([]artifact.Artifact, error) {
 	var out []artifact.Artifact
 	for _, item := range f.Artifacts {
-		if item.ThreadID == threadID {
+		if item.UserID == userID && item.ThreadID == threadID {
 			out = append(out, item)
 		}
 	}
 	return out, nil
 }
 
-// ListForProject returns the artifacts in the project.
-func (f ArtifactStore) ListForProject(_ context.Context, _ string, projectID string) ([]artifact.Artifact, error) {
+// ListForProject returns the user's artifacts in the project.
+func (f ArtifactStore) ListForProject(_ context.Context, userID string, projectID string) ([]artifact.Artifact, error) {
 	var out []artifact.Artifact
 	for _, item := range f.Artifacts {
-		if item.ProjectID != nil && *item.ProjectID == projectID {
+		if item.UserID == userID && item.ProjectID != nil && *item.ProjectID == projectID {
 			out = append(out, item)
 		}
 	}
