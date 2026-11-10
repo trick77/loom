@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { Project } from "../api";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
@@ -7,6 +8,7 @@ import { Icon } from "./Icon";
 import { readGreetingVisit, rememberGreetingVisit } from "./greetingVisit";
 import { pickGreeting } from "./threadUtils";
 import { PromptStarters } from "./PromptStarters";
+import { StartProjectPicker } from "./StartProjectPicker";
 import type { PastedText } from "./pastedText";
 import type { ComposerAttachment } from "./useDocumentAttachments";
 import { WindowFileDrop } from "./WindowFileDrop";
@@ -33,6 +35,10 @@ export function StartPanel({
   onRemoveAttachment,
   onEnterIncognito,
   onOpenThread,
+  projects,
+  selectedProject,
+  onSelectProject,
+  onCreateProject,
 }: {
   userID: string;
   displayName: string;
@@ -52,6 +58,11 @@ export function StartPanel({
   onRemoveAttachment(id: string): void;
   onEnterIncognito(): void;
   onOpenThread(threadID: string): void;
+  /** Active projects the new chat can start in. */
+  projects: Project[];
+  selectedProject: Project | null;
+  onSelectProject(projectID: string | null): void;
+  onCreateProject(): void;
 }) {
   const { t } = useTranslation();
   const today = useToday();
@@ -123,12 +134,12 @@ export function StartPanel({
           line was typed or a run was read. A fixed 22.7vh left a tablet
           scrolling with a fifth of it empty above. */}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[clamp(2rem,calc((100svh_-_596px)/2),22.7svh)] pb-12 sm:px-8 @max-[596px]:pt-[clamp(2rem,calc((100svh_-_812px)/2),22.7svh)]">
-        <h2 className="ui-greeting-text mb-8 text-center font-serif">
+        <h2 className="ui-greeting-text mb-6 text-center font-serif">
           <img
             src={loomLogo}
             alt=""
             aria-hidden
-            className="ui-greeting-logo mr-2.5 inline-block h-10 w-10"
+            className="ui-greeting-logo mr-2.5 inline-block h-8 w-8"
           />
           {greeting}
         </h2>
@@ -157,6 +168,14 @@ export function StartPanel({
             attachments={attachments}
             onRemoveAttachment={onRemoveAttachment}
           />
+          <div className="mt-2 flex">
+            <StartProjectPicker
+              projects={projects}
+              selectedProject={selectedProject}
+              onSelect={onSelectProject}
+              onCreateProject={onCreateProject}
+            />
+          </div>
           {attachNote !== "" && (
             <div className="ui-meta-text mt-2 text-center text-[#858178]">
               {attachNote}

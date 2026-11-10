@@ -312,6 +312,15 @@ export const en = {
     loadingPreview: "Loading preview…",
   },
   projects: {
+    startPicker: {
+      trigger: "Project",
+      remove: "Remove {{name}}",
+      menuLabel: "Choose a project",
+      search: "Search projects",
+      starred: "Starred",
+      empty: "No matching projects",
+      sortLabel: "Sort projects",
+    },
     page: {
       title: "Projects",
       sortBy: "Sort by",
@@ -320,6 +329,7 @@ export const en = {
         recent: "Recent activity",
         edited: "Last edited",
         created: "Date created",
+        name: "Name",
       },
       newProject: "New project",
       searchPlaceholder: "Search projects...",

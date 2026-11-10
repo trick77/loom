@@ -402,6 +402,15 @@ export function ThreadShell({
     onQueuedMessages: replaceQueued,
   });
 
+  // The project a chat sent from the start screen lands in. A pick that was
+  // archived or deleted since no longer counts.
+  const [startProjectPick, setStartProjectID] = useState<string | null>(null);
+  const startProject =
+    startProjectPick === null
+      ? null
+      : (projects.find((project) => project.id === startProjectPick) ?? null);
+  const startProjectID = startProject?.id ?? null;
+
   // Opening a thread reads the schedule news about it: its sidebar dot and the
   // bell's count go. The sidebar copy counts too, since a bell click reads the
   // news before the thread loads.
@@ -1140,7 +1149,11 @@ export function ThreadShell({
     // Captured once: the run outlives navigation, so a live `route` read inside
     // the stream callbacks would go stale.
     const projectIDForNewThread =
-      route.view === "project" ? route.projectID : null;
+      route.view === "project"
+        ? route.projectID
+        : route.view === "new"
+          ? startProjectID
+          : null;
     const updateSentAttachmentStatus = (
       id: string,
       patch: Partial<ComposerAttachment>,
@@ -1183,8 +1196,12 @@ export function ThreadShell({
             : targetThread;
         createdThreadForFallback = createdThread;
         setThreads((current) => upsertThreadById(current, createdThread));
+        // The pick on the start screen holds for this one chat; the next starts
+        // without a project again, like the emptied draft.
+        if (route.view === "new") setStartProjectID(null);
+        // projectThreads holds the open project page's list only.
         if (
-          projectIDForNewThread !== null &&
+          route.view === "project" &&
           createdThread.projectId === projectIDForNewThread
         ) {
           setProjectThreads((current) =>
@@ -1880,6 +1897,14 @@ export function ThreadShell({
             onRemoveAttachment={handleRemovePendingAttachment}
             onEnterIncognito={enterIncognito}
             onOpenThread={(threadID) => void selectThread(threadID)}
+            projects={projects}
+            selectedProject={startProject}
+            onSelectProject={setStartProjectID}
+            onCreateProject={() =>
+              openProjectDialog(null, {
+                onCreated: (project) => setStartProjectID(project.id),
+              })
+            }
           />
         ) : (
           <ThreadPanel

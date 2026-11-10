@@ -147,12 +147,12 @@ export function IncognitoPanel({
 
         {isEmpty ? (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 pb-[8vh] sm:px-8">
-            <h2 className="ui-greeting-text mb-8 text-center font-serif">
+            <h2 className="ui-greeting-text mb-6 text-center font-serif">
               <img
                 src={loomLogo}
                 alt=""
                 aria-hidden
-                className="ui-greeting-logo mr-2.5 inline-block h-10 w-10"
+                className="ui-greeting-logo mr-2.5 inline-block h-8 w-8"
               />
               {t("incognito.greeting")}
             </h2>

@@ -320,6 +320,15 @@ export const de = {
     loadingPreview: "Vorschau lädt…",
   },
   projects: {
+    startPicker: {
+      trigger: "Projekt",
+      remove: "{{name}} entfernen",
+      menuLabel: "Projekt wählen",
+      search: "Projekte suchen",
+      starred: "Favoriten",
+      empty: "Keine passenden Projekte",
+      sortLabel: "Projekte sortieren",
+    },
     page: {
       title: "Projekte",
       sortBy: "Sortieren nach",
@@ -328,6 +337,7 @@ export const de = {
         recent: "Letzte Aktivität",
         edited: "Zuletzt bearbeitet",
         created: "Erstellungsdatum",
+        name: "Name",
       },
       newProject: "Neues Projekt",
       searchPlaceholder: "Projekte durchsuchen...",
