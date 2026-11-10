@@ -695,6 +695,117 @@ test("loads a project detail page and creates new chats inside the project", asy
   );
 });
 
+test("starts a new chat in the project picked under the start composer", async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          'event: assistant_message\ndata: {"id":"m1","threadId":"t-picked","role":"assistant","content":"Done","createdAt":"2026-05-30T00:00:01Z"}\n\n' +
+            "event: done\ndata: {}\n\n",
+        ),
+      );
+      controller.close();
+    },
+  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        return Response.json({
+          id: "t-picked",
+          projectId: "p1",
+          title: "Draft a brief",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        });
+      }
+      if (
+        url === "/api/threads/t-picked/messages:stream" &&
+        init?.method === "POST"
+      ) {
+        return new Response(stream, { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Project" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Research" }));
+  expect(
+    screen.getByRole("button", { name: "Remove Research" }),
+  ).toBeInTheDocument();
+  fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {
+    target: { value: "Draft a brief" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ projectId: "p1", title: "Draft a brief" }),
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(window.location.pathname).toBe("/thread/t-picked"),
+  );
+
+  // The pick held for that one chat: the next starts without a project.
+  fireEvent.click(screen.getAllByRole("button", { name: "New thread" })[0]);
+  expect(
+    await screen.findByRole("button", { name: "Project" }),
+  ).toBeInTheDocument();
+});
+
+test("a project made from the start picker is picked, not opened", async () => {
+  const created = {
+    ...projectFixture(),
+    id: "p2",
+    name: "Trip",
+    description: "",
+  };
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects" && init?.method === "POST")
+        return Response.json(created);
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Project" }));
+  fireEvent.click(screen.getByRole("option", { name: "New project" }));
+  const dialog = await screen.findByRole("dialog", { name: /project/i });
+  fireEvent.change(within(dialog).getAllByRole("textbox")[0], {
+    target: { value: "Trip" },
+  });
+  fireEvent.submit(within(dialog).getAllByRole("textbox")[0].closest("form")!);
+
+  expect(
+    await screen.findByRole("button", { name: "Remove Trip" }),
+  ).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/new");
+});
+
 test("adds a single chat to a project from the chat actions menu", async () => {
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {

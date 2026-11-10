@@ -10,6 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import * as api from "../api";
+import type { Project } from "../api";
 import { todayFixture, tomorrowFixture } from "../test/today";
 import { StartPanel } from "./StartPanel";
 
@@ -32,9 +33,15 @@ vi.mock("./Composer", () => ({
 vi.mock("./WindowFileDrop", () => ({ WindowFileDrop: () => null }));
 
 const onOpenThread = vi.fn();
+const onSelectProject = vi.fn();
 
 function renderStart(
-  overrides: Partial<{ draft: string; attachments: [] }> = {},
+  overrides: Partial<{
+    draft: string;
+    attachments: [];
+    projects: Project[];
+    selectedProject: Project | null;
+  }> = {},
 ) {
   return render(
     <StartPanel
@@ -56,6 +63,10 @@ function renderStart(
       onRemoveAttachment={vi.fn()}
       onEnterIncognito={vi.fn()}
       onOpenThread={onOpenThread}
+      projects={overrides.projects ?? []}
+      selectedProject={overrides.selectedProject ?? null}
+      onSelectProject={onSelectProject}
+      onCreateProject={vi.fn()}
     />,
   );
 }
@@ -71,6 +82,7 @@ beforeEach(() => {
   vi.mocked(api.markNotificationRead).mockReset().mockResolvedValue();
   vi.mocked(api.markAllNotificationsRead).mockReset().mockResolvedValue();
   onOpenThread.mockReset();
+  onSelectProject.mockReset();
   events = [];
   window.addEventListener(api.NOTIFICATIONS_CHANGED, record);
   window.addEventListener(api.THREAD_NEWS_CHANGED, record);
@@ -553,4 +565,40 @@ test("a saved place reloads today with its weather", async () => {
   ).toBeInTheDocument();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(starters()).toBeNull();
+});
+
+describe("project picker", () => {
+  const trip: Project = {
+    id: "trip",
+    name: "Malaga City Trip",
+    description: "",
+    starred: false,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-01T00:00:00Z",
+    lastActivityAt: "2026-01-01T00:00:00Z",
+  };
+
+  beforeEach(() => {
+    vi.mocked(api.getToday).mockRejectedValue(new Error("down"));
+  });
+
+  test("sits right under the composer", () => {
+    renderStart({ projects: [trip] });
+    const trigger = screen.getByRole("button", { name: "Project" });
+    expect(
+      screen.getByTestId("composer").compareDocumentPosition(trigger) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("option", { name: "Malaga City Trip" }));
+    expect(onSelectProject).toHaveBeenCalledWith("trip");
+  });
+
+  test("shows the picked project as a removable chip", () => {
+    renderStart({ projects: [trip], selectedProject: trip });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Malaga City Trip" }),
+    );
+    expect(onSelectProject).toHaveBeenCalledWith(null);
+  });
 });

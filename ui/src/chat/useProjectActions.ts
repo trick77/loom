@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import {
   archiveProject,
@@ -46,11 +46,18 @@ export function useProjectActions({
     null,
   );
   const [isMutatingProject, setIsMutatingProject] = useState(false);
+  // A create from the start screen's picker keeps the user there and picks the
+  // new project; every other create opens the project's page.
+  const onCreatedRef = useRef<((project: Project) => void) | null>(null);
 
   // The openers are stable so the memoized sidebar, which hands them to every
   // project row, does not re-render with the shell.
   const openProjectDialog = useCallback(
-    (project: Project | null) => {
+    (
+      project: Project | null,
+      options: { onCreated?(project: Project): void } = {},
+    ) => {
+      onCreatedRef.current = options.onCreated ?? null;
       setEditingProject(project);
       setModalError("");
       closeThreadMenu();
@@ -94,7 +101,10 @@ export function useProjectActions({
       setEditingProject(undefined);
       setModalError("");
       if (editingProject === null) {
-        navigateToProject(project);
+        const onCreated = onCreatedRef.current;
+        onCreatedRef.current = null;
+        if (onCreated !== null) onCreated(project);
+        else navigateToProject(project);
       }
     } catch (error) {
       handleActionError(

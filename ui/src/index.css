@@ -204,11 +204,12 @@ body {
   line-height: 1.75rem;
 }
 
+/* Size and line height follow claude.ai's start greeting (32px, 1.2). */
 .ui-greeting-text {
   color: #c3c2b7;
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: 300;
-  line-height: 1.5;
+  line-height: 1.2;
 }
 
 /* The logo is a 1em square inline with the greeting. vertical-align: middle puts

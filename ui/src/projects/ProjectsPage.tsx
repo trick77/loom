@@ -7,12 +7,12 @@ import { Icon } from "../chat/Icon";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { formatTimeAgo } from "../timeago";
 import { ProjectActionsMenu } from "./ProjectActionsMenu";
+import { filterProjects, sortProjects, type ProjectSort } from "./projectList";
 import {
   insideSelector,
   useOutsidePointerDown,
 } from "../chat/useOutsidePointerDown";
 
-type ProjectSort = "recent" | "edited" | "created";
 type ProjectTab = "active" | "archived";
 
 function sortLabel(sort: ProjectSort, t: TFunction): string {
@@ -77,22 +77,10 @@ export function ProjectsPage({
 
   const source = tab === "active" ? projects : archived;
   const error = tab === "active" ? loadError : archivedError;
-  const filtered = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    const matches =
-      term === ""
-        ? source
-        : source.filter((project) =>
-            `${project.name} ${project.description}`
-              .toLowerCase()
-              .includes(term),
-          );
-    return [...matches].sort((a, b) => {
-      if (sort === "created") return compareDatesDesc(a.createdAt, b.createdAt);
-      if (sort === "edited") return compareDatesDesc(a.updatedAt, b.updatedAt);
-      return compareDatesDesc(a.lastActivityAt, b.lastActivityAt);
-    });
-  }, [source, query, sort]);
+  const filtered = useMemo(
+    () => sortProjects(filterProjects(source, query), sort),
+    [source, query, sort],
+  );
 
   const closeProjectCardMenu = useCallback(() => setOpenMenuID(null), []);
   useOutsidePointerDown(
@@ -317,10 +305,6 @@ function emptyMessage(
       : t("projects.page.empty.archived");
   }
   return t("projects.page.empty.none");
-}
-
-function compareDatesDesc(a: string, b: string): number {
-  return new Date(b).getTime() - new Date(a).getTime();
 }
 
 const insideProjectCardMenu = insideSelector("[data-project-card-menu-root]");
