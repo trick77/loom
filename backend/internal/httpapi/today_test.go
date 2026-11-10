@@ -212,7 +212,7 @@ func TestToday(t *testing.T) {
 		t.Fatalf("sun = %+v", got.Sun)
 	}
 	w := got.Weather
-	if w == nil || w.Now == nil || w.Now.Temperature != 5.2 || w.Day.High != 11 || w.Attribution.URL != "https://weather.example/" {
+	if w == nil || w.Now == nil || w.Now.Temperature != 5.2 || w.Day.High != 11 {
 		t.Fatalf("weather = %+v", w)
 	}
 	if hourTimes(w) != "09:00,12:00,15:00,18:00,21:00" {

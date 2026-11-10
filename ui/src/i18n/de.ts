@@ -883,6 +883,7 @@ export const de = {
     percent: "{{percent}} %",
     cards: {
       weather: "Wetter",
+      conditions: "Bedingungen",
       carousel: "Karussell",
       slide: "Karte",
       position: "{{name}}, {{n}} von {{count}}",
@@ -893,6 +894,7 @@ export const de = {
       details: "Details",
       rain: "Regen",
       outlook: "Nächste Tage",
+      sun: "Sonne",
       air: "Luft & Pollen",
     },
     air: {
@@ -1057,7 +1059,6 @@ export const de = {
       title: "Neu aus deinen Zeitplänen",
       unread_one: "{{count}} ungelesen",
       unread_other: "{{count}} ungelesen",
-      open: "Ganzes Ergebnis öffnen →",
       markRead: "Als gelesen markieren",
       markAllRead: "Alle als gelesen markieren",
     },

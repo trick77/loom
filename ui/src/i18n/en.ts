@@ -860,6 +860,7 @@ export const en = {
     percent: "{{percent}}%",
     cards: {
       weather: "Weather",
+      conditions: "Conditions",
       carousel: "carousel",
       slide: "card",
       position: "{{name}}, {{n}} of {{count}}",
@@ -870,6 +871,7 @@ export const en = {
       details: "Details",
       rain: "Rain",
       outlook: "Next days",
+      sun: "Sun",
       air: "Air & pollen",
     },
     air: {
@@ -1033,7 +1035,6 @@ export const en = {
       title: "New from your schedules",
       unread_one: "{{count}} unread",
       unread_other: "{{count}} unread",
-      open: "Open full result →",
       markRead: "Mark as read",
       markAllRead: "Mark all as read",
     },

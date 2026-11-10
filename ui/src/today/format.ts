@@ -32,8 +32,3 @@ export function formatDuration(minutes: number, t: TFunction): string {
 export function degrees(value: number): number {
   return Math.round(value);
 }
-
-// safeURL keeps a link the server sent only if it is a web address.
-export function safeURL(url: string): string | null {
-  return /^https?:\/\//i.test(url) ? url : null;
-}

@@ -168,10 +168,6 @@ export function todayFixture(overrides: Partial<Today> = {}): Today {
           precipitationProbability: 5,
         },
       ],
-      attribution: {
-        text: "Weather data by Open-Meteo.com",
-        url: "https://open-meteo.com/",
-      },
     },
     air: {
       aqi: 18,

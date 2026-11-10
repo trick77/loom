@@ -87,12 +87,9 @@ test("today shows the weather and sun tiles, nothing to fold", () => {
     }),
   ).toBeInTheDocument();
   expect(within(section).getByTestId("sun-dot")).toBeInTheDocument();
-  const credit = within(section).getByRole("link", {
-    name: "Weather data by Open-Meteo.com",
-  });
-  expect(credit).toHaveAttribute("href", "https://open-meteo.com/");
-  expect(credit).toHaveAttribute("target", "_blank");
-  expect(credit).toHaveAttribute("rel", "noopener");
+  // No credit line under the tiles.
+  expect(within(section).queryByRole("link")).toBeNull();
+  expect(within(section).queryByText(/Open-Meteo/)).toBeNull();
 });
 
 test("a phone gets the same tiles", () => {
@@ -387,24 +384,6 @@ test("without anything to show the section is empty", () => {
   expect(container).toBeEmptyDOMElement();
 });
 
-test("a credit link that is not a web address stays text", () => {
-  const weather = todayFixture().weather!;
-  show({
-    weather: {
-      ...weather,
-      attribution: { text: "Weather data", url: "javascript:alert(1)" },
-    },
-  });
-  expect(screen.getByText("Weather data")).toBeInTheDocument();
-  expect(screen.queryByRole("link")).toBeNull();
-});
-
-test("only the weather's credit shows under the tiles", () => {
-  show();
-  expect(screen.getAllByRole("link")).toHaveLength(1);
-  expect(screen.queryByText(/Air quality by/)).toBeNull();
-});
-
 test("unread runs open their thread or are marked read", () => {
   show();
   const news = screen.getByRole("region", { name: /New from your schedules/ });
@@ -417,11 +396,15 @@ test("unread runs open their thread or are marked read", () => {
   expect(cards[0]).toHaveTextContent("just now");
   // A run whose thread is gone has nothing to open.
   expect(
-    within(cards[1]).queryByRole("button", { name: "Open full result →" }),
+    within(cards[1]).queryByRole("button", { name: "Flats in Zürich" }),
   ).toBeNull();
-
+  expect(within(cards[1]).getByRole("heading")).toHaveTextContent(
+    "Flats in Zürich",
+  );
+  // The text opens the thread; no separate link.
+  expect(within(news).queryByRole("button", { name: /Open/ })).toBeNull();
   fireEvent.click(
-    within(cards[0]).getByRole("button", { name: "Open full result →" }),
+    within(cards[0]).getByRole("button", { name: "Tech briefing" }),
   );
   expect(handlers.onOpenThread).toHaveBeenCalledWith("th1");
   fireEvent.click(

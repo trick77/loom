@@ -56,10 +56,22 @@ export function ScheduleNews({
                 aria-hidden
                 className="mt-2 h-2 w-2 shrink-0 rounded-full bg-unread"
               />
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
+              {/* The title's button stretches over the whole text: a click
+                  on the title, the time or the summary opens the thread. */}
+              <div className="group relative flex min-w-0 flex-1 flex-col gap-1">
                 <div className="flex flex-wrap items-baseline gap-x-2.5">
                   <h3 className="text-[15px] font-medium text-ink">
-                    {run.title}
+                    {run.threadId !== null ? (
+                      <button
+                        className="cursor-pointer text-left group-hover:underline after:absolute after:inset-0"
+                        onClick={() => onOpenThread(run.threadId as string)}
+                        type="button"
+                      >
+                        {run.title}
+                      </button>
+                    ) : (
+                      run.title
+                    )}
                   </h3>
                   <span className="text-xs text-muted">
                     {formatTimeAgo(run.createdAt)}
@@ -69,15 +81,6 @@ export function ScheduleNews({
                   <p className="text-sm leading-normal text-ink-dim">
                     {run.body}
                   </p>
-                )}
-                {run.threadId !== null && (
-                  <button
-                    className="mt-1 self-start text-[13px] font-medium text-ink-soft hover:text-white hover:underline"
-                    onClick={() => onOpenThread(run.threadId as string)}
-                    type="button"
-                  >
-                    {t("today.news.open")}
-                  </button>
                 )}
               </div>
               <button
