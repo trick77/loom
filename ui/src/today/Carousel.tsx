@@ -2,6 +2,7 @@ import {
   type FocusEvent,
   type PointerEvent,
   type ReactNode,
+  type TransitionEvent,
   useEffect,
   useRef,
   useState,
@@ -27,7 +28,7 @@ export type Clock = {
 
 // Carousel shows one slide at a time, turned by a click on it, the arrows,
 // the dots, the arrow keys or a swipe; the beat turns it by itself. After the
-// last a click goes straight back to the first. Every slide stays rendered
+// last a click turns on to the first. Every slide stays rendered
 // side by side, so the tallest sets the height and the grid around it never
 // jumps; the ones out of view are inert.
 export function Carousel({
@@ -54,18 +55,30 @@ export function Carousel({
   const auto = clock.auto && count > 1;
   const running = auto && clock.running;
 
-  // The wrap from the last back to the first jumps: sliding, it would run
-  // back past every card. A step by the arrows, keys, dots or a swipe always
-  // slides, even when it lands on the first.
-  const [shown, setShown] = useState({ index: current, jump: false });
+  // The wrap from the last to the first slides on, not back past every card:
+  // the first is carried past the last and slides in from the right; once it
+  // stands, the row settles back at the start unseen. A step by the arrows,
+  // keys, dots or a swipe slides back when it lands on the first.
+  const [shown, setShown] = useState({
+    index: current,
+    wrap: false,
+    jump: false,
+  });
   const [stepping, setStepping] = useState(false);
   if (shown.index !== current) {
     setShown({
       index: current,
-      jump: !stepping && shown.index === count - 1 && current === 0,
+      wrap: !stepping && shown.index === count - 1 && current === 0,
+      // A turn before the wrap stands would slide back past every card.
+      jump: shown.wrap,
     });
     if (stepping) setStepping(false);
   }
+  // A card's own transitions bubble up here: only the row's settles it.
+  const settle = (event: TransitionEvent) => {
+    if (event.target !== event.currentTarget || !shown.wrap) return;
+    setShown({ index: current, wrap: false, jump: true });
+  };
   // A step that moves nothing (past an end, the shown card's dot) is no
   // turn: it would start the beat over.
   const go = (to: number) => {
@@ -160,10 +173,18 @@ export function Carousel({
       >
         <div
           className={`flex h-full ${shown.jump ? "" : "transition-transform duration-300 ease-out motion-reduce:transition-none"}`}
-          style={{ transform: `translateX(-${current * 100}%)` }}
+          onTransitionEnd={settle}
+          style={{
+            transform: `translateX(-${(shown.wrap ? count : current) * 100}%)`,
+          }}
         >
           {slides.map((slide, i) => (
             <div
+              style={
+                shown.wrap && i === 0
+                  ? { transform: `translateX(${count * 100}%)` }
+                  : undefined
+              }
               aria-hidden={i === current ? undefined : true}
               aria-label={t("today.cards.position", {
                 name: slide.name,

@@ -39,6 +39,7 @@ const right = () => screen.getByRole("region", { name: "Conditions" });
 const cardName = (tile = left()) => within(tile).getByTestId("card-name");
 const track = (tile = left()) => within(tile).getByTestId("carousel-track");
 const row = (tile = left()) => track(tile).firstElementChild as HTMLElement;
+const first = (tile = left()) => row(tile).firstElementChild as HTMLElement;
 const next = (tile = left()) =>
   fireEvent.click(within(tile).getByRole("button", { name: "Next card" }));
 const open = (name: string) =>
@@ -388,7 +389,7 @@ test("arrow keys and swipes turn the cards, within their ends", () => {
   expect(cardName()).toHaveTextContent("Rain");
 });
 
-test("a click on a tile turns it on, from the last straight to the first", () => {
+test("a click on a tile turns it on, from the last on to the first", () => {
   show(todayFixture());
   fireEvent.click(track(right()));
   expect(cardName(right())).toHaveTextContent("Details");
@@ -396,12 +397,22 @@ test("a click on a tile turns it on, from the last straight to the first", () =>
   expect(row(right())).toHaveClass("transition-transform");
   fireEvent.click(track(right()));
   expect(cardName(right())).toHaveTextContent("Air & pollen");
-  // Back to the first without sliding back past every card.
+  // On to the first, not back past every card: carried past the last, it
+  // slides in from the right.
   fireEvent.click(track(right()));
   expect(cardName(right())).toHaveTextContent("Sun");
+  expect(row(right())).toHaveClass("transition-transform");
+  expect(row(right()).style.transform).toBe("translateX(-300%)");
+  expect(first(right()).style.transform).toBe("translateX(300%)");
+  // Once it stands, the row settles back at the start unseen.
+  fireEvent.transitionEnd(row(right()));
   expect(row(right())).not.toHaveClass("transition-transform");
+  expect(row(right()).style.transform).toBe("translateX(-0%)");
+  expect(first(right()).style.transform).toBe("");
+  expect(cardName(right())).toHaveTextContent("Sun");
   fireEvent.click(track(right()));
   expect(row(right())).toHaveClass("transition-transform");
+  expect(row(right()).style.transform).toBe("translateX(-100%)");
   // The swipe's own click turns nothing more.
   fireEvent.pointerDown(track(), { clientX: 200, clientY: 100 });
   fireEvent.pointerUp(track(), { clientX: 120, clientY: 100 });
@@ -409,7 +420,7 @@ test("a click on a tile turns it on, from the last straight to the first", () =>
   expect(cardName()).toHaveTextContent("Rain");
 });
 
-test("a step back to the first card slides; only the wrap jumps", () => {
+test("a step back to the first card slides back; the wrap slides on", () => {
   // Two cards: back from the second is one step, not a wrap.
   show(todayFixture({ air: null }), { outlook: null });
   next();
@@ -422,11 +433,34 @@ test("a step back to the first card slides; only the wrap jumps", () => {
   next();
   fireEvent.click(screen.getByRole("button", { name: "Now" }));
   expect(row()).toHaveClass("transition-transform");
+  expect(row().style.transform).toBe("translateX(-0%)");
+  expect(first().style.transform).toBe("");
   // A click on the track from the last is the wrap.
   next();
   fireEvent.click(track());
   expect(cardName()).toHaveTextContent("Now");
+  expect(row()).toHaveClass("transition-transform");
+  expect(row().style.transform).toBe("translateX(-200%)");
+  expect(first().style.transform).toBe("translateX(200%)");
+});
+
+test("a turn while the wrap slides jumps; a card's own transition ends nothing", () => {
+  show(todayFixture());
+  next();
+  next();
+  fireEvent.click(track());
+  expect(row().style.transform).toBe("translateX(-300%)");
+  // A transition inside a card bubbles up: the row slides on.
+  fireEvent.transitionEnd(within(first()).getByText("10°"));
+  expect(row().style.transform).toBe("translateX(-300%)");
+  // Turned on before it stands: sliding, it would run back past every card.
+  next();
+  expect(cardName()).toHaveTextContent("Rain");
   expect(row()).not.toHaveClass("transition-transform");
+  expect(row().style.transform).toBe("translateX(-100%)");
+  expect(first().style.transform).toBe("");
+  next();
+  expect(row()).toHaveClass("transition-transform");
 });
 
 test("a turn that moves nothing leaves the beat alone", () => {
@@ -474,10 +508,11 @@ test("the tiles turn in turn: left at 15 s, right at 30 s, each card 30 s", () =
   expect(cardName()).toHaveTextContent("Next days");
   wait(15_000);
   expect(cardName(right())).toHaveTextContent("Air & pollen");
-  // After the last the first, straight.
+  // After the last the first, sliding on.
   wait(15_000);
   expect(cardName()).toHaveTextContent("Now");
-  expect(row()).not.toHaveClass("transition-transform");
+  expect(row()).toHaveClass("transition-transform");
+  expect(row().style.transform).toBe("translateX(-300%)");
 });
 
 test("a turn by hand starts the beat over: the other tile turns 15 s later", () => {
