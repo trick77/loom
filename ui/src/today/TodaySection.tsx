@@ -10,16 +10,30 @@ import { SunLine } from "./SunLine";
 import { TonightPill } from "./TonightPill";
 import { WeatherTiles } from "./WeatherTile";
 
+// placeChip is the chip naming the shown place; null without one.
+function placeChip(today: Today, onReload: () => void, compact = false) {
+  if (today.location === null) return null;
+  return (
+    <LocationChip
+      canLocate={today.canLocate}
+      compact={compact}
+      credit={today.locationCredit}
+      location={today.location}
+      onChanged={onReload}
+    />
+  );
+}
+
 // WeatherBlock is the day's tiles under a "Today"/"Tomorrow" heading: side
 // by side where they fit, stacked on a phone.
 function WeatherBlock({
   today,
   weather,
-  onOpenMemory,
+  onReload,
 }: {
   today: Today;
   weather: TodayWeather;
-  onOpenMemory(): void;
+  onReload(): void;
 }) {
   const { t, i18n } = useTranslation();
   const headingId = useId();
@@ -40,9 +54,7 @@ function WeatherBlock({
             { date: formatDay(today.date, i18n.language) },
           )}
         </h2>
-        {today.location !== null && (
-          <LocationChip location={today.location} onOpenMemory={onOpenMemory} />
-        )}
+        {placeChip(today, onReload)}
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
         <WeatherTiles today={today} weather={weather} />
@@ -53,18 +65,16 @@ function WeatherBlock({
 
 // TodaySection is the start page's "Today" under the composer: the weather
 // and sun for the user's place (tomorrow's from 20:00), the unread schedule
-// runs, and the question where the user lives when no memory says so.
+// runs, and the question for a place when none is known.
 export function TodaySection({
   today,
   onOpenThread,
-  onOpenMemory,
   onMarkRead,
   onMarkAllRead,
   onReload,
 }: {
   today: Today;
   onOpenThread(threadID: string): void;
-  onOpenMemory(): void;
   onMarkRead(id: string): void;
   onMarkAllRead(ids: string[]): void;
   onReload(): void;
@@ -81,17 +91,12 @@ export function TodaySection({
   return (
     <div className="mt-8 flex flex-col gap-7">
       {weather !== null ? (
-        <WeatherBlock
-          onOpenMemory={onOpenMemory}
-          today={today}
-          weather={weather}
-        />
+        <WeatherBlock onReload={onReload} today={today} weather={weather} />
       ) : (
         today.sun !== null && (
           <SunLine
+            chip={placeChip(today, onReload, true)}
             day={today.day}
-            location={today.location}
-            onOpenMemory={onOpenMemory}
             sun={today.sun}
           />
         )

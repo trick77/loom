@@ -33,7 +33,6 @@ export function StartPanel({
   onRemoveAttachment,
   onEnterIncognito,
   onOpenThread,
-  onOpenMemory,
 }: {
   userID: string;
   displayName: string;
@@ -53,7 +52,6 @@ export function StartPanel({
   onRemoveAttachment(id: string): void;
   onEnterIncognito(): void;
   onOpenThread(threadID: string): void;
-  onOpenMemory(): void;
 }) {
   const { t } = useTranslation();
   const today = useToday();
@@ -175,7 +173,6 @@ export function StartPanel({
             <TodaySection
               onMarkAllRead={today.markAllRead}
               onMarkRead={today.markRead}
-              onOpenMemory={onOpenMemory}
               onOpenThread={onOpenThread}
               onReload={() => void today.reload()}
               today={todayState.today}

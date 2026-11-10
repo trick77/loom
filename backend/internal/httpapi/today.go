@@ -56,11 +56,14 @@ const (
 
 type todayResponse struct {
 	// Date and Day are the day shown: today, or tomorrow from eveningHour.
-	Date        string          `json:"date"`
-	Day         string          `json:"day"`
-	Location    *location.Place `json:"location"`
-	AskLocation bool            `json:"askLocation"`
-	// CanLocate offers "use my location" with the question.
+	Date     string          `json:"date"`
+	Day      string          `json:"day"`
+	Location *location.Place `json:"location"`
+	// LocationCredit names the map data a located town's name came from.
+	LocationCredit *location.Credit `json:"locationCredit,omitempty"`
+	AskLocation    bool             `json:"askLocation"`
+	// CanLocate offers "use my location": with the question, and over a
+	// place from memory, which may be stale or wrong.
 	CanLocate bool          `json:"canLocate"`
 	Sun       *todaySun     `json:"sun"`
 	Weather   *todayWeather `json:"weather"`
@@ -207,15 +210,16 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("derive location failed", "user_id", user.ID, "err", err)
 			}
 		})
-		place, err := s.userPlace(ctx, user)
+		place, credit, err := s.placeHere(ctx, user)
 		if err != nil {
 			slog.Warn("read location failed", "user_id", user.ID, "err", err)
 		}
 		// Ask only once the facts have been read and name no place: while a
 		// derivation is pending the memory may already know it, and an answer
 		// would add a second home fact.
-		out.Location, out.AskLocation = place, err == nil && place == nil && s.locationSettled(ctx, user)
-		out.CanLocate = out.AskLocation && s.canLocate()
+		out.Location, out.LocationCredit = place, credit
+		out.AskLocation = err == nil && place == nil && s.locationSettled(ctx, user)
+		out.CanLocate = s.canLocate()
 	}
 	// One clock for the day shown, its evening, the sun and the weather: the
 	// place's when a place is known (its evening is the user's, they are

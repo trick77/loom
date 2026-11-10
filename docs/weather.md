@@ -4,8 +4,8 @@ loom gets weather through MCP tools on the server `weather`: `forecast` (`weathe
 (`weather__geocode`) and, optional, `air_quality` (`weather__air_quality`) and `reverse_geocode`
 (`weather__reverse_geocode`). The `loom-weather` sidecar (`backend/cmd/loom-weather`, `/loom-weather` in image `loom-sidecars`) serves them with
 Open-Meteo; an `mcp.json` entry named `weather` replaces the sidecar with any server that answers this contract. loom
-keeps the policy, never the provider: the start page (`GET /api/today`) asks `forecast` for the user's place, which
-`geocode` found from the place their memory names; in a chat turn the tools are offered on weather questions only (classifier
+keeps the policy, never the provider: the start page (`GET /api/today`) asks `forecast` for the user's place: the
+town they located (`reverse_geocode`), else the one `geocode` found from the place their memory names; in a chat turn the tools are offered on weather questions only (classifier
 category `weather`, kept by an `mcp.json` override that sets no categories of its own). The forecast carries no
 "now": a reader takes it from the hourly values. When to go out for a run or a ride is loom's own (Outdoor windows).
 
@@ -44,8 +44,8 @@ default `en`) and `count` (1-20, default 5), and answers up to `count` matches, 
              "latitude": 47.47, "longitude": 8.3, "timezone": "Europe/Zurich"}]}
 ```
 
-`reverse_geocode` (`weather__reverse_geocode`, optional: the start page offers "use my current location" only where a
-server has it) takes `latitude`, `longitude` and `language`, and answers the town the point lies in, as `geocode`
+`reverse_geocode` (`weather__reverse_geocode`, optional: the start page offers "use my current location", with the
+question and over a place from memory, only where a server has it) takes `latitude`, `longitude` and `language`, and answers the town the point lies in, as `geocode`
 finds it (its centre and zone), or no place (the sea), with the names' credit:
 
 ```json
@@ -56,13 +56,11 @@ finds it (its centre and zone), or no place (the sea), with the names' credit:
 
 The page asks the browser for its position on the click only (coarse, no GPS fix; its own 30 s bound, as a prompt
 dismissed without an answer never calls back), and the point leaves the browser, and loom again, rounded to two
-decimals (about a kilometre): the town is all that is asked. One lookup per user at a time. Nothing is saved until
-the user saves the name shown; it goes with the point, and while the name is the one shown the town named there is
-saved (asked again, the server's cache answers): a lookup by name searches the world and misses a town among enough
-namesakes (Neustadt). Else the name is looked up (20 matches), the one within `geo.NearKm` (25 km) of the point
-preferred over the search's first (Baden in Aargau, not Baden-Baden). A place derived from the memory again later is
-the town kept, without a lookup, while the memory names the same town ("Baden" for "Baden AG"): a lookup by name
-would lose a located namesake. A new name is a move, looked up plainly: a namesake near the old home must not win.
+decimals (about a kilometre): the town is all that is asked. One lookup per user at a time. The town found is kept at
+once (`user_located_places`, its centre and credit, never the point) and holds over the places the memory names, on
+the page and in turns, until the user locates again or goes back to the memory (`DELETE /api/me/location:locate`,
+which works with the tool gone too). It is never a fact: the memory may be stale or wrong, the memory UI is read-only,
+and a derivation never touches it. A place typed into the question is a memory fact, looked up by name.
 A turn never offers or runs the tool (`pageOnly`), even named unprompted: the model has no position, and its calls
 would spend the map provider's allowance the page needs. The map provider busy or away answers 503, "try again".
 

@@ -5,8 +5,10 @@ export type TodayLocation = {
   name: string;
   region?: string;
   country?: string;
-  /** home: where the user lives; current: a stay somewhere else. */
-  kind: "home" | "current";
+  /** home: where the user lives; current: a stay somewhere else (both from
+   * the memory); located: the town the browser's position named, which
+   * holds over the memory until dropped. */
+  kind: "home" | "current" | "located";
   since?: string;
   until?: string;
 };
@@ -155,9 +157,11 @@ export type Today = {
   date: string;
   day: "today" | "tomorrow";
   location: TodayLocation | null;
+  /** The map data a located town's name came from, shown with it. */
+  locationCredit: Attribution | null;
   askLocation: boolean;
-  /** The question may offer "use my location": the server can name the
-   * town at a point. */
+  /** "Use my location" is offered, with the question and over a place from
+   * memory: the server can name the town at a point. */
   canLocate: boolean;
   sun: TodaySun | null;
   weather: TodayWeather | null;
@@ -288,6 +292,7 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
     date: typeof today.date === "string" ? today.date : "",
     day,
     location: today.location ?? null,
+    locationCredit: today.locationCredit ?? null,
     askLocation: today.askLocation === true,
     canLocate: today.canLocate === true,
     sun: today.sun
@@ -308,23 +313,23 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
 
 export type GeoPoint = { latitude: number; longitude: number };
 
+export type Attribution = { text: string; url?: string };
+
 export type LocatedTown = {
   place: TodayLocation;
   /** The credit the town's name comes with, shown next to it. */
-  attribution: { text: string; url: string };
+  attribution: Attribution;
 };
 
-// setLocation stores where the user lives. The server keeps it as a memory.
-// near is the point locateTown named the town for: of the places of that
-// name, the one meant.
+// setLocation stores the place the user typed. The server keeps it as a
+// memory.
 export async function setLocation(
   place: string,
-  near?: GeoPoint,
 ): Promise<{ place: TodayLocation }> {
   const response = await fetch(`/api/me/location`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(near ? { place, near } : { place }),
+    body: JSON.stringify({ place }),
   });
   await throwLocationError(response, "failed to save the place");
   return response.json() as Promise<{ place: TodayLocation }>;
@@ -337,8 +342,9 @@ export function coarsePoint(latitude: number, longitude: number): GeoPoint {
   return { latitude: round(latitude), longitude: round(longitude) };
 }
 
-// locateTown names the town at a point (coarsePoint's). It saves nothing.
-export async function locateTown(point: GeoPoint): Promise<LocatedTown> {
+// locateHere keeps the town at a point (coarsePoint's) as where the user is,
+// over the places their memory names, until dropLocated. Never a memory.
+export async function locateHere(point: GeoPoint): Promise<LocatedTown> {
   const response = await fetch(`/api/me/location:locate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -346,6 +352,14 @@ export async function locateTown(point: GeoPoint): Promise<LocatedTown> {
   });
   await throwLocationError(response, "failed to locate");
   return response.json() as Promise<LocatedTown>;
+}
+
+// dropLocated drops the located town: the memory's places hold again.
+export async function dropLocated(): Promise<void> {
+  const response = await fetch(`/api/me/location:locate`, {
+    method: "DELETE",
+  });
+  await throwLocationError(response, "failed to drop the location");
 }
 
 async function throwLocationError(response: Response, fallback: string) {

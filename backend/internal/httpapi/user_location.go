@@ -11,7 +11,6 @@ import (
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
-	"github.com/trick77/loom/internal/geo"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/weather"
@@ -120,15 +119,15 @@ func (s *server) placeFor(ctx context.Context, user auth.User, kind string, ref 
 		return nil, nil
 	}
 	query := placeQuery(ref.Place, ref.Country)
-	// The same town named again is the town kept, without a lookup: one the
-	// user located may be a name shared by towns far apart, which a lookup by
-	// name (its first few matches) can miss. A new name is a move, looked up.
+	// The same town named again is the town kept, without a lookup: a name
+	// shared by towns far apart may look up as another. A new name is a move,
+	// looked up.
 	if kept != nil && (kept.FactID == ref.FactID && kept.Query == query || sameTownName(kept, ref.Place)) {
 		p := *kept
 		p.Kind, p.Since, p.Until, p.FactID = kind, ref.Since, ref.Until, ref.FactID
 		return &p, nil
 	}
-	p, err := s.geocode(ctx, user, ref.Place, ref.Country, nil)
+	p, err := s.geocode(ctx, user, ref.Place, ref.Country)
 	if err != nil || p == nil {
 		return nil, err
 	}
@@ -160,34 +159,13 @@ func placeQuery(place, country string) string {
 
 // geocode asks the weather sidecar for the place's centre; nil when it knows
 // none of that name. A country the model named narrows the lookup; when it
-// finds nothing there, the name alone is looked up. A match near near, when
-// given, is preferred.
-func (s *server) geocode(ctx context.Context, user auth.User, query, country string, near *weather.Point) (*location.Place, error) {
-	p, err := weather.FindNear(ctx, s.mcp, query, country, weather.Language(user.ResponseLanguage), near)
+// finds nothing there, the name alone is looked up.
+func (s *server) geocode(ctx context.Context, user auth.User, query, country string) (*location.Place, error) {
+	p, err := weather.Find(ctx, s.mcp, query, country, weather.Language(user.ResponseLanguage))
 	if p != nil {
 		p.Query = placeQuery(query, country)
 	}
 	return p, err
-}
-
-// homeFor is the place a user saves as home. With the point "use my
-// location" named it for, the town named there is it when the name is still
-// that town's: a lookup by name searches the world and may miss it among the
-// namesakes (Neustadt). The server keeps that answer, so asking again costs
-// no map request. Else the name is looked up, preferring a match near the
-// point.
-func (s *server) homeFor(ctx context.Context, user auth.User, query string, near *weather.Point) (*location.Place, error) {
-	if near != nil && s.canLocate() {
-		lat, lon := geo.Coarse(near.Latitude), geo.Coarse(near.Longitude)
-		town, _, err := weather.Locate(ctx, s.mcp, lat, lon, weather.Language(user.ResponseLanguage))
-		if err != nil {
-			slog.Warn("locate on save failed, looking the name up", "err", err)
-		} else if town != nil && strings.EqualFold(town.Name, query) {
-			town.Query = placeQuery(query, "")
-			return town, nil
-		}
-	}
-	return s.geocode(ctx, user, query, "", near)
 }
 
 // maxLocationBody bounds the place a user types.
@@ -209,9 +187,6 @@ func (s *server) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Place string `json:"place"`
-		// Near is the point "use my location" named the town for: of the
-		// places of that name, the one there is meant.
-		Near *pointBody `json:"near"`
 	}
 	if !httpx.DecodeJSON(w, r, &body, maxLocationBody) {
 		return
@@ -221,17 +196,8 @@ func (s *server) handleSetLocation(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "place is required, at most 100 characters")
 		return
 	}
-	var near *weather.Point
-	if body.Near != nil {
-		p, ok := body.Near.point()
-		if !ok {
-			httpx.WriteError(w, http.StatusBadRequest, pointProblem)
-			return
-		}
-		near = &p
-	}
 	ctx := r.Context()
-	home, err := s.homeFor(ctx, user, query, near)
+	home, err := s.geocode(ctx, user, query, "")
 	if err != nil {
 		serverError(w, r, err, "look up place failed")
 		return
@@ -318,12 +284,27 @@ func (p enginePlaces) UserPlace(ctx context.Context, user auth.User) (*location.
 
 // userPlace is where the user is today; nil when no place is known.
 func (s *server) userPlace(ctx context.Context, user auth.User) (*location.Place, error) {
+	p, _, err := s.placeHere(ctx, user)
+	return p, err
+}
+
+// placeHere is where the user is today: the town they located, else the
+// place their memory names for today; nil when none is known. credit is the
+// located town's map data credit.
+func (s *server) placeHere(ctx context.Context, user auth.User) (p *location.Place, credit *location.Credit, err error) {
 	if s.locations == nil {
-		return nil, errors.New("locations are off")
+		return nil, nil, errors.New("locations are off")
+	}
+	located, err := s.locations.Located(ctx, user.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if located != nil {
+		return &located.Place, &located.Credit, nil
 	}
 	home, current, _, err := s.locations.Places(ctx, user.ID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return location.Here(home, current, userToday(user, s.clock())), nil
+	return location.Here(home, current, userToday(user, s.clock())), nil, nil
 }

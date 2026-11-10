@@ -1880,7 +1880,6 @@ export function ThreadShell({
             onRemoveAttachment={handleRemovePendingAttachment}
             onEnterIncognito={enterIncognito}
             onOpenThread={(threadID) => void selectThread(threadID)}
-            onOpenMemory={navigateToMemory}
           />
         ) : (
           <ThreadPanel

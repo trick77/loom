@@ -86,6 +86,7 @@ export function todayFixture(overrides: Partial<Today> = {}): Today {
     date: "2026-11-09",
     day: "today",
     location: { name: "Zürich", country: "Switzerland", kind: "home" },
+    locationCredit: null,
     askLocation: false,
     canLocate: false,
     sun: {

@@ -1,8 +1,8 @@
 import type { TFunction } from "i18next";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { TodayLocation, TodaySun } from "../api/today";
-import { LocationChip } from "./LocationChip";
+import type { TodaySun } from "../api/today";
 import { SunTimeIcon } from "./WeatherIcon";
 
 function Divider() {
@@ -40,13 +40,12 @@ function sunText(sun: TodaySun, day: Day, t: TFunction): string | null {
 export function SunLine({
   sun,
   day,
-  location,
-  onOpenMemory,
+  chip,
 }: {
   sun: TodaySun;
   day: Day;
-  location: TodayLocation | null;
-  onOpenMemory(): void;
+  /** The place chip, compact; none without a place. */
+  chip?: ReactNode;
 }) {
   const { t } = useTranslation();
   const both = sun.polar === "" && sun.rise !== null && sun.set !== null;
@@ -87,9 +86,7 @@ export function SunLine({
           </span>
         )
       )}
-      {location !== null && (
-        <LocationChip compact location={location} onOpenMemory={onOpenMemory} />
-      )}
+      {chip}
     </div>
   );
 }
