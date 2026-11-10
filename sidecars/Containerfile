@@ -16,14 +16,17 @@ COPY backend/cmd/loom-tunewire/ ./cmd/loom-tunewire/
 COPY backend/cmd/loom-weather/ ./cmd/loom-weather/
 # What they import of loom: docgen's generators, Gotenberg client and embedded
 # fonts; imagegen's fal client, the source-image reader and the inference log
-# lines; for all, the token rule loom checks its side with (sidecar) and the
-# user header (loomuser). The MCP server is github.com/trick77/toolkit's.
+# lines; weather's point arithmetic shared with loom (geo); for all, the token
+# rule loom checks its side with (sidecar) and the user header (loomuser). The
+# MCP server is github.com/trick77/toolkit's. A package missing here fails only
+# the release's image build, never the gate.
 COPY backend/internal/docgen/ ./internal/docgen/
 COPY backend/internal/imagegen/ ./internal/imagegen/
 COPY backend/internal/imagescale/ ./internal/imagescale/
 COPY backend/internal/inference/ ./internal/inference/
 COPY backend/internal/sidecar/ ./internal/sidecar/
 COPY backend/internal/loomuser/ ./internal/loomuser/
+COPY backend/internal/geo/ ./internal/geo/
 # ship release passes the release version. One go build for all six shares the
 # compile of kit, toolkit and sidecar, and fetches only the modules they import,
 # not all of loom's.
