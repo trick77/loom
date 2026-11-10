@@ -917,6 +917,10 @@ export const de = {
       summaryMax: "Luft schlimmstenfalls {{level}}",
       upTo: "bis {{aqi}} um {{time}}",
       worstAt: "gegen {{time}}",
+      unit: "EAQI",
+      scale: "Europäischer Luftqualitätsindex (EEA): {{bands}}",
+      band: "{{level}} bis {{upTo}}",
+      bandTop: "{{level}} über {{from}}",
       curve: "Luftqualität pro Stunde",
       levels: {
         good: "gut",

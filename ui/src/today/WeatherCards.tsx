@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -51,11 +52,13 @@ function oneDecimal(value: number, language: string): string {
 }
 
 // Lead is a card's first row, as on the first card: the picture, the value
-// with its unit, a line and an optional second one.
+// with its unit (unitTitle spells the unit out), a line and an optional
+// second one.
 function Lead({
   picture,
   value,
   unit,
+  unitTitle,
   line,
   lineClass = "text-ink-soft",
   detail,
@@ -65,6 +68,7 @@ function Lead({
   picture: ReactNode;
   value: string;
   unit?: string;
+  unitTitle?: string;
   line: string;
   lineClass?: string;
   detail?: string | null;
@@ -79,9 +83,17 @@ function Lead({
           className={`shrink-0 leading-none font-light ${small ? "text-3xl" : "text-4xl"}`}
         >
           {value}
-          {unit !== undefined && (
-            <span className="ml-0.5 text-[15px] text-muted">{unit}</span>
-          )}
+          {unit !== undefined &&
+            (unitTitle === undefined ? (
+              <span className="ml-0.5 text-[15px] text-muted">{unit}</span>
+            ) : (
+              <abbr
+                className="ml-0.5 cursor-help text-[15px] text-muted no-underline"
+                title={unitTitle}
+              >
+                {unit}
+              </abbr>
+            ))}
         </span>
         <span className="flex min-w-0 flex-col text-[13px] leading-[1.35]">
           <span className={lineClass}>{line}</span>
@@ -611,6 +623,18 @@ const AIR_BANDS: { level: AirLevel; upTo: number }[] = [
   { level: "extremelyPoor", upTo: Infinity },
 ];
 
+// airScale spells the index's bands out from AIR_BANDS and the level names,
+// the open last one from where the one before ends.
+export function airScale(t: TFunction): string {
+  const bands = AIR_BANDS.map((band, i) => {
+    const level = t(`today.air.levels.${band.level}`);
+    return Number.isFinite(band.upTo)
+      ? t("today.air.band", { level, upTo: band.upTo })
+      : t("today.air.bandTop", { level, from: AIR_BANDS[i - 1].upTo });
+  });
+  return t("today.air.scale", { bands: bands.join(", ") });
+}
+
 // Class names stay whole for Tailwind to find them.
 const AIR_TEXT: Record<AirLevel, string> = {
   good: "text-aq-good",
@@ -868,6 +892,9 @@ export function AirCard({ air }: { air: TodayAir }) {
           lineClass={`font-medium ${air.level === "" ? "text-ink-soft" : AIR_TEXT[air.level]}`}
           picture={<AqiRing aqi={air.aqi} level={air.level} />}
           testId="air-quality"
+          // European, not the US EPA scale: named, or 45 reads as good.
+          unit={t("today.air.unit")}
+          unitTitle={airScale(t)}
           value={String(Math.round(air.aqi))}
         />
       )}

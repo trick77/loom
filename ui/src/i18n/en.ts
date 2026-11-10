@@ -894,6 +894,10 @@ export const en = {
       summaryMax: "Air {{level}} at worst",
       upTo: "up to {{aqi}} at {{time}}",
       worstAt: "around {{time}}",
+      unit: "EAQI",
+      scale: "European Air Quality Index (EEA): {{bands}}",
+      band: "{{level}} to {{upTo}}",
+      bandTop: "{{level}} above {{from}}",
       curve: "Air quality by hour",
       levels: {
         good: "good",
