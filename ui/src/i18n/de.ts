@@ -1032,12 +1032,12 @@ export const de = {
     location: {
       fromMemories: "aus Erinnerungen",
       title: "Standort für Wetter und Sonne",
-      home: "Aus deinen Erinnerungen: Du wohnst in {{name}}.",
+      home: "Bekannter Standort aus deinen Erinnerungen: {{name}}.",
       current: "Aus deinen Erinnerungen: Du bist gerade in {{name}}.",
       change:
         "Bist du woanders? Sag es im Chat, z. B. «Ich bin diese Woche in Lissabon». Loom merkt es sich und wechselt danach zurück.",
       openMemories: "Erinnerungen öffnen",
-      ask: "Wo wohnst du? Dann zeige ich dir hier Wetter und Sonnenzeiten.",
+      ask: "Für welchen Ort soll ich dir hier Wetter und Sonnenzeiten zeigen?",
       placeholder: "z. B. München",
       save: "Speichern",
       note: "Landet in deinen Erinnerungen. Ändern kannst du es jederzeit im Chat.",

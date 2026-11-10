@@ -272,7 +272,9 @@ test("the place chip explains the memory and opens the memories", () => {
   const dialog = screen.getByRole("dialog", {
     name: "Location for weather and sun",
   });
-  expect(dialog).toHaveTextContent("From your memories: you live in Zürich.");
+  expect(dialog).toHaveTextContent(
+    "Known location from your memories: Zürich.",
+  );
   expect(dialog).toHaveTextContent("I'm in Lisbon this week");
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -451,7 +453,7 @@ test("asks where the user lives and saves the place", async () => {
     askLocation: true,
   });
   const input = screen.getByLabelText(
-    "Where do you live? Then I'll show the weather and sun times here.",
+    "Which place should I show the weather and sun times for?",
   );
   expect(
     screen.getByText(

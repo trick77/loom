@@ -167,7 +167,7 @@ test("with neither weather nor news: starters, the sun line, the place question"
   await waitFor(() => expect(starters()).toBeInTheDocument());
   const sunLine = screen.getByRole("group", { name: "Today" });
   const ask = screen.getByLabelText(
-    "Where do you live? Then I'll show the weather and sun times here.",
+    "Which place should I show the weather and sun times for?",
   );
   // Both sit under the starters.
   expect(
