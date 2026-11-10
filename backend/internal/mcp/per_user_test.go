@@ -142,3 +142,13 @@ func TestTunewireLibraryIsPerUser(t *testing.T) {
 		t.Error("catalog search reads no one's data")
 	}
 }
+
+// The catalog search rides only on music and recommendation turns: in 90
+// production days all 164 calls came from those, while its schema and
+// instructions rode on every turn.
+func TestTunewireCatalogIsCategoryGated(t *testing.T) {
+	cats := TunewireCatalogServerConfig("http://t", "tok").Categories
+	if strings.Join(cats, ",") != "music,entertainment_recs" {
+		t.Errorf("catalog categories = %v, want music,entertainment_recs", cats)
+	}
+}

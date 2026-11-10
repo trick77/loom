@@ -251,13 +251,20 @@ func TestTurnGatesToolsByCategory(t *testing.T) {
 		}
 	})
 
-	t.Run("coding turn gets docgen and context7", func(t *testing.T) {
+	t.Run("coding turn gets context7, not docgen", func(t *testing.T) {
 		names := run(t, string(classifier.Coding), "please help me understand this program")
-		if !names[turntest.DocgenTool("create_text_file")] {
-			t.Fatalf("coding turn should offer docgen tools; got %v", names)
+		if names[turntest.DocgenTool("create_text_file")] {
+			t.Fatalf("coding turn without a file ask should not offer docgen tools; got %v", names)
 		}
 		if !names["context7__query-docs"] {
 			t.Fatalf("coding turn should offer coding-tagged context7; got %v", names)
+		}
+	})
+
+	t.Run("writing turn gets docgen", func(t *testing.T) {
+		names := run(t, string(classifier.WritingEditing), "tighten this paragraph")
+		if !names[turntest.DocgenTool("create_text_file")] {
+			t.Fatalf("writing turn should offer docgen tools; got %v", names)
 		}
 	})
 }

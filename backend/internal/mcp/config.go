@@ -179,8 +179,11 @@ func TunewireCatalogServerConfig(baseURL, token string) ServerConfig {
 		Headers:           map[string]string{"Authorization": "Bearer " + token},
 		TrustInstructions: true,
 		BuiltIn:           true,
-		// Ungated: a song or album can come up in any turn, and every one
-		// named gets its link.
+		// Gated like the library: it was ungated ("a song can come up in any
+		// turn"), but in 90 production days all 164 calls came from music
+		// and recommendation turns, while its schema, instructions and the
+		// citation override rode on every other turn.
+		Categories: tunewireLibraryCategories(),
 	}
 }
 

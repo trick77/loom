@@ -28,8 +28,14 @@ const imageShownRule = "The generated image is shown to the user as an attachmen
 // when they are gated out of the request, or their sidecar is down, would
 // invite the model to call a tool whose schema it never received, producing a
 // malformed call. It names them by their server, so a replacement server's
-// tools are covered too; docgen.FileToolGuardrail says the same per tool.
-const fileToolGuardrailPrompt = "Only call a file-creation tool (the " + mcp.DocgenServer + "__* tools) when the user explicitly asks to save, create, export, or download a file; for summarize, explain, or analyze requests — including about attached documents — answer inline in the chat and do not produce a downloadable file."
+// tools are covered too. It is the full rule, once per turn;
+// docgen.FileToolGuardrail is its short form in each tool description.
+const fileToolGuardrailPrompt = "Only call a file-creation tool (the " + mcp.DocgenServer + "__* tools) when the user asks — in any language — " +
+	"for a file, document or download, or names a file format (txt, md, csv, PDF, ...); judge that by meaning, not specific " +
+	"words (German \"erstelle ein PDF\", \"als Datei herunterladen\" count). A request to create or write content — a pitch, " +
+	"summary, plan, email, answer — is an inline response, NOT a file, unless a file or format is explicitly mentioned. " +
+	"For summarize, explain, analyze or answer requests — including about attached documents — answer inline in the chat " +
+	"and do not produce a downloadable file."
 
 const imagePromptCompilerSystemPrompt = "The latest user request needs image generation or editing. Your only job is to call the image generation tool you are given exactly once. Do not answer before the tool call. Do not refuse for being text-based. Turn the request into a concise, visually rich prompt that keeps subject, setting, style, composition, mood, medium, text requirements and constraints. Add only visual details consistent with the request. Always set `filename` to a short name for the image's main subject (2-4 words, lowercase, hyphen-separated, no path or extension), e.g. `red-fox-in-snow`. Set `aspect_ratio` to the shape the request calls for — wide (16:9, 3:2) for scenery, banners and desktop wallpapers, tall (9:16, 2:3) for posters, book covers and phone wallpapers, 4:3 or 3:4 for a mild lean — and leave it at 1:1 when nothing implies a shape. Infer the shape from what the user asks for, in any language, not from particular words. After the tool result, reply briefly about the created image. " + imageShownRule + " Never claim an image was created unless the tool result confirms an artifact."
 

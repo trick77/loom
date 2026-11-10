@@ -18,7 +18,45 @@ func TestToolGateDocgenEnabled(t *testing.T) {
 		message      string
 		want         bool
 	}{
-		{"coding category enables docgen", string(classifier.Coding), "", "refactor this", true},
+		{"writing category enables docgen", string(classifier.WritingEditing), "", "tighten this", true},
+		// Long technical threads rarely want a file; their code is offered for
+		// download anyway. An explicit format still escalates.
+		{"coding category alone does not", string(classifier.Coding), "", "refactor this", false},
+		{"how-to category alone does not", string(classifier.HowTo), "", "how do I reset it", false},
+		{"science category alone does not", string(classifier.ScienceMath), "", "solve for x", false},
+		{"coding with a format escalates", string(classifier.Coding), "", "export the results as CSV", true},
+		// Keywords match whole words (plus inflections), not substrings.
+		{"password is not word", string(classifier.General), "", "I forgot my password", false},
+		{"documentation is not document", string(classifier.General), "", "where is the documentation for this API", false},
+		{"reporting is not report", string(classifier.General), "", "who is reporting on the election", false},
+		{"inflected verbs and compounds stay off", string(classifier.General), "", "the passwords were reported stolen", false},
+		{"english plural escalates", string(classifier.General), "", "make two reports from this", true},
+		{"german plural escalates", string(classifier.General), "", "Erstelle mir Präsentationen dazu", true},
+		{"german export stem escalates", string(classifier.General), "", "bitte als Datei exportieren", true},
+		{"german download stem escalates", string(classifier.General), "", "zum Herunterladen bitte", true},
+		{"extension after a dot escalates", string(classifier.General), "", "save it to summary.pdf", true},
+		{"save as phrase escalates", string(classifier.General), "", "Save as markdown please", true},
+		// German compounds and English derived forms that name a file.
+		{"german excel compound escalates", string(classifier.General), "", "Mach mir eine Exceldatei daraus", true},
+		{"german word compound escalates", string(classifier.General), "", "bitte als Worddokument", true},
+		{"german slides compound escalates", string(classifier.General), "", "ich brauche Präsentationsfolien", true},
+		{"german sheet compound escalates", string(classifier.General), "", "leg ein Tabellenblatt an", true},
+		{"german report template escalates", string(classifier.General), "", "eine Berichtsvorlage bitte", true},
+		{"german export file escalates", string(classifier.General), "", "gib mir eine Exportdatei", true},
+		{"downloadable escalates", string(classifier.General), "", "make it downloadable", true},
+		{"plural format name escalates", string(classifier.General), "", "turn these into PowerPoints", true},
+		{"exported escalates", string(classifier.General), "", "I want it exported", true},
+		{"news coverage is no report", string(classifier.General), "", "wie war die Berichterstattung dazu", false},
+		// A text format named with a file, the create_text_file case.
+		{"yaml file escalates", string(classifier.Coding), "", "give me the config as a yaml file", true},
+		{"dotted extension file escalates", string(classifier.Coding), "", "save this as a .md file", true},
+		{"german markdown file escalates", string(classifier.Coding), "", "als Markdown-Datei bitte", true},
+		{"in a file escalates", string(classifier.Coding), "", "put the JSON in a file", true},
+		{"german in a file escalates", string(classifier.Coding), "", "schreib das in eine Datei", true},
+		{"format alone in coding stays off", string(classifier.Coding), "", "parse this json and fix the yaml", false},
+		{"bare file talk stays off", string(classifier.Coding), "", "which file holds the router?", false},
+		{"editing an existing file stays off", string(classifier.Coding), "", "add this function to the file and check what is in the file", false},
+		{"to a file escalates", string(classifier.Coding), "", "write the output to a file", true},
 		{"general category alone does not", string(classifier.General), "", "hello there", false},
 		{"weather category alone does not", string(classifier.Weather), "", "is it raining", false},
 		{"fresh turn category enables docgen", string(classifier.General), string(classifier.WritingEditing), "polish this", true},
@@ -201,7 +239,7 @@ func TestFileToolGuardrailTracksOfferedDocumentTools(t *testing.T) {
 	}
 	doc := turntest.DocgenToolDef("create_pdf_file")
 
-	if !strings.Contains(systemPrompt(t, string(classifier.Coding), "help me", doc), fileToolGuardrailPrompt) {
+	if !strings.Contains(systemPrompt(t, string(classifier.WritingEditing), "help me", doc), fileToolGuardrailPrompt) {
 		t.Fatal("file-tool guardrail should be present when a document tool is offered")
 	}
 	if !strings.Contains(fileToolGuardrailPrompt, "docgen__*") {
@@ -210,7 +248,7 @@ func TestFileToolGuardrailTracksOfferedDocumentTools(t *testing.T) {
 	if strings.Contains(systemPrompt(t, string(classifier.General), "just chatting", doc), fileToolGuardrailPrompt) {
 		t.Fatal("file-tool guardrail should be absent when docgen is gated off")
 	}
-	if strings.Contains(systemPrompt(t, string(classifier.Coding), "help me"), fileToolGuardrailPrompt) {
+	if strings.Contains(systemPrompt(t, string(classifier.WritingEditing), "help me"), fileToolGuardrailPrompt) {
 		t.Fatal("file-tool guardrail should be absent while no document tool is served")
 	}
 }

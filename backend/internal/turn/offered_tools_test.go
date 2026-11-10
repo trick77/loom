@@ -37,7 +37,7 @@ func TestGuidanceFollowsTheFinalOffer(t *testing.T) {
 		Instructions: map[string]string{"peeq": "Search peeq.", mcp.DocgenServer: "Make files."},
 	}
 	e := &Engine{mcp: svc, artifacts: fakeArtifactStore{}, usersDir: t.TempDir()}
-	gate := newToolGate(string(classifier.Coding), "", "")
+	gate := newToolGate(string(classifier.WritingEditing), "", "")
 	for _, c := range []struct {
 		name      string
 		scheduled *ScheduledRun

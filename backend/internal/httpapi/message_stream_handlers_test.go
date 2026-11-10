@@ -2327,8 +2327,8 @@ func TestStreamMessageDriftReclassifiesContinuedTurn(t *testing.T) {
 	if !hasContext7 {
 		t.Fatal("drift-to-coding turn should offer context7 (via fresh classification, not keywords)")
 	}
-	if !hasDocgen {
-		t.Fatal("drift-to-coding turn should offer docgen (coding is a docgen category)")
+	if hasDocgen {
+		t.Fatal("drift-to-coding turn without a file ask should not offer docgen (coding is no docgen category)")
 	}
 }
 

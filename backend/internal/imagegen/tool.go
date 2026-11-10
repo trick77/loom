@@ -18,15 +18,17 @@ func toolProperties() map[string]any {
 		"aspect_ratio": map[string]any{
 			"type":        "string",
 			"enum":        AspectRatioNames(),
-			"description": "Shape of the image, chosen from what the request depicts: 16:9 or 3:2 for wide scenes, landscapes, banners and desktop wallpapers; 9:16 or 2:3 for tall subjects, posters, book covers and phone wallpapers; 4:3 or 3:4 for a mild landscape or portrait lean. Omit this parameter entirely when the request implies no particular shape, and when editing an image that should keep its own proportions — a square is what you get by default, so it never needs to be asked for. Judge this from what the user actually asks for in whatever language they write in, not from specific words.",
+			"description": "From what the request depicts, in any language: 16:9/3:2 wide scenes, banners, desktop wallpapers; 9:16/2:3 posters, book covers, phone wallpapers; 4:3/3:4 a mild lean. Omit for no particular shape (square) or to keep an edited image's proportions.",
 		},
+		// width and height: the server rounds to multiples of 16 and fits
+		// 256-2560 px a side, at most 4 MP; the model needs only when to set them.
 		"width": map[string]any{
 			"type":        "integer",
-			"description": "Output width in pixels. Only set this when the user asks for an exact size; otherwise use aspect_ratio and leave this unset. Rounded up to a multiple of 16, fitted to 256-2560 pixels per side, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
+			"description": "Pixels, only for an exact size the user asks for (256-2560, at most 4 MP with height).",
 		},
 		"height": map[string]any{
 			"type":        "integer",
-			"description": "Output height in pixels. Only set this when the user asks for an exact size; otherwise use aspect_ratio and leave this unset. Rounded up to a multiple of 16, fitted to 256-2560 pixels per side, and width × height must not exceed 4,000,000 pixels (about 4 MP).",
+			"description": "Pixels, only for an exact size the user asks for.",
 		},
 		"seed": map[string]any{
 			"type":        "integer",

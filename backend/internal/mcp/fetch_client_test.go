@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -35,6 +36,21 @@ func TestFetchClientAdvertisesFetchTool(t *testing.T) {
 	}
 	if _, ok := props["extract_pdf"]; ok {
 		t.Error("InputSchema must not expose extract_pdf")
+	}
+	// The schema rides in every turn: no upstream pydantic noise (titles,
+	// bounds), and the options are explained once, in the description.
+	raw, err := json.Marshal(map[string]any{"description": tool.Description, "schema": tool.InputSchema})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, noise := range []string{`"title"`, `"exclusiveMaximum"`, `"format"`} {
+		if strings.Contains(string(raw), noise) {
+			t.Errorf("fetch schema carries %s", noise)
+		}
+	}
+	t.Logf("fetch description+schema: %d bytes", len(raw))
+	if len(raw) > 1300 {
+		t.Errorf("fetch description+schema = %d bytes, want at most 1300", len(raw))
 	}
 }
 
