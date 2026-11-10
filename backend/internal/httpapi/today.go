@@ -60,10 +60,12 @@ type todayResponse struct {
 	Day         string          `json:"day"`
 	Location    *location.Place `json:"location"`
 	AskLocation bool            `json:"askLocation"`
-	Sun         *todaySun       `json:"sun"`
-	Weather     *todayWeather   `json:"weather"`
-	Air         *todayAir       `json:"air"`
-	Warning     *todayWarning   `json:"warning"`
+	// CanLocate offers "use my location" with the question.
+	CanLocate bool          `json:"canLocate"`
+	Sun       *todaySun     `json:"sun"`
+	Weather   *todayWeather `json:"weather"`
+	Air       *todayAir     `json:"air"`
+	Warning   *todayWarning `json:"warning"`
 	// Tonight is what comes before midnight; only while the page shows
 	// tomorrow.
 	Tonight *todayWarning `json:"tonight"`
@@ -213,6 +215,7 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 		// derivation is pending the memory may already know it, and an answer
 		// would add a second home fact.
 		out.Location, out.AskLocation = place, err == nil && place == nil && s.locationSettled(ctx, user)
+		out.CanLocate = out.AskLocation && s.canLocate()
 	}
 	// One clock for the day shown, its evening, the sun and the weather: the
 	// place's when a place is known (its evening is the user's, they are

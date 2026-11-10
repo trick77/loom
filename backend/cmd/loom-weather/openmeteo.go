@@ -21,6 +21,7 @@ type openMeteo struct {
 	forecastURL   string
 	geocodingURL  string
 	airQualityURL string
+	userAgent     string
 }
 
 // attribution is the credit the free tier's licence requires wherever its
@@ -252,10 +253,10 @@ func minutes(seconds *float64) *int {
 	return &m
 }
 
-func (p openMeteo) geocode(ctx context.Context, query, country, language string) ([]Place, error) {
+func (p openMeteo) geocode(ctx context.Context, query, country, language string, count int) ([]Place, error) {
 	q := url.Values{}
 	q.Set("name", query)
-	q.Set("count", strconv.Itoa(maxPlaces))
+	q.Set("count", strconv.Itoa(count))
 	q.Set("language", language)
 	if country != "" {
 		q.Set("countryCode", country)
@@ -283,27 +284,37 @@ func (p openMeteo) geocode(ctx context.Context, query, country, language string)
 }
 
 func (p openMeteo) get(ctx context.Context, target string, into any) error {
+	return fetchJSON(ctx, p.http, "weather provider", target, p.userAgent, into)
+}
+
+// fetchJSON reads a provider's JSON reply into into, under the sidecar's own
+// name: a library's default agent counts as anonymous to a provider. label
+// names the provider in errors.
+func fetchJSON(ctx context.Context, client *http.Client, label, target, userAgent string, into any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return err
 	}
-	resp, err := p.http.Do(req)
+	if userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("weather provider unreachable: %w", err)
+		return fmt.Errorf("%s unreachable: %w", label, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxProviderBody+1))
 	if err != nil {
-		return fmt.Errorf("weather provider reply unreadable: %w", err)
+		return fmt.Errorf("%s reply unreadable: %w", label, err)
 	}
 	if len(body) > maxProviderBody {
-		return fmt.Errorf("weather provider reply over %d MiB", maxProviderBody>>20)
+		return fmt.Errorf("%s reply over %d MiB", label, maxProviderBody>>20)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("weather provider answered %d: %.200s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("%s answered %d: %.200s", label, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	if err := json.Unmarshal(body, into); err != nil {
-		return fmt.Errorf("weather provider reply unreadable: %w", err)
+		return fmt.Errorf("%s reply unreadable: %w", label, err)
 	}
 	return nil
 }

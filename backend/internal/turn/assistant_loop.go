@@ -240,7 +240,8 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			perToolCount[call.Function.Name]++
 			deferred[i] = perToolCount[call.Function.Name] > t.e.toolCallCapPerRound(call.Function.Name)
 			denied[i] = t.offered[call.Function.Name] == nil && t.e.mcp != nil && !t.e.mcp.ToolAllowed(MCPPrincipal(t.user), call.Function.Name)
-			if t.scheduledDenies(call.Function.Name) || t.docToolDenied(call.Function.Name) {
+			// A page's tool never runs in a turn, even named unprompted.
+			if t.scheduledDenies(call.Function.Name) || t.docToolDenied(call.Function.Name) || t.e.toolPolicy(call.Function.Name).pageOnly {
 				denied[i] = true
 			}
 			sealed[i] = !denied[i] && t.afterLastStep(call.Function.Name)

@@ -385,7 +385,8 @@ services:
       start_period: 30s
       start_interval: 5s
       retries: 3
-    # The loom network: reachable from loom only, with egress to Open-Meteo.
+    # The loom network: reachable from loom only, with egress to Open-Meteo
+    # and Nominatim (the town at the user's position).
     networks:
       - loom
     labels:

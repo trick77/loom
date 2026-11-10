@@ -15,6 +15,9 @@ const (
 	// WeatherAirQualityTool is optional: a replacement server without it
 	// costs the start page its air card only.
 	WeatherAirQualityTool = "air_quality"
+	// WeatherReverseGeocodeTool is optional: without it the start page asks
+	// for the place by name only.
+	WeatherReverseGeocodeTool = "reverse_geocode"
 )
 
 // WeatherServerConfig is the loom-weather sidecar's endpoint. Best-effort like

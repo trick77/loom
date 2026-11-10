@@ -45,9 +45,14 @@ func (f *fakeLocationLLM) ResolveUserLocation(_ context.Context, facts []llm.Fac
 	var out llm.UserLocation
 	for _, fact := range facts {
 		if place, ok := strings.CutPrefix(fact.Content, "Lives "); ok && out.Home == nil {
-			// The town is the first word: "Lives Zürich with Anna, works at X".
-			place, _, _ = strings.Cut(place, ",")
-			out.Home = &llm.PlaceRef{Place: strings.Fields(place)[0], FactID: fact.ID}
+			// The town is the first word: "Lives Zürich with Anna, works at X";
+			// a country the fact states is named, as the prompt asks.
+			place, rest, _ := strings.Cut(place, ",")
+			country := ""
+			if strings.TrimSpace(rest) == "Schweiz" {
+				country = "CH"
+			}
+			out.Home = &llm.PlaceRef{Place: strings.Fields(place)[0], Country: country, FactID: fact.ID}
 		}
 		if rest, ok := strings.CutPrefix(fact.Content, "In "); ok && out.Current == nil {
 			// A country the lookup does not find the place in: it retries
@@ -63,11 +68,26 @@ func (f *fakeLocationLLM) ResolveUserLocation(_ context.Context, facts []llm.Fac
 type geocoder struct {
 	mu      sync.Mutex
 	queries []string
+	// points are the reverse lookups' arguments.
+	points []map[string]any
 }
 
 func (g *geocoder) call(_ context.Context, name string, args map[string]any) (string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+	if name == weather.ReverseGeocodeTool {
+		g.points = append(g.points, args)
+		lat, _ := args["latitude"].(float64)
+		if lat > 49 && lat < 50 {
+			return `{"places":[{"name":"Neustadt","country":"Deutschland","countryCode":"DE","latitude":49.35,"longitude":8.14,"timezone":"Europe/Berlin"}],
+				"attribution":{"text":"Place names © OpenStreetMap contributors","url":"https://www.openstreetmap.org/copyright"}}`, nil
+		}
+		if lat > 47 && lat < 48 {
+			return `{"places":[{"name":"Baden","region":"Aargau","country":"Schweiz","countryCode":"CH","latitude":47.47,"longitude":8.31,"timezone":"Europe/Zurich"}],
+				"attribution":{"text":"Place names © OpenStreetMap contributors","url":"https://www.openstreetmap.org/copyright"}}`, nil
+		}
+		return `{"places":[],"attribution":{"text":"Place names © OpenStreetMap contributors","url":"https://www.openstreetmap.org/copyright"}}`, nil
+	}
 	if name != weather.GeocodeTool {
 		return "", errors.New("unexpected tool " + name)
 	}
@@ -82,6 +102,13 @@ func (g *geocoder) call(_ context.Context, name string, args map[string]any) (st
 		return `{"places":[{"name":"Zürich","region":"Zürich","country":"Schweiz","latitude":47.37,"longitude":8.54,"timezone":"Europe/Zurich"}]}`, nil
 	case "Lisbon":
 		return `{"places":[{"name":"Lisbon","country":"Portugal","latitude":38.72,"longitude":-9.14,"timezone":"Europe/Lisbon"}]}`, nil
+	case "Neustadt":
+		// The search's first five namesakes miss the one in the Palatinate.
+		return `{"places":[{"name":"Neustadt","country":"Deutschland","latitude":50.73,"longitude":11.75,"timezone":"Europe/Berlin"}]}`, nil
+	case "Baden":
+		// The search's first is the German one.
+		return `{"places":[{"name":"Baden-Baden","country":"Deutschland","latitude":48.76,"longitude":8.24,"timezone":"Europe/Berlin"},
+			{"name":"Baden","region":"Aargau","country":"Schweiz","latitude":47.47,"longitude":8.31,"timezone":"Europe/Zurich"}]}`, nil
 	case "Broken":
 		return "not json", nil
 	}

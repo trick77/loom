@@ -464,6 +464,9 @@ func (s *Engine) offeredMCPTools(user auth.User, gate toolGate) []llm.Tool {
 			continue
 		}
 		policy := s.toolPolicy(tool.Function.Name)
+		if policy.pageOnly {
+			continue
+		}
 		if policy.imageGenerator {
 			// Its image needs somewhere to go (a server without artifacts
 			// would have it dropped); its loom-filled arguments are not the

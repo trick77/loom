@@ -1,7 +1,8 @@
 # weather: the weather contract
 
 loom gets weather through MCP tools on the server `weather`: `forecast` (`weather__forecast`), `geocode`
-(`weather__geocode`) and, optional, `air_quality` (`weather__air_quality`). The `loom-weather` sidecar (`backend/cmd/loom-weather`, `/loom-weather` in image `loom-sidecars`) serves them with
+(`weather__geocode`) and, optional, `air_quality` (`weather__air_quality`) and `reverse_geocode`
+(`weather__reverse_geocode`). The `loom-weather` sidecar (`backend/cmd/loom-weather`, `/loom-weather` in image `loom-sidecars`) serves them with
 Open-Meteo; an `mcp.json` entry named `weather` replaces the sidecar with any server that answers this contract. loom
 keeps the policy, never the provider: the start page (`GET /api/today`) asks `forecast` for the user's place, which
 `geocode` found from the place their memory names; in a chat turn the tools are offered on weather questions only (classifier
@@ -35,13 +36,35 @@ the rest. A day's `high`/`low` take in its hours' temperatures (the two parts ar
 be had, `daily` is empty and the hours still answer. `attribution` is the credit the data's licence requires next to the data; the result also cites it as a
 source, so a chat answer carries it.
 
-`geocode` takes `query` (name or postal code, required), `country` (ISO 3166-1 alpha-2) and `language` (ISO 639-1,
-default `en`), and answers up to 5 matches, best first:
+`geocode` takes `query` (name or postal code, required), `country` (ISO 3166-1 alpha-2), `language` (ISO 639-1,
+default `en`) and `count` (1-20, default 5), and answers up to `count` matches, best first:
 
 ```json
 {"places": [{"name": "Baden", "region": "Aargau", "country": "Schweiz", "countryCode": "CH",
              "latitude": 47.47, "longitude": 8.3, "timezone": "Europe/Zurich"}]}
 ```
+
+`reverse_geocode` (`weather__reverse_geocode`, optional: the start page offers "use my current location" only where a
+server has it) takes `latitude`, `longitude` and `language`, and answers the town the point lies in, as `geocode`
+finds it (its centre and zone), or no place (the sea), with the names' credit:
+
+```json
+{"places": [{"name": "Baden", "region": "Aargau", "country": "Schweiz", "countryCode": "CH",
+             "latitude": 47.47, "longitude": 8.31, "timezone": "Europe/Zurich"}],
+ "attribution": {"text": "Place names © OpenStreetMap contributors", "url": "https://www.openstreetmap.org/copyright"}}
+```
+
+The page asks the browser for its position on the click only (coarse, no GPS fix; its own 30 s bound, as a prompt
+dismissed without an answer never calls back), and the point leaves the browser, and loom again, rounded to two
+decimals (about a kilometre): the town is all that is asked. One lookup per user at a time. Nothing is saved until
+the user saves the name shown; it goes with the point, and while the name is the one shown the town named there is
+saved (asked again, the server's cache answers): a lookup by name searches the world and misses a town among enough
+namesakes (Neustadt). Else the name is looked up (20 matches), the one within `geo.NearKm` (25 km) of the point
+preferred over the search's first (Baden in Aargau, not Baden-Baden). A place derived from the memory again later is
+the town kept, without a lookup, while the memory names the same town ("Baden" for "Baden AG"): a lookup by name
+would lose a located namesake. A new name is a move, looked up plainly: a namesake near the old home must not win.
+A turn never offers or runs the tool (`pageOnly`), even named unprompted: the model has no position, and its calls
+would spend the map provider's allowance the page needs. The map provider busy or away answers 503, "try again".
 
 `air_quality` (`weather__air_quality`, optional: loom shows the air only where a server has it) takes `latitude`,
 `longitude`, `timezone` and `days` (1-4, default 2), and answers the European air quality index (EEA bands: good to
@@ -132,6 +155,17 @@ shares it. Errors are never kept. A restart starts empty.
 Open-Meteo's free API: no key, non-commercial use, 10,000 calls a day per IP, data under CC BY 4.0 (hence
 `attribution`). The sidecar holds every fact about it.
 
+Open-Meteo has no reverse lookup: `reverse_geocode` asks OpenStreetMap's public Nominatim for the town's name (zoom
+13, down to a village or suburb: zoom 10 stops at the municipality, and a village without a boundary of its own, an
+English parish, came back as its district; village, town, city, municipality, hamlet tried in that order, never the
+county: a town of its name nearby is no town the point lies in; a failed search tries the next name, and the map's
+answer is kept apart, so a retry spends no second map request)
+and then looks it up in that country, 20 matches, taking the one nearest the point. Nominatim's usage policy: one
+request a second from the whole application (the sidecar spaces its calls and refuses a caller whose turn lies over
+5 s out: the calls run detached from their callers, an unbounded queue would spend the allowance long after they
+left), an agent naming it (`loom-weather/<version> (+repo URL)`), answers cached (7 days per rounded point), the ODbL
+credit shown next to the name.
+
 ## Setup (sidecar)
 
 `.env`:
@@ -143,8 +177,9 @@ BACKEND_WEATHER_TOKEN=         # openssl rand -hex 32; loom and the sidecar shar
 `BACKEND_WEATHER_URL` defaults to `http://weather:8100` in `compose.yaml`; outside compose, unset or `off` keeps the
 weather off. Unlike search, a missing token never fails boot: compose starts the sidecar on every install, which
 without a token answers its health probe and refuses every call. The sidecar reads `WEATHER_TOKEN`, `WEATHER_ADDR` (`:8100`), `WEATHER_FORECAST_URL`
-(`https://api.open-meteo.com`), `WEATHER_GEOCODING_URL` (`https://geocoding-api.open-meteo.com`) and
-`WEATHER_AIR_QUALITY_URL` (`https://air-quality-api.open-meteo.com`).
+(`https://api.open-meteo.com`), `WEATHER_GEOCODING_URL` (`https://geocoding-api.open-meteo.com`),
+`WEATHER_AIR_QUALITY_URL` (`https://air-quality-api.open-meteo.com`) and `WEATHER_REVERSE_URL`
+(`https://nominatim.openstreetmap.org`; `off` drops `reverse_geocode`, the page then asks by name only).
 
 ## Replacing it
 

@@ -1019,6 +1019,13 @@ export const en = {
       save: "Save",
       note: "Saved in your memories. You can change it any time in chat.",
       notFound: "Place not found",
+      useCurrent: "Use my current location",
+      locating: "Locating…",
+      locateDenied: "Location access was denied. Type the place instead.",
+      locateFailed: "Couldn't get your location. Type the place instead.",
+      locateNoTown: "No town found at your location. Type the place instead.",
+      locateRetry:
+        "Couldn't name the town right now. Try again shortly, or type the place.",
       saveFailed: "Couldn't save the place. Try again.",
     },
     news: {
