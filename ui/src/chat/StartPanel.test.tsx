@@ -39,6 +39,7 @@ function renderStart(
 ) {
   return render(
     <StartPanel
+      userID="u1"
       displayName="Jan"
       draft={overrides.draft ?? ""}
       sendError=""
@@ -80,6 +81,43 @@ beforeEach(() => {
 afterEach(() => {
   window.removeEventListener(api.NOTIFICATIONS_CHANGED, record);
   window.removeEventListener(api.THREAD_NEWS_CHANGED, record);
+});
+
+describe("greeting", () => {
+  const lastSeen = () => localStorage.getItem("loom.greeting.lastSeen.u1");
+  const greeting = () => screen.getByRole("heading", { level: 2 }).textContent;
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(api.getToday).mockRejectedValue(new Error("down"));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  test("names the user on the first start screen of the day only", () => {
+    const first = renderStart();
+    expect(greeting()).toContain("Jan");
+    expect(lastSeen()).not.toBeNull();
+    first.unmount();
+
+    renderStart();
+    expect(greeting()).not.toContain("Jan");
+  });
+
+  test("a start screen opened in the background keeps the name for later", () => {
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+    renderStart();
+    expect(lastSeen()).toBeNull();
+
+    visibility.mockReturnValue("visible");
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(lastSeen()).not.toBeNull();
+  });
 });
 
 test("shows no starters while today loads", async () => {

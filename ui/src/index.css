@@ -211,6 +211,15 @@ body {
   line-height: 1.5;
 }
 
+/* The logo is a 1em square inline with the greeting. vertical-align: middle puts
+   its center on half the x-height, but the eye centers on the capitals, so the
+   logo read as sitting low (measured at 40px: center 10px above the baseline,
+   capitals centered at 15px). Dropping its bottom 0.125em below the baseline
+   puts its center on half the cap height. */
+.ui-greeting-logo {
+  vertical-align: -0.125em;
+}
+
 /* Prompt-starter suggestions panel: gentle fade/slide when it opens. */
 @keyframes prompt-panel-in {
   from {

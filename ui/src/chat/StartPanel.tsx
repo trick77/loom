@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
 import { Icon } from "./Icon";
+import { readGreetingVisit, rememberGreetingVisit } from "./greetingVisit";
 import { pickGreeting } from "./threadUtils";
 import { PromptStarters } from "./PromptStarters";
 import type { PastedText } from "./pastedText";
@@ -14,6 +15,7 @@ import { TodaySection } from "../today/TodaySection";
 import { useToday } from "../today/useToday";
 
 export function StartPanel({
+  userID,
   displayName,
   draft,
   sendError,
@@ -33,6 +35,7 @@ export function StartPanel({
   onOpenThread,
   onOpenMemory,
 }: {
+  userID: string;
   displayName: string;
   draft: string;
   sendError: string;
@@ -56,11 +59,34 @@ export function StartPanel({
   const today = useToday();
   // No thread exists yet, so uploads are deferred: files are held (see
   // pendingAttachmentNames) and bound to the thread once the first send creates it.
-  // Pick the greeting slot once per mount (useState's lazy initialiser runs exactly
-  // once, so the random choice never re-rolls on re-render), but translate it below
-  // at render time — so switching the UI language re-localizes the greeting instead
-  // of leaving the mount-time language frozen in.
-  const [greetingPick] = useState(() => pickGreeting(displayName));
+  // Pick the greeting slot once per mount (useState keeps the lazy initialiser's
+  // result, so the random choice never re-rolls on re-render), but translate it
+  // below at render time — so switching the UI language re-localizes the greeting
+  // instead of leaving the mount-time language frozen in.
+  // The visit is only read here; StrictMode calls this initialiser twice, so a
+  // write in it would spend the day's named greeting before anyone saw it.
+  const [greetingPick] = useState(() => {
+    const now = new Date();
+    const visit = readGreetingVisit(userID, now);
+    return pickGreeting(displayName, now, Math.random, visit);
+  });
+  // Record the visit once the screen is actually shown: a tab restored in the
+  // background must not spend the named greeting.
+  useEffect(() => {
+    const remember = () => {
+      if (document.visibilityState !== "visible") return false;
+      rememberGreetingVisit(userID, new Date());
+      return true;
+    };
+    if (remember()) return;
+    const onVisible = () => {
+      if (remember()) {
+        document.removeEventListener("visibilitychange", onVisible);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [userID]);
   const greeting = t(`greetings.${greetingPick.key}.${greetingPick.form}`, {
     name: greetingPick.name,
   });
@@ -104,7 +130,7 @@ export function StartPanel({
             src={loomLogo}
             alt=""
             aria-hidden
-            className="mr-2.5 inline-block h-10 w-10 align-middle"
+            className="ui-greeting-logo mr-2.5 inline-block h-10 w-10"
           />
           {greeting}
         </h2>

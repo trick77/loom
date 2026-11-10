@@ -1862,6 +1862,7 @@ export function ThreadShell({
           )
         ) : route.view === "new" ? (
           <StartPanel
+            userID={user.id}
             displayName={displayName}
             draft={draft.text}
             sendError={visibleSendError}

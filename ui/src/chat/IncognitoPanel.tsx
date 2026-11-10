@@ -152,7 +152,7 @@ export function IncognitoPanel({
                 src={loomLogo}
                 alt=""
                 aria-hidden
-                className="mr-2.5 inline-block h-10 w-10 align-middle"
+                className="ui-greeting-logo mr-2.5 inline-block h-10 w-10"
               />
               {t("incognito.greeting")}
             </h2>

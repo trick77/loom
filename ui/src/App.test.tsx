@@ -314,8 +314,9 @@ test("greets signed-in users with a night-appropriate greeting after 23:00", asy
 
   render(<App />);
 
-  // The exact line is random, but at 23:00 only night + generic + weekday
-  // greetings are eligible — a daytime-only greeting here would fail the match.
+  // The exact line is random, but at 23:00 only the night salutations, the
+  // welcome back and the generic, night and weekday lines are eligible — a
+  // daytime-only greeting here would fail the match.
   expect(await screen.findByText(greetingPattern("Jan"))).toBeInTheDocument();
 });
 

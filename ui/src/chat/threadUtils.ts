@@ -1,67 +1,105 @@
 import i18n from "../i18n";
 import type { Message } from "../api";
 import type { ComposerAttachment } from "./useDocumentAttachments";
+import type { GreetingVisit } from "./greetingVisit";
 import type { MessageWithActivityTrace } from "./types";
 
-// A greeting for the start screen. `key` indexes the localized text under the
-// `greetings` catalog namespace; `named`/`unnamed` flag which forms that entry
-// provides (named forms carry a `{{name}}` placeholder and need a name to
-// render), and `when` gates it to a time-of-day or weekday — entries with no
-// `when` are always eligible.
+// Start-screen greetings. The name is a salutation, not decoration: the first
+// start screen of the day greets by first name ("Good morning, Jan"), a week away
+// earns "Welcome back, Jan", and every later screen that day gets a nameless line
+// (a question, a nudge, a short motivational one). A name on a question reads like
+// a bot or a reprimand, and a name on every screen stops meaning anything.
+//
+// `key` indexes the `greetings` i18n namespace. Salutations provide `named` and
+// `unnamed` forms, lines only `unnamed`. `when` gates an entry to a moment; an
+// entry without one is always eligible.
 type Greeting = {
   key: string;
-  named?: boolean;
-  unnamed?: boolean;
   when?: (now: Date) => boolean;
 };
 
-// Time-of-day bands (non-overlapping) and weekday helpers, keyed on local time.
-const morning = (d: Date) => d.getHours() >= 5 && d.getHours() < 12;
-const afternoon = (d: Date) => d.getHours() >= 12 && d.getHours() < 18;
-const evening = (d: Date) => d.getHours() >= 18 && d.getHours() < 23;
-const night = (d: Date) => d.getHours() >= 23 || d.getHours() < 5;
-const onDay = (day: number) => (d: Date) => d.getDay() === day; // 0=Sun … 6=Sat
-const weekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
+const minutes = (d: Date) => d.getHours() * 60 + d.getMinutes();
+// between is a local time-of-day band [from, to) in hours; from > to wraps midnight.
+const between = (from: number, to: number) => (d: Date) => {
+  const m = minutes(d);
+  const lo = from * 60;
+  const hi = to * 60;
+  return lo <= hi ? m >= lo && m < hi : m >= lo || m < hi;
+};
+const morning = between(5, 12);
+const afternoon = between(12, 18);
+const evening = between(18, 23);
+const night = between(23, 5);
+const onDays =
+  (...days: number[]) =>
+  (d: Date) =>
+    days.includes(d.getDay()); // 0=Sun … 6=Sat
+const all =
+  (...tests: ((d: Date) => boolean)[]) =>
+  (d: Date) =>
+    tests.every((t) => t(d));
+// onDate matches a calendar day range within one month (month 1-12).
+const onDate =
+  (month: number, first: number, last = first) =>
+  (d: Date) =>
+    d.getMonth() + 1 === month && d.getDate() >= first && d.getDate() <= last;
 
-// The rotating pool. Mirrors the Claude home-screen set (brand lines adapted to
-// Loom), folding in the original five greetings so nothing is lost. Text lives in
-// the i18n `greetings` namespace so both languages rotate through the same slots.
-const GREETINGS: Greeting[] = [
-  // Generic — always eligible.
-  { key: "returns", named: true },
-  { key: "backAtIt", named: true, unnamed: true },
-  { key: "heyThere", named: true, unnamed: true },
-  { key: "howAreYou", named: true, unnamed: true },
-  { key: "howWasDay", named: true, unnamed: true },
-  { key: "howsItGoing", named: true, unnamed: true },
-  { key: "welcome", named: true, unnamed: true },
-  { key: "whatsNew", named: true, unnamed: true },
-  // Morning.
-  { key: "goodMorning", named: true, unnamed: true, when: morning },
-  { key: "morning", named: true, when: morning },
-  { key: "coffee", unnamed: true, when: morning },
-  // Afternoon.
-  { key: "goodAfternoon", named: true, unnamed: true, when: afternoon },
-  { key: "afternoon", named: true, when: afternoon },
-  // Evening.
-  { key: "goodEvening", named: true, unnamed: true, when: evening },
-  { key: "evening", named: true, unnamed: true, when: evening },
-  // Late night.
-  { key: "nightOwl", unnamed: true, when: night },
-  { key: "upLate", named: true, when: night },
-  // Weekdays.
-  { key: "happyMonday", named: true, unnamed: true, when: onDay(1) },
-  { key: "happyTuesday", named: true, unnamed: true, when: onDay(2) },
-  { key: "happyWednesday", named: true, unnamed: true, when: onDay(3) },
-  { key: "happyThursday", named: true, unnamed: true, when: onDay(4) },
-  { key: "happyFriday", named: true, unnamed: true, when: onDay(5) },
-  { key: "fridayFeeling", named: true, unnamed: true, when: onDay(5) },
-  { key: "happySaturday", named: true, unnamed: true, when: onDay(6) },
-  { key: "happySunday", named: true, unnamed: true, when: onDay(0) },
-  { key: "sundaySession", named: true, unnamed: true, when: onDay(0) },
-  // Weekend.
-  { key: "weekend", named: true, unnamed: true, when: weekend },
+// Holidays beat the time of day on the first greeting.
+const HOLIDAYS: Greeting[] = [
+  { key: "christmas", when: onDate(12, 24, 26) },
+  { key: "newYear", when: onDate(1, 1, 3) },
 ];
+
+const SALUTATIONS: Greeting[] = [
+  { key: "goodMorning", when: morning },
+  { key: "goodDay", when: afternoon },
+  { key: "goodEvening", when: evening },
+  { key: "lateNight", when: night },
+  { key: "niceToSeeYou" },
+];
+
+const WELCOME_BACK = "welcomeBack";
+const WELCOME_BACK_DAYS = 7;
+
+const LINES: Greeting[] = [
+  // Generic.
+  { key: "whatsOnYourMind" },
+  { key: "whereToStart" },
+  { key: "whatAreWeWorkingOn" },
+  { key: "readyWhenYouAre" },
+  { key: "backAtIt" },
+  { key: "whatsNew" },
+  // Motivational, short on purpose.
+  { key: "oneStepAtATime" },
+  { key: "smallSteps" },
+  { key: "startSmall" },
+  { key: "goodIdeas" },
+  { key: "curiosityFirst" },
+  { key: "makeItCount" },
+  // A moment of the day or week.
+  { key: "earlyStart", when: between(5, 7.5) },
+  { key: "coffeeFirst", when: morning },
+  { key: "newDayNewIdeas", when: morning },
+  { key: "freshWeek", when: all(onDays(1), morning) },
+  { key: "weekIsYours", when: onDays(1) },
+  { key: "lunchBreak", when: between(11.5, 13.5) },
+  { key: "afternoonSlump", when: between(14, 17) },
+  { key: "quittingTime", when: all(onDays(1, 2, 3, 4, 5), between(16, 18)) },
+  { key: "finallyFriday", when: all(onDays(5), between(5, 18)) },
+  { key: "weekendSoon", when: all(onDays(5), between(14, 23)) },
+  { key: "howWasDay", when: evening },
+  { key: "quietEvening", when: evening },
+  { key: "oneMoreIdea", when: evening },
+  { key: "nightOwl", when: night },
+  { key: "nightShift", when: night },
+  { key: "happyWeekend", when: onDays(0, 6) },
+  { key: "sundayProject", when: onDays(0) },
+  { key: "lastDayOfYear", when: onDate(12, 31) },
+];
+
+// Without storage a first visit can't be told from a later one: name a third of
+// the greetings, so it still happens without repeating on every screen.
+const NAMED_SHARE_WITHOUT_STORAGE = 1 / 3;
 
 function firstName(fullName: string): string {
   const trimmed = fullName.trim();
@@ -77,14 +115,28 @@ function greetingText(
   return i18n.t(`greetings.${key}.${form}`, { name });
 }
 
-// eligibleGreetings returns the pool entries valid at `now`, dropping named-only
-// entries when there is no name to render them with.
-function eligibleGreetings(name: string, now: Date): Greeting[] {
-  return GREETINGS.filter((g) => {
-    if (g.when !== undefined && !g.when(now)) return false;
-    if (name === "" && !g.unnamed) return false;
-    return true;
-  });
+const eligible = (pool: Greeting[], now: Date) =>
+  pool.filter((g) => g.when === undefined || g.when(now));
+
+// salutationKeys lists the salutations open at `now`, a holiday shutting out the rest.
+function salutationKeys(now: Date): string[] {
+  const holidays = eligible(HOLIDAYS, now);
+  return (holidays.length > 0 ? holidays : eligible(SALUTATIONS, now)).map(
+    (g) => g.key,
+  );
+}
+
+// weightedLine picks a nameless line; one tied to a moment counts double, so the
+// moment shows instead of drowning in the always-eligible ones.
+function weightedLine(now: Date, rand: () => number): string {
+  const pool = eligible(LINES, now);
+  const weights = pool.map((g) => (g.when === undefined ? 1 : 2));
+  let r = rand() * weights.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < pool.length; i += 1) {
+    r -= weights[i];
+    if (r < 0) return pool[i].key;
+  }
+  return pool[pool.length - 1].key;
 }
 
 // GreetingPick is the stable, language-independent outcome of choosing a greeting:
@@ -97,29 +149,34 @@ export type GreetingPick = {
   name: string;
 };
 
-function chooseForm(
-  greeting: Greeting,
-  name: string,
-  rand: () => number,
-): "named" | "unnamed" {
-  const canName = name !== "" && Boolean(greeting.named);
-  const useNamed = canName && (!greeting.unnamed || rand() < 0.5);
-  if (useNamed) return "named";
-  if (greeting.unnamed) return "unnamed";
-  return "named";
-}
-
-// pickGreeting makes the time/day-appropriate random choice once. `now`/`rand` are
-// injectable so callers (and tests) can pin the moment and the choice.
+// pickGreeting makes the choice once. `visit` is this browser's last start screen
+// (greetingVisit); undefined when storage is unavailable. `now`/`rand` are
+// injectable so tests can pin the moment and the choice.
 export function pickGreeting(
   fullName: string,
   now = new Date(),
   rand = Math.random,
+  visit?: GreetingVisit,
 ): GreetingPick {
   const name = firstName(fullName);
-  const eligible = eligibleGreetings(name, now);
-  const pick = eligible[Math.floor(rand() * eligible.length)] ?? eligible[0];
-  return { key: pick.key, form: chooseForm(pick, name, rand), name };
+  const form = name === "" ? "unnamed" : "named";
+  // A holiday outranks the welcome back: it only comes once a year.
+  const away =
+    visit !== undefined && (visit.awayDays ?? 0) >= WELCOME_BACK_DAYS;
+  if (away && eligible(HOLIDAYS, now).length === 0) {
+    return { key: WELCOME_BACK, form, name };
+  }
+  const salute =
+    visit === undefined
+      ? rand() < NAMED_SHARE_WITHOUT_STORAGE
+      : visit.firstToday;
+  if (salute) {
+    const keys = salutationKeys(now);
+    const key =
+      keys[Math.min(Math.floor(rand() * keys.length), keys.length - 1)];
+    return { key, form, name };
+  }
+  return { key: weightedLine(now, rand), form: "unnamed", name };
 }
 
 // greetingTextFor localizes a pick against the current i18n language.
@@ -134,22 +191,26 @@ export function greetingForNow(
   fullName: string,
   now = new Date(),
   rand = Math.random,
+  visit?: GreetingVisit,
 ): string {
-  return greetingTextFor(pickGreeting(fullName, now, rand));
+  return greetingTextFor(pickGreeting(fullName, now, rand, visit));
 }
 
 // possibleGreetings enumerates every string greetingForNow could return at `now`
-// for the given name — used by tests to assert membership without duplicating the
-// pool.
+// for the given name, whatever the visit — used by tests to assert membership
+// without duplicating the pool.
 export function possibleGreetings(
   fullName: string,
   now = new Date(),
 ): string[] {
   const name = firstName(fullName);
+  const form = name === "" ? "unnamed" : "named";
   const out = new Set<string>();
-  for (const g of eligibleGreetings(name, now)) {
-    if (name !== "" && g.named) out.add(greetingText(g.key, "named", name));
-    if (g.unnamed) out.add(greetingText(g.key, "unnamed", name));
+  for (const key of [WELCOME_BACK, ...salutationKeys(now)]) {
+    out.add(greetingText(key, form, name));
+  }
+  for (const g of eligible(LINES, now)) {
+    out.add(greetingText(g.key, "unnamed", name));
   }
   return [...out];
 }

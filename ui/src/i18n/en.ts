@@ -1050,69 +1050,54 @@ export const en = {
     day_one: "{{count}} day ago",
     day_other: "{{count}} days ago",
   },
-  // Start-screen greetings. Each key mirrors an entry in threadUtils GREETINGS;
-  // `named` carries a {{name}} placeholder, `unnamed` is the nameless form.
+  // Start-screen greetings, keyed by threadUtils. Salutations (first screen of
+  // the day) carry `named` with a {{name}} placeholder plus a nameless `unnamed`;
+  // the lines for the rest of the day are `unnamed` only.
   greetings: {
-    returns: { named: "{{name}} returns!" },
-    backAtIt: { named: "Back at it, {{name}}", unnamed: "Back at it!" },
-    heyThere: { named: "Hey there, {{name}}", unnamed: "Hey there" },
-    howAreYou: {
-      named: "Hi {{name}}, how are you?",
-      unnamed: "Hi, how are you?",
-    },
-    howWasDay: {
-      named: "How was your day, {{name}}?",
-      unnamed: "How was your day?",
-    },
-    howsItGoing: {
-      named: "How's it going, {{name}}?",
-      unnamed: "How's it going?",
-    },
-    welcome: { named: "Welcome, {{name}}", unnamed: "Welcome" },
-    whatsNew: { named: "What's new, {{name}}?", unnamed: "What's new?" },
     goodMorning: { named: "Good morning, {{name}}", unnamed: "Good morning" },
-    morning: { named: "Morning, {{name}}" },
-    coffee: { unnamed: "Coffee and Loom time?" },
-    goodAfternoon: {
-      named: "Good afternoon, {{name}}",
-      unnamed: "Good afternoon",
-    },
-    afternoon: { named: "Afternoon, {{name}}" },
+    goodDay: { named: "Hi {{name}}", unnamed: "Hi there" },
     goodEvening: { named: "Good evening, {{name}}", unnamed: "Good evening" },
-    evening: { named: "Evening, {{name}}", unnamed: "Evening" },
+    lateNight: { named: "Late night, {{name}}", unnamed: "Late night" },
+    niceToSeeYou: {
+      named: "Good to see you, {{name}}",
+      unnamed: "Good to see you",
+    },
+    welcomeBack: { named: "Welcome back, {{name}}", unnamed: "Welcome back" },
+    christmas: {
+      named: "Merry Christmas, {{name}}",
+      unnamed: "Merry Christmas",
+    },
+    newYear: { named: "Happy New Year, {{name}}", unnamed: "Happy New Year" },
+    whatsOnYourMind: { unnamed: "What's on your mind?" },
+    whereToStart: { unnamed: "Where shall we start?" },
+    whatAreWeWorkingOn: { unnamed: "What are we working on?" },
+    readyWhenYouAre: { unnamed: "Ready when you are" },
+    backAtIt: { unnamed: "Back at it" },
+    whatsNew: { unnamed: "What's new?" },
+    oneStepAtATime: { unnamed: "One step at a time" },
+    smallSteps: { unnamed: "Small steps count" },
+    startSmall: { unnamed: "Start small, think big" },
+    goodIdeas: { unnamed: "Good ideas start here" },
+    curiosityFirst: { unnamed: "Curiosity first" },
+    makeItCount: { unnamed: "Make it count" },
+    earlyStart: { unnamed: "Early start today" },
+    coffeeFirst: { unnamed: "Coffee first?" },
+    newDayNewIdeas: { unnamed: "New day, new ideas" },
+    freshWeek: { unnamed: "Fresh week, fresh start" },
+    weekIsYours: { unnamed: "This week is yours" },
+    lunchBreak: { unnamed: "Lunch break?" },
+    afternoonSlump: { unnamed: "Afternoon slump?" },
+    quittingTime: { unnamed: "Almost quitting time" },
+    finallyFriday: { unnamed: "Finally Friday" },
+    weekendSoon: { unnamed: "The weekend's almost here" },
+    howWasDay: { unnamed: "How was your day?" },
+    quietEvening: { unnamed: "Quiet evening?" },
+    oneMoreIdea: { unnamed: "One more good idea?" },
     nightOwl: { unnamed: "Hello, night owl" },
-    upLate: { named: "Up late, {{name}}?" },
-    happyMonday: { named: "Happy Monday, {{name}}", unnamed: "Happy Monday" },
-    happyTuesday: {
-      named: "Happy Tuesday, {{name}}",
-      unnamed: "Happy Tuesday",
-    },
-    happyWednesday: {
-      named: "Happy Wednesday, {{name}}",
-      unnamed: "Happy Wednesday",
-    },
-    happyThursday: {
-      named: "Happy Thursday, {{name}}",
-      unnamed: "Happy Thursday",
-    },
-    happyFriday: { named: "Happy Friday, {{name}}", unnamed: "Happy Friday" },
-    fridayFeeling: {
-      named: "That Friday feeling, {{name}}",
-      unnamed: "That Friday feeling",
-    },
-    happySaturday: {
-      named: "Happy Saturday, {{name}}",
-      unnamed: "Happy Saturday!",
-    },
-    happySunday: { named: "Happy Sunday, {{name}}", unnamed: "Happy Sunday" },
-    sundaySession: {
-      named: "Sunday session, {{name}}?",
-      unnamed: "Sunday session?",
-    },
-    weekend: {
-      named: "Welcome to the weekend, {{name}}",
-      unnamed: "Welcome to the weekend",
-    },
+    nightShift: { unnamed: "Night shift?" },
+    happyWeekend: { unnamed: "Happy weekend" },
+    sundayProject: { unnamed: "Sunday project?" },
+    lastDayOfYear: { unnamed: "Last day of the year" },
   },
 };
 
