@@ -76,11 +76,12 @@ test("today shows the weather and sun tiles, nothing to fold", () => {
   expect(hourItems()[4]).toHaveAttribute("title", "Clear");
   expect(within(section).getByText("07:25")).toBeInTheDocument();
   expect(within(section).getByText("16:58")).toBeInTheDocument();
+  // The day's length stands between the two times, named for a reader.
+  expect(within(section).getByText("9 h 33 min")).toBeInTheDocument();
   expect(
-    within(section).getByText(
-      "Day length 9 h 33 min · 2 min shorter than yesterday",
-    ),
+    within(section).getByText("Day length 9 h 33 min"),
   ).toBeInTheDocument();
+  expect(within(section).queryByText(/yesterday/)).toBeNull();
   expect(
     within(section).getByRole("img", {
       name: "Sun position: 6 h 41 min of daylight left",
@@ -131,30 +132,19 @@ test("from the evening on, tomorrow: its range, sky and sun times", () => {
     }),
   ).toBeInTheDocument();
   expect(
-    within(section).getByText(
-      "Day length 9 h 33 min · 2 min shorter than today",
-    ),
+    within(section).getByText("Day length 9 h 33 min"),
   ).toBeInTheDocument();
 });
 
-test("tomorrow without a rain chance, longer or as long as today", () => {
+test("tomorrow without a rain chance", () => {
   const base = tomorrowFixture();
-  const { unmount } = showTomorrow({
-    sun: { ...base.sun!, deltaMinutes: 1 },
+  showTomorrow({
     weather: {
       ...base.weather!,
       day: { ...base.weather!.day, precipitationProbability: null },
     },
   });
   expect(screen.queryByText(/^Rain/)).toBeNull();
-  expect(
-    screen.getByText("Day length 9 h 33 min · 1 min longer than today"),
-  ).toBeInTheDocument();
-  unmount();
-  showTomorrow({ sun: { ...base.sun!, deltaMinutes: 0 } });
-  expect(
-    screen.getByText("Day length 9 h 33 min · same as today"),
-  ).toBeInTheDocument();
 });
 
 test("a warning stands out in the tile, today and tomorrow", () => {
@@ -164,9 +154,11 @@ test("a warning stands out in the tile, today and tomorrow", () => {
   const warning = screen.getByTestId("weather-warning");
   expect(warning).toHaveTextContent("Rain from 17:00");
   expect(warning).toHaveClass("text-accent-strong");
+  // A sky keeps its color everywhere, warned or not: rain is blue, the
+  // sun gold; only the warning's words take the accent.
   expect(warning.querySelector("svg")).toHaveAttribute("data-warning", "rain");
-  // The rainy 18:00 slot is drawn in the accent, the sunny ones are not.
-  expect(hourItems()[3].querySelector("svg")).toHaveClass("text-accent-strong");
+  expect(warning.querySelector("svg")).toHaveClass("text-rain");
+  expect(hourItems()[3].querySelector("svg")).toHaveClass("text-rain");
   expect(hourItems()[1].querySelector("svg")).toHaveClass("text-sun");
   unmount();
 
@@ -201,6 +193,7 @@ test("in the evening tonight's warning is a pill above tomorrow", () => {
   expect(pill).toHaveTextContent("Rain tonight from 21:00 100%");
   expect(pill).toHaveClass("rounded-full", "text-accent-strong");
   expect(pill.querySelector("svg")).toHaveAttribute("data-warning", "rain");
+  expect(pill.querySelector("svg")).toHaveClass("text-rain");
   // It comes before tomorrow's heading, and the tile warns of tomorrow only.
   const heading = screen.getByRole("heading", {
     name: "Tomorrow · Tuesday, November 10",
@@ -275,24 +268,19 @@ test("a stay elsewhere reads as the current place", () => {
 
 test("before sunrise the sun is not on its arc", () => {
   const sun = todayFixture().sun!;
-  show({ sun: { ...sun, progress: -0.2, deltaMinutes: 3 } });
+  show({ sun: { ...sun, progress: -0.2 } });
   expect(
     screen.getByRole("img", { name: "Sun position: not up yet" }),
   ).toBeInTheDocument();
   expect(screen.queryByTestId("sun-dot")).toBeNull();
-  expect(
-    screen.getByText("Day length 9 h 33 min · 3 min longer than yesterday"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("Day length 9 h 33 min")).toBeInTheDocument();
 });
 
 test("after sunset the sun is set; the polar day keeps it up", () => {
   const sun = todayFixture().sun!;
-  const { unmount } = show({ sun: { ...sun, progress: 1.3, deltaMinutes: 0 } });
+  const { unmount } = show({ sun: { ...sun, progress: 1.3 } });
   expect(
     screen.getByRole("img", { name: "Sun position: set" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByText("Day length 9 h 33 min · same as yesterday"),
   ).toBeInTheDocument();
   unmount();
   show({
@@ -302,11 +290,12 @@ test("after sunset the sun is set; the polar day keeps it up", () => {
       set: null,
       polar: "day",
       dayMinutes: 1440,
-      deltaMinutes: 0,
     },
   });
   expect(screen.getAllByText("Polar day").length).toBeGreaterThan(0);
   expect(screen.getByTestId("sun-dot")).toBeInTheDocument();
+  // A polar day says its length by its name.
+  expect(screen.queryByText(/Day length/)).toBeNull();
 });
 
 test("without weather the sun times show alone", () => {

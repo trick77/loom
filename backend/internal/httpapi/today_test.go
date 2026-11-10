@@ -208,7 +208,7 @@ func TestToday(t *testing.T) {
 		t.Fatalf("runs = %+v", got.Runs)
 	}
 	if s := got.Sun; s == nil || s.Rise == nil || s.Set == nil || !strings.HasPrefix(*s.Rise, "07:2") || !strings.HasPrefix(*s.Set, "16:5") ||
-		s.DeltaMinutes > -1 || s.DeltaMinutes < -4 || s.Progress == nil || *s.Progress <= 0 || *s.Progress >= 0.2 {
+		s.Progress == nil || *s.Progress <= 0 || *s.Progress >= 0.2 {
 		t.Fatalf("sun = %+v", got.Sun)
 	}
 	w := got.Weather
@@ -313,7 +313,7 @@ func TestTodayInTheEveningShowsTomorrow(t *testing.T) {
 	if got.Warning == nil || got.Warning.Kind != "rain" || got.Warning.From != "10:00" || got.Warning.Day != dayTomorrow {
 		t.Fatalf("tomorrow's warning = %+v", got.Warning)
 	}
-	if s := got.Sun; s == nil || s.Rise == nil || !strings.HasPrefix(*s.Rise, "07:2") || s.Progress != nil || s.DeltaMinutes > -1 {
+	if s := got.Sun; s == nil || s.Rise == nil || !strings.HasPrefix(*s.Rise, "07:2") || s.Progress != nil {
 		t.Fatalf("tomorrow's sun = %+v", got.Sun)
 	}
 	// At midnight the shown tomorrow becomes today.
@@ -482,18 +482,6 @@ func TestTomorrowNeedsItsOwnDay(t *testing.T) {
 	f.Daily = f.Daily[:1]
 	if weather, warning, tonight := tomorrowForecast(f, time.Date(2026, 11, 9, 19, 0, 0, 0, time.UTC), time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)); weather != nil || warning != nil || tonight != nil {
 		t.Fatalf("tomorrow from today's day: %+v, %+v, %+v", weather, warning, tonight)
-	}
-}
-
-// Just past midnight after the clocks went forward, the day before is still
-// the local day before, not two days back.
-func TestSunOnAcrossAClockChange(t *testing.T) {
-	zurich, _ := time.LoadLocation("Europe/Zurich")
-	p := &location.Place{Latitude: 47.3769, Longitude: 8.5417}
-	at := time.Date(2026, 3, 29, 22, 30, 0, 0, time.UTC) // 00:30 CEST on the 30th
-	got := sunOn(at, at.In(zurich), p, zurich)
-	if got.DeltaMinutes < 2 || got.DeltaMinutes > 4 {
-		t.Fatalf("delta = %d min, want one day's change (about 3)", got.DeltaMinutes)
 	}
 }
 

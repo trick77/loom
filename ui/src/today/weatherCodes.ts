@@ -70,15 +70,3 @@ export function warningKey(
   }
   return `today.${group}.${warning.kind}`;
 }
-
-// warned tells whether a slot's sky is what the warning is about.
-export function warned(
-  condition: Condition,
-  warning: TodayWarning | null,
-): boolean {
-  if (warning === null) return false;
-  if (warning.kind === "rain") return condition === "rain";
-  if (warning.kind === "snow") return condition === "snow";
-  if (warning.kind === "storm") return condition === "storm";
-  return false;
-}

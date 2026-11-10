@@ -16,8 +16,6 @@ export type TodaySun = {
   rise: string | null;
   set: string | null;
   dayMinutes: number;
-  /** Day length change against the day before the shown one, in minutes. */
-  deltaMinutes: number;
   polar: "" | "day" | "night";
   /** Position between rise (0) and set (1) now; <0 before, >1 after; null
    * when the shown day is tomorrow. */

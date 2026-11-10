@@ -1,11 +1,19 @@
 import type { TodayWarning } from "../api/today";
 import type { Condition } from "./weatherCodes";
 
-// Icons draw in currentColor: the sun's gold, the sky's soft grey, the
-// warning's accent.
+// Icons draw in currentColor, one color per sky wherever it is drawn: the
+// sun's gold, rain's blue, the rest a soft grey. A warning takes the accent
+// in its words only: a rain glyph orange here and blue there read as two
+// different things.
 const SUN_CLASS = "text-sun";
+const RAIN_CLASS = "text-rain";
 const SKY_CLASS = "text-ink-dim";
-const WARN_CLASS = "text-accent-strong";
+
+function skyClass(condition: Condition, night: boolean): string {
+  if (condition === "clear" && !night) return SUN_CLASS;
+  if (condition === "rain") return RAIN_CLASS;
+  return SKY_CLASS;
+}
 
 const SUN = (
   <>
@@ -86,20 +94,13 @@ export function WeatherIcon({
   condition,
   night = false,
   size,
-  warn = false,
   label,
 }: {
   condition: Condition;
   night?: boolean;
   size: number;
-  warn?: boolean;
   label?: string;
 }) {
-  const color = warn
-    ? WARN_CLASS
-    : condition === "clear" && !night
-      ? SUN_CLASS
-      : SKY_CLASS;
   return (
     <svg
       width={size}
@@ -115,7 +116,7 @@ export function WeatherIcon({
       {...(label === undefined
         ? { "aria-hidden": true }
         : { role: "img", "aria-label": label })}
-      className={`shrink-0 ${color}`}
+      className={`shrink-0 ${skyClass(condition, night)}`}
     >
       {glyph(condition, night)}
     </svg>
@@ -135,8 +136,8 @@ function warningGlyph(kind: TodayWarning["kind"]) {
   }
 }
 
-// WarningIcon marks a weather warning, in the accent color: next to text that
-// names it, so it is decoration.
+// WarningIcon marks a weather warning in its sky's color (the words next to
+// it carry the accent); decoration next to text that names it.
 export function WarningIcon({
   kind,
   size,
@@ -156,7 +157,7 @@ export function WarningIcon({
       strokeLinejoin="round"
       aria-hidden
       data-warning={kind}
-      className={`shrink-0 ${WARN_CLASS}`}
+      className={`shrink-0 ${kind === "rain" ? RAIN_CLASS : SKY_CLASS}`}
     >
       {warningGlyph(kind)}
     </svg>
