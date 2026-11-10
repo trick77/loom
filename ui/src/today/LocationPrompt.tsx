@@ -2,7 +2,8 @@ import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PlaceNotFoundError, setLocation } from "../api";
-import { UserFacingError } from "../api/http";
+import { describeActionError } from "../chat/actionErrors";
+import { LocateButton } from "./LocateButton";
 import { canGeolocate, useLocate, type LocateFailure } from "./useLocate";
 
 const failureText: Record<LocateFailure, string> = {
@@ -18,9 +19,11 @@ const failureText: Record<LocateFailure, string> = {
 // weather.
 export function LocationPrompt({
   onSaved,
+  onSessionExpired,
   canLocate = false,
 }: {
   onSaved(): void;
+  onSessionExpired(): void;
   canLocate?: boolean;
 }) {
   const { t } = useTranslation();
@@ -29,7 +32,8 @@ export function LocationPrompt({
   const [place, setPlace] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const { locating, failure, locate, clearFailure } = useLocate();
+  const { locating, failure, locate, clearFailure } =
+    useLocate(onSessionExpired);
   const offerLocate = canLocate && canGeolocate();
   const error = failure !== null ? t(failureText[failure]) : saveError;
 
@@ -44,13 +48,12 @@ export function LocationPrompt({
       await setLocation(value);
       onSaved();
     } catch (err) {
-      setSaveError(
+      const message =
         err instanceof PlaceNotFoundError
           ? t("today.location.notFound")
-          : err instanceof UserFacingError && err.message !== ""
-            ? err.message
-            : t("today.location.saveFailed"),
-      );
+          : describeActionError(err, t("today.location.saveFailed"));
+      if (message === null) onSessionExpired();
+      else setSaveError(message);
     } finally {
       setSaving(false);
     }
@@ -105,41 +108,5 @@ export function LocationPrompt({
         {t("today.location.note")}
       </span>
     </form>
-  );
-}
-
-// LocateButton is "use my current location", with the crosshair.
-export function LocateButton({
-  locating,
-  disabled = false,
-  onClick,
-}: {
-  locating: boolean;
-  disabled?: boolean;
-  onClick(): void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <button
-      className="inline-flex items-center gap-1.5 text-[13px] text-muted transition-colors hover:text-ink disabled:opacity-50"
-      disabled={locating || disabled}
-      onClick={onClick}
-      type="button"
-    >
-      <svg
-        aria-hidden="true"
-        className="h-3.5 w-3.5"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.6"
-        viewBox="0 0 16 16"
-      >
-        <circle cx="8" cy="8" r="4.5" />
-        <circle cx="8" cy="8" fill="currentColor" r="1.5" stroke="none" />
-        <path d="M8 1v2M8 13v2M1 8h2M13 8h2" />
-      </svg>
-      {locating ? t("today.location.locating") : t("today.location.useCurrent")}
-    </button>
   );
 }

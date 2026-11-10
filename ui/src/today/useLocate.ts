@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import {
   coarsePoint,
@@ -6,6 +6,7 @@ import {
   PlaceNotFoundError,
   type LocatedTown,
 } from "../api";
+import { AuthExpiredError } from "../api/http";
 
 // A town is all that is needed: no GPS fix, a position up to ten minutes old
 // will do.
@@ -53,13 +54,18 @@ export function canGeolocate(): boolean {
 
 // useLocate asks the browser for its position and keeps the town there as
 // where the user is (over the memory's places). locate resolves to the town,
-// or null with failure set.
-export function useLocate() {
+// or null with failure set; an expired session goes to onSessionExpired, it is
+// no map provider to retry.
+export function useLocate(onSessionExpired: () => void) {
   const [locating, setLocating] = useState(false);
   const [failure, setFailure] = useState<LocateFailure | null>(null);
+  // A ref, not the state: a second click before the next render still sees
+  // the first one running (the server would answer it 409, read as busy).
+  const running = useRef(false);
 
   async function locate(): Promise<LocatedTown | null> {
-    if (locating) return null;
+    if (running.current) return null;
+    running.current = true;
     setLocating(true);
     setFailure(null);
     try {
@@ -80,14 +86,20 @@ export function useLocate() {
           coarsePoint(position.coords.latitude, position.coords.longitude),
         );
       } catch (err) {
-        // Anything but no town is the map provider busy or away.
+        if (err instanceof AuthExpiredError) {
+          onSessionExpired();
+          return null;
+        }
+        // Anything else but no town is the map provider busy or away.
         setFailure(err instanceof PlaceNotFoundError ? "noTown" : "retry");
         return null;
       }
     } finally {
+      running.current = false;
       setLocating(false);
     }
   }
 
-  return { locating, failure, locate, clearFailure: () => setFailure(null) };
+  const clearFailure = useCallback(() => setFailure(null), []);
+  return { locating, failure, locate, clearFailure };
 }

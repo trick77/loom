@@ -1905,6 +1905,7 @@ export function ThreadShell({
                 onCreated: (project) => setStartProjectID(project.id),
               })
             }
+            onSessionExpired={onSessionExpired}
           />
         ) : (
           <ThreadPanel

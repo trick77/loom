@@ -295,11 +295,11 @@ func (s *server) placeHere(ctx context.Context, user auth.User) (p *location.Pla
 	if s.locations == nil {
 		return nil, nil, errors.New("locations are off")
 	}
+	// A located town that cannot be read leaves the memory's place, not none.
 	located, err := s.locations.Located(ctx, user.ID)
 	if err != nil {
-		return nil, nil, err
-	}
-	if located != nil {
+		slog.Warn("read located place failed, using the memory's", "user_id", user.ID, "err", err)
+	} else if located != nil {
 		return &located.Place, &located.Credit, nil
 	}
 	home, current, _, err := s.locations.Places(ctx, user.ID)

@@ -61,7 +61,37 @@ func (s *server) userContextForUser(ctx context.Context, userID string) string {
 	} else if block := renderUserFacts(facts, time.Now()); block != "" {
 		blocks = append(blocks, block)
 	}
+	if block := s.locatedBlock(ctx, userID); block != "" {
+		blocks = append(blocks, block)
+	}
 	return strings.Join(blocks, "\n\n")
+}
+
+// locatedBlock names the town the user located on the start page: it holds
+// over any place the facts name (stale, maybe), or a weather question would
+// be answered for the memory's place while the page shows the located one.
+// Last, after the facts: it changes rarely, and the facts' prefix stays
+// cached. "" without one or when it cannot be read.
+func (s *server) locatedBlock(ctx context.Context, userID string) string {
+	if s.locations == nil {
+		return ""
+	}
+	l, err := s.locations.Located(ctx, userID)
+	if err != nil {
+		slog.Warn("load located place failed", "err", err)
+		return ""
+	}
+	if l == nil {
+		return ""
+	}
+	name := l.Name
+	for _, part := range []string{l.Region, l.Country} {
+		if part != "" && part != l.Name {
+			name += ", " + part
+		}
+	}
+	return "The user's current location, set from their browser: " + name +
+		". It takes precedence over any place the personal context names: use it for the weather and other place-dependent answers unless the user names another place now."
 }
 
 // renderUserDirectives builds the higher-authority standing-instructions block.

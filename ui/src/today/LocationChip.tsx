@@ -2,10 +2,11 @@ import { useCallback, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { dropLocated, type Attribution } from "../api";
+import { AuthExpiredError } from "../api/http";
 import type { TodayLocation } from "../api/today";
 import { useEscapeKey } from "../chat/useEscapeKey";
 import { useOutsideRefPointerDown } from "../chat/useOutsidePointerDown";
-import { LocateButton } from "./LocationPrompt";
+import { LocateButton } from "./LocateButton";
 import { canGeolocate, useLocate, type LocateFailure } from "./useLocate";
 import { PinIcon } from "./WeatherIcon";
 
@@ -25,6 +26,7 @@ export function LocationChip({
   canLocate = false,
   compact = false,
   onChanged,
+  onSessionExpired,
 }: {
   location: TodayLocation;
   credit?: Attribution | null;
@@ -32,17 +34,24 @@ export function LocationChip({
   compact?: boolean;
   /** The place changed: reload the section. */
   onChanged(): void;
+  onSessionExpired(): void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const dialogId = useId();
-  const close = useCallback(() => setOpen(false), []);
-  useOutsideRefPointerDown(open, ref, close);
-  useEscapeKey(close, { active: open });
-  const { locating, failure, locate, clearFailure } = useLocate();
+  const { locating, failure, locate, clearFailure } =
+    useLocate(onSessionExpired);
   const [dropping, setDropping] = useState(false);
   const [dropFailed, setDropFailed] = useState(false);
+  // A failure belongs to the popover it happened in: reopened, it is gone.
+  const close = useCallback(() => {
+    setOpen(false);
+    clearFailure();
+    setDropFailed(false);
+  }, [clearFailure]);
+  useOutsideRefPointerDown(open, ref, close);
+  useEscapeKey(close, { active: open });
   const located = location.kind === "located";
   const offerLocate = canLocate && canGeolocate();
   const error =
@@ -68,8 +77,9 @@ export function LocationChip({
       await dropLocated();
       setOpen(false);
       onChanged();
-    } catch {
-      setDropFailed(true);
+    } catch (err) {
+      if (err instanceof AuthExpiredError) onSessionExpired();
+      else setDropFailed(true);
     } finally {
       setDropping(false);
     }
@@ -86,7 +96,7 @@ export function LocationChip({
             ? "h-8 px-2 text-muted"
             : "h-[30px] border border-border px-2.5 text-ink-warm"
         }`}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => (open ? close() : setOpen(true))}
         type="button"
       >
         <PinIcon />
