@@ -234,7 +234,7 @@ export function DetailsCard({
       label: t("today.details.uv"),
       short: t("today.details.short.uv", { level: t(`today.uv.${level}`) }),
       value: String(Math.round(details.uvMax)),
-      icon: icon("sun", UV_TEXT[level]),
+      icon: icon("sun", "text-sun"),
       valueClass: UV_TEXT[level],
     });
   }

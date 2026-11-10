@@ -7,7 +7,7 @@ export function tomorrowFixture(overrides: Partial<Today> = {}): Today {
   return todayFixture({
     date: "2026-11-10",
     day: "tomorrow",
-    sun: { ...base.sun!, deltaMinutes: -2, progress: null },
+    sun: { ...base.sun!, progress: null },
     weather: {
       ...base.weather!,
       now: null,
@@ -91,7 +91,6 @@ export function todayFixture(overrides: Partial<Today> = {}): Today {
       rise: "07:25",
       set: "16:58",
       dayMinutes: 573,
-      deltaMinutes: -2,
       polar: "",
       progress: 0.3,
     },

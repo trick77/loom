@@ -9,7 +9,6 @@ import {
   conditionLabelKey,
   isNightAt,
   isNightNow,
-  warned,
   warningKey,
 } from "./weatherCodes";
 
@@ -17,7 +16,6 @@ const sun: TodaySun = {
   rise: "07:25",
   set: "16:58",
   dayMinutes: 573,
-  deltaMinutes: -2,
   polar: "",
   progress: 0.4,
 };
@@ -91,20 +89,10 @@ test("a warning names its day only where the heading does not", () => {
   );
 });
 
-test("a warning marks the skies it is about", () => {
-  const at = { from: "17:00", day: "today", chance: 80 } as const;
-  expect(warned("rain", { kind: "rain", ...at })).toBe(true);
-  expect(warned("snow", { kind: "snow", ...at })).toBe(true);
-  expect(warned("storm", { kind: "storm", ...at })).toBe(true);
-  expect(warned("clear", { kind: "rain", ...at })).toBe(false);
-  expect(warned("clear", { kind: "frost", ...at })).toBe(false);
-  expect(warned("rain", null)).toBe(false);
-});
-
 test("sunPoint walks the arc from rise to set", () => {
-  expect(sunPoint(0)).toEqual({ x: 20, y: 86 });
+  expect(sunPoint(0)).toEqual({ x: 20, y: 74 });
   expect(sunPoint(0.5)).toEqual({ x: 110, y: 12 });
-  expect(sunPoint(1)).toEqual({ x: 200, y: 86 });
+  expect(sunPoint(1)).toEqual({ x: 200, y: 74 });
   expect(sunPoint(-1)).toEqual(sunPoint(0));
   expect(sunPoint(3)).toEqual(sunPoint(1));
 });

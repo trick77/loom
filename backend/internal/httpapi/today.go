@@ -73,11 +73,10 @@ type todayResponse struct {
 }
 
 type todaySun struct {
-	Rise         *string   `json:"rise"`
-	Set          *string   `json:"set"`
-	DayMinutes   int       `json:"dayMinutes"`
-	DeltaMinutes int       `json:"deltaMinutes"`
-	Polar        sun.Polar `json:"polar"`
+	Rise       *string   `json:"rise"`
+	Set        *string   `json:"set"`
+	DayMinutes int       `json:"dayMinutes"`
+	Polar      sun.Polar `json:"polar"`
 	// Progress is where the sun is between rise (0) and set (1) now; nil
 	// for tomorrow.
 	Progress *float64 `json:"progress"`
@@ -305,17 +304,13 @@ func (s *server) todayRuns(ctx context.Context, user auth.User) []todayRun {
 	return runs
 }
 
-// sunOn is the sun on the shown day (a time on it, in loc), against the day
-// before it; where the sun is now only when the shown day is today.
+// sunOn is the sun on the shown day (a time on it, in loc); where the sun is
+// now only when the shown day is today.
 func sunOn(now, shown time.Time, p *location.Place, loc *time.Location) *todaySun {
 	day := sun.On(shown, p.Latitude, p.Longitude, loc)
-	// The local day before: 24 hours back from a time just past midnight
-	// after a clock change can land two days back.
-	before := sun.On(shown.In(loc).AddDate(0, 0, -1), p.Latitude, p.Longitude, loc)
 	out := &todaySun{
-		DayMinutes:   int(day.Length().Round(time.Minute) / time.Minute),
-		DeltaMinutes: int((day.Length() - before.Length()).Round(time.Minute) / time.Minute),
-		Polar:        day.Polar,
+		DayMinutes: int(day.Length().Round(time.Minute) / time.Minute),
+		Polar:      day.Polar,
 	}
 	if day.Polar != sun.NotPolar {
 		return out

@@ -7,9 +7,11 @@ import { formatDuration } from "./format";
 // The arc is the upper half of an ellipse from sunrise (left) to sunset
 // (right) over the horizon line.
 const CX = 110;
-const CY = 86;
+const CY = 74;
 const RX = 90;
-const RY = 74;
+const RY = 62;
+// Room under the horizon for the sun's glow (r 11) at rise and set.
+const HEIGHT = CY + 11;
 
 // sunPoint is where the sun stands on the arc at progress p (0 rise, 1 set).
 export function sunPoint(p: number): { x: number; y: number } {
@@ -36,30 +38,9 @@ function positionLabel(sun: TodaySun, t: TFunction): string {
   });
 }
 
-// dayLengthLine is "Day length 9 h 33 min · 2 min shorter than yesterday";
-// for tomorrow the day before is today.
-export function dayLengthLine(
-  sun: TodaySun,
-  day: "today" | "tomorrow",
-  t: TFunction,
-): string {
-  const delta = Math.round(sun.deltaMinutes);
-  const tomorrow = day === "tomorrow";
-  const change =
-    delta > 0
-      ? t(tomorrow ? "today.sun.longerThanToday" : "today.sun.longer", {
-          count: delta,
-        })
-      : delta < 0
-        ? t(tomorrow ? "today.sun.shorterThanToday" : "today.sun.shorter", {
-            count: -delta,
-          })
-        : t(tomorrow ? "today.sun.sameAsToday" : "today.sun.same");
-  return `${t("today.sun.dayLength", { duration: formatDuration(sun.dayMinutes, t) })} · ${change}`;
-}
-
-// SunCard draws the sun's arc with its position now (not for tomorrow), the
-// sun times and the day's length against the day before.
+// SunCard draws the sun's arc with its position now (not for tomorrow), and
+// under it the sun times with the day's length between them: on a line of
+// its own the length took the card a third taller than every other card.
 export function SunCard({
   sun,
   day,
@@ -69,6 +50,8 @@ export function SunCard({
 }) {
   const { t } = useTranslation();
   const progress = sun.progress;
+  const duration = formatDuration(sun.dayMinutes, t);
+  const dayLength = t("today.sun.dayLength", { duration });
   const up =
     sun.polar === "day" ||
     (sun.polar === "" && progress !== null && progress >= 0 && progress <= 1);
@@ -83,9 +66,9 @@ export function SunCard({
   return (
     <div className="flex flex-col gap-2.5">
       <svg
-        viewBox="0 0 220 96"
+        viewBox={`0 0 220 ${HEIGHT}`}
         width="100%"
-        height="96"
+        height={HEIGHT}
         role="img"
         aria-label={positionLabel(sun, t)}
       >
@@ -135,24 +118,32 @@ export function SunCard({
         )}
       </svg>
       {sun.polar === "" ? (
-        <div className="flex justify-between text-[13px]">
-          <span className="flex flex-col">
-            <span className="text-muted">{t("today.sun.sunrise")}</span>
+        // Two rows, not three columns: the labels ("Sonnenuntergang") need
+        // the full width, the length fits between the times.
+        <div className="flex flex-col text-[13px]">
+          <div className="flex justify-between gap-3 text-muted">
+            <span>{t("today.sun.sunrise")}</span>
+            <span className="text-right">{t("today.sun.sunset")}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
             <span className="text-lg text-ink">{sun.rise ?? "–"}</span>
-          </span>
-          <span className="flex flex-col text-right">
-            <span className="text-muted">{t("today.sun.sunset")}</span>
+            <span className="text-muted">
+              <span className="sr-only">{dayLength}</span>
+              <span aria-hidden="true" title={dayLength}>
+                {duration}
+              </span>
+            </span>
             <span className="text-lg text-ink">{sun.set ?? "–"}</span>
-          </span>
+          </div>
         </div>
       ) : (
+        // A polar day or night says its length by its name.
         <div className="text-lg text-ink">
           {t(
             sun.polar === "day" ? "today.sun.polarDay" : "today.sun.polarNight",
           )}
         </div>
       )}
-      <div className="text-[13px] text-muted">{dayLengthLine(sun, day, t)}</div>
     </div>
   );
 }

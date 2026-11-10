@@ -11,7 +11,6 @@ import {
   conditionLabelKey,
   isNightAt,
   isNightNow,
-  warned,
   warningKey,
 } from "./weatherCodes";
 import { WarningIcon, WeatherIcon } from "./WeatherIcon";
@@ -195,7 +194,6 @@ function NowCard({ weather, today }: WeatherTileProps) {
                   condition={hourCondition}
                   night={hourNight}
                   size={20}
-                  warn={warned(hourCondition, warning)}
                 />
                 <span className="text-ink-soft">
                   {t("today.temperature", { value: degrees(hour.temperature) })}
