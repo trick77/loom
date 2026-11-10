@@ -56,12 +56,19 @@ func TestChartFiles(t *testing.T) {
 	if strings.Join(windows[0], ",") != hdrWindows || len(windows) != 1+len(today.Windows) || windows[1][0] != "2026-11-09" || windows[1][1] != "1" {
 		t.Fatalf("windows = %v", windows)
 	}
+	// A ride on a 4-10 °C grey day is cold.
+	if windows[1][11] != "1" {
+		t.Fatalf("windows cold = %v", windows[1])
+	}
 	days := byName[ChartDays]
+	if days[1][14] != "1" {
+		t.Fatalf("days cold = %v", days[1])
+	}
 	if strings.Join(days[0], ",") != hdrDays || len(days) != 2 || days[1][11] != "dry" || days[1][12] != WindWindy || days[1][13] != "1" {
 		t.Fatalf("days = %v", days)
 	}
 	limits := byName[ChartLimits]
-	if strings.Join(limits[0], ",") != hdrLimits || strings.Join(limits[1], ",") != "ride,120,2026-11-10,15,39,30,45" {
+	if strings.Join(limits[0], ",") != hdrLimits || strings.Join(limits[1], ",") != "ride,120,2026-11-10,15,39,30,45,10,7" {
 		t.Fatalf("limits = %v", limits)
 	}
 }

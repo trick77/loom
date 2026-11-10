@@ -21,9 +21,9 @@ const (
 	ChartLimits  = "outdoor_limits.csv"
 
 	hdrHours   = "time,daylight,temp_c,feels_c,sun_min,rain_mm,rain_pct,wind_kmh,gust_kmh,wind_dir_deg"
-	hdrWindows = "date,rank,from,to,dry,wind,sun_min,rain_pct,wind_max_kmh,gust_max_kmh,wind_from"
-	hdrDays    = "date,sunrise,sunset,high_c,low_c,rain_mm,rain_pct,sun_h,wind_max_kmh,gust_max_kmh,wind_from,rain,wind,rank"
-	hdrLimits  = "activity,minutes,date,wind_kmh,wind_strong_kmh,gust_kmh,gust_strong_kmh"
+	hdrWindows = "date,rank,from,to,dry,wind,sun_min,rain_pct,wind_max_kmh,gust_max_kmh,wind_from,cold"
+	hdrDays    = "date,sunrise,sunset,high_c,low_c,rain_mm,rain_pct,sun_h,wind_max_kmh,gust_max_kmh,wind_from,rain,wind,rank,cold"
+	hdrLimits  = "activity,minutes,date,wind_kmh,wind_strong_kmh,gust_kmh,gust_strong_kmh,cold_c,cold_sunny_c"
 )
 
 // ChartInput is what the outdoor charts draw: the forecast's hours, the
@@ -83,18 +83,19 @@ func ChartFiles(in ChartInput) []mcp.File {
 	for _, o := range in.Outlooks {
 		for i, w := range o.Windows {
 			windows = append(windows, []string{o.Date, strconv.Itoa(i + 1), w.From, w.To, flag(w.Dry), w.Wind,
-				strconv.Itoa(w.SunMinutes), strconv.Itoa(w.RainChance), num(w.WindMax), num(w.GustsMax), w.WindFrom})
+				strconv.Itoa(w.SunMinutes), strconv.Itoa(w.RainChance), num(w.WindMax), num(w.GustsMax), w.WindFrom,
+				flag(w.Cold)})
 		}
 	}
 	days := [][]string{}
 	for _, d := range in.Week {
 		days = append(days, []string{d.Date, d.Sunrise, d.Sunset, num(&d.High), num(&d.Low), num(d.RainMM),
 			integer(d.RainChance), num(d.SunHours), num(d.WindMax), num(d.GustsMax), d.WindFrom, d.Rain, d.Wind,
-			strconv.Itoa(d.Rank)})
+			strconv.Itoa(d.Rank), flag(d.Cold)})
 	}
 	l := in.Activity.Limits()
 	limits := [][]string{{string(in.Activity), strconv.Itoa(in.Minutes), in.Date, num(&l.Wind), num(&l.WindStrong),
-		num(&l.Gusts), num(&l.GustsStrong)}}
+		num(&l.Gusts), num(&l.GustsStrong), num(&l.Cold), num(&l.ColdSunny)}}
 	return []mcp.File{
 		csvFile(ChartHours, hdrHours, hours),
 		csvFile(ChartWindows, hdrWindows, windows),

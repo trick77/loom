@@ -76,26 +76,37 @@ The sun is `internal/sun`. `day` is `today`, `tomorrow` or `week` (the next 7 da
   else the two driest.
 - Then sunnier (in quarters of the window; without `sunshineMinutes` the code stands in; an hour already past the
   band's top draws nothing, or a July noon would beat a mild morning), then nearer the feels-like band (run
-  12-20 °C, ride 15-24 °C) and calmer (km/h past the windy limits, weighed double on a ride; past a strong limit a
-  window sinks below any merely windy one), then earlier.
+  12-24 °C, ride 15-30 °C; soft, a comfort range: past its top a window only ranks lower) and calmer (km/h past
+  the windy limits, weighed double on a ride; past a strong limit a window sinks below any merely windy one), then
+  earlier.
 - Wind limits (`weather.Limits`, km/h as forecast at 10 m; at body height about a third less in the open), windy /
   strong: ride wind 15 / 39, gusts 30 / 45; run wind 20 / 39, gusts 40 / 55. A rider feels 10 km/h and works hard
   at 20 (felt); a runner's cost grows with the square of the wind and barely shows below Beaufort 4 (20); both find
   Beaufort 6 (39) the edge of bearable. Gusts are the danger on a bike (a side gust throws it across the lane);
   the DWD calls 63 stormy, the gust limits stay well below. A windy window names the wind, a strong one warns and
   ranks below every other, sun or not; the week's days use the day's strongest wind, night included.
+- Cold limit (`Limits.Cold`, feels-like): a ride below 10 °C, a run below 5 °C is too cold (a preference,
+  not physiology; global like the wind's). Very sunny (sun 3/4 of the window) the sun makes up 3 °C: 7 / 2. The
+  coldest hour the window spends half an hour in decides (a quarter hour of a cold one would sink a warm window).
+  Dry still comes first; among windows as dry, a cold one ranks below every warm one (after strong wind, which
+  stays worse), sun notwithstanding, and among cold ones the warmest leads. A week day reads it off its high
+  (sunny: sun 3/4 of daylight; the warmest cold day leads), today and tomorrow too: judged by their windows' stricter feels-like they would
+  sink below a later day as warm.
 - A week day is dry under 0.5 mm and 40 %, wet from 3 mm (or 70 % with 1 mm), showers between; ranked: a day
-  without time for the activity (polar night, too short, today already over) last, then strong wind, then drier,
-  calmer, sunnier, milder (the high stands in for feels-like). Today and tomorrow take their time left and wind
-  from their own windows, so the week never contradicts the day. Times are planned for today and tomorrow only
-  (the hours reach 3 days).
+  without time for the activity (polar night, too short, today already over) last, then strong wind, then cold,
+  then drier, calmer, sunnier, milder (the high stands in for feels-like). Today and tomorrow take their time left
+  and wind from their own windows, so the week never contradicts the day there. Times are planned for today and
+  tomorrow only (the hours reach 3 days).
 - A run is 60 minutes, a ride 120 by default. The air is a note on the best window (index from moderate, pollen
   from a moderate load), never a rank: pollen is a day's mean, it cannot tell one hour from another.
 - The forecast's (and the noted air's) `attribution` sources are cited like an MCP result's.
 - With run_python on the turn the result hands it `outdoor_hours/windows/days/limits.csv` (today and tomorrow
   planned whichever was asked; columns in `sandbox/loomcharts/__init__.py`, a contract with
   `internal/weather/charts.go`). `loomcharts` draws `outdoor_day`, `outdoor_compare` (today against tomorrow) and
-  `outdoor_week`; the model offers one and draws it when asked.
+  `outdoor_week`, with the wind and cold limits as lines. The result's guide has the model draw `outdoor_day`
+  (week: `outdoor_week`) unasked, with the exact line, before it answers: merely offered, no chart ever came. Once
+  a turn (a later call keeps no files: they would replace the ones it is drawn from), only when the turn's file
+  caps kept all four; without a window the charts are named for the asking. `outdoor_compare` only when asked.
 
 ## Caching
 

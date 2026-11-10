@@ -12,12 +12,12 @@ func dayOf(date string, high float64, rain float64, chance int, sunH, wind, gust
 
 func TestWeekRanksTheDays(t *testing.T) {
 	f := Forecast{Daily: []Day{
-		dayOf("2026-11-08", 9, 0, 0, 5, 10, 20, 250),     // yesterday: left out
-		dayOf("2026-11-09", 9, 6, 90, 0, 10, 20, 250),    // wet
-		dayOf("2026-11-10", 10, 0.2, 10, 6, 18, 38, 270), // dry, windy for a ride
-		dayOf("2026-11-11", 8, 0, 5, 7, 8, 18, 90),       // dry, calm, sunny: best
-		dayOf("2026-11-12", 11, 1.2, 50, 3, 10, 20, 200), // showers
-		dayOf("2026-11-13", 12, 0, 0, 2, 45, 60, 300),    // dry but stormy
+		dayOf("2026-11-08", 14, 0, 0, 5, 10, 20, 250),    // yesterday: left out
+		dayOf("2026-11-09", 14, 6, 90, 0, 10, 20, 250),   // wet
+		dayOf("2026-11-10", 15, 0.2, 10, 6, 18, 38, 270), // dry, windy for a ride
+		dayOf("2026-11-11", 13, 0, 5, 7, 8, 18, 90),      // dry, calm, sunny: best
+		dayOf("2026-11-12", 16, 1.2, 50, 3, 10, 20, 200), // showers
+		dayOf("2026-11-13", 17, 0, 0, 2, 45, 60, 300),    // dry but stormy
 	}}
 	week := Week(WeekInput{Forecast: f, Now: at(0, 9, 0), Loc: zurich, Latitude: 47.05, Longitude: 8.31, Activity: Ride})
 	if len(week) != 5 || week[0].Date != "2026-11-09" {
@@ -51,6 +51,48 @@ func TestWeekRanksTheDays(t *testing.T) {
 	for _, d := range run {
 		if d.Date == "2026-11-10" && d.Wind != "" {
 			t.Fatalf("run's windy day = %+v", d)
+		}
+	}
+}
+
+// A day whose high is below the cold limit sinks below every warm one, rain
+// or not; a sunny one (sun 3/4 of daylight) only 3 °C lower. Strong wind
+// stays worse. Every day reads it off its high, a planned one too: its
+// window's stricter feels-like would sink it below a later day as warm.
+func TestWeekColdDays(t *testing.T) {
+	f := Forecast{Daily: []Day{
+		dayOf("2026-11-09", 12, 0, 0, 0, 5, 10, 90),   // planned, its window cold: warm by the high
+		dayOf("2026-11-10", 11, 6, 90, 0, 5, 10, 90),  // wet but warm
+		dayOf("2026-11-11", 8, 0, 0, 2, 5, 10, 90),    // dry, cold
+		dayOf("2026-11-12", 8, 0, 0, 8, 5, 10, 90),    // dry, 8 h of ~9.5: sunny, warm enough
+		dayOf("2026-11-13", 14, 0, 0, 2, 45, 60, 300), // warm but stormy
+		dayOf("2026-11-14", 6, 0, 0, 8.5, 5, 10, 90),  // sunny but too cold even so
+	}}
+	planned := []Outlook{{Date: "2026-11-09", Windows: []Window{{From: "10:00", To: "12:00", Dry: true, Cold: true}}}}
+	week := Week(WeekInput{Forecast: f, Now: at(0, 9, 0), Loc: zurich, Latitude: 47.05, Longitude: 8.31,
+		Activity: Ride, Minutes: 120, Planned: planned})
+	want := map[string]struct {
+		cold bool
+		rank int
+	}{
+		"2026-11-12": {false, 1},
+		"2026-11-09": {false, 2},
+		"2026-11-10": {false, 3},
+		// The cold ones among themselves: the warmer first, sun or not.
+		"2026-11-11": {true, 4},
+		"2026-11-14": {true, 5},
+		"2026-11-13": {false, 6},
+	}
+	for _, d := range week {
+		if w := want[d.Date]; d.Cold != w.cold || d.Rank != w.rank {
+			t.Errorf("%s = cold %v rank %d, want %+v", d.Date, d.Cold, d.Rank, w)
+		}
+	}
+	// A runner's limit is 5: the same 8 °C day is warm.
+	run := Week(WeekInput{Forecast: f, Now: at(0, 9, 0), Loc: zurich, Latitude: 47.05, Longitude: 8.31, Activity: Run})
+	for _, d := range run {
+		if d.Date == "2026-11-11" && d.Cold {
+			t.Fatalf("run's 8 °C day = %+v", d)
 		}
 	}
 }

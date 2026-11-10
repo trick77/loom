@@ -344,6 +344,87 @@ func TestWindSteersTheRide(t *testing.T) {
 	}
 }
 
+func feelsFrom(from, to int, c float64) hourFn {
+	return func(i int, h *Hour) {
+		if i >= from && i < to {
+			v := c
+			h.ApparentTemperature = &v
+		}
+	}
+}
+
+// Below the activity's cold limit (feels-like: a ride 10 °C, a run 5) a
+// window sinks below every warm one, sun or not; a sunny one (sun 3/4 of it)
+// is cold only 3 °C lower.
+func TestColdSinksAWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		activity Activity
+		feels    float64
+		sun      int
+		cold     bool
+	}{
+		{"run at 4", Run, 4, 0, true},
+		{"run at 5", Run, 5, 0, false},
+		{"run at 3 in the sun", Run, 3, 50, false},
+		{"run at 1 in the sun", Run, 1, 50, true},
+		{"run at 3 in some sun", Run, 3, 40, true},
+		{"ride at 9", Ride, 9, 0, true},
+		{"ride at 10", Ride, 10, 0, false},
+		{"ride at 7 in the sun", Ride, 7, 50, false},
+		{"ride at 6 in the sun", Ride, 6, 50, true},
+	} {
+		f := day(feelsFrom(0, 48, tc.feels), sunFrom(0, 48, tc.sun))
+		o := plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: tc.activity.DefaultMinutes(), Activity: tc.activity})
+		if len(o.Windows) == 0 || o.Windows[0].Cold != tc.cold {
+			t.Errorf("%s: cold %v, want %v (%+v)", tc.name, !tc.cold, tc.cold, o.Windows)
+		}
+	}
+	// A sunny but cold morning loses to a grey warm afternoon.
+	f := day(feelsFrom(0, 48, 8), feelsFrom(8, 10, 1), sunFrom(8, 10, 55))
+	o := plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: 60, Activity: Run})
+	if w := o.Windows[0]; w.Cold || w.From < "09:15" {
+		t.Fatalf("the run sits in the cold: %+v", o.Windows)
+	}
+	// In the sun the same morning at 3 °C is warm enough and wins.
+	f = day(feelsFrom(0, 48, 8), feelsFrom(8, 10, 3), sunFrom(8, 10, 55))
+	o = plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: 60, Activity: Run})
+	if w := o.Windows[0]; w.Cold || w.From != "08:00" && w.From != "09:00" {
+		t.Fatalf("the sunny morning lost: %+v", o.Windows)
+	}
+	// Strong wind is still worse than cold: a calm cold window beats a warm
+	// stormy one.
+	f = day(feelsFrom(0, 48, 3), feelsFrom(12, 17, 12), gustsFrom(12, 17, 50))
+	o = plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: 120, Activity: Ride})
+	if w := o.Windows[0]; w.Wind == WindStrong || !w.Cold {
+		t.Fatalf("a strong window leads: %+v", o.Windows)
+	}
+	// The coldest hour decides: one cold hour makes the window cold.
+	f = day(feelsFrom(0, 48, 12), feelsFrom(15, 16, 8))
+	o = plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: 120, Activity: Ride})
+	if w := o.Windows[0]; w.Cold || w.To > "15:00" && w.From < "16:00" {
+		t.Fatalf("the ride sits in the cold hour: %+v", o.Windows)
+	}
+	// ...an hour the window spends half an hour in at least: a quarter hour
+	// of a cold one does not count.
+	hours := hoursOf(day(feelsFrom(0, 48, 8), feelsFrom(8, 9, 3)), zurich)
+	if w, _ := window(hours, at(0, 8, 45), time.Hour, Run.comfort()); w.Cold || w.FeelsLikeMin != 3 {
+		t.Fatalf("a quarter hour made it cold: %+v", w)
+	}
+	if w, _ := window(hours, at(0, 8, 15), time.Hour, Run.comfort()); !w.Cold {
+		t.Fatalf("three quarters of a cold hour did not: %+v", w)
+	}
+	if w, _ := window(hours, at(0, 8, 15), 15*time.Minute, Run.comfort()); !w.Cold {
+		t.Fatalf("a quarter hour inside a cold hour did not: %+v", w)
+	}
+	// All cold: the warmest leads, whatever the sun.
+	f = day(feelsFrom(0, 48, 3), feelsFrom(14, 15, 9), sunFrom(9, 10, 40))
+	o = plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: 60, Activity: Ride})
+	if w := o.Windows[0]; !w.Cold || w.From != "14:00" {
+		t.Fatalf("not the warmest of the cold: %+v", o.Windows)
+	}
+}
+
 func TestCompass(t *testing.T) {
 	for deg, want := range map[int]string{0: "N", 22: "N", 23: "NE", 90: "E", 180: "S", 250: "W", 300: "NW", 338: "N", 360: "N"} {
 		if got := compass(deg); got != want {
@@ -369,6 +450,33 @@ func TestHeatOutweighsSun(t *testing.T) {
 	o := plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: 60, Activity: Run})
 	if o.Windows[0].From != "08:00" {
 		t.Fatalf("windows = %v", spans(o))
+	}
+}
+
+// The comfort band reaches 24 °C feels-like on a run, 30 on a ride: within it
+// the sun still draws, past it only the heat counts.
+func TestComfortBandTop(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		activity Activity
+		warm     float64
+		want     string
+	}{
+		{"run, sunny 23", Run, 23, "12:00"},
+		{"run, sunny 26", Run, 26, "08:00"},
+		{"ride, sunny 29", Ride, 29, "12:00"},
+		{"ride, sunny 32", Ride, 32, "08:00"},
+	} {
+		f := day(feelsFrom(0, 48, 18), feelsFrom(12, 14, tc.warm), sunFrom(12, 14, 55), func(i int, h *Hour) {
+			if i < 8 || i >= 10 && i < 12 || i >= 14 {
+				hot := 35.0
+				h.ApparentTemperature = &hot
+			}
+		})
+		o := plan(t, WindowsInput{Forecast: f, Now: at(0, 8, 0), Minutes: 60, Activity: tc.activity})
+		if got := o.Windows[0].From; got != tc.want {
+			t.Errorf("%s: best %s, want %s (%v)", tc.name, got, tc.want, spans(o))
+		}
 	}
 }
 

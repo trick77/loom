@@ -1,6 +1,7 @@
 package turn
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -106,23 +107,37 @@ type outdoorAnswer struct {
 	Minutes  int    `json:"minutes"`
 	*weather.Outlook
 	Week []weather.DayOutlook `json:"week,omitempty"`
-	// Limits are the activity's wind thresholds (km/h).
-	Limits weather.Limits `json:"windLimits"`
+	// Limits are the activity's wind (km/h) and cold (feels-like °C)
+	// thresholds.
+	Limits weather.Limits `json:"limits"`
 	Guide  string         `json:"guide"`
 }
 
 // outdoorGuide tells the model how to read the answer.
 const outdoorGuide = "Times are the place's. Give the first window as the answer (from-to) with its reason in a sentence, " +
 	"the others briefly. dry false on a window means no dry one is left: say it rains. wind windy: name it (windMax km/h " +
-	"from windFrom, gusts); strong: warn, on a ride above all. none: dark (polar night), short (daylight shorter than the " +
-	"activity), over (too little daylight left today: offer tomorrow), noForecast. week: days by rank (1 best; a day " +
-	"with none ranks last, then strong wind, rain, wind, sun); name the best day or two and why; times can be planned " +
-	"for today and tomorrow only. Mention air only when given."
+	"from windFrom, gusts); strong: warn, on a ride above all. cold: it feels below limits.cold °C (limits.coldSunny " +
+	"in the sun) for this activity: say so; a cold first window means every window listed is (the warmest leads): " +
+	"say it is too cold. none: dark (polar night), short (daylight shorter than the activity), over (too little daylight left " +
+	"today: offer tomorrow), noForecast. week: days by rank (1 best; a day with none ranks last, then strong wind, " +
+	"cold, rain, wind, sun); name the best day or two and why; times can be planned for today and tomorrow only. " +
+	"Mention air only when given."
 
-// outdoorChartsGuide joins the guide when the chart files came along.
-const outdoorChartsGuide = " The chart files: loomcharts.outdoor_day (the day asked: its hours, windows and wind " +
-	"against the limits), outdoor_compare (the next two days with daylight), outdoor_week (the week); offer one when " +
-	"it helps, draw it when asked."
+// outdoorDayChart and outdoorWeekChart join the guide when the chart files
+// came along. The chart is drawn unasked: merely offered, it never came.
+// The exact line spares the model chart code of its own.
+const (
+	outdoorDayChart = " Before you answer, draw the day with run_python, this code exactly: import loomcharts; " +
+		`loomcharts.outdoor_day("in/outdoor_hours.csv", "out/outdoor_day.png", windows="in/outdoor_windows.csv", ` +
+		`limits="in/outdoor_limits.csv")` + ". Then answer; the chart is shown to the user: refer to it, never " +
+		"link or embed it. Asked to compare today and tomorrow, loomcharts.outdoor_compare takes the same files."
+	outdoorWeekChart = " Before you answer, draw the week with run_python, this code exactly: import loomcharts; " +
+		`loomcharts.outdoor_week("in/outdoor_days.csv", "out/outdoor_week.png", limits="in/outdoor_limits.csv")` +
+		". Then answer; the chart is shown to the user: refer to it, never link or embed it."
+	// outdoorChartsOnRequest: nothing to draw unasked (no window left).
+	outdoorChartsOnRequest = " The chart files: loomcharts.outdoor_day (a day's hours, windows, wind and cold), " +
+		"outdoor_compare (today against tomorrow), outdoor_week (the week); draw one when asked."
+)
 
 // outdoorDays is how many days the forecast is asked: the week. The
 // sidecar keeps 8, so the week costs no extra provider call.
@@ -181,12 +196,8 @@ func (t *Run) outdoorWindows(ctx context.Context, args map[string]any) (string, 
 		week = weather.Week(weather.WeekInput{Forecast: report.Forecast, Now: now, Loc: loc, Latitude: place.Latitude,
 			Longitude: place.Longitude, Activity: activity, Minutes: minutes, Planned: outlooks})
 	}
-	guide := outdoorGuide
-	if charts {
-		guide += outdoorChartsGuide
-	}
 	out := outdoorAnswer{Place: placeName(place), Activity: string(activity), Minutes: minutes, Limits: activity.Limits(),
-		Guide: guide}
+		Guide: outdoorGuide}
 	switch day {
 	case "week":
 		out.Week = week
@@ -199,20 +210,45 @@ func (t *Run) outdoorWindows(ctx context.Context, args map[string]any) (string, 
 	if out.Outlook != nil && out.Air != nil {
 		sources = append(sources, report.AirSources...)
 	}
+	note := ""
+	// After a result asked for its chart, a later call this turn keeps no
+	// files: they would replace the ones the chart is drawn from.
+	if charts && !t.outdoorCharted {
+		asked := outlooks[0].Date
+		if out.Outlook != nil {
+			asked = out.Date
+		}
+		files := weather.ChartFiles(weather.ChartInput{Forecast: report.Forecast, Loc: loc, Activity: activity,
+			Minutes: minutes, Date: asked, Outlooks: outlooks, Week: week})
+		note = t.keepToolFiles(files)
+		out.Guide += t.outdoorChart(out, files)
+	}
 	text, err := json.Marshal(out)
 	if err != nil {
 		return "tool failed: " + err.Error(), nil
 	}
-	if !charts {
-		return string(text), sources
+	return string(text) + note, sources
+}
+
+// outdoorChart is the chart line the guide gets, only when every file the
+// charts read was kept (the turn's file caps may drop some): an answer with
+// something to draw (a window, the week) has it drawn, once a turn; one
+// without names the charts for the asking.
+func (t *Run) outdoorChart(out outdoorAnswer, files []mcp.File) string {
+	for _, f := range files {
+		if !bytes.Equal(t.toolFiles[f.Name].Data, f.Data) {
+			return ""
+		}
 	}
-	asked := outlooks[0].Date
-	if out.Outlook != nil {
-		asked = out.Date
+	line := outdoorChartsOnRequest
+	switch {
+	case len(out.Week) > 0:
+		line = outdoorWeekChart
+	case out.Outlook != nil && len(out.Windows) > 0:
+		line = outdoorDayChart
 	}
-	files := weather.ChartFiles(weather.ChartInput{Forecast: report.Forecast, Loc: loc, Activity: activity,
-		Minutes: minutes, Date: asked, Outlooks: outlooks, Week: week})
-	return string(text) + t.keepToolFiles(files), sources
+	t.outdoorCharted = line != outdoorChartsOnRequest
+	return line
 }
 
 // outdoorPlace is the place named, else where the user is today; nil with
