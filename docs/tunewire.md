@@ -1,6 +1,6 @@
 # loom-tunewire: Apple Music
 
-`loom-tunewire` (`backend/cmd/loom-tunewire`, image `loom-tunewire`) gives loom two MCP servers:
+`loom-tunewire` (`backend/cmd/loom-tunewire`, `/loom-tunewire` in image `loom-sidecars`) gives loom two MCP servers:
 
 | loom server | path | tools | who |
 |---|---|---|---|

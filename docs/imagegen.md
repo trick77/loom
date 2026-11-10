@@ -1,7 +1,7 @@
 # imagegen: the image tool contract
 
 loom generates images through one MCP tool, `generate` on the server `imagegen` (`imagegen__generate`). The
-`loom-imagegen` sidecar (`backend/cmd/loom-imagegen`, image `loom-imagegen`) serves it with fal; an `mcp.json`
+`loom-imagegen` sidecar (`backend/cmd/loom-imagegen`, `/loom-imagegen` in image `loom-sidecars`) serves it with fal; an `mcp.json`
 entry named `imagegen` replaces the sidecar with any server that answers this contract. loom keeps the policy
 around the tool, never the provider:
 

@@ -257,7 +257,9 @@ services:
     # catalog search over MCP. Holds every connected user's media-user-token in
     # its volume, so every route needs TUNEWIRE_TOKEN. Opt-in via the profile;
     # loom does not depend on it: a dead sidecar only costs its tools.
-    image: ghcr.io/trick77/loom-tunewire:latest
+    # The Go sidecars share one image; command picks the binary.
+    image: ghcr.io/trick77/loom-sidecars:latest
+    command: ["/loom-tunewire", "serve"]
     profiles: ["tunewire"]
     restart: unless-stopped
     # Small Go service proxying JSON to Apple.
@@ -293,7 +295,8 @@ services:
     # Holds every connected user's Strava tokens, stored activities and
     # computed metrics in its volume, plus the Strava app's client secret, so every route needs
     # STRAVA_TOKEN. Opt-in via the profile; a dead sidecar only costs its tools.
-    image: ghcr.io/trick77/loom-strava:latest
+    image: ghcr.io/trick77/loom-sidecars:latest
+    command: ["/loom-strava", "serve"]
     profiles: ["strava"]
     restart: unless-stopped
     # Per-user caches: up to 40 parsed streams (~1 MB each) and 300 details,
@@ -330,7 +333,8 @@ services:
     # loom's web search over MCP (docs/search.md): Tavily answers. Holds the
     # Tavily key, so every route needs SEARCH_TOKEN. Stateless: no volume.
     # Without a key it serves no tool and web search is off.
-    image: ghcr.io/trick77/loom-search:latest
+    image: ghcr.io/trick77/loom-sidecars:latest
+    command: ["/loom-search", "serve"]
     restart: unless-stopped
     # Small Go service proxying JSON to Tavily.
     mem_limit: 256m
@@ -361,7 +365,8 @@ services:
     # Every route needs WEATHER_TOKEN: the provider's free tier is limited per
     # IP; unset, it refuses every call and the weather is off. Keeps forecasts
     # per place in memory (hours for the hour, days 3 h, air 6 h). Stateless: no volume.
-    image: ghcr.io/trick77/loom-weather:latest
+    image: ghcr.io/trick77/loom-sidecars:latest
+    command: ["/loom-weather", "serve"]
     restart: unless-stopped
     # Small Go service proxying JSON to Open-Meteo.
     mem_limit: 128m
@@ -390,7 +395,8 @@ services:
     # loom's document tools over MCP (docs/docgen.md): text, PDF, XLSX, DOCX,
     # PPTX files; Gotenberg renders the PDFs. Every route needs DOCGEN_TOKEN.
     # Stateless: no volume.
-    image: ghcr.io/trick77/loom-docgen:latest
+    image: ghcr.io/trick77/loom-sidecars:latest
+    command: ["/loom-docgen", "serve"]
     restart: unless-stopped
     # Builds whole XLSX/DOCX/PPTX files in memory.
     mem_limit: 512m
@@ -423,7 +429,8 @@ services:
     # loom's image tool over MCP (docs/imagegen.md): fal renders. Holds the fal
     # key, so every route needs IMAGEGEN_TOKEN. Stateless: no volume. Opt-in via
     # the profile; a dead sidecar only costs the image tool.
-    image: ghcr.io/trick77/loom-imagegen:latest
+    image: ghcr.io/trick77/loom-sidecars:latest
+    command: ["/loom-imagegen", "serve"]
     profiles: ["imagegen"]
     restart: unless-stopped
     # A render in flight finishes on SIGTERM (it is paid for either way).
