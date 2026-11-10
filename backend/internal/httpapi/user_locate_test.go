@@ -125,6 +125,49 @@ func TestLocateHoldsOverTheMemory(t *testing.T) {
 	}
 }
 
+// A turn's model reads where the user is from the personal context: the
+// located town is named there, over the place the facts name, or one chat
+// answers for two places.
+func TestUserContextNamesTheLocatedTown(t *testing.T) {
+	ctx := context.Background()
+	f := newLocationFixture(t)
+	f.addFact(t, "Lives Zürich")
+	if out := f.s.userContextForUser(ctx, testUser.ID); strings.Contains(out, "current location") {
+		t.Fatalf("no located town, yet: %s", out)
+	}
+	baden := location.Located{Place: location.Place{Name: "Baden", Region: "Aargau", Country: "Schweiz"}}
+	if err := f.places.SaveLocated(ctx, testUser.ID, baden); err != nil {
+		t.Fatal(err)
+	}
+	out := f.s.userContextForUser(ctx, testUser.ID)
+	if !strings.Contains(out, "Lives Zürich") || !strings.Contains(out, "Baden, Aargau, Schweiz") ||
+		strings.Index(out, "Baden, Aargau") < strings.Index(out, "Lives Zürich") {
+		t.Fatalf("context = %s, want the located town after the facts", out)
+	}
+}
+
+// A located town that cannot be read leaves the memory's place: the page
+// keeps its weather, a turn its outdoor windows.
+func TestPlaceHereFallsBackToTheMemory(t *testing.T) {
+	ctx := context.Background()
+	f := newLocationFixture(t)
+	f.addFact(t, "Lives Zürich")
+	if err := f.s.resolveLocation(ctx, testUser); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`DROP TABLE user_located_places`); err != nil {
+		t.Fatal(err)
+	}
+	p, credit, err := f.s.placeHere(ctx, testUser)
+	if err != nil || p == nil || p.Name != "Zürich" || credit != nil {
+		t.Fatalf("here = %+v, %+v, %v; want the memory's home", p, credit, err)
+	}
+	// A turn's context keeps the facts.
+	if out := f.s.userContextForUser(ctx, testUser.ID); !strings.Contains(out, "Lives Zürich") || strings.Contains(out, "current location") {
+		t.Fatalf("context = %s", out)
+	}
+}
+
 // Only the same name looked up again keeps the town it was; a new name is a
 // move, looked up plainly, or a namesake near the old home would win.
 func TestSameTownName(t *testing.T) {

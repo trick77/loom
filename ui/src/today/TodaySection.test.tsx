@@ -10,7 +10,7 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import * as api from "../api";
-import { UserFacingError } from "../api/http";
+import { AuthExpiredError, UserFacingError } from "../api/http";
 import { todayFixture, tomorrowFixture } from "../test/today";
 import { TodaySection } from "./TodaySection";
 
@@ -61,6 +61,7 @@ const handlers = {
   onMarkRead: vi.fn(),
   onMarkAllRead: vi.fn(),
   onReload: vi.fn(),
+  onSessionExpired: vi.fn(),
 };
 
 function show(overrides: Partial<api.Today> = {}) {
@@ -364,6 +365,95 @@ test("a credit without a web address is shown as text", () => {
   );
   expect(screen.getByText("© OpenStreetMap")).toBeInTheDocument();
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
+test("an expired session signs out, it is no map provider to retry", async () => {
+  stubGeolocation();
+  vi.mocked(api.locateHere).mockRejectedValueOnce(new AuthExpiredError());
+  vi.mocked(api.dropLocated).mockRejectedValueOnce(new AuthExpiredError());
+  const { unmount } = show({ canLocate: true });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Zürich · from your memories" }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use my current location" }),
+  );
+  await waitFor(() => expect(handlers.onSessionExpired).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("alert")).toBeNull();
+  unmount();
+
+  show({ location: { name: "Baden", kind: "located" } });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Baden · your location" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Back to memories" }));
+  await waitFor(() =>
+    expect(handlers.onSessionExpired).toHaveBeenCalledTimes(2),
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("an expired session on saving a typed place signs out", async () => {
+  vi.mocked(api.setLocation).mockRejectedValueOnce(new AuthExpiredError());
+  show(askOnly);
+  const input = screen.getByRole("textbox");
+  fireEvent.change(input, { target: { value: "Bern" } });
+  fireEvent.submit(input);
+  await waitFor(() => expect(handlers.onSessionExpired).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a failure is gone when the popover opens again", async () => {
+  stubGeolocation(1);
+  show({ canLocate: true });
+  const chip = screen.getByRole("button", {
+    name: "Zürich · from your memories",
+  });
+  fireEvent.click(chip);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use my current location" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Location access was denied.",
+  );
+  fireEvent.keyDown(window, { key: "Escape" });
+  fireEvent.click(chip);
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull();
+  // Closed by the chip itself, too.
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use my current location" }),
+  );
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  fireEvent.click(chip);
+  fireEvent.click(chip);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("a second click while locating asks once", async () => {
+  stubGeolocation();
+  let answer: (town: api.LocatedTown) => void = () => {};
+  vi.mocked(api.locateHere).mockImplementationOnce(
+    () => new Promise((resolve) => (answer = resolve)),
+  );
+  show({ ...askOnly, canLocate: true });
+  const button = screen.getByRole("button", {
+    name: "Use my current location",
+  });
+  // Both before React renders the disabled button.
+  act(() => {
+    button.click();
+    button.click();
+  });
+  await waitFor(() => expect(api.locateHere).toHaveBeenCalledOnce());
+  await act(async () => {
+    answer({
+      place: { name: "Baden", kind: "located" },
+      attribution: { text: "© OpenStreetMap" },
+    });
+  });
+  await waitFor(() => expect(handlers.onReload).toHaveBeenCalledOnce());
+  expect(api.locateHere).toHaveBeenCalledOnce();
 });
 
 test("locating from the chip says why it failed", async () => {

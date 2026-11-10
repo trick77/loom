@@ -67,6 +67,7 @@ function renderStart(
       selectedProject={overrides.selectedProject ?? null}
       onSelectProject={onSelectProject}
       onCreateProject={vi.fn()}
+      onSessionExpired={vi.fn()}
     />,
   );
 }

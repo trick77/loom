@@ -39,6 +39,7 @@ export function StartPanel({
   selectedProject,
   onSelectProject,
   onCreateProject,
+  onSessionExpired,
 }: {
   userID: string;
   displayName: string;
@@ -63,6 +64,7 @@ export function StartPanel({
   selectedProject: Project | null;
   onSelectProject(projectID: string | null): void;
   onCreateProject(): void;
+  onSessionExpired(): void;
 }) {
   const { t } = useTranslation();
   const today = useToday();
@@ -193,6 +195,7 @@ export function StartPanel({
               onMarkAllRead={today.markAllRead}
               onMarkRead={today.markRead}
               onOpenThread={onOpenThread}
+              onSessionExpired={onSessionExpired}
               onReload={() => void today.reload()}
               today={todayState.today}
             />

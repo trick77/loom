@@ -58,7 +58,7 @@ The page asks the browser for its position on the click only (coarse, no GPS fix
 dismissed without an answer never calls back), and the point leaves the browser, and loom again, rounded to two
 decimals (about a kilometre): the town is all that is asked. One lookup per user at a time. The town found is kept at
 once (`user_located_places`, its centre and credit, never the point) and holds over the places the memory names, on
-the page and in turns, until the user locates again or goes back to the memory (`DELETE /api/me/location:locate`,
+the page and in turns (a line after the personal context names it, or the model answers for the facts' place), until the user locates again or goes back to the memory (`DELETE /api/me/location:locate`,
 which works with the tool gone too). It is never a fact: the memory may be stale or wrong, the memory UI is read-only,
 and a derivation never touches it. A place typed into the question is a memory fact, looked up by name.
 A turn never offers or runs the tool (`pageOnly`), even named unprompted: the model has no position, and its calls

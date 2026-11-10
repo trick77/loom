@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Today, TodayWeather } from "../api/today";
@@ -10,30 +10,17 @@ import { SunLine } from "./SunLine";
 import { TonightPill } from "./TonightPill";
 import { WeatherTiles } from "./WeatherTile";
 
-// placeChip is the chip naming the shown place; null without one.
-function placeChip(today: Today, onReload: () => void, compact = false) {
-  if (today.location === null) return null;
-  return (
-    <LocationChip
-      canLocate={today.canLocate}
-      compact={compact}
-      credit={today.locationCredit}
-      location={today.location}
-      onChanged={onReload}
-    />
-  );
-}
-
 // WeatherBlock is the day's tiles under a "Today"/"Tomorrow" heading: side
 // by side where they fit, stacked on a phone.
 function WeatherBlock({
   today,
   weather,
-  onReload,
+  chip,
 }: {
   today: Today;
   weather: TodayWeather;
-  onReload(): void;
+  /** The place chip; none without a place. */
+  chip: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
   const headingId = useId();
@@ -54,7 +41,7 @@ function WeatherBlock({
             { date: formatDay(today.date, i18n.language) },
           )}
         </h2>
-        {placeChip(today, onReload)}
+        {chip}
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
         <WeatherTiles today={today} weather={weather} />
@@ -72,12 +59,14 @@ export function TodaySection({
   onMarkRead,
   onMarkAllRead,
   onReload,
+  onSessionExpired,
 }: {
   today: Today;
   onOpenThread(threadID: string): void;
   onMarkRead(id: string): void;
   onMarkAllRead(ids: string[]): void;
   onReload(): void;
+  onSessionExpired(): void;
 }) {
   const weather = today.weather;
   if (
@@ -88,17 +77,26 @@ export function TodaySection({
   ) {
     return null;
   }
+  // The chip naming the shown place: in the weather's heading, or compact on
+  // the sun line.
+  const chip = (compact: boolean) =>
+    today.location !== null && (
+      <LocationChip
+        canLocate={today.canLocate}
+        compact={compact}
+        credit={today.locationCredit}
+        location={today.location}
+        onChanged={onReload}
+        onSessionExpired={onSessionExpired}
+      />
+    );
   return (
     <div className="mt-8 flex flex-col gap-7">
       {weather !== null ? (
-        <WeatherBlock onReload={onReload} today={today} weather={weather} />
+        <WeatherBlock chip={chip(false)} today={today} weather={weather} />
       ) : (
         today.sun !== null && (
-          <SunLine
-            chip={placeChip(today, onReload, true)}
-            day={today.day}
-            sun={today.sun}
-          />
+          <SunLine chip={chip(true)} day={today.day} sun={today.sun} />
         )
       )}
       <ScheduleNews
@@ -108,7 +106,11 @@ export function TodaySection({
         runs={today.runs}
       />
       {today.askLocation && (
-        <LocationPrompt canLocate={today.canLocate} onSaved={onReload} />
+        <LocationPrompt
+          canLocate={today.canLocate}
+          onSaved={onReload}
+          onSessionExpired={onSessionExpired}
+        />
       )}
     </div>
   );
