@@ -2,7 +2,13 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { AuthExpiredError, UserFacingError } from "./http";
 import { browserTimezone } from "./schedules";
-import { getToday, PlaceNotFoundError, setLocation } from "./today";
+import {
+  coarsePoint,
+  getToday,
+  locateTown,
+  PlaceNotFoundError,
+  setLocation,
+} from "./today";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -21,6 +27,7 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
     day: "today",
     location: null,
     askLocation: false,
+    canLocate: false,
     sun: null,
     weather: null,
     air: null,
@@ -43,6 +50,7 @@ test("getToday keeps a full answer and survives a null one", async () => {
     day: "tomorrow",
     location: { name: "Zürich", kind: "home" },
     askLocation: true,
+    canLocate: false,
     sun: {
       rise: "07:27",
       set: "16:56",
@@ -248,6 +256,58 @@ test("setLocation posts the place and returns it", async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ place: "Zürich" }),
   });
+});
+
+test("setLocation sends the located town's point with the name", async () => {
+  const fetchMock = stubFetch(Response.json({ place: { name: "Baden" } }));
+  await setLocation("Baden", { latitude: 47.47, longitude: 8.31 });
+  expect(fetchMock).toHaveBeenCalledWith("/api/me/location", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      place: "Baden",
+      near: { latitude: 47.47, longitude: 8.31 },
+    }),
+  });
+});
+
+test("coarsePoint rounds a position to about a kilometre", () => {
+  expect(coarsePoint(47.477123, -8.308519)).toEqual({
+    latitude: 47.48,
+    longitude: -8.31,
+  });
+});
+
+test("locateTown sends the point and returns the town", async () => {
+  const answer = {
+    place: { name: "Baden", kind: "home" },
+    attribution: { text: "© OpenStreetMap", url: "https://osm.example/" },
+  };
+  const fetchMock = stubFetch(Response.json(answer));
+  await expect(
+    locateTown({ latitude: 47.48, longitude: 8.31 }),
+  ).resolves.toEqual(answer);
+  expect(fetchMock).toHaveBeenCalledWith("/api/me/location:locate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ latitude: 47.48, longitude: 8.31 }),
+  });
+});
+
+test("locateTown tells no town from other errors", async () => {
+  const point = { latitude: 1, longitude: 2 };
+  stubFetch(Response.json({ code: "not_found" }, { status: 422 }));
+  await expect(locateTown(point)).rejects.toBeInstanceOf(PlaceNotFoundError);
+  stubFetch(Response.json({ error: "busy" }, { status: 409 }));
+  await expect(locateTown(point)).rejects.toEqual(new UserFacingError("busy"));
+  stubFetch(Response.json({ error: "not configured" }, { status: 503 }));
+  await expect(locateTown(point)).rejects.toEqual(
+    new UserFacingError("not configured"),
+  );
+  stubFetch(new Response(null, { status: 401 }));
+  await expect(locateTown(point)).rejects.toBeInstanceOf(AuthExpiredError);
+  stubFetch(new Response("oops", { status: 500 }));
+  await expect(locateTown(point)).rejects.toThrow("failed to locate");
 });
 
 test("setLocation tells an unknown place from other errors", async () => {

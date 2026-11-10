@@ -11,6 +11,7 @@ import (
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/sandbox"
+	"github.com/trick77/loom/internal/weather"
 )
 
 // toolSpec is everything the engine knows about one tool. A built-in has a
@@ -85,6 +86,10 @@ type toolSpec struct {
 	scheduledLimited bool
 	// observe describes a finished call for a scheduled run's report.
 	observe func(arguments map[string]any, sources []mcp.Source) ToolObservation
+	// pageOnly keeps a tool loom's pages call out of every turn: the model
+	// has no use for it, and its calls would spend a limit the page needs
+	// (the weather's reverse lookup: one map request a second, for everyone).
+	pageOnly bool
 }
 
 // usageCounter is one per-user usage counter: its label in the usage log and
@@ -215,6 +220,8 @@ var sandboxToolSpec = toolSpec{
 var mcpPolicies = append(slices.Clone(webToolPolicies),
 	// One image per turn; its image_gen count comes with the artifact.
 	toolSpec{name: imageToolName, capPerRound: 1, imageGenerator: true},
+	// The start page's "use my current location".
+	toolSpec{name: weather.ReverseGeocodeTool, pageOnly: true},
 )
 
 // toolPolicy returns the spec that holds name's round policy: this engine's

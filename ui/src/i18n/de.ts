@@ -1042,6 +1042,14 @@ export const de = {
       save: "Speichern",
       note: "Landet in deinen Erinnerungen. Ändern kannst du es jederzeit im Chat.",
       notFound: "Ort nicht gefunden",
+      useCurrent: "Aktuellen Standort verwenden",
+      locating: "Standort wird ermittelt…",
+      locateDenied: "Standortzugriff verweigert. Gib den Ort von Hand ein.",
+      locateFailed: "Standort nicht verfügbar. Gib den Ort von Hand ein.",
+      locateNoTown:
+        "An deinem Standort kein Ort gefunden. Gib ihn von Hand ein.",
+      locateRetry:
+        "Ort gerade nicht ermittelbar. Versuch es gleich nochmal oder gib ihn von Hand ein.",
       saveFailed:
         "Der Ort konnte nicht gespeichert werden. Versuch es nochmals.",
     },

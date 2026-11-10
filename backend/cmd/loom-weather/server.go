@@ -12,12 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/trick77/loom/internal/geo"
 	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/toolkit/mcpserver"
 )
 
 // The weather contract (docs/weather.md). loom keeps its own copy of the
-// names (mcp.WeatherServer, mcp.WeatherForecastTool, mcp.WeatherGeocodeTool);
+// names (mcp.WeatherServer, mcp.WeatherForecastTool, mcp.WeatherGeocodeTool, …);
 // the tests hold them together.
 const (
 	serverName   = "weather"
@@ -26,6 +27,13 @@ const (
 	// airQualityTool is optional in the contract: loom shows the air only
 	// where a server has it.
 	airQualityTool = "air_quality"
+	// reverseGeocodeTool is optional too: without it loom asks for the
+	// place by name only.
+	reverseGeocodeTool = "reverse_geocode"
+	// maxMatches is the most matches a lookup answers; the reverse lookup
+	// weighs that many of a name's for the one nearest the point: a common
+	// name (Neustadt) has more namesakes in one country than the default.
+	maxMatches = 20
 	// maxAirDays is how far the provider's European pollen reaches.
 	maxAirDays = 4
 	// airHours is how many hours of the index an answer lists.
@@ -174,7 +182,12 @@ type weather struct {
 	daily    *cache[forecastPart]
 	air      *cache[airPart]
 	places   *cache[[]Place]
-	now      func() time.Time
+	// reverse is nil while the reverse lookup is off; towns keeps its
+	// answers by rounded point, townNames the map provider's.
+	reverse   *nominatim
+	towns     *cache[[]Place]
+	townNames *cache[town]
+	now       func() time.Time
 }
 
 // newServer mounts kit's health probes and, behind the bearer token, the
@@ -184,21 +197,55 @@ func newServer(cfg config, client *http.Client, version string) http.Handler {
 }
 
 func newServerAt(cfg config, client *http.Client, version string, now func() time.Time) http.Handler {
+	agent := userAgent(version)
 	w := &weather{
 		provider: openMeteo{http: client, forecastURL: strings.TrimRight(cfg.forecastURL, "/"),
-			geocodingURL: strings.TrimRight(cfg.geocodingURL, "/"), airQualityURL: strings.TrimRight(cfg.airQualityURL, "/")},
-		hourly: newCache[forecastPart](now, cacheLimit),
-		daily:  newCache[forecastPart](now, cacheLimit),
-		air:    newCache[airPart](now, cacheLimit),
-		places: newCache[[]Place](now, cacheLimit),
-		now:    now,
+			geocodingURL: strings.TrimRight(cfg.geocodingURL, "/"), airQualityURL: strings.TrimRight(cfg.airQualityURL, "/"),
+			userAgent: agent},
+		hourly:    newCache[forecastPart](now, cacheLimit),
+		daily:     newCache[forecastPart](now, cacheLimit),
+		air:       newCache[airPart](now, cacheLimit),
+		places:    newCache[[]Place](now, cacheLimit),
+		towns:     newCache[[]Place](now, cacheLimit),
+		townNames: newCache[town](now, cacheLimit),
+		now:       now,
+	}
+	if cfg.reverseURL != "" {
+		w.reverse = &nominatim{http: client, url: strings.TrimRight(cfg.reverseURL, "/"), userAgent: agent, limit: &limiter{}}
 	}
 	api := http.NewServeMux()
 	api.Handle("/mcp", mcpserver.New(w.mcpServer(version)))
 	return sidecar.Handler(cfg.token, api)
 }
 
+// userAgent names the sidecar to the providers, as the map provider's usage
+// policy asks.
+func userAgent(version string) string {
+	return "loom-weather/" + version + " (+https://github.com/trick77/loom)"
+}
+
 func (w *weather) mcpServer(version string) mcpserver.Server {
+	s := w.baseServer(version)
+	if w.reverse != nil {
+		s.Tools = append(s.Tools, mcpserver.Tool{
+			Name:  reverseGeocodeTool,
+			Title: "Name a point's town",
+			Description: "The town a point lies in, as JSON: name, region, country, coordinates and timezone of the town's centre, " +
+				"or no place (the sea). The point is rounded to about a kilometre first.",
+			Schema: mcpserver.ObjectSchema(map[string]any{
+				"latitude":  map[string]any{"type": "number", "minimum": -90, "maximum": 90},
+				"longitude": map[string]any{"type": "number", "minimum": -180, "maximum": 180},
+				"language":  map[string]any{"type": "string", "description": "ISO 639-1 code for the names, default en."},
+			}, "latitude", "longitude"),
+			ReadOnly:  true,
+			OpenWorld: true,
+			Run:       w.runReverseGeocode,
+		})
+	}
+	return s
+}
+
+func (w *weather) baseServer(version string) mcpserver.Server {
 	return mcpserver.Server{Name: serverName, Version: version, Tools: []mcpserver.Tool{{
 		Name:  forecastTool,
 		Title: "Weather forecast",
@@ -225,6 +272,8 @@ func (w *weather) mcpServer(version string) mcpserver.Server {
 			"query":    map[string]any{"type": "string", "description": "The place's name or postal code."},
 			"country":  map[string]any{"type": "string", "description": "ISO 3166-1 alpha-2 code to search in, e.g. CH."},
 			"language": map[string]any{"type": "string", "description": "ISO 639-1 code for the names, default en."},
+			"count": map[string]any{"type": "integer", "minimum": 1, "maximum": maxMatches,
+				"description": fmt.Sprintf("How many matches, default %d.", maxPlaces)},
 		}, "query"),
 		ReadOnly:  true,
 		OpenWorld: true,
@@ -451,10 +500,12 @@ func airQualityOf(part airPart, days int, now time.Time) AirQuality {
 	return out
 }
 
+// geocodeArgs reads count as a number: some models send 5.0 for 5.
 type geocodeArgs struct {
-	Query    string `json:"query"`
-	Country  string `json:"country"`
-	Language string `json:"language"`
+	Query    string  `json:"query"`
+	Country  string  `json:"country"`
+	Language string  `json:"language"`
+	Count    float64 `json:"count"`
 }
 
 func (w *weather) runGeocode(ctx context.Context, raw json.RawMessage) mcpserver.Result {
@@ -475,15 +526,97 @@ func (w *weather) runGeocode(ctx context.Context, raw json.RawMessage) mcpserver
 		return mcpserver.ErrorResult("country must be an ISO 3166-1 alpha-2 code such as CH")
 	case !languagePattern.MatchString(language):
 		return mcpserver.ErrorResult("language must be an ISO 639-1 code such as de")
+	case args.Count < 0 || args.Count > maxMatches || args.Count != math.Trunc(args.Count):
+		return mcpserver.ErrorResult(fmt.Sprintf("count must be a whole number between 1 and %d", maxMatches))
 	}
-	key := strings.ToLower(query) + "|" + country + "|" + language
-	places, err := w.places.get(ctx, key, afterGeocodeTTL, func(ctx context.Context) ([]Place, error) {
-		return w.provider.geocode(ctx, query, country, language)
-	})
+	count := int(args.Count)
+	if count == 0 {
+		count = maxPlaces
+	}
+	places, err := w.lookup(ctx, query, country, language, count)
 	if err != nil {
 		return mcpserver.ErrorResult("place lookup failed: " + err.Error())
 	}
 	return jsonResult(map[string]any{"places": places})
+}
+
+// lookup is the weather search's first count matches for a name, kept.
+func (w *weather) lookup(ctx context.Context, query, country, language string, count int) ([]Place, error) {
+	key := fmt.Sprintf("%s|%s|%s|%d", strings.ToLower(query), country, language, count)
+	return w.places.get(ctx, key, afterGeocodeTTL, func(ctx context.Context) ([]Place, error) {
+		return w.provider.geocode(ctx, query, country, language, count)
+	})
+}
+
+// reverseAnswer is the reverse_geocode tool's answer: at most one place.
+type reverseAnswer struct {
+	Places      []Place     `json:"places"`
+	Attribution Attribution `json:"attribution"`
+}
+
+type reverseArgs struct {
+	Latitude  *float64 `json:"latitude"`
+	Longitude *float64 `json:"longitude"`
+	Language  string   `json:"language"`
+}
+
+// runReverseGeocode names the town at a point. The map provider names it;
+// the weather search's match nearest the point is the answer, so the place
+// is the one a lookup by name finds, with its zone. The point goes out
+// rounded to two decimals (about a kilometre): the town is all that is
+// asked, and every point within it is one cache key.
+func (w *weather) runReverseGeocode(ctx context.Context, raw json.RawMessage) mcpserver.Result {
+	var args reverseArgs
+	if err := mcpserver.DecodeArgs(raw, &args); err != nil {
+		return mcpserver.ErrorResult("invalid arguments: " + err.Error())
+	}
+	language := strings.ToLower(strings.TrimSpace(args.Language))
+	if language == "" {
+		language = "en"
+	}
+	switch {
+	case args.Latitude == nil || args.Longitude == nil:
+		return mcpserver.ErrorResult("latitude and longitude are required")
+	case math.Abs(*args.Latitude) > 90 || math.Abs(*args.Longitude) > 180:
+		return mcpserver.ErrorResult("latitude must be within ±90 and longitude within ±180")
+	case !languagePattern.MatchString(language):
+		return mcpserver.ErrorResult("language must be an ISO 639-1 code such as de")
+	}
+	lat, lon := geo.Coarse(*args.Latitude), geo.Coarse(*args.Longitude)
+	key := fmt.Sprintf("%.2f,%.2f|%s", lat, lon, language)
+	places, err := w.towns.get(ctx, key, afterGeocodeTTL, func(ctx context.Context) ([]Place, error) {
+		// The map provider's answer is kept apart: a weather search that
+		// fails after it must not spend another map request on the retry.
+		t, err := w.townNames.get(ctx, key, afterGeocodeTTL, func(ctx context.Context) (town, error) {
+			return w.reverse.reverse(ctx, lat, lon, language)
+		})
+		if err != nil {
+			return nil, err
+		}
+		var lookupErr error
+		for _, name := range t.names {
+			matches, err := w.lookup(ctx, name, t.countryCode, language, maxMatches)
+			if err != nil {
+				// A wider name may still answer.
+				lookupErr = err
+				continue
+			}
+			if i := geo.Nearest(lat, lon, len(matches), func(i int) (float64, float64) {
+				return matches[i].Latitude, matches[i].Longitude
+			}); i >= 0 {
+				return []Place{matches[i]}, nil
+			}
+		}
+		// No place for a failed search is not kept: the next call asks again.
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+		return []Place{}, nil
+	})
+	if err != nil {
+		return mcpserver.ErrorResult("reverse lookup failed: " + err.Error())
+	}
+	return jsonResult(reverseAnswer{Places: places, Attribution: reverseAttribution})
 }
 
 func jsonResult(v any) mcpserver.Result {

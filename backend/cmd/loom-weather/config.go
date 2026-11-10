@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
@@ -12,6 +13,7 @@ const (
 	defaultForecastURL   = "https://api.open-meteo.com"
 	defaultGeocodingURL  = "https://geocoding-api.open-meteo.com"
 	defaultAirQualityURL = "https://air-quality-api.open-meteo.com"
+	defaultReverseURL    = "https://nominatim.openstreetmap.org"
 )
 
 type config struct {
@@ -20,6 +22,9 @@ type config struct {
 	forecastURL   string
 	geocodingURL  string
 	airQualityURL string
+	// reverseURL is the map provider naming a point's town; "" (off) drops
+	// the reverse lookup.
+	reverseURL string
 }
 
 // loadConfig reads WEATHER_* through kit's env reader: trimmed, empty is unset.
@@ -31,6 +36,14 @@ func loadConfig(getenv func(string) string) (config, error) {
 		forecastURL:   r.String("WEATHER_FORECAST_URL", defaultForecastURL),
 		geocodingURL:  r.String("WEATHER_GEOCODING_URL", defaultGeocodingURL),
 		airQualityURL: r.String("WEATHER_AIR_QUALITY_URL", defaultAirQualityURL),
+		reverseURL:    r.String("WEATHER_REVERSE_URL", defaultReverseURL),
+	}
+	urls := map[string]string{"WEATHER_FORECAST_URL": cfg.forecastURL, "WEATHER_GEOCODING_URL": cfg.geocodingURL,
+		"WEATHER_AIR_QUALITY_URL": cfg.airQualityURL}
+	if strings.EqualFold(cfg.reverseURL, "off") {
+		cfg.reverseURL = ""
+	} else {
+		urls["WEATHER_REVERSE_URL"] = cfg.reverseURL
 	}
 	// The provider's free tier is rate-limited per IP and whoever calls spends
 	// it, so every tool route needs the token. Without one the sidecar answers
@@ -39,8 +52,7 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if msg := sidecar.TokenProblem("WEATHER_TOKEN", cfg.token); cfg.token != "" && msg != "" {
 		r.Fail("%s", msg)
 	}
-	for name, raw := range map[string]string{"WEATHER_FORECAST_URL": cfg.forecastURL, "WEATHER_GEOCODING_URL": cfg.geocodingURL,
-		"WEATHER_AIR_QUALITY_URL": cfg.airQualityURL} {
+	for name, raw := range urls {
 		if u, err := url.Parse(raw); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			r.Fail("%s must be an absolute http(s) URL", name)
 		}

@@ -102,7 +102,9 @@ export function TodaySection({
         onOpenThread={onOpenThread}
         runs={today.runs}
       />
-      {today.askLocation && <LocationPrompt onSaved={onReload} />}
+      {today.askLocation && (
+        <LocationPrompt canLocate={today.canLocate} onSaved={onReload} />
+      )}
     </div>
   );
 }

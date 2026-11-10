@@ -375,6 +375,16 @@ func TestTodayWithoutAPlace(t *testing.T) {
 	if !got.AskLocation || got.Location != nil || got.Weather != nil || got.Sun != nil || got.Runs == nil {
 		t.Fatalf("no place = %+v", got)
 	}
+	// A server without the reverse lookup: no "use my location".
+	if got.CanLocate {
+		t.Fatalf("can locate without the reverse lookup: %+v", got)
+	}
+	mcp := tf.deps.MCP.(fakeMCPService)
+	mcp.Available[weather.ReverseGeocodeTool] = true
+	tf.handler = todayHandler(newServer(tf.deps), morning)
+	if got := tf.get(t); !got.AskLocation || !got.CanLocate {
+		t.Fatalf("with the reverse lookup = %+v", got)
+	}
 }
 
 // While the facts have not been read since they changed, the memory may know

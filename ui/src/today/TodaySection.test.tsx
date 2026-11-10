@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -15,8 +16,40 @@ import { TodaySection } from "./TodaySection";
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
-  return { ...actual, setLocation: vi.fn() };
+  return { ...actual, setLocation: vi.fn(), locateTown: vi.fn() };
 });
+
+// stubGeolocation gives the browser a position, or fails it with code (1
+// denied, 2 unavailable, 3 timeout).
+function stubGeolocation(code?: number) {
+  const getCurrentPosition = vi.fn(
+    (
+      ok: (p: { coords: { latitude: number; longitude: number } }) => void,
+      fail: (e: { code: number }) => void,
+      _options?: PositionOptions,
+    ) => {
+      if (code) fail({ code });
+      else ok({ coords: { latitude: 47.477123, longitude: 8.308519 } });
+    },
+  );
+  Object.defineProperty(navigator, "geolocation", {
+    value: { getCurrentPosition },
+    configurable: true,
+  });
+  return getCurrentPosition;
+}
+
+afterEach(() => {
+  Reflect.deleteProperty(navigator, "geolocation");
+});
+
+const askOnly = {
+  weather: null,
+  sun: null,
+  location: null,
+  runs: [],
+  askLocation: true,
+};
 
 const handlers = {
   onOpenThread: vi.fn(),
@@ -431,6 +464,171 @@ test("asks where the user lives and saves the place", async () => {
   fireEvent.click(save);
   await waitFor(() => expect(handlers.onReload).toHaveBeenCalledOnce());
   expect(api.setLocation).toHaveBeenCalledWith("Munich");
+});
+
+test("the current location fills in the town, saved with its point", async () => {
+  const position = stubGeolocation();
+  vi.mocked(api.locateTown).mockResolvedValue({
+    place: {
+      name: "Baden",
+      region: "Aargau",
+      country: "Switzerland",
+      kind: "home",
+    },
+    attribution: {
+      text: "Place names © OpenStreetMap contributors",
+      url: "https://www.openstreetmap.org/copyright",
+    },
+  });
+  vi.mocked(api.setLocation).mockResolvedValue({
+    place: { name: "Baden", kind: "home" },
+  });
+  show({ ...askOnly, canLocate: true });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use my current location" }),
+  );
+  const input = screen.getByRole("textbox");
+  await waitFor(() => expect(input).toHaveValue("Baden"));
+  // Asked only on the click, coarse: a town is all that is needed.
+  expect(position).toHaveBeenCalledOnce();
+  expect(position.mock.calls[0][2]).toMatchObject({
+    enableHighAccuracy: false,
+  });
+  // The position leaves the browser rounded to about a kilometre.
+  expect(api.locateTown).toHaveBeenCalledWith({
+    latitude: 47.48,
+    longitude: 8.31,
+  });
+  // The user sees where it is before saving it, with the names' credit.
+  expect(screen.getByText("Baden, Aargau, Switzerland")).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", {
+      name: "Place names © OpenStreetMap contributors",
+    }),
+  ).toHaveAttribute("href", "https://www.openstreetmap.org/copyright");
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(handlers.onReload).toHaveBeenCalledOnce());
+  expect(api.setLocation).toHaveBeenCalledWith("Baden", {
+    latitude: 47.48,
+    longitude: 8.31,
+  });
+});
+
+test("a location prompt left unanswered gives up, the button comes back", async () => {
+  vi.useFakeTimers();
+  try {
+    // The browser never calls back.
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: vi.fn() },
+      configurable: true,
+    });
+    show({ ...askOnly, canLocate: true });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use my current location" }),
+    );
+    expect(screen.getByRole("button", { name: "Locating…" })).toBeDisabled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't get your location. Type the place instead.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Use my current location" }),
+    ).toBeEnabled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a credit without a web address is shown as text", async () => {
+  stubGeolocation();
+  vi.mocked(api.locateTown).mockResolvedValue({
+    place: { name: "Baden", kind: "home" },
+    attribution: { text: "© OpenStreetMap", url: "" },
+  });
+  show({ ...askOnly, canLocate: true });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use my current location" }),
+  );
+  expect(await screen.findByText("© OpenStreetMap")).toBeInTheDocument();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
+test("a name typed over the located town is saved by name alone", async () => {
+  stubGeolocation();
+  vi.mocked(api.locateTown).mockResolvedValue({
+    place: { name: "Baden", kind: "home" },
+    attribution: { text: "© OpenStreetMap", url: "https://osm.example/" },
+  });
+  vi.mocked(api.setLocation).mockResolvedValue({
+    place: { name: "Bern", kind: "home" },
+  });
+  show({ ...askOnly, canLocate: true });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Use my current location" }),
+  );
+  const input = screen.getByRole("textbox");
+  await waitFor(() => expect(input).toHaveValue("Baden"));
+  fireEvent.change(input, { target: { value: "Bern" } });
+  expect(screen.queryByText("© OpenStreetMap")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(handlers.onReload).toHaveBeenCalledOnce());
+  expect(api.setLocation).toHaveBeenCalledWith("Bern");
+});
+
+test("a denied or failed location is said so; typing still works", async () => {
+  stubGeolocation(1);
+  show({ ...askOnly, canLocate: true });
+  const button = screen.getByRole("button", {
+    name: "Use my current location",
+  });
+  fireEvent.click(button);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Location access was denied. Type the place instead.",
+  );
+  expect(api.locateTown).not.toHaveBeenCalled();
+
+  stubGeolocation(3);
+  fireEvent.click(button);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Couldn't get your location. Type the place instead.",
+  );
+
+  stubGeolocation();
+  vi.mocked(api.locateTown).mockRejectedValueOnce(new api.PlaceNotFoundError());
+  fireEvent.click(button);
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No town found at your location. Type the place instead.",
+    ),
+  );
+  expect(screen.getByRole("textbox")).toHaveValue("");
+
+  // The map provider busy: try again.
+  vi.mocked(api.locateTown).mockRejectedValueOnce(
+    new UserFacingError("the town could not be named right now"),
+  );
+  fireEvent.click(button);
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't name the town right now. Try again shortly, or type the place.",
+    ),
+  );
+});
+
+test("no location button without the server's lookup or the browser's", () => {
+  stubGeolocation();
+  const { unmount } = show({ ...askOnly, canLocate: false });
+  expect(
+    screen.queryByRole("button", { name: "Use my current location" }),
+  ).not.toBeInTheDocument();
+  unmount();
+  Reflect.deleteProperty(navigator, "geolocation");
+  show({ ...askOnly, canLocate: true });
+  expect(
+    screen.queryByRole("button", { name: "Use my current location" }),
+  ).not.toBeInTheDocument();
 });
 
 test("an unknown place is said so; other failures too", async () => {

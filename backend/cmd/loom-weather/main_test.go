@@ -582,7 +582,7 @@ func TestCachePrunes(t *testing.T) {
 // the server's.
 func TestContractNamesMatchLoom(t *testing.T) {
 	if mcp.WeatherServer != serverName || mcp.WeatherForecastTool != forecastTool || mcp.WeatherGeocodeTool != geocodeTool ||
-		mcp.WeatherAirQualityTool != airQualityTool {
+		mcp.WeatherAirQualityTool != airQualityTool || mcp.WeatherReverseGeocodeTool != reverseGeocodeTool {
 		t.Fatal("loom's weather contract names drifted from loom-weather's")
 	}
 }

@@ -16,6 +16,8 @@ type fakeCaller struct {
 	err   error
 	// airErr fails the air alone.
 	airErr error
+	// lastArgs are the last call's arguments.
+	lastArgs map[string]any
 }
 
 func (f *fakeCaller) HasTool(name string) bool {
@@ -23,10 +25,11 @@ func (f *fakeCaller) HasTool(name string) bool {
 	return ok
 }
 
-func (f *fakeCaller) CallToolResult(_ context.Context, name string, _ map[string]any) (mcp.CallResult, error) {
+func (f *fakeCaller) CallToolResult(_ context.Context, name string, args map[string]any) (mcp.CallResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, name)
+	f.lastArgs = args
 	if f.err != nil {
 		return mcp.CallResult{}, f.err
 	}
@@ -63,12 +66,12 @@ func TestGetForecastReadsTheContract(t *testing.T) {
 func TestLookUpTakesTheBestMatch(t *testing.T) {
 	c := &fakeCaller{reply: map[string]string{GeocodeTool: `{"places":[{"name":"Luzern","region":"Luzern","country":"Schweiz",
 		"latitude":47.05,"longitude":8.31,"timezone":"Europe/Zurich"},{"name":"Lucerne","country":"USA"}]}`}}
-	p, err := LookUp(context.Background(), c, "Luzern", "", "de")
+	p, err := Find(context.Background(), c, "Luzern", "", "de")
 	if err != nil || p == nil || p.Name != "Luzern" || p.Timezone != "Europe/Zurich" {
 		t.Fatalf("place = %+v, %v", p, err)
 	}
 	c.reply[GeocodeTool] = `{"places":[]}`
-	if p, err := LookUp(context.Background(), c, "Nowhere", "", "de"); p != nil || err != nil {
+	if p, err := Find(context.Background(), c, "Nowhere", "", "de"); p != nil || err != nil {
 		t.Fatalf("no match = %+v, %v", p, err)
 	}
 }
@@ -161,5 +164,53 @@ func TestAirLevels(t *testing.T) {
 		if got := PollenLevel(tc.kind, tc.value); got != tc.want {
 			t.Errorf("%s %v = %q, want %q", tc.kind, tc.value, got, tc.want)
 		}
+	}
+}
+
+// A point near the place picks the match nearest it, not the search's first:
+// the Swiss Baden for a point in Aargau. Without a match near it, the first.
+func TestFindNearPicksTheMatchNearThePoint(t *testing.T) {
+	c := &fakeCaller{reply: map[string]string{GeocodeTool: `{"places":[
+		{"name":"Baden-Baden","country":"Deutschland","latitude":48.76,"longitude":8.24,"timezone":"Europe/Berlin"},
+		{"name":"Baden","region":"Aargau","country":"Schweiz","latitude":47.47,"longitude":8.31,"timezone":"Europe/Zurich"}]}`}}
+	p, err := FindNear(context.Background(), c, "Baden", "", "de", &Point{Latitude: 47.48, Longitude: 8.32})
+	if err != nil || p == nil || p.Name != "Baden" || p.Timezone != "Europe/Zurich" {
+		t.Fatalf("near Aargau = %+v, %v", p, err)
+	}
+	// Near a point it weighs more matches than the first few.
+	if args := c.lastArgs; args["count"] != nearMatches {
+		t.Fatalf("near lookup args = %v", args)
+	}
+	p, err = FindNear(context.Background(), c, "Baden", "", "de", &Point{Latitude: 38.7, Longitude: -9.1})
+	if err != nil || p == nil || p.Name != "Baden-Baden" {
+		t.Fatalf("near nothing = %+v, %v", p, err)
+	}
+	if p, err := Find(context.Background(), c, "Baden", "", "de"); err != nil || p == nil || p.Name != "Baden-Baden" {
+		t.Fatalf("no point = %+v, %v", p, err)
+	}
+}
+
+func TestLocateReadsTheReverseLookup(t *testing.T) {
+	c := &fakeCaller{reply: map[string]string{ReverseGeocodeTool: `{"places":[{"name":"Baden","region":"Aargau","country":"Schweiz",
+		"countryCode":"CH","latitude":47.47,"longitude":8.31,"timezone":"Europe/Zurich"}],
+		"attribution":{"text":"Place names © OpenStreetMap contributors","url":"https://www.openstreetmap.org/copyright"}}`}}
+	p, credit, err := Locate(context.Background(), c, 47.48, 8.32, "de")
+	if err != nil || p == nil || p.Name != "Baden" || p.Region != "Aargau" || p.Timezone != "Europe/Zurich" || credit.URL == "" {
+		t.Fatalf("place = %+v, %+v, %v", p, credit, err)
+	}
+	c.reply[ReverseGeocodeTool] = `{"places":[]}`
+	if p, _, err := Locate(context.Background(), c, 38, -12, "de"); p != nil || err != nil {
+		t.Fatalf("the sea = %+v, %v", p, err)
+	}
+	// The credit becomes a link: only a web address passes.
+	for _, bad := range []string{"javascript:alert(1)", "//evil.example/", "ftp://x.example/"} {
+		c.reply[ReverseGeocodeTool] = `{"places":[{"name":"Baden"}],"attribution":{"text":"credit","url":"` + bad + `"}}`
+		if _, credit, err := Locate(context.Background(), c, 47, 8, "de"); err != nil || credit.URL != "" || credit.Text != "credit" {
+			t.Errorf("%s: credit = %+v, %v", bad, credit, err)
+		}
+	}
+	c.reply[ReverseGeocodeTool] = `<html>`
+	if _, _, err := Locate(context.Background(), c, 1, 2, "de"); err == nil {
+		t.Fatal("an unreadable reply was read")
 	}
 }

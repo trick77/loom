@@ -156,6 +156,9 @@ export type Today = {
   day: "today" | "tomorrow";
   location: TodayLocation | null;
   askLocation: boolean;
+  /** The question may offer "use my location": the server can name the
+   * town at a point. */
+  canLocate: boolean;
   sun: TodaySun | null;
   weather: TodayWeather | null;
   air: TodayAir | null;
@@ -286,6 +289,7 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
     day,
     location: today.location ?? null,
     askLocation: today.askLocation === true,
+    canLocate: today.canLocate === true,
     sun: today.sun
       ? { ...today.sun, progress: today.sun.progress ?? null }
       : null,
@@ -302,31 +306,63 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
   };
 }
 
+export type GeoPoint = { latitude: number; longitude: number };
+
+export type LocatedTown = {
+  place: TodayLocation;
+  /** The credit the town's name comes with, shown next to it. */
+  attribution: { text: string; url: string };
+};
+
 // setLocation stores where the user lives. The server keeps it as a memory.
+// near is the point locateTown named the town for: of the places of that
+// name, the one meant.
 export async function setLocation(
   place: string,
+  near?: GeoPoint,
 ): Promise<{ place: TodayLocation }> {
   const response = await fetch(`/api/me/location`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ place }),
+    body: JSON.stringify(near ? { place, near } : { place }),
   });
-  if (response.status === 401) throw new AuthExpiredError();
-  if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      code?: string;
-    };
-    if (data.code === "not_found") throw new PlaceNotFoundError();
-    if (
-      (response.status === 400 ||
-        response.status === 409 ||
-        response.status === 503) &&
-      data.error
-    ) {
-      throw new UserFacingError(data.error);
-    }
-    throw new Error("failed to save the place");
-  }
+  await throwLocationError(response, "failed to save the place");
   return response.json() as Promise<{ place: TodayLocation }>;
+}
+
+// coarsePoint rounds a position to two decimals, about a kilometre: the town
+// is all that is asked, the exact position never leaves the browser.
+export function coarsePoint(latitude: number, longitude: number): GeoPoint {
+  const round = (v: number) => Math.round(v * 100) / 100;
+  return { latitude: round(latitude), longitude: round(longitude) };
+}
+
+// locateTown names the town at a point (coarsePoint's). It saves nothing.
+export async function locateTown(point: GeoPoint): Promise<LocatedTown> {
+  const response = await fetch(`/api/me/location:locate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(point),
+  });
+  await throwLocationError(response, "failed to locate");
+  return response.json() as Promise<LocatedTown>;
+}
+
+async function throwLocationError(response: Response, fallback: string) {
+  if (response.status === 401) throw new AuthExpiredError();
+  if (response.ok) return;
+  const data = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    code?: string;
+  };
+  if (data.code === "not_found") throw new PlaceNotFoundError();
+  if (
+    (response.status === 400 ||
+      response.status === 409 ||
+      response.status === 503) &&
+    data.error
+  ) {
+    throw new UserFacingError(data.error);
+  }
+  throw new Error(fallback);
 }

@@ -430,6 +430,7 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("GET /api/me/usage", s.requireAuth(http.HandlerFunc(s.handleGetUsage)))
 	mux.Handle("GET /api/me/facts", s.requireAuth(http.HandlerFunc(s.handleGetUserFacts)))
 	mux.Handle("POST /api/me/location", s.requireAuth(http.HandlerFunc(s.handleSetLocation)))
+	mux.Handle("POST /api/me/location:locate", s.requireAuth(http.HandlerFunc(s.handleLocate)))
 	mux.Handle("GET /api/today", s.requireAuth(http.HandlerFunc(s.handleToday)))
 	mux.Handle("GET /api/me/directives", s.requireAuth(http.HandlerFunc(s.handleGetUserDirectives)))
 	mux.Handle("GET /api/me/apple-music", s.requireAuth(http.HandlerFunc(s.handleAppleMusicStatus)))
