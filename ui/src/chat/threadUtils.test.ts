@@ -8,6 +8,7 @@ import {
   previousUserMessages,
   previousUserMessage,
 } from "./threadUtils";
+import type { GreetingVisit } from "./greetingVisit";
 import type { MessageWithActivityTrace } from "./types";
 
 function userMessage(
@@ -165,56 +166,148 @@ test("updates an attachment inside an already rendered user message", () => {
   expect(messages[0].attachments?.[0].status).toBe("uploading");
 });
 
-// A rand that always returns 0 makes greetingForNow deterministic: it picks the
-// first eligible entry ("{name} returns!") and, in renderGreeting, 0 < 0.5 selects
-// the named form.
 const zero = () => 0;
+const firstToday: GreetingVisit = { firstToday: true, awayDays: null };
+const laterToday: GreetingVisit = { firstToday: false, awayDays: 0 };
+// Friday 9 January 2026, 09:00 local (past the New Year days).
+const fridayMorning = new Date(2026, 0, 9, 9, 0, 0);
 
-test("greetingForNow substitutes the first name and is deterministic under a fixed rand", () => {
-  const morning = new Date(2026, 0, 2, 9, 0, 0);
-  expect(greetingForNow("Jan Novak", morning, zero)).toBe("Jan returns!");
+// every rand value from 0 up to (not including) 1 in `steps` steps, so a test sees
+// every entry a weighted pick can land on.
+function allPicks(
+  name: string,
+  now: Date,
+  visit: GreetingVisit | undefined,
+  steps = 400,
+): Set<string> {
+  const out = new Set<string>();
+  for (let i = 0; i < steps; i += 1) {
+    const rand = () => i / steps;
+    out.add(greetingForNow(name, now, rand, visit));
+  }
+  return out;
+}
+
+test("the first start screen of the day greets by first name", () => {
+  expect(greetingForNow("Jan Novak", fridayMorning, zero, firstToday)).toBe(
+    "Good morning, Jan",
+  );
+  for (const g of allPicks("Jan Novak", fridayMorning, firstToday)) {
+    expect(g).toContain("Jan");
+  }
 });
 
-test("morning-only greetings are eligible in the morning and not at night", () => {
-  const morning = new Date(2026, 0, 2, 9, 0, 0);
+test("later the same day the greeting carries no name", () => {
+  const picks = allPicks("Jan", fridayMorning, laterToday);
+  expect(picks.size).toBeGreaterThan(5);
+  for (const g of picks) {
+    expect(g).not.toContain("Jan");
+  }
+});
+
+test("a week away welcomes the user back by name", () => {
+  const visit: GreetingVisit = { firstToday: true, awayDays: 7 };
+  expect(allPicks("Jan", fridayMorning, visit)).toEqual(
+    new Set(["Welcome back, Jan"]),
+  );
+  const sixDays: GreetingVisit = { firstToday: true, awayDays: 6 };
+  expect(allPicks("Jan", fridayMorning, sixDays)).not.toContain(
+    "Welcome back, Jan",
+  );
+});
+
+test("a holiday beats the time-of-day salutation and the welcome back", () => {
+  const christmasMorning = new Date(2026, 11, 25, 9, 0, 0);
+  expect(allPicks("Jan", christmasMorning, firstToday)).toEqual(
+    new Set(["Merry Christmas, Jan"]),
+  );
+  const backFromAWeekAway: GreetingVisit = { firstToday: true, awayDays: 8 };
+  expect(allPicks("Jan", christmasMorning, backFromAWeekAway)).toEqual(
+    new Set(["Merry Christmas, Jan"]),
+  );
+});
+
+test("salutations never put the name on a question", () => {
+  const night = new Date(2026, 0, 9, 23, 30, 0);
+  for (const now of [fridayMorning, night]) {
+    for (const g of allPicks("Jan", now, firstToday)) {
+      expect(g).not.toMatch(/\?$/);
+    }
+  }
+});
+
+test("without a name the salutation drops it and no placeholder leaks", () => {
+  expect(greetingForNow("", fridayMorning, zero, firstToday)).toBe(
+    "Good morning",
+  );
   const night = new Date(2026, 0, 2, 23, 30, 0);
-
-  expect(possibleGreetings("Jan", morning)).toContain("Good morning");
-  expect(possibleGreetings("Jan", morning)).not.toContain("Hello, night owl");
-
-  expect(possibleGreetings("Jan", night)).toContain("Hello, night owl");
-  expect(possibleGreetings("Jan", night)).not.toContain("Good morning");
+  for (const visit of [firstToday, laterToday, undefined]) {
+    for (const g of allPicks("", night, visit)) {
+      expect(g).not.toMatch(/\{|,\s*$|,\s*\?/);
+    }
+  }
 });
 
-test("weekday greetings only appear on their day", () => {
-  const fridayAfternoon = new Date(2026, 0, 2, 14, 0, 0);
+test("without storage the name shows up only sometimes", () => {
+  const picks = allPicks("Jan", fridayMorning, undefined);
+  const named = [...picks].filter((g) => g.includes("Jan"));
+  expect(named.length).toBeGreaterThan(0);
+  expect(named.length).toBeLessThan(picks.size);
+});
+
+test("time-of-day lines appear only in their band", () => {
+  const night = new Date(2026, 0, 2, 23, 30, 0);
+  const lunch = new Date(2026, 0, 6, 12, 0, 0);
+  const evening = new Date(2026, 0, 6, 19, 0, 0);
+
+  expect(possibleGreetings("Jan", fridayMorning)).toContain("Coffee first?");
+  expect(possibleGreetings("Jan", fridayMorning)).not.toContain(
+    "Hello, night owl",
+  );
+  expect(possibleGreetings("Jan", night)).toContain("Hello, night owl");
+  expect(possibleGreetings("Jan", night)).not.toContain("Coffee first?");
+  expect(possibleGreetings("Jan", lunch)).toContain("Lunch break?");
+  expect(possibleGreetings("Jan", evening)).not.toContain("Lunch break?");
+  // "How was your day?" is an evening question, never a morning one.
+  expect(possibleGreetings("Jan", evening)).toContain("How was your day?");
+  expect(possibleGreetings("Jan", fridayMorning)).not.toContain(
+    "How was your day?",
+  );
+});
+
+test("weekday and date lines appear only on their day", () => {
   const mondayMorning = new Date(2026, 0, 5, 9, 0, 0);
+  const newYearsEve = new Date(2026, 11, 31, 15, 0, 0);
   // Guard against a wrong assumption about these calendar dates.
-  expect(fridayAfternoon.getDay()).toBe(5);
+  expect(fridayMorning.getDay()).toBe(5);
   expect(mondayMorning.getDay()).toBe(1);
 
-  expect(possibleGreetings("Jan", fridayAfternoon)).toContain(
-    "Happy Friday, Jan",
-  );
+  expect(possibleGreetings("Jan", fridayMorning)).toContain("Finally Friday");
   expect(possibleGreetings("Jan", mondayMorning)).not.toContain(
-    "Happy Friday, Jan",
+    "Finally Friday",
+  );
+  expect(possibleGreetings("Jan", mondayMorning)).toContain(
+    "Fresh week, fresh start",
+  );
+  expect(possibleGreetings("Jan", newYearsEve)).toContain(
+    "Last day of the year",
+  );
+  expect(possibleGreetings("Jan", fridayMorning)).not.toContain(
+    "Last day of the year",
   );
 });
 
-test("without a name, only nameless greetings are used and no placeholder leaks", () => {
-  const night = new Date(2026, 0, 2, 23, 30, 0);
-  const options = possibleGreetings("", night);
-
-  // Named-only entries (e.g. "{name} returns!", "Up late, {name}?") are dropped.
-  expect(options).not.toContain("{name} returns!");
-  expect(options.every((greeting) => !greeting.includes("{name}"))).toBe(true);
-  expect(options).toContain("Hello, night owl");
-
-  // And an actual pick never renders a dangling placeholder.
-  for (let i = 0; i < 50; i += 1) {
-    const rand = () => i / 50;
-    expect(greetingForNow("", night, rand)).not.toContain("{name}");
+test("lines tied to a moment are picked more often than generic ones", () => {
+  // Lunch on a Tuesday: lunchBreak is the only specific line, weighted 2.
+  const lunch = new Date(2026, 0, 6, 12, 0, 0);
+  const counts = new Map<string, number>();
+  for (let i = 0; i < 1000; i += 1) {
+    const g = greetingForNow("Jan", lunch, () => i / 1000, laterToday);
+    counts.set(g, (counts.get(g) ?? 0) + 1);
   }
+  expect(counts.get("Lunch break?")).toBeGreaterThan(
+    counts.get("What's new?") ?? 0,
+  );
 });
 
 test("previousUserMessages equals previousUserMessage at every index", () => {
