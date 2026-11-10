@@ -65,6 +65,32 @@ export function toSentAttachment(
   return sent;
 }
 
+// withLandedUploads hands staged attachments back after a send stopped part-way
+// through its upload flush. The flush writes upload ids onto the sent copies
+// only; an attachment whose upload landed takes them over, so a resend skips
+// it. The rest come back as staged, to be uploaded again.
+export function withLandedUploads(
+  staged: ComposerAttachment[],
+  sent: ComposerAttachment[],
+): ComposerAttachment[] {
+  return staged.map((attachment) => {
+    const copy = sent.find((item) => item.id === attachment.id);
+    if (
+      copy === undefined ||
+      copy.status === "error" ||
+      copy.artifactId === undefined
+    ) {
+      return attachment;
+    }
+    return {
+      ...attachment,
+      status: copy.status,
+      artifactId: copy.artifactId,
+      documentId: copy.documentId,
+    };
+  });
+}
+
 // deleteUploadedAttachment removes a composer-uploaded attachment server-side when
 // it is taken off the composer, so it doesn't linger as an orphan ("as if it had
 // never existed"). It is a no-op for re-attached existing artifacts — only what
