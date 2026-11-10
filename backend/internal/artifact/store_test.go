@@ -423,3 +423,46 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 		t.Fatal("List did not return the raster image artifact")
 	}
 }
+
+// Artifacts created in the same second (one run_python job saving two charts)
+// list in creation order: created_at has one-second precision, so it needs a
+// tie-breaker, or view_image's "newest" picks either.
+func TestStoreListForThreadKeepsCreationOrderWithinASecond(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO users (id, oidc_subject, username, role) VALUES ('user_1', 'subject-user_1', 'user_1', 'user');
+INSERT INTO threads (id, user_id, title) VALUES ('thread_1', 'user_1', 'Charts')`); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(db)
+	var want []string
+	for _, name := range []string{"a.png", "b.png", "c.png", "d.png"} {
+		created, err := s.Create(ctx, CreateInput{
+			UserID: "user_1", ThreadID: "thread_1", DisplayFilename: name,
+			VolumeRelPath: "files/outputs/" + name, MIMEType: "image/png", SizeBytes: 1,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, created.DisplayFilename)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE artifacts SET created_at = '2026-11-10 12:00:00'`); err != nil {
+		t.Fatal(err)
+	}
+	items, err := s.ListForThread(ctx, "user_1", "thread_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, item := range items {
+		got = append(got, item.DisplayFilename)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListForThread order = %v, want creation order %v", got, want)
+	}
+}

@@ -2,6 +2,7 @@ package turntest
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 
 	"github.com/trick77/loom/internal/llm"
@@ -172,6 +173,13 @@ func (f ChatClient) GenerateWorkingTitle(ctx context.Context, _, _ string) (stri
 	return f.WorkingTitle, nil
 }
 
+// AskImage implements turn.ChatClient: this fake has no vision model.
+func (f ChatClient) AskImage(context.Context, []byte, string, string) (string, error) {
+	return "", errNoVision
+}
+
+var errNoVision = errors.New("turntest.ChatClient has no vision model")
+
 // GenerateReasoningTitle implements turn.ChatClient.
 func (f ChatClient) GenerateReasoningTitle(ctx context.Context, reasoning, _ string) (string, error) {
 	if f.ReasoningTitlePanic {
@@ -322,6 +330,24 @@ type ToolChatClient struct {
 	ImageIntent    llm.ImageIntent
 	TitleResult    string
 	TitleFor       func(reasoning string) string
+	// ImageAnswer and ImageAskErr are AskImage's reply; ImageAsks records each
+	// call.
+	ImageAnswer string
+	ImageAskErr error
+	ImageAsks   []ImageAsk
+}
+
+// ImageAsk is one AskImage call as ToolChatClient saw it.
+type ImageAsk struct {
+	Data     []byte
+	MIME     string
+	Question string
+}
+
+// AskImage implements turn.ChatClient.
+func (f *ToolChatClient) AskImage(_ context.Context, data []byte, mime, question string) (string, error) {
+	f.ImageAsks = append(f.ImageAsks, ImageAsk{Data: data, MIME: mime, Question: question})
+	return f.ImageAnswer, f.ImageAskErr
 }
 
 // StreamChatResult answers a tool-free round with Plain and PlainErr.

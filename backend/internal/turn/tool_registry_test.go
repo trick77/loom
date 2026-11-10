@@ -75,22 +75,22 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 		{
 			name: "no project, docgen off, sandbox off, image", artifacts: true, images: true,
 			gate: docgenOff,
-			want: concat(core, mcpNames, []string{imageToolName}),
+			want: concat(core, []string{"view_image"}, mcpNames, []string{imageToolName}),
 		},
 		{
 			name: "project, docgen on, sandbox on, image", artifacts: true, images: true,
 			thread: chat.Thread{ProjectID: &project}, gate: withSandbox(docgenOn),
-			want: concat([]string{"read_project_threads"}, core, []string{"run_python"}, mcpNames, docToolNames, []string{imageToolName}),
+			want: concat([]string{"read_project_threads"}, core, []string{"run_python", "view_image"}, mcpNames, docToolNames, []string{imageToolName}),
 		},
 		{
 			name: "no project, docgen on, sandbox off, no image", artifacts: true,
 			gate: docgenOn,
-			want: concat(core, mcpNames, docToolNames),
+			want: concat(core, []string{"view_image"}, mcpNames, docToolNames),
 		},
 		{
 			name: "no project, docgen off, sandbox on, no image", artifacts: true,
 			gate: withSandbox(docgenOff),
-			want: concat(core, []string{"run_python"}, mcpNames),
+			want: concat(core, []string{"run_python", "view_image"}, mcpNames),
 		},
 		{
 			name: "no artifact store", images: true,

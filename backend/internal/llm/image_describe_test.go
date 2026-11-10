@@ -87,6 +87,50 @@ func TestDescribeImage_refusesTooManyPixels(t *testing.T) {
 	}
 }
 
+// AskImage sends the image and the question together to the vision model and
+// hands back its trimmed answer.
+func TestAskImage_sendsQuestionWithImageToVisionModel(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		body = string(raw)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"  The y axis runs from 0 to 250.\n"},"finish_reason":"stop"}]}`))
+	}))
+	defer srv.Close()
+
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	answer, err := c.AskImage(context.Background(), onePixelPNG(), "image/png", "What range does the y axis cover?")
+	if err != nil {
+		t.Fatalf("AskImage error = %v", err)
+	}
+	if answer != "The y axis runs from 0 to 250." {
+		t.Errorf("answer = %q, want the trimmed model output", answer)
+	}
+	if !strings.Contains(body, "image_url") {
+		t.Error("request body did not carry an image_url content part")
+	}
+	if !strings.Contains(body, "What range does the y axis cover?") {
+		t.Error("request body did not carry the question")
+	}
+	if !strings.Contains(body, `"model":"`+testModel+`"`) {
+		t.Errorf("request did not go to the vision model %q: %s", testModel, body)
+	}
+}
+
+func TestAskImage_emptyAnswerReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":" "},"finish_reason":"length"}]}`))
+	}))
+	defer srv.Close()
+
+	c := mustClient(t, Config{BaseURL: srv.URL, APIKey: "k"}, srv.Client())
+	if _, err := c.AskImage(context.Background(), onePixelPNG(), "image/png", "q"); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("AskImage with empty answer error = %v, want an empty-answer error", err)
+	}
+}
+
 func onePixelPNG() []byte {
 	const b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 	data, err := base64.StdEncoding.DecodeString(b64)

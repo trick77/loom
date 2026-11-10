@@ -80,6 +80,10 @@ type ArtifactStore interface {
 	Create(context.Context, artifact.CreateInput) (artifact.Artifact, error)
 	Get(context.Context, string, string) (artifact.Artifact, bool, error)
 	GetMany(context.Context, string, []string) (map[string]artifact.Artifact, error)
+	// ListForThread is the thread's live artifacts, oldest first, scoped to
+	// the user: with its messages' attachments, the images view_image can
+	// look at.
+	ListForThread(context.Context, string, string) ([]artifact.Artifact, error)
 }
 
 // ChatClient is the model a turn talks to: the answer stream and the short
@@ -91,6 +95,8 @@ type ChatClient interface {
 	ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error)
 	GenerateReasoningTitle(context.Context, string, string) (string, error)
 	GenerateWorkingTitle(context.Context, string, string) (string, error)
+	// AskImage answers a question about an image with the vision model.
+	AskImage(ctx context.Context, data []byte, mime, question string) (string, error)
 }
 
 // ToolService exposes the configured MCP tools a turn offers and calls.

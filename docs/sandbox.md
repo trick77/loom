@@ -5,6 +5,13 @@ counting, date math, text transforms, analysis of an attached CSV or Excel file,
 never sees the sandbox, only the trace row and the result. Files the code writes to `out/` become
 artifacts in the chat.
 
+The model never sees a chart it saved: the tool result names the file, the pixels go only to the
+user. `view_image` (a built-in, not part of the sandbox) closes that: the vision model answers a
+question about one of the thread's images and the answer comes back as text. Not image parts in the
+turn: that would move it onto the vision model mid-loop, earlier rounds' reasoning replayed to
+another model, and re-send the image every round. Without it the model re-fetched and re-analysed
+a chart's data to answer "this looks compressed".
+
 The `sandbox` service is a plain container that `docker compose up` starts like the other
 sidecars; nothing is installed on the host. loom offers the tool only while the sidecar answers
 its health probe (every minute while up, every 10 s while down); otherwise the tool and its prompt

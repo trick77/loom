@@ -208,6 +208,19 @@ describe("tool call descriptions and labels", () => {
     );
   });
 
+  test("view_image says it looks at an image, not that it creates one", () => {
+    expect(
+      summarizeToolCall(
+        "view_image",
+        '{"name":"hr_chart.png","question":"compressed?"}',
+      ),
+    ).toEqual({ kind: "file", title: "Looking at hr_chart.png" });
+    expect(summarizeToolCall("view_image", '{"question":"q"}')).toEqual({
+      kind: "file",
+      title: "Looking at the latest image",
+    });
+  });
+
   test("every tool names its source", () => {
     expect(toolSourceLabel("peeq__search")).toBe("peeq");
     expect(toolSourceLabel("context7__query-docs")).toBe("context7");
@@ -223,6 +236,7 @@ describe("tool call descriptions and labels", () => {
     expect(toolSourceLabel("generate_image")).toBe("Image generator");
     expect(toolSourceLabel("imagegen__generate")).toBe("Image generator");
     expect(toolSourceLabel("forget_user_directive")).toBe("Memory");
+    expect(toolSourceLabel("view_image")).toBe("Image viewer");
     expect(toolSourceLabel("something_new")).toBe("loom");
   });
 });

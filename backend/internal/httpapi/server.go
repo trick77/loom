@@ -284,6 +284,7 @@ type ChatClient interface {
 	ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error)
 	GenerateReasoningTitle(context.Context, string, string) (string, error)
 	GenerateWorkingTitle(context.Context, string, string) (string, error)
+	AskImage(ctx context.Context, data []byte, mime, question string) (string, error)
 	GenerateMemory(context.Context, string, string, string, string, string) (string, error)
 	ExtractUserFacts(context.Context, []llm.FactInput, string, string, []string, string) ([]llm.FactOp, error)
 	ConsolidateUserFacts(context.Context, []llm.FactInput, string) ([]llm.FactMerge, error)

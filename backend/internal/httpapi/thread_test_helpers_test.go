@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -128,6 +129,10 @@ func (f *blockingChatClient) GenerateThreadTitle(context.Context, string, string
 
 func (f *blockingChatClient) ClassifyThread(context.Context, string) (string, error) {
 	return "", nil
+}
+
+func (f *blockingChatClient) AskImage(context.Context, []byte, string, string) (string, error) {
+	return "", errors.New("blockingChatClient has no vision model")
 }
 
 func (f *blockingChatClient) ClassifyImageIntent(context.Context, string, bool, bool) (llm.ImageIntent, error) {

@@ -3,6 +3,7 @@ import i18n from "./i18n";
 
 const TOOL_FAILED_PREFIX = "tool failed";
 const SANDBOX_TOOL = "run_python";
+const VIEW_IMAGE_TOOL = "view_image";
 
 // toolOutputFailed marks a step failed: an infrastructure failure, or a
 // run_python program that exited non-zero (its output still reaches the model,
@@ -245,6 +246,16 @@ export function summarizeToolCall(
       kind: "code",
       title: i18n.t("activityTrace.trace.runningPython"),
       code: stringValue(args, ["code"]) ?? "",
+    };
+  }
+  // Before the generated labels: its name holds "image", but it only looks.
+  if (name === VIEW_IMAGE_TOOL) {
+    const image = stringValue(args, ["name"]);
+    return {
+      kind: "file",
+      title: image
+        ? i18n.t("activityTrace.trace.viewingImage", { name: image })
+        : i18n.t("activityTrace.trace.viewingLatestImage"),
     };
   }
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
@@ -565,6 +576,7 @@ const KNOWN_TOOL_SOURCES: Record<string, string> = {
   read_thread: "sources.conversations",
   read_project_threads: "sources.projects",
   generate_image: "sources.imageGenerator",
+  view_image: "sources.imageViewer",
   remember_user_directive: "sources.memory",
   update_user_directive: "sources.memory",
   forget_user_directive: "sources.memory",

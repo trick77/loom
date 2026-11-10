@@ -241,7 +241,7 @@ func (s *Store) ListForThread(ctx context.Context, userID, threadID string) ([]A
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
 WHERE user_id = ? AND thread_id = ? AND deleted_at IS NULL
-ORDER BY created_at ASC`, userID, threadID)
+ORDER BY created_at ASC, rowid ASC`, userID, threadID)
 	if err != nil {
 		return nil, fmt.Errorf("list thread artifacts: %w", err)
 	}
@@ -270,7 +270,7 @@ func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
 WHERE user_id = ? AND project_id = ? AND deleted_at IS NULL
-ORDER BY created_at ASC`, userID, projectID)
+ORDER BY created_at ASC, rowid ASC`, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list project artifacts: %w", err)
 	}
