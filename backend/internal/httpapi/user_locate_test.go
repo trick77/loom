@@ -14,22 +14,30 @@ import (
 )
 
 // "Use my location": the browser's point names the town, rounded to about a
-// kilometre before it leaves loom. Saving that name with the point keeps the
-// town it named, not the search's first of that name, and so does every
-// derivation after.
-func TestLocateAndSaveNearThePoint(t *testing.T) {
+// kilometre before it leaves loom. The town is kept apart from the memory and
+// holds over the places it names, whatever a later derivation reads, until
+// the user drops it. It is never a fact.
+func TestLocateHoldsOverTheMemory(t *testing.T) {
 	ctx := context.Background()
 	f := newLocationFixture(t)
 	f.deps.MCP = fakeMCPService{Available: map[string]bool{weather.GeocodeTool: true, weather.ReverseGeocodeTool: true}, CallFunc: f.geo.call}
 	f.s.mcp = f.deps.MCP
 	handler := newAuthenticatedServer(t, f.deps)
-	post := func(path, body string) *httptest.ResponseRecorder {
+	do := func(method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, authenticatedRequest(http.MethodPost, path, body))
+		handler.ServeHTTP(rec, authenticatedRequest(method, path, body))
 		return rec
 	}
+	// The memory says Zürich.
+	f.addFact(t, "Lives Zürich")
+	if err := f.s.resolveLocation(ctx, testUser); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := f.s.userPlace(ctx, testUser); p == nil || p.Name != "Zürich" {
+		t.Fatalf("from memory = %+v", p)
+	}
 
-	rec := post("/api/me/location:locate", `{"latitude":47.47712,"longitude":8.30851}`)
+	rec := do(http.MethodPost, "/api/me/location:locate", `{"latitude":47.47712,"longitude":8.30851}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("locate = %d %s", rec.Code, rec.Body)
 	}
@@ -38,71 +46,52 @@ func TestLocateAndSaveNearThePoint(t *testing.T) {
 		Attribution weather.Attribution
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &located); err != nil || located.Place.Name != "Baden" || located.Place.Region != "Aargau" ||
-		!strings.Contains(located.Attribution.Text, "OpenStreetMap") {
+		located.Place.Kind != location.KindLocated || !strings.Contains(located.Attribution.Text, "OpenStreetMap") {
 		t.Fatalf("located = %s, %v", rec.Body, err)
 	}
 	if lat, lon := f.geo.points[0]["latitude"], f.geo.points[0]["longitude"]; lat != 47.48 || lon != 8.31 {
 		t.Fatalf("point sent = %v, %v; want it rounded", lat, lon)
 	}
-	// Locating saves nothing: the user saves the name.
-	if facts, _ := f.chat.ListActiveUserFacts(ctx, testUser.ID); len(facts) != 0 {
-		t.Fatalf("locating wrote facts: %+v", facts)
+	// Kept with its credit, over the memory's home, here and in turns.
+	kept, _ := f.places.Located(ctx, testUser.ID)
+	if kept == nil || kept.Name != "Baden" || kept.Timezone != "Europe/Zurich" || kept.Credit.URL != "https://www.openstreetmap.org/copyright" {
+		t.Fatalf("kept = %+v", kept)
 	}
-
-	rec = post("/api/me/location", `{"place":"Baden","near":{"latitude":47.47,"longitude":8.31}}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("save = %d %s", rec.Code, rec.Body)
+	if p, _ := f.s.userPlace(ctx, testUser); p == nil || p.Name != "Baden" || p.Kind != location.KindLocated {
+		t.Fatalf("here = %+v, want the located town", p)
 	}
-	home, _, _, _ := f.places.Places(ctx, testUser.ID)
-	if home == nil || home.Name != "Baden" || home.Timezone != "Europe/Zurich" {
-		t.Fatalf("home = %+v, want the Swiss Baden", home)
+	// No fact: the memory still says Zürich.
+	if facts, _ := f.chat.ListActiveUserFacts(ctx, testUser.ID); len(facts) != 1 || facts[0].Content != "Lives Zürich" {
+		t.Fatalf("facts = %+v", facts)
 	}
-	// Another fact makes the model read the facts again; the home it names
-	// ("Baden", "CH") is looked up anew and must stay the town saved.
-	f.addFact(t, "Likes cycling")
+	// A derivation reading changed facts leaves the located town.
+	f.addFact(t, "In Lisbon this week")
 	if err := f.s.resolveLocation(ctx, testUser); err != nil {
 		t.Fatal(err)
 	}
-	if home, _, _, _ := f.places.Places(ctx, testUser.ID); home == nil || home.Timezone != "Europe/Zurich" || home.Latitude != 47.47 {
-		t.Fatalf("after a derivation home = %+v, want the Swiss Baden kept", home)
+	if p, _ := f.s.userPlace(ctx, testUser); p == nil || p.Name != "Baden" {
+		t.Fatalf("after a derivation here = %+v", p)
 	}
 
-	// A name whose town the search by name misses among its namesakes is
-	// still the town the point named.
-	if rec := post("/api/me/location", `{"place":"Neustadt","near":{"latitude":49.35,"longitude":8.14}}`); rec.Code != http.StatusOK {
-		t.Fatalf("namesake save = %d %s", rec.Code, rec.Body)
+	// Dropped: the memory holds again.
+	if rec := do(http.MethodDelete, "/api/me/location:locate", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("drop = %d %s", rec.Code, rec.Body)
 	}
-	if home, _, _, _ := f.places.Places(ctx, testUser.ID); home == nil || home.Latitude != 49.35 {
-		t.Fatalf("namesake home = %+v, want the Neustadt located", home)
-	}
-
-	// Without the point the name is the search's first, as before.
-	if rec := post("/api/me/location", `{"place":"Lisbon"}`); rec.Code != http.StatusOK {
-		t.Fatalf("move = %d", rec.Code)
-	}
-	if rec := post("/api/me/location", `{"place":"Baden"}`); rec.Code != http.StatusOK {
-		t.Fatalf("plain save = %d", rec.Code)
-	}
-	if home, _, _, _ := f.places.Places(ctx, testUser.ID); home == nil || home.Name != "Baden-Baden" {
-		t.Fatalf("plain home = %+v", home)
+	if p, _ := f.s.userPlace(ctx, testUser); p == nil || p.Name != "Lisbon" {
+		t.Fatalf("after dropping here = %+v, want the stay from memory", p)
 	}
 
-	// The sea: no town. A point off the globe: refused.
-	if rec := post("/api/me/location:locate", `{"latitude":38,"longitude":-12}`); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "not_found") {
+	// The sea: no town, nothing kept. A point off the globe: refused.
+	if rec := do(http.MethodPost, "/api/me/location:locate", `{"latitude":38,"longitude":-12}`); rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "not_found") {
 		t.Fatalf("the sea = %d %s", rec.Code, rec.Body)
 	}
+	if kept, _ := f.places.Located(ctx, testUser.ID); kept != nil {
+		t.Fatalf("the sea kept %+v", kept)
+	}
 	for _, body := range []string{`{"latitude":91,"longitude":0}`, `{"latitude":1}`, `nope`} {
-		if rec := post("/api/me/location:locate", body); rec.Code != http.StatusBadRequest {
+		if rec := do(http.MethodPost, "/api/me/location:locate", body); rec.Code != http.StatusBadRequest {
 			t.Errorf("locate %s = %d", body, rec.Code)
 		}
-	}
-	if rec := post("/api/me/location", `{"place":"Baden","near":{"latitude":1,"longitude":181}}`); rec.Code != http.StatusBadRequest {
-		t.Errorf("save near off the globe = %d", rec.Code)
-	}
-
-	// Locating saves nothing, however often.
-	if facts, _ := f.chat.ListActiveUserFacts(ctx, testUser.ID); len(facts) != 2 {
-		t.Fatalf("facts = %+v", facts)
 	}
 
 	// A busy map provider: a retry is worth it, said so.
@@ -117,11 +106,22 @@ func TestLocateAndSaveNearThePoint(t *testing.T) {
 		t.Fatalf("busy = %d %s", rec.Code, rec.Body)
 	}
 
-	// A server without the reverse lookup: no locating.
+	// A server without the reverse lookup: no locating. Dropping still works:
+	// a town located before must not stay stuck.
+	plain := newLocationFixture(t)
+	if err := plain.places.SaveLocated(ctx, testUser.ID, location.Located{Place: location.Place{Name: "Baden"}}); err != nil {
+		t.Fatal(err)
+	}
+	plainHandler := newAuthenticatedServer(t, plain.deps)
 	rec = httptest.NewRecorder()
-	newAuthenticatedServer(t, newLocationFixture(t).deps).ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/me/location:locate", `{"latitude":47.4,"longitude":8.3}`))
+	plainHandler.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/me/location:locate", `{"latitude":47.4,"longitude":8.3}`))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("no reverse lookup = %d", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	plainHandler.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/me/location:locate", ""))
+	if kept, _ := plain.places.Located(ctx, testUser.ID); rec.Code != http.StatusNoContent || kept != nil {
+		t.Fatalf("drop without the reverse lookup = %d, kept %+v", rec.Code, kept)
 	}
 }
 

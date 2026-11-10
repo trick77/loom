@@ -81,6 +81,55 @@ func TestSaveIfLeavesNewerPlaces(t *testing.T) {
 	}
 }
 
+// The located town is the user's own, apart from the places their memory
+// names: a derivation saving places leaves it, and only the user drops it.
+func TestStoreKeepsLocatedApart(t *testing.T) {
+	ctx := context.Background()
+	st := location.NewStore(openDB(t))
+	if got, err := st.Located(ctx, "u1"); err != nil || got != nil {
+		t.Fatalf("never located: %+v %v", got, err)
+	}
+	bern := location.Located{
+		Place:  location.Place{Name: "Bern", Region: "Bern", Country: "Schweiz", Latitude: 46.95, Longitude: 7.45, Timezone: "Europe/Zurich"},
+		Credit: location.Credit{Text: "© OpenStreetMap", URL: "https://osm.org/copyright"},
+	}
+	if err := st.SaveLocated(ctx, "u1", bern); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Save(ctx, "u1", "h1", &location.Place{Name: "Luzern", FactID: "f1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Save(ctx, "u1", "h2", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Located(ctx, "u1")
+	if err != nil || got == nil || got.Name != "Bern" || got.Kind != location.KindLocated || got.Timezone != "Europe/Zurich" ||
+		got.Latitude != 46.95 || got.Credit != bern.Credit {
+		t.Fatalf("located after derivations = %+v, %v", got, err)
+	}
+	if other, err := st.Located(ctx, "u2"); err != nil || other != nil {
+		t.Fatalf("another user: %+v %v", other, err)
+	}
+	// Locating again replaces it.
+	bern.Name = "Thun"
+	if err := st.SaveLocated(ctx, "u1", bern); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Located(ctx, "u1"); got == nil || got.Name != "Thun" {
+		t.Fatalf("located again = %+v", got)
+	}
+	if err := st.ClearLocated(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := st.Located(ctx, "u1"); err != nil || got != nil {
+		t.Fatalf("after clearing: %+v %v", got, err)
+	}
+	// Nothing to clear is no error.
+	if err := st.ClearLocated(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestHere(t *testing.T) {
 	home := &location.Place{Kind: location.KindHome, Name: "Zürich"}
 	stay := &location.Place{Kind: location.KindCurrent, Name: "Lisbon", Since: "2026-11-09", Until: "2026-11-15"}
@@ -134,5 +183,14 @@ func TestStoreReportsFailures(t *testing.T) {
 	}
 	if err := st.Save(context.Background(), "u1", "h", nil, nil); err == nil {
 		t.Fatal("Save on a closed db: no error")
+	}
+	if _, err := st.Located(context.Background(), "u1"); err == nil {
+		t.Fatal("Located on a closed db: no error")
+	}
+	if err := st.SaveLocated(context.Background(), "u1", location.Located{}); err == nil {
+		t.Fatal("SaveLocated on a closed db: no error")
+	}
+	if err := st.ClearLocated(context.Background(), "u1"); err == nil {
+		t.Fatal("ClearLocated on a closed db: no error")
 	}
 }

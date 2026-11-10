@@ -1,21 +1,37 @@
 import { useCallback, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { dropLocated, type Attribution } from "../api";
 import type { TodayLocation } from "../api/today";
 import { useEscapeKey } from "../chat/useEscapeKey";
 import { useOutsideRefPointerDown } from "../chat/useOutsidePointerDown";
+import { LocateButton } from "./LocationPrompt";
+import { canGeolocate, useLocate, type LocateFailure } from "./useLocate";
 import { PinIcon } from "./WeatherIcon";
 
-// LocationChip names the place the weather is for. A click explains where
-// loom got it and how to change it.
+const failureText: Record<LocateFailure, string> = {
+  denied: "today.location.chipDenied",
+  failed: "today.location.chipFailed",
+  noTown: "today.location.chipNoTown",
+  retry: "today.location.chipRetry",
+};
+
+// LocationChip names the place the weather is for. A click says where loom
+// got it; the browser's position can replace a place from memory (stale or
+// wrong, maybe) without a chat, and be dropped again.
 export function LocationChip({
   location,
+  credit = null,
+  canLocate = false,
   compact = false,
-  onOpenMemory,
+  onChanged,
 }: {
   location: TodayLocation;
+  credit?: Attribution | null;
+  canLocate?: boolean;
   compact?: boolean;
-  onOpenMemory(): void;
+  /** The place changed: reload the section. */
+  onChanged(): void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -24,6 +40,41 @@ export function LocationChip({
   const close = useCallback(() => setOpen(false), []);
   useOutsideRefPointerDown(open, ref, close);
   useEscapeKey(close, { active: open });
+  const { locating, failure, locate, clearFailure } = useLocate();
+  const [dropping, setDropping] = useState(false);
+  const [dropFailed, setDropFailed] = useState(false);
+  const located = location.kind === "located";
+  const offerLocate = canLocate && canGeolocate();
+  const error =
+    failure !== null
+      ? t(failureText[failure])
+      : dropFailed
+        ? t("today.location.dropFailed")
+        : "";
+
+  async function takeCurrent() {
+    setDropFailed(false);
+    if ((await locate()) === null) return;
+    setOpen(false);
+    onChanged();
+  }
+
+  async function drop() {
+    if (dropping) return;
+    setDropping(true);
+    setDropFailed(false);
+    clearFailure();
+    try {
+      await dropLocated();
+      setOpen(false);
+      onChanged();
+    } catch {
+      setDropFailed(true);
+    } finally {
+      setDropping(false);
+    }
+  }
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -44,7 +95,12 @@ export function LocationChip({
         {!compact && " "}
         {!compact && (
           <span className="text-muted">
-            · {t("today.location.fromMemories")}
+            ·{" "}
+            {t(
+              located
+                ? "today.location.fromLocation"
+                : "today.location.fromMemories",
+            )}
           </span>
         )}
       </button>
@@ -64,25 +120,63 @@ export function LocationChip({
           </div>
           <p className="text-ink-dim">
             {t(
-              location.kind === "current"
-                ? "today.location.current"
-                : "today.location.home",
+              located
+                ? "today.location.located"
+                : location.kind === "current"
+                  ? "today.location.current"
+                  : "today.location.home",
               { name: location.name },
             )}{" "}
-            {t("today.location.change")}
+            {t(
+              located
+                ? "today.location.locatedNote"
+                : offerLocate
+                  ? "today.location.changeLocate"
+                  : "today.location.change",
+            )}
           </p>
-          <div>
-            <button
-              className="ui-control-text h-8 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 text-[13px] text-ink transition-colors hover:bg-[rgba(255,255,255,0.16)]"
-              onClick={() => {
-                setOpen(false);
-                onOpenMemory();
-              }}
-              type="button"
-            >
-              {t("today.location.openMemories")}
-            </button>
-          </div>
+          {located && credit !== null && credit.text !== "" && (
+            <div className="text-xs text-muted">
+              {credit.url ? (
+                <a
+                  className="underline-offset-2 hover:underline"
+                  href={credit.url}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {credit.text}
+                </a>
+              ) : (
+                credit.text
+              )}
+            </div>
+          )}
+          {(offerLocate || located) && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {offerLocate && (
+                <LocateButton
+                  disabled={dropping}
+                  locating={locating}
+                  onClick={() => void takeCurrent()}
+                />
+              )}
+              {located && (
+                <button
+                  className="ui-control-text h-8 rounded-lg bg-[rgba(255,255,255,0.1)] px-3 text-[13px] text-ink transition-colors hover:bg-[rgba(255,255,255,0.16)] disabled:opacity-50"
+                  disabled={dropping || locating}
+                  onClick={() => void drop()}
+                  type="button"
+                >
+                  {t("today.location.backToMemories")}
+                </button>
+              )}
+            </div>
+          )}
+          {error !== "" && (
+            <div className="text-[13px] text-danger" role="alert">
+              {error}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -387,6 +387,32 @@ func TestTodayWithoutAPlace(t *testing.T) {
 	}
 }
 
+// A place from memory may be stale or wrong: "use my location" is offered
+// with it too, and the town located holds over it, with its credit.
+func TestTodayLocatedOverTheMemory(t *testing.T) {
+	tf := newTodayFixture(t, true)
+	mcp := tf.deps.MCP.(fakeMCPService)
+	mcp.Available[weather.ReverseGeocodeTool] = true
+	tf.handler = todayHandler(newServer(tf.deps), morning)
+	got := tf.get(t)
+	if got.Location == nil || got.Location.Name != "Zürich" || got.Location.Kind != location.KindHome || got.AskLocation || !got.CanLocate ||
+		got.LocationCredit != nil {
+		t.Fatalf("from memory = %+v", got)
+	}
+	baden := location.Located{
+		Place:  location.Place{Name: "Baden", Latitude: 47.47, Longitude: 8.31, Timezone: "Europe/Zurich"},
+		Credit: location.Credit{Text: "© OpenStreetMap", URL: "https://osm.org/copyright"},
+	}
+	if err := tf.places.SaveLocated(context.Background(), testUser.ID, baden); err != nil {
+		t.Fatal(err)
+	}
+	got = tf.get(t)
+	if got.Location == nil || got.Location.Name != "Baden" || got.Location.Kind != location.KindLocated || got.AskLocation || !got.CanLocate ||
+		got.LocationCredit == nil || *got.LocationCredit != baden.Credit || got.Weather == nil {
+		t.Fatalf("located = %+v", got)
+	}
+}
+
 // While the facts have not been read since they changed, the memory may know
 // the place already: no question, or an answer would add a second home fact.
 func TestTodayDoesNotAskWhileTheFactsAreUnread(t *testing.T) {

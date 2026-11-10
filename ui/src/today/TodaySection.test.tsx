@@ -16,7 +16,12 @@ import { TodaySection } from "./TodaySection";
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
-  return { ...actual, setLocation: vi.fn(), locateTown: vi.fn() };
+  return {
+    ...actual,
+    setLocation: vi.fn(),
+    locateHere: vi.fn(),
+    dropLocated: vi.fn(),
+  };
 });
 
 // stubGeolocation gives the browser a position, or fails it with code (1
@@ -53,7 +58,6 @@ const askOnly = {
 
 const handlers = {
   onOpenThread: vi.fn(),
-  onOpenMemory: vi.fn(),
   onMarkRead: vi.fn(),
   onMarkAllRead: vi.fn(),
   onReload: vi.fn(),
@@ -264,7 +268,7 @@ test.each([
   expect(warning.querySelector("svg")).toHaveAttribute("data-warning", kind);
 });
 
-test("the place chip explains the memory and opens the memories", () => {
+test("the place chip explains the memory; without locating, the chat changes it", () => {
   show();
   fireEvent.click(
     screen.getByRole("button", { name: "Zürich · from your memories" }),
@@ -276,15 +280,128 @@ test("the place chip explains the memory and opens the memories", () => {
     "Known location from your memories: Zürich.",
   );
   expect(dialog).toHaveTextContent("I'm in Lisbon this week");
+  // No dead end to the read-only memories.
+  expect(within(dialog).queryAllByRole("button")).toHaveLength(0);
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
+});
 
+test("a place from memory gives way to the current location, without chat", async () => {
+  const position = stubGeolocation();
+  vi.mocked(api.locateHere).mockResolvedValue({
+    place: { name: "Baden", kind: "located" },
+    attribution: { text: "© OpenStreetMap", url: "https://osm.example/" },
+  });
+  show({ canLocate: true });
   fireEvent.click(
     screen.getByRole("button", { name: "Zürich · from your memories" }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Open memories" }));
-  expect(handlers.onOpenMemory).toHaveBeenCalledOnce();
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent(
+    "Not right? Use your current location: it comes before your memories.",
+  );
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Use my current location" }),
+  );
+  await waitFor(() => expect(handlers.onReload).toHaveBeenCalledOnce());
+  // Asked only on the click, coarse: a town is all that is needed; the
+  // position leaves the browser rounded to about a kilometre.
+  expect(position).toHaveBeenCalledOnce();
+  expect(position.mock.calls[0][2]).toMatchObject({
+    enableHighAccuracy: false,
+  });
+  expect(api.locateHere).toHaveBeenCalledWith({
+    latitude: 47.48,
+    longitude: 8.31,
+  });
+  expect(api.setLocation).not.toHaveBeenCalled();
   expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("a located place shows its credit and goes back to the memories", async () => {
+  vi.mocked(api.dropLocated).mockRejectedValueOnce(new Error("boom"));
+  vi.mocked(api.dropLocated).mockResolvedValueOnce(undefined);
+  show({
+    location: { name: "Baden", kind: "located" },
+    locationCredit: {
+      text: "Place names © OpenStreetMap contributors",
+      url: "https://www.openstreetmap.org/copyright",
+    },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Baden · your location" }),
+  );
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent("Set from your current location: Baden.");
+  expect(dialog).toHaveTextContent("It stays until you locate again");
+  expect(
+    within(dialog).getByRole("link", {
+      name: "Place names © OpenStreetMap contributors",
+    }),
+  ).toHaveAttribute("href", "https://www.openstreetmap.org/copyright");
+  // Without the server's lookup, no locating; going back still works.
+  expect(
+    within(dialog).queryByRole("button", { name: "Use my current location" }),
+  ).toBeNull();
+  const back = within(dialog).getByRole("button", { name: "Back to memories" });
+  fireEvent.click(back);
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    "Couldn't go back to your memories. Try again.",
+  );
+  expect(handlers.onReload).not.toHaveBeenCalled();
+  fireEvent.click(back);
+  await waitFor(() => expect(handlers.onReload).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+test("a credit without a web address is shown as text", () => {
+  show({
+    location: { name: "Baden", kind: "located" },
+    locationCredit: { text: "© OpenStreetMap", url: "" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Baden · your location" }),
+  );
+  expect(screen.getByText("© OpenStreetMap")).toBeInTheDocument();
+  expect(screen.queryByRole("link")).not.toBeInTheDocument();
+});
+
+test("locating from the chip says why it failed", async () => {
+  stubGeolocation(1);
+  show({ canLocate: true });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Zürich · from your memories" }),
+  );
+  const button = screen.getByRole("button", {
+    name: "Use my current location",
+  });
+  fireEvent.click(button);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Location access was denied.",
+  );
+  stubGeolocation();
+  vi.mocked(api.locateHere).mockRejectedValueOnce(new api.PlaceNotFoundError());
+  fireEvent.click(button);
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No town found at your location.",
+    ),
+  );
+  vi.mocked(api.locateHere).mockRejectedValueOnce(new Error("busy"));
+  fireEvent.click(button);
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't name the town right now. Try again shortly.",
+    ),
+  );
+  stubGeolocation(2);
+  fireEvent.click(button);
+  await waitFor(() =>
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Couldn't get your location.",
+    ),
+  );
+  expect(handlers.onReload).not.toHaveBeenCalled();
 });
 
 test("a stay elsewhere reads as the current place", () => {
@@ -457,7 +574,7 @@ test("asks where the user lives and saves the place", async () => {
   );
   expect(
     screen.getByText(
-      "Saved in your memories. You can change it any time in chat.",
+      "A place you type is saved in your memories; your current location is not.",
     ),
   ).toBeInTheDocument();
   const save = screen.getByRole("button", { name: "Save" });
@@ -468,52 +585,22 @@ test("asks where the user lives and saves the place", async () => {
   expect(api.setLocation).toHaveBeenCalledWith("Munich");
 });
 
-test("the current location fills in the town, saved with its point", async () => {
-  const position = stubGeolocation();
-  vi.mocked(api.locateTown).mockResolvedValue({
-    place: {
-      name: "Baden",
-      region: "Aargau",
-      country: "Switzerland",
-      kind: "home",
-    },
-    attribution: {
-      text: "Place names © OpenStreetMap contributors",
-      url: "https://www.openstreetmap.org/copyright",
-    },
-  });
-  vi.mocked(api.setLocation).mockResolvedValue({
-    place: { name: "Baden", kind: "home" },
+test("the current location is kept at once, not as a memory", async () => {
+  stubGeolocation();
+  vi.mocked(api.locateHere).mockResolvedValue({
+    place: { name: "Baden", kind: "located" },
+    attribution: { text: "© OpenStreetMap", url: "https://osm.example/" },
   });
   show({ ...askOnly, canLocate: true });
   fireEvent.click(
     screen.getByRole("button", { name: "Use my current location" }),
   );
-  const input = screen.getByRole("textbox");
-  await waitFor(() => expect(input).toHaveValue("Baden"));
-  // Asked only on the click, coarse: a town is all that is needed.
-  expect(position).toHaveBeenCalledOnce();
-  expect(position.mock.calls[0][2]).toMatchObject({
-    enableHighAccuracy: false,
-  });
-  // The position leaves the browser rounded to about a kilometre.
-  expect(api.locateTown).toHaveBeenCalledWith({
-    latitude: 47.48,
-    longitude: 8.31,
-  });
-  // The user sees where it is before saving it, with the names' credit.
-  expect(screen.getByText("Baden, Aargau, Switzerland")).toBeInTheDocument();
-  expect(
-    screen.getByRole("link", {
-      name: "Place names © OpenStreetMap contributors",
-    }),
-  ).toHaveAttribute("href", "https://www.openstreetmap.org/copyright");
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(handlers.onReload).toHaveBeenCalledOnce());
-  expect(api.setLocation).toHaveBeenCalledWith("Baden", {
+  expect(api.locateHere).toHaveBeenCalledWith({
     latitude: 47.48,
     longitude: 8.31,
   });
+  expect(api.setLocation).not.toHaveBeenCalled();
 });
 
 test("a location prompt left unanswered gives up, the button comes back", async () => {
@@ -543,42 +630,6 @@ test("a location prompt left unanswered gives up, the button comes back", async 
   }
 });
 
-test("a credit without a web address is shown as text", async () => {
-  stubGeolocation();
-  vi.mocked(api.locateTown).mockResolvedValue({
-    place: { name: "Baden", kind: "home" },
-    attribution: { text: "© OpenStreetMap", url: "" },
-  });
-  show({ ...askOnly, canLocate: true });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Use my current location" }),
-  );
-  expect(await screen.findByText("© OpenStreetMap")).toBeInTheDocument();
-  expect(screen.queryByRole("link")).not.toBeInTheDocument();
-});
-
-test("a name typed over the located town is saved by name alone", async () => {
-  stubGeolocation();
-  vi.mocked(api.locateTown).mockResolvedValue({
-    place: { name: "Baden", kind: "home" },
-    attribution: { text: "© OpenStreetMap", url: "https://osm.example/" },
-  });
-  vi.mocked(api.setLocation).mockResolvedValue({
-    place: { name: "Bern", kind: "home" },
-  });
-  show({ ...askOnly, canLocate: true });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Use my current location" }),
-  );
-  const input = screen.getByRole("textbox");
-  await waitFor(() => expect(input).toHaveValue("Baden"));
-  fireEvent.change(input, { target: { value: "Bern" } });
-  expect(screen.queryByText("© OpenStreetMap")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Save" }));
-  await waitFor(() => expect(handlers.onReload).toHaveBeenCalledOnce());
-  expect(api.setLocation).toHaveBeenCalledWith("Bern");
-});
-
 test("a denied or failed location is said so; typing still works", async () => {
   stubGeolocation(1);
   show({ ...askOnly, canLocate: true });
@@ -589,7 +640,7 @@ test("a denied or failed location is said so; typing still works", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Location access was denied. Type the place instead.",
   );
-  expect(api.locateTown).not.toHaveBeenCalled();
+  expect(api.locateHere).not.toHaveBeenCalled();
 
   stubGeolocation(3);
   fireEvent.click(button);
@@ -598,7 +649,7 @@ test("a denied or failed location is said so; typing still works", async () => {
   );
 
   stubGeolocation();
-  vi.mocked(api.locateTown).mockRejectedValueOnce(new api.PlaceNotFoundError());
+  vi.mocked(api.locateHere).mockRejectedValueOnce(new api.PlaceNotFoundError());
   fireEvent.click(button);
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent(
@@ -608,7 +659,7 @@ test("a denied or failed location is said so; typing still works", async () => {
   expect(screen.getByRole("textbox")).toHaveValue("");
 
   // The map provider busy: try again.
-  vi.mocked(api.locateTown).mockRejectedValueOnce(
+  vi.mocked(api.locateHere).mockRejectedValueOnce(
     new UserFacingError("the town could not be named right now"),
   );
   fireEvent.click(button);

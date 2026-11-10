@@ -4,8 +4,9 @@ import { AuthExpiredError, UserFacingError } from "./http";
 import { browserTimezone } from "./schedules";
 import {
   coarsePoint,
+  dropLocated,
   getToday,
-  locateTown,
+  locateHere,
   PlaceNotFoundError,
   setLocation,
 } from "./today";
@@ -26,6 +27,7 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
     date: "2026-11-09",
     day: "today",
     location: null,
+    locationCredit: null,
     askLocation: false,
     canLocate: false,
     sun: null,
@@ -48,9 +50,10 @@ test("getToday keeps a full answer and survives a null one", async () => {
   const full = {
     date: "2026-11-10",
     day: "tomorrow",
-    location: { name: "Zürich", kind: "home" },
-    askLocation: true,
-    canLocate: false,
+    location: { name: "Baden", kind: "located" },
+    locationCredit: { text: "© OpenStreetMap", url: "https://osm.example/" },
+    askLocation: false,
+    canLocate: true,
     sun: {
       rise: "07:27",
       set: "16:56",
@@ -258,19 +261,6 @@ test("setLocation posts the place and returns it", async () => {
   });
 });
 
-test("setLocation sends the located town's point with the name", async () => {
-  const fetchMock = stubFetch(Response.json({ place: { name: "Baden" } }));
-  await setLocation("Baden", { latitude: 47.47, longitude: 8.31 });
-  expect(fetchMock).toHaveBeenCalledWith("/api/me/location", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      place: "Baden",
-      near: { latitude: 47.47, longitude: 8.31 },
-    }),
-  });
-});
-
 test("coarsePoint rounds a position to about a kilometre", () => {
   expect(coarsePoint(47.477123, -8.308519)).toEqual({
     latitude: 47.48,
@@ -278,14 +268,14 @@ test("coarsePoint rounds a position to about a kilometre", () => {
   });
 });
 
-test("locateTown sends the point and returns the town", async () => {
+test("locateHere sends the point and returns the town kept", async () => {
   const answer = {
-    place: { name: "Baden", kind: "home" },
+    place: { name: "Baden", kind: "located" },
     attribution: { text: "© OpenStreetMap", url: "https://osm.example/" },
   };
   const fetchMock = stubFetch(Response.json(answer));
   await expect(
-    locateTown({ latitude: 47.48, longitude: 8.31 }),
+    locateHere({ latitude: 47.48, longitude: 8.31 }),
   ).resolves.toEqual(answer);
   expect(fetchMock).toHaveBeenCalledWith("/api/me/location:locate", {
     method: "POST",
@@ -294,20 +284,32 @@ test("locateTown sends the point and returns the town", async () => {
   });
 });
 
-test("locateTown tells no town from other errors", async () => {
+test("locateHere tells no town from other errors", async () => {
   const point = { latitude: 1, longitude: 2 };
   stubFetch(Response.json({ code: "not_found" }, { status: 422 }));
-  await expect(locateTown(point)).rejects.toBeInstanceOf(PlaceNotFoundError);
+  await expect(locateHere(point)).rejects.toBeInstanceOf(PlaceNotFoundError);
   stubFetch(Response.json({ error: "busy" }, { status: 409 }));
-  await expect(locateTown(point)).rejects.toEqual(new UserFacingError("busy"));
+  await expect(locateHere(point)).rejects.toEqual(new UserFacingError("busy"));
   stubFetch(Response.json({ error: "not configured" }, { status: 503 }));
-  await expect(locateTown(point)).rejects.toEqual(
+  await expect(locateHere(point)).rejects.toEqual(
     new UserFacingError("not configured"),
   );
   stubFetch(new Response(null, { status: 401 }));
-  await expect(locateTown(point)).rejects.toBeInstanceOf(AuthExpiredError);
+  await expect(locateHere(point)).rejects.toBeInstanceOf(AuthExpiredError);
   stubFetch(new Response("oops", { status: 500 }));
-  await expect(locateTown(point)).rejects.toThrow("failed to locate");
+  await expect(locateHere(point)).rejects.toThrow("failed to locate");
+});
+
+test("dropLocated deletes the located town", async () => {
+  const fetchMock = stubFetch(new Response(null, { status: 204 }));
+  await expect(dropLocated()).resolves.toBeUndefined();
+  expect(fetchMock).toHaveBeenCalledWith("/api/me/location:locate", {
+    method: "DELETE",
+  });
+  stubFetch(new Response(null, { status: 401 }));
+  await expect(dropLocated()).rejects.toBeInstanceOf(AuthExpiredError);
+  stubFetch(new Response("oops", { status: 500 }));
+  await expect(dropLocated()).rejects.toThrow("failed to drop the location");
 });
 
 test("setLocation tells an unknown place from other errors", async () => {

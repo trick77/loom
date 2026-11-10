@@ -4,7 +4,29 @@ package location
 const (
 	KindHome    = "home"
 	KindCurrent = "current"
+	// KindLocated is the town the browser's position named.
+	KindLocated = "located"
 )
+
+// Located is the town the browser's position named, set by the user on the
+// start page. It holds over the places their memory names until they locate
+// again or drop it, and is never a fact: the memory may be stale or wrong, the
+// position is where the user is.
+//
+// Table: user_located_places
+type Located struct {
+	Place
+	// Credit names the map data the town's name came from, shown with it.
+	Credit Credit `json:"credit"`
+}
+
+// Credit is the map data a located town's name came from.
+//
+// Table: -
+type Credit struct {
+	Text string `json:"text"`
+	URL  string `json:"url,omitempty"`
+}
 
 // Place is a town's centre: where the user lives, or where they are for a
 // while.

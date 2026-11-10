@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trick77/loom/internal/geo"
 	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/mcp"
 )
@@ -197,22 +196,9 @@ func GetAir(ctx context.Context, c Caller, lat, lon float64, zone string, days i
 // (ISO 3166-1 alpha-2, often the model's guess) narrows the lookup; when it
 // finds nothing there, the name alone is looked up. nil when none matches.
 func Find(ctx context.Context, c Caller, query, country, language string) (*location.Place, error) {
-	return FindNear(ctx, c, query, country, language, nil)
-}
-
-// Point is a spot a lookup by name prefers matches near.
-type Point struct {
-	Latitude, Longitude float64
-}
-
-// FindNear is Find preferring the match nearest near (the user's position)
-// when one lies within geo.NearKm of it: a name is shared by towns far apart
-// (Baden in Aargau, Baden-Baden, Baden bei Wien), and the search's first is
-// not always the one meant. nil near is Find.
-func FindNear(ctx context.Context, c Caller, query, country, language string, near *Point) (*location.Place, error) {
-	p, err := lookUp(ctx, c, query, country, language, near)
+	p, err := lookUp(ctx, c, query, country, language)
 	if err == nil && p == nil && country != "" {
-		p, err = lookUp(ctx, c, query, "", language, near)
+		p, err = lookUp(ctx, c, query, "", language)
 	}
 	if p == nil || err != nil {
 		return nil, err
@@ -221,19 +207,10 @@ func FindNear(ctx context.Context, c Caller, query, country, language string, ne
 		Longitude: p.Longitude, Timezone: p.Timezone}, nil
 }
 
-// nearMatches is how many matches a lookup near a point asks for (the
-// contract's most).
-const nearMatches = 20
-
 // lookUp is the best match for a place's name (country, ISO 3166-1 alpha-2,
-// narrows it when given), names in language; nil when there is none. With
-// near, more matches are weighed (nearMatches): a common name has more
-// namesakes than the first few.
-func lookUp(ctx context.Context, c Caller, query, country, language string, near *Point) (*Place, error) {
+// narrows it when given), names in language; nil when there is none.
+func lookUp(ctx context.Context, c Caller, query, country, language string) (*Place, error) {
 	args := map[string]any{"query": query, "language": language}
-	if near != nil {
-		args["count"] = nearMatches
-	}
 	if country != "" {
 		args["country"] = country
 	}
@@ -251,13 +228,6 @@ func lookUp(ctx context.Context, c Caller, query, country, language string, near
 		return nil, nil
 	}
 	p := reply.Places[0]
-	if near != nil {
-		if i := geo.Nearest(near.Latitude, near.Longitude, len(reply.Places), func(i int) (float64, float64) {
-			return reply.Places[i].Latitude, reply.Places[i].Longitude
-		}); i >= 0 {
-			p = reply.Places[i]
-		}
-	}
 	return &p, nil
 }
 

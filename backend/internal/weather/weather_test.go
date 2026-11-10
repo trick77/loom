@@ -167,29 +167,6 @@ func TestAirLevels(t *testing.T) {
 	}
 }
 
-// A point near the place picks the match nearest it, not the search's first:
-// the Swiss Baden for a point in Aargau. Without a match near it, the first.
-func TestFindNearPicksTheMatchNearThePoint(t *testing.T) {
-	c := &fakeCaller{reply: map[string]string{GeocodeTool: `{"places":[
-		{"name":"Baden-Baden","country":"Deutschland","latitude":48.76,"longitude":8.24,"timezone":"Europe/Berlin"},
-		{"name":"Baden","region":"Aargau","country":"Schweiz","latitude":47.47,"longitude":8.31,"timezone":"Europe/Zurich"}]}`}}
-	p, err := FindNear(context.Background(), c, "Baden", "", "de", &Point{Latitude: 47.48, Longitude: 8.32})
-	if err != nil || p == nil || p.Name != "Baden" || p.Timezone != "Europe/Zurich" {
-		t.Fatalf("near Aargau = %+v, %v", p, err)
-	}
-	// Near a point it weighs more matches than the first few.
-	if args := c.lastArgs; args["count"] != nearMatches {
-		t.Fatalf("near lookup args = %v", args)
-	}
-	p, err = FindNear(context.Background(), c, "Baden", "", "de", &Point{Latitude: 38.7, Longitude: -9.1})
-	if err != nil || p == nil || p.Name != "Baden-Baden" {
-		t.Fatalf("near nothing = %+v, %v", p, err)
-	}
-	if p, err := Find(context.Background(), c, "Baden", "", "de"); err != nil || p == nil || p.Name != "Baden-Baden" {
-		t.Fatalf("no point = %+v, %v", p, err)
-	}
-}
-
 func TestLocateReadsTheReverseLookup(t *testing.T) {
 	c := &fakeCaller{reply: map[string]string{ReverseGeocodeTool: `{"places":[{"name":"Baden","region":"Aargau","country":"Schweiz",
 		"countryCode":"CH","latitude":47.47,"longitude":8.31,"timezone":"Europe/Zurich"}],

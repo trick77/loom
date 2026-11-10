@@ -146,6 +146,43 @@ ON CONFLICT (user_id) DO UPDATE SET facts_hash = excluded.facts_hash, resolved_a
 	return nil
 }
 
+// Located is the town the user located; nil when they never did or dropped it.
+func (s *Store) Located(ctx context.Context, userID string) (*Located, error) {
+	l := Located{Place: Place{Kind: KindLocated}}
+	err := s.db.QueryRowContext(ctx, `
+SELECT name, region, country, latitude, longitude, timezone, credit_text, credit_url
+FROM user_located_places WHERE user_id = ?`, userID).Scan(&l.Name, &l.Region, &l.Country, &l.Latitude, &l.Longitude, &l.Timezone, &l.Credit.Text, &l.Credit.URL)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read located place: %w", err)
+	}
+	return &l, nil
+}
+
+// SaveLocated keeps l as the town the user located, replacing one before.
+func (s *Store) SaveLocated(ctx context.Context, userID string, l Located) error {
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO user_located_places (user_id, name, region, country, latitude, longitude, timezone, credit_text, credit_url)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (user_id) DO UPDATE SET name = excluded.name, region = excluded.region, country = excluded.country,
+	latitude = excluded.latitude, longitude = excluded.longitude, timezone = excluded.timezone,
+	credit_text = excluded.credit_text, credit_url = excluded.credit_url, located_at = datetime('now')`,
+		userID, l.Name, l.Region, l.Country, l.Latitude, l.Longitude, l.Timezone, l.Credit.Text, l.Credit.URL); err != nil {
+		return fmt.Errorf("save located place: %w", err)
+	}
+	return nil
+}
+
+// ClearLocated drops the town the user located: the memory's places hold again.
+func (s *Store) ClearLocated(ctx context.Context, userID string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM user_located_places WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("clear located place: %w", err)
+	}
+	return nil
+}
+
 // Here is the place that holds on today (YYYY-MM-DD in the user's zone): the
 // current one from its first through its last day, else home; nil when
 // neither is known.

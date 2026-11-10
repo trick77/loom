@@ -32,7 +32,6 @@ vi.mock("./Composer", () => ({
 vi.mock("./WindowFileDrop", () => ({ WindowFileDrop: () => null }));
 
 const onOpenThread = vi.fn();
-const onOpenMemory = vi.fn();
 
 function renderStart(
   overrides: Partial<{ draft: string; attachments: [] }> = {},
@@ -57,7 +56,6 @@ function renderStart(
       onRemoveAttachment={vi.fn()}
       onEnterIncognito={vi.fn()}
       onOpenThread={onOpenThread}
-      onOpenMemory={onOpenMemory}
     />,
   );
 }

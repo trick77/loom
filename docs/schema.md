@@ -2,7 +2,7 @@
 
 # Database schema
 
-28 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
+29 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
 
 ## artifacts
 
@@ -622,6 +622,29 @@ Checks:
 - `CHECK (origin IN ('extracted', 'tool', 'converted'))`
 - `CHECK (retire_reason IN ('superseded', 'user', 'thread_deleted'))`
 
+## user_located_places
+
+Go types:
+
+- `location.Located` (internal/location): Located is the town the browser's position named, set by the user on the start page. It holds over the places their memory names until they locate again or drop it, and is never a fact: the memory may be stale or wrong, the position is where the user is.
+
+| Column | Type | Null | Default | PK |
+| --- | --- | --- | --- | --- |
+| `user_id` | TEXT | no |  | 1 |
+| `name` | TEXT | no |  |  |
+| `region` | TEXT | no | `''` |  |
+| `country` | TEXT | no | `''` |  |
+| `latitude` | REAL | no |  |  |
+| `longitude` | REAL | no |  |  |
+| `timezone` | TEXT | no | `''` |  |
+| `credit_text` | TEXT | no | `''` |  |
+| `credit_url` | TEXT | no | `''` |  |
+| `located_at` | TEXT | no | `datetime('now')` |  |
+
+Foreign keys:
+
+- `user_id` → `users` (`id`), on delete CASCADE
+
 ## user_location_state
 
 | Column | Type | Null | Default | PK |
@@ -940,6 +963,15 @@ In `internal/chat`. UpdateThreadInput holds the optional fields for updating a t
 | `Category` | `*string` | Category, when non-nil, sets the thread's prompt-classifier label. A nil pointer leaves the stored category unchanged. |
 | `ProjectID` | `ProjectIDUpdate` |  |
 
+### location.Credit
+
+In `internal/location`. Credit is the map data a located town's name came from.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Text` | `string` |  |
+| `URL` | `string` |  |
+
 ### rag.IndexedDoc
 
 In `internal/rag`. IndexedDoc identifies an embedded document and the sum of its chunks' token counts, used to decide cheaply — before any text extraction — which knowledge documents are small enough to inject in full.
@@ -1211,6 +1243,18 @@ erDiagram
         TEXT created_at
         TEXT updated_at
     }
+    user_located_places {
+        TEXT user_id PK, FK
+        TEXT name
+        TEXT region
+        TEXT country
+        REAL latitude
+        REAL longitude
+        TEXT timezone
+        TEXT credit_text
+        TEXT credit_url
+        TEXT located_at
+    }
     user_location_state {
         TEXT user_id PK, FK
         TEXT facts_hash
@@ -1312,6 +1356,7 @@ erDiagram
     user_fact_sources }o--|| threads : "user_id, thread_id"
     user_fact_sources }o--|| user_facts : "fact_id"
     user_facts }o--|| users : "user_id"
+    user_located_places |o--|| users : "user_id"
     user_location_state |o--|| users : "user_id"
     user_locations }o--|| users : "user_id"
     user_usage_totals |o--|| users : "user_id"

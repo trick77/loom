@@ -1031,16 +1031,28 @@ export const de = {
     },
     location: {
       fromMemories: "aus Erinnerungen",
+      fromLocation: "dein Standort",
       title: "Standort für Wetter und Sonne",
       home: "Bekannter Standort aus deinen Erinnerungen: {{name}}.",
       current: "Aus deinen Erinnerungen: Du bist gerade in {{name}}.",
+      located: "Aus deinem aktuellen Standort: {{name}}.",
       change:
         "Bist du woanders? Sag es im Chat, z. B. «Ich bin diese Woche in Lissabon». Loom merkt es sich und wechselt danach zurück.",
-      openMemories: "Erinnerungen öffnen",
+      changeLocate:
+        "Stimmt nicht? Nimm deinen aktuellen Standort, er geht den Erinnerungen vor.",
+      locatedNote:
+        "Er bleibt, bis du neu ortest oder zu den Erinnerungen zurückwechselst.",
+      backToMemories: "Zurück zu Erinnerungen",
+      dropFailed:
+        "Zurück zu den Erinnerungen hat nicht geklappt. Versuch es nochmals.",
+      chipDenied: "Standortzugriff verweigert.",
+      chipFailed: "Standort nicht verfügbar.",
+      chipNoTown: "An deinem Standort kein Ort gefunden.",
+      chipRetry: "Ort gerade nicht ermittelbar. Versuch es gleich nochmal.",
       ask: "Für welchen Ort soll ich dir hier Wetter und Sonnenzeiten zeigen?",
       placeholder: "z. B. München",
       save: "Speichern",
-      note: "Landet in deinen Erinnerungen. Ändern kannst du es jederzeit im Chat.",
+      note: "Ein getippter Ort landet in deinen Erinnerungen, dein aktueller Standort nicht.",
       notFound: "Ort nicht gefunden",
       useCurrent: "Aktuellen Standort verwenden",
       locating: "Standort wird ermittelt…",
