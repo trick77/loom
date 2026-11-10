@@ -21,7 +21,16 @@ function nearestScrollParent(el: HTMLElement): HTMLElement | null {
 //
 // Returns a ref to attach to the menu container and the vertical placement
 // classes to apply. Callers keep supplying only horizontal placement.
-export function useMenuPlacement(): {
+//
+// fitAbove: flip only when the whole menu fits above. A tall popover whose
+// head (a search field) would be cut off above the column is worse than one
+// that runs past the bottom, where the column still scrolls to it.
+// gap: the caller's margin between anchor and menu, counted into the fit
+// (verticalClass uses 4px).
+export function useMenuPlacement({
+  fitAbove = false,
+  gap = 4,
+}: { fitAbove?: boolean; gap?: number } = {}): {
   menuRef: React.RefObject<HTMLDivElement | null>;
   dropUp: boolean;
   verticalClass: string;
@@ -45,11 +54,15 @@ export function useMenuPlacement(): {
       window.innerHeight,
     );
     const anchorRect = anchor.getBoundingClientRect();
-    const menuHeight = el.offsetHeight + 4;
+    const menuHeight = el.offsetHeight + gap;
     const spaceBelow = bottomLimit - anchorRect.bottom;
     const spaceAbove = anchorRect.top - topLimit;
-    setDropUp(spaceBelow < menuHeight && spaceAbove > spaceBelow);
-  }, []);
+    setDropUp(
+      spaceBelow < menuHeight &&
+        spaceAbove > spaceBelow &&
+        (!fitAbove || spaceAbove >= menuHeight),
+    );
+  }, [fitAbove, gap]);
 
   // Measure before paint so the menu never flashes downward first, then keep the
   // direction correct while it stays open: scrolling the list/sidebar or resizing

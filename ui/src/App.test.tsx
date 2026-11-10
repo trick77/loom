@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -693,6 +694,265 @@ test("loads a project detail page and creates new chats inside the project", asy
   await waitFor(() =>
     expect(window.location.pathname).toBe("/thread/t-project-new"),
   );
+});
+
+test("a failed start-screen upload keeps the picked project with the draft", async () => {
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST")
+        return Response.json({
+          id: "t1",
+          projectId: "p1",
+          title: "Summarize this",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        });
+      if (url === "/api/documents/upload" && init?.method === "POST")
+        return new Response("boom", { status: 500 });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Project" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Research" }));
+  const textbox = screen.getByPlaceholderText("How can I help you today?");
+  const fileInput = textbox
+    .closest("form")
+    ?.querySelector('input[type="file"]');
+  if (fileInput === null || fileInput === undefined)
+    throw new Error("file input missing");
+  fireEvent.change(fileInput, {
+    target: {
+      files: [new File(["notes"], "notes.txt", { type: "text/plain" })],
+    },
+  });
+  fireEvent.change(textbox, { target: { value: "Summarize this" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  await waitFor(() =>
+    expect(screen.getByText(/failed to upload/i)).toBeInTheDocument(),
+  );
+  expect(screen.getByText("notes.txt")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Remove Research" }),
+  ).toBeInTheDocument();
+});
+
+test("a project picked while the last chat is being created stays picked", async () => {
+  let releaseCreate: () => void = () => {};
+  const created = new Promise<void>((resolve) => {
+    releaseCreate = resolve;
+  });
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("event: done\ndata: {}\n\n"));
+      controller.close();
+    },
+  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects")
+        return Response.json([
+          projectFixture(),
+          { ...projectFixture(), id: "p2", name: "Trip", description: "" },
+        ]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        await created;
+        return Response.json({
+          id: "t-first",
+          projectId: "p1",
+          title: "First",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        });
+      }
+      if (url === "/api/threads/t-first/messages:stream")
+        return new Response(stream, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Project" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Research" }));
+  fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {
+    target: { value: "First" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+
+  // The start screen stays usable while the thread is created: pick the next.
+  fireEvent.click(screen.getByRole("button", { name: "Remove Research" }));
+  fireEvent.click(screen.getByRole("button", { name: "Project" }));
+  fireEvent.click(screen.getByRole("option", { name: "Trip" }));
+  releaseCreate();
+
+  await waitFor(() => expect(window.location.pathname).toBe("/thread/t-first"));
+  fireEvent.click(screen.getAllByRole("button", { name: "New thread" })[0]);
+  expect(
+    await screen.findByRole("button", { name: "Remove Trip" }),
+  ).toBeInTheDocument();
+});
+
+test("a start-screen chat's thread event stays out of another project's page", async () => {
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null =
+    null;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      streamController = controller;
+    },
+  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects")
+        return Response.json([
+          projectFixture(),
+          { ...projectFixture(), id: "p2", name: "Trip", description: "" },
+        ]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads?projectId=p2&limit=1000")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST")
+        return Response.json({
+          id: "t-p1",
+          projectId: "p1",
+          title: "Draft a brief",
+          starred: false,
+          createdAt: "2026-05-30T00:00:00Z",
+          updatedAt: "2026-05-30T00:00:00Z",
+        });
+      if (url === "/api/threads/t-p1/messages:stream")
+        return new Response(stream, { status: 200 });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Project" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Research" }));
+  fireEvent.change(screen.getByPlaceholderText("How can I help you today?"), {
+    target: { value: "Draft a brief" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(window.location.pathname).toBe("/thread/t-p1"));
+
+  // Open another project's page while the answer still streams.
+  fireEvent.click(screen.getByRole("button", { name: "Trip" }));
+  await screen.findByRole("heading", { name: "Trip" });
+
+  // The event renames the thread, so its landing shows in the sidebar.
+  await act(async () => {
+    streamController?.enqueue(
+      new TextEncoder().encode(
+        'event: thread\ndata: {"id":"t-p1","projectId":"p1","title":"Brief drafted","starred":false,"createdAt":"2026-05-30T00:00:00Z","updatedAt":"2026-05-30T00:00:01Z"}\n\n' +
+          "event: done\ndata: {}\n\n",
+      ),
+    );
+    streamController?.close();
+  });
+  await screen.findByRole("button", { name: /Brief drafted/ });
+
+  // Only the sidebar's recents row: the thread is Research's, not Trip's.
+  expect(screen.getAllByRole("button", { name: /Brief drafted/ })).toHaveLength(
+    1,
+  );
+});
+
+test("the project dialog from the start picker hands focus back on close", async () => {
+  let releaseCreate: () => void = () => {};
+  const created = new Promise<void>((resolve) => {
+    releaseCreate = resolve;
+  });
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects" && init?.method === "POST") {
+        await created;
+        return Response.json({
+          ...projectFixture(),
+          id: "p2",
+          name: "Trip",
+          description: "",
+        });
+      }
+      if (url === "/api/projects") return Response.json([projectFixture()]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  const trigger = await screen.findByRole("button", { name: "Project" });
+
+  // Escape: focus goes back to the trigger.
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("option", { name: "New project" }));
+  const dialog = await screen.findByRole("dialog", {
+    name: "Create a project",
+  });
+  expect(within(dialog).getAllByRole("textbox")[0]).toHaveFocus();
+  fireEvent.keyDown(window, { key: "Escape" });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("dialog", { name: "Create a project" }),
+    ).toBeNull(),
+  );
+  expect(screen.getByRole("button", { name: "Project" })).toHaveFocus();
+
+  // Cancelled while the save runs: nothing is picked, the user stays put.
+  fireEvent.click(screen.getByRole("button", { name: "Project" }));
+  fireEvent.click(screen.getByRole("option", { name: "New project" }));
+  const second = await screen.findByRole("dialog", {
+    name: "Create a project",
+  });
+  fireEvent.change(within(second).getAllByRole("textbox")[0], {
+    target: { value: "Trip" },
+  });
+  fireEvent.submit(second);
+  fireEvent.keyDown(window, { key: "Escape" });
+  await act(async () => {
+    releaseCreate();
+  });
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => url === "/api/projects" && init?.method === "POST",
+      ),
+    ).toBe(true),
+  );
+  expect(window.location.pathname).toBe("/new");
+  expect(screen.queryByRole("button", { name: "Remove Trip" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Project" })).toBeInTheDocument();
 });
 
 test("starts a new chat in the project picked under the start composer", async () => {

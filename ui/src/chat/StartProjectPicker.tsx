@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import type { Project } from "../api";
@@ -17,6 +18,7 @@ import {
 } from "../projects/projectList";
 import { Icon } from "./Icon";
 import { useEscapeKey } from "./useEscapeKey";
+import { useMenuPlacement } from "./useMenuPlacement";
 import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
 
 const SORTS: ProjectSort[] = ["recent", "edited", "created", "name"];
@@ -30,7 +32,7 @@ type Entry = { kind: "project"; project: Project } | { kind: "create" };
 // fixed "New project" row.
 const rowClass =
   "flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-sm font-[435] leading-5 text-ink";
-const separatorClass = "mx-2.5 my-1 h-px bg-white/10";
+const separatorClass = "mx-2.5 my-1 h-px bg-ink/10";
 
 export function StartProjectPicker({
   projects,
@@ -54,7 +56,6 @@ export function StartProjectPicker({
   const sortRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const refocus = useRef(false);
   const baseID = useId();
   const optionID = (index: number) => `${baseID}-option-${index}`;
 
@@ -77,26 +78,30 @@ export function StartProjectPicker({
   // pointer moves; Enter then takes the first entry.
   const activeIndex = Math.min(active, entries.length - 1);
 
-  const close = useCallback((restoreFocus: boolean) => {
-    refocus.current = restoreFocus;
+  const close = useCallback(() => {
     setOpen(false);
     setSortOpen(false);
   }, []);
-  const closeQuietly = useCallback(() => close(false), [close]);
+  // closeAndFocus closes the popover (and applies `then`, a pick) in one
+  // synchronous commit, then focuses the button: the search field that held
+  // focus is gone. Trigger and chip are the same <button> node in the same
+  // slot, so focus survives a pick or a removal.
+  const closeAndFocus = useCallback(
+    (then?: () => void) => {
+      flushSync(() => {
+        close();
+        then?.();
+      });
+      buttonRef.current?.focus();
+    },
+    [close],
+  );
   const closeSort = useCallback(() => setSortOpen(false), []);
-  useOutsideRefPointerDown(open, rootRef, closeQuietly);
+  useOutsideRefPointerDown(open, rootRef, close);
   useOutsideRefPointerDown(sortOpen, sortRef, closeSort);
-  useEscapeKey(() => close(true), { active: open });
+  useEscapeKey(() => closeAndFocus(), { active: open });
   // Registered after the popover's, so Escape closes the sort menu first.
   useEscapeKey(closeSort, { active: sortOpen });
-
-  // Focus returns to the trigger (or the chip that replaced it) after a pick
-  // or Escape; a click elsewhere keeps its own focus.
-  useEffect(() => {
-    if (open || !refocus.current) return;
-    refocus.current = false;
-    buttonRef.current?.focus();
-  }, [open, selectedProject]);
 
   // The list fades at the bottom only while more of it is below.
   const [moreBelow, setMoreBelow] = useState(false);
@@ -118,7 +123,7 @@ export function StartProjectPicker({
 
   function toggle() {
     if (open) {
-      close(false);
+      close();
       return;
     }
     setQuery("");
@@ -127,12 +132,21 @@ export function StartProjectPicker({
   }
 
   function choose(entry: Entry) {
-    close(true);
-    if (entry.kind === "create") onCreateProject();
-    else onSelect(entry.project.id);
+    if (entry.kind === "project") {
+      closeAndFocus(() => onSelect(entry.project.id));
+      return;
+    }
+    // Focus sits on the trigger before the dialog opens: the dialog takes it
+    // for its name field and hands it back to the trigger (or the chip of the
+    // new project) when it closes.
+    closeAndFocus();
+    onCreateProject();
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    // The Enter that confirms an IME composition belongs to the input method.
+    // Safari sends that Enter with isComposing false but keyCode 229.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const count = entries.length;
@@ -158,7 +172,7 @@ export function StartProjectPicker({
       <div
         key={entry.kind === "create" ? "create" : entry.project.id}
         aria-selected={isActive}
-        className={`${rowClass} cursor-pointer ${isActive ? "bg-white/15" : ""}`}
+        className={`${rowClass} cursor-pointer ${isActive ? "bg-ink/15" : ""}`}
         id={optionID(index)}
         onClick={() => choose(entry)}
         onMouseMove={() => {
@@ -189,7 +203,7 @@ export function StartProjectPicker({
           aria-controls={open ? `${baseID}-dialog` : undefined}
           aria-expanded={open}
           aria-haspopup="dialog"
-          className={`flex h-7 items-center gap-1 rounded-lg px-2.5 text-sm font-[435] leading-5 text-ink transition-colors duration-200 hover:bg-white/5 ${open ? "bg-white/5" : ""}`}
+          className={`flex h-7 items-center gap-1 rounded-lg px-2.5 text-sm font-[435] leading-5 text-ink transition-colors duration-200 hover:bg-ink/5 ${open ? "bg-ink/5" : ""}`}
           onClick={toggle}
           type="button"
         >
@@ -202,7 +216,8 @@ export function StartProjectPicker({
           aria-label={t("projects.startPicker.remove", {
             name: selectedProject.name,
           })}
-          className="flex h-7 max-w-full items-center gap-1 rounded-lg bg-white/5 px-2.5 text-sm font-[435] leading-5 text-ink transition-colors duration-200 hover:bg-white/10"
+          className="flex h-7 max-w-full items-center gap-1 rounded-lg bg-ink/5 px-2.5 text-sm font-[435] leading-5 text-ink transition-colors duration-200 hover:bg-ink/10"
+          // The chip turns back into the trigger in the same node; focus stays.
           onClick={() => onSelect(null)}
           type="button"
         >
@@ -211,11 +226,10 @@ export function StartProjectPicker({
         </button>
       )}
       {open && (
-        <div
+        <PlacedPopover
           aria-label={t("projects.startPicker.menuLabel")}
-          className="absolute left-0 top-full z-30 mt-1.5 flex w-[510px] max-w-[calc(100vw-2rem)] flex-col rounded-[14px] bg-[#2f2f2c] text-sm text-ink shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04),0_18px_32px_rgba(0,0,0,0.38)]"
+          className="absolute left-0 z-30 flex w-[510px] max-w-[calc(100vw-2rem)] flex-col rounded-[14px] bg-popover text-sm text-ink shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04),0_18px_32px_rgba(0,0,0,0.38)]"
           id={`${baseID}-dialog`}
-          role="dialog"
         >
           <div className="px-1.5 pt-1.5">
             <div className="flex h-8 items-center gap-2 pl-3 pr-1">
@@ -245,7 +259,7 @@ export function StartProjectPicker({
                   aria-expanded={sortOpen}
                   aria-haspopup="menu"
                   aria-label={t("projects.startPicker.sortLabel")}
-                  className={`grid h-7 w-7 place-items-center rounded-lg text-muted transition-colors hover:bg-white/5 hover:text-ink ${sortOpen ? "bg-white/5 text-ink" : ""}`}
+                  className={`grid h-7 w-7 place-items-center rounded-lg text-muted transition-colors hover:bg-ink/5 hover:text-ink ${sortOpen ? "bg-ink/5 text-ink" : ""}`}
                   onClick={() => setSortOpen((value) => !value)}
                   title={t("projects.startPicker.sortLabel")}
                   type="button"
@@ -255,7 +269,7 @@ export function StartProjectPicker({
                 {sortOpen && (
                   <div
                     aria-label={t("projects.startPicker.sortLabel")}
-                    className="absolute right-0 top-full z-10 mt-1 w-[180px] rounded-xl bg-[#2f2f2c] p-1.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_18px_32px_rgba(0,0,0,0.38)]"
+                    className="absolute right-0 top-full z-10 mt-1 w-[180px] rounded-xl bg-popover p-1.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06),0_18px_32px_rgba(0,0,0,0.38)]"
                     role="menu"
                   >
                     <div
@@ -268,7 +282,7 @@ export function StartProjectPicker({
                       <button
                         key={option}
                         aria-checked={sort === option}
-                        className={`${rowClass} justify-between hover:bg-white/15`}
+                        className={`${rowClass} justify-between hover:bg-ink/15`}
                         onClick={() => {
                           setSort(option);
                           setActive(-1);
@@ -282,7 +296,7 @@ export function StartProjectPicker({
                           <Icon
                             name="check"
                             size="14px"
-                            className="text-[#4f8cff]"
+                            className="text-select"
                           />
                         )}
                       </button>
@@ -328,7 +342,7 @@ export function StartProjectPicker({
               {rest.map((project, index) =>
                 option({ kind: "project", project }, starred.length + index),
               )}
-              {entries.length === 1 && (
+              {searching && entries.length === 1 && (
                 <div className="px-2.5 py-1 text-muted" role="presentation">
                   {t("projects.startPicker.empty")}
                 </div>
@@ -339,8 +353,35 @@ export function StartProjectPicker({
               {option({ kind: "create" }, entries.length - 1)}
             </div>
           </div>
-        </div>
+        </PlacedPopover>
       )}
+    </div>
+  );
+}
+
+// PlacedPopover opens below its anchor, or above it when the scroll column has
+// no room below (a phone, a short window). Its own component so the placement
+// is measured when the popover mounts, not when the picker does.
+function PlacedPopover({
+  className,
+  children,
+  ...rest
+}: {
+  className: string;
+  children: React.ReactNode;
+  id: string;
+  "aria-label": string;
+}) {
+  // gap 6: the popover's mt-1.5 / mb-1.5.
+  const { menuRef, dropUp } = useMenuPlacement({ fitAbove: true, gap: 6 });
+  return (
+    <div
+      ref={menuRef}
+      className={`${className} ${dropUp ? "bottom-full mb-1.5" : "top-full mt-1.5"}`}
+      role="dialog"
+      {...rest}
+    >
+      {children}
     </div>
   );
 }

@@ -37,18 +37,36 @@ export function useProjectActions({
     setError: (message: string) => void,
   ): void;
 }) {
-  // undefined = closed, null = create, Project = edit.
-  const [editingProject, setEditingProject] = useState<
-    Project | null | undefined
+  // undefined = closed; project null = create, Project = edit. onCreated rides
+  // along with the open dialog: a create from the start screen's picker keeps
+  // the user there and picks the new project, every other create opens the
+  // project's page. The ref mirrors the dialog on show, so a save that comes
+  // back after the dialog was cancelled neither picks nor navigates.
+  type ProjectDialogState = {
+    project: Project | null;
+    onCreated?(project: Project): void;
+  };
+  const [projectDialog, setProjectDialog] = useState<
+    ProjectDialogState | undefined
   >(undefined);
+  const projectDialogRef = useRef<ProjectDialogState | undefined>(undefined);
+  const showProjectDialog = useCallback(
+    (next: ProjectDialogState | undefined) => {
+      projectDialogRef.current = next;
+      setProjectDialog(next);
+    },
+    [],
+  );
+  const editingProject = projectDialog?.project;
+  const closeProjectDialog = useCallback(
+    () => showProjectDialog(undefined),
+    [showProjectDialog],
+  );
   const [deletingProject, setDeletingProject] = useState<Project | null>(null);
   const [archivingProject, setArchivingProject] = useState<Project | null>(
     null,
   );
   const [isMutatingProject, setIsMutatingProject] = useState(false);
-  // A create from the start screen's picker keeps the user there and picks the
-  // new project; every other create opens the project's page.
-  const onCreatedRef = useRef<((project: Project) => void) | null>(null);
 
   // The openers are stable so the memoized sidebar, which hands them to every
   // project row, does not re-render with the shell.
@@ -57,12 +75,11 @@ export function useProjectActions({
       project: Project | null,
       options: { onCreated?(project: Project): void } = {},
     ) => {
-      onCreatedRef.current = options.onCreated ?? null;
-      setEditingProject(project);
+      showProjectDialog({ project, onCreated: options.onCreated });
       setModalError("");
       closeThreadMenu();
     },
-    [setModalError, closeThreadMenu],
+    [showProjectDialog, setModalError, closeThreadMenu],
   );
 
   const openArchiveProjectModal = useCallback(
@@ -87,23 +104,25 @@ export function useProjectActions({
     name: string;
     description: string;
   }) {
-    if (editingProject === undefined || isMutatingProject) return;
+    const dialog = projectDialogRef.current;
+    if (dialog === undefined || isMutatingProject) return;
+    const { project: editing, onCreated } = dialog;
     setIsMutatingProject(true);
     try {
       const project =
-        editingProject === null
+        editing === null
           ? await createProject(input)
-          : await updateProject(editingProject.id, input);
+          : await updateProject(editing.id, input);
       setProjects((current) => [
         project,
         ...current.filter((item) => item.id !== project.id),
       ]);
-      setEditingProject(undefined);
+      // Cancelled while the save ran: the project stands, the user stays put.
+      if (projectDialogRef.current !== dialog) return;
+      showProjectDialog(undefined);
       setModalError("");
-      if (editingProject === null) {
-        const onCreated = onCreatedRef.current;
-        onCreatedRef.current = null;
-        if (onCreated !== null) onCreated(project);
+      if (editing === null) {
+        if (onCreated !== undefined) onCreated(project);
         else navigateToProject(project);
       }
     } catch (error) {
@@ -212,7 +231,7 @@ export function useProjectActions({
     openProjectDialog,
     setArchivingProject,
     setDeletingProject,
-    setEditingProject,
+    closeProjectDialog,
     handleArchiveProjectConfirm,
     handleUnarchiveProject,
     handleDeleteProjectConfirm,

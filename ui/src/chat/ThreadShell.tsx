@@ -725,7 +725,7 @@ export function ThreadShell({
     openProjectDialog,
     setArchivingProject,
     setDeletingProject,
-    setEditingProject,
+    closeProjectDialog,
     handleArchiveProjectConfirm,
     handleUnarchiveProject,
     handleDeleteProjectConfirm,
@@ -1154,6 +1154,22 @@ export function ThreadShell({
         : route.view === "new"
           ? startProjectID
           : null;
+    const sentStartPick = startProjectPick;
+    // projectThreads holds the list of the project page on show, so a thread
+    // goes in only while that page is its project's. Read live: the run
+    // outlives navigation, and a send from the start screen or another project
+    // must not leak into whatever list is open by the time its events land.
+    const upsertIntoOpenProjectPage = (thread: Thread) => {
+      const open = routeRef.current;
+      if (
+        open.view !== "project" ||
+        thread.projectId === undefined ||
+        thread.projectId !== open.projectID
+      ) {
+        return;
+      }
+      setProjectThreads((current) => upsertThreadById(current, thread));
+    };
     const updateSentAttachmentStatus = (
       id: string,
       patch: Partial<ComposerAttachment>,
@@ -1196,18 +1212,7 @@ export function ThreadShell({
             : targetThread;
         createdThreadForFallback = createdThread;
         setThreads((current) => upsertThreadById(current, createdThread));
-        // The pick on the start screen holds for this one chat; the next starts
-        // without a project again, like the emptied draft.
-        if (route.view === "new") setStartProjectID(null);
-        // projectThreads holds the open project page's list only.
-        if (
-          route.view === "project" &&
-          createdThread.projectId === projectIDForNewThread
-        ) {
-          setProjectThreads((current) =>
-            upsertThreadById(current, createdThread),
-          );
-        }
+        upsertIntoOpenProjectPage(createdThread);
         // Now that a thread exists, flush files attached on the start screen,
         // bound to it (project-less => private to this thread). Image uploads must
         // finish before the first model request so their artifact ids can be sent
@@ -1252,6 +1257,17 @@ export function ThreadShell({
                 }),
             );
           }
+        }
+        // The pick on the start screen holds for this one chat; the next starts
+        // without a project again, like the emptied draft. Cleared only once the
+        // files landed (a failed flush hands draft, files and pick back), and
+        // only if no other project was picked during the creation window.
+        if (route.view === "new") {
+          // The raw pick, not startProjectID: a pick whose project was
+          // archived meanwhile (sent without a project) is dropped too.
+          setStartProjectID((current) =>
+            current === sentStartPick ? null : current,
+          );
         }
         // The run now belongs to a real thread. Rekeying in the same tick as the
         // route switch is what lets the thread we are about to land on pick the
@@ -1332,17 +1348,7 @@ export function ThreadShell({
             receivedThreadEvent = true;
             if (isCurrentThread()) setActiveThread(updatedThread);
             setThreads((current) => upsertThreadById(current, updatedThread));
-            // Compare against the project captured when this send started, never a
-            // live `route` read: a run outlives navigation now.
-            if (
-              projectIDForNewThread !== null &&
-              updatedThread.projectId !== undefined &&
-              updatedThread.projectId === projectIDForNewThread
-            ) {
-              setProjectThreads((current) =>
-                upsertThreadById(current, updatedThread),
-              );
-            }
+            upsertIntoOpenProjectPage(updatedThread);
           },
         });
       const documentAttachmentIds = options.attachments
@@ -1430,15 +1436,7 @@ export function ThreadShell({
       const fallbackThread = createdThreadForFallback;
       if (!receivedThreadEvent && fallbackThread !== null) {
         setThreads((current) => upsertThreadById(current, fallbackThread));
-        if (
-          projectIDForNewThread !== null &&
-          fallbackThread.projectId !== undefined &&
-          fallbackThread.projectId === projectIDForNewThread
-        ) {
-          setProjectThreads((current) =>
-            upsertThreadById(current, fallbackThread),
-          );
-        }
+        upsertIntoOpenProjectPage(fallbackThread);
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -1981,7 +1979,7 @@ export function ThreadShell({
           project={editingProject}
           error={modalError}
           disabled={isMutatingProject}
-          onCancel={() => setEditingProject(undefined)}
+          onCancel={closeProjectDialog}
           onSubmit={(input) => void handleProjectDialogSubmit(input)}
         />
       )}
