@@ -1667,7 +1667,7 @@ test("retries a failed deferred new-chat image upload before streaming", async (
       const encoder = new TextEncoder();
       controller.enqueue(
         encoder.encode(
-          'event: user_message\ndata: {"id":"m1","threadId":"t2","role":"user","content":"What is this image?","createdAt":"2026-05-30T00:00:00Z"}\n\n',
+          'event: user_message\ndata: {"id":"m1","threadId":"t1","role":"user","content":"What is this image?","createdAt":"2026-05-30T00:00:00Z"}\n\n',
         ),
       );
       controller.close();
@@ -1700,7 +1700,7 @@ test("retries a failed deferred new-chat image upload before streaming", async (
           return new Response("boom", { status: 500 });
         return Response.json({
           id: "art_image_retry",
-          threadId: "t2",
+          threadId: "t1",
           displayFilename: "tiny.png",
           mimeType: "image/png",
           sizeBytes: 68,
@@ -1709,7 +1709,7 @@ test("retries a failed deferred new-chat image upload before streaming", async (
         });
       }
       if (
-        url === "/api/threads/t2/messages:stream" &&
+        url === "/api/threads/t1/messages:stream" &&
         init?.method === "POST"
       ) {
         return new Response(stream, { status: 200 });
@@ -1764,9 +1764,10 @@ test("retries a failed deferred new-chat image upload before streaming", async (
 
   fireEvent.click(screen.getByRole("button", { name: /send message/i }));
 
+  // The resend goes into the thread the first try created; it holds no message.
   await waitFor(() =>
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/threads/t2/messages:stream",
+      "/api/threads/t1/messages:stream",
       expect.objectContaining({
         method: "POST",
         body: sendBody({
@@ -1777,7 +1778,8 @@ test("retries a failed deferred new-chat image upload before streaming", async (
     ),
   );
   expect(imageUploadCalls).toBe(2);
-  expect(window.location.pathname).toBe("/thread/t2");
+  expect(createThreadCalls).toBe(1);
+  expect(window.location.pathname).toBe("/thread/t1");
 });
 
 test("clears a stale upload size send error when a new valid file is attached on the start screen", async () => {
@@ -6490,4 +6492,132 @@ test("a failed deferred new-chat document upload stops the send and keeps the fi
     ),
   ).toBe(false);
   expect(screen.getByText("notes.txt")).toBeInTheDocument();
+});
+
+// startScreenUploadFixture serves a start-screen send whose staged files upload
+// to /api/documents/upload; `fail` names the files whose first upload fails.
+function startScreenUploadFixture(fail: string[], projects: unknown[] = []) {
+  const uploads: string[] = [];
+  const createBodies: unknown[] = [];
+  const failed = new Set<string>();
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json(projects);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/threads" && init?.method === "POST") {
+        createBodies.push(JSON.parse(String(init.body)));
+        return Response.json(
+          {
+            id: `t${createBodies.length}`,
+            title: "Summarize these",
+            starred: false,
+            createdAt: "2026-05-30T00:00:00Z",
+            updatedAt: "2026-05-30T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }
+      if (url === "/api/documents/upload" && init?.method === "POST") {
+        const file = (init.body as FormData).get("file") as File;
+        uploads.push(file.name);
+        if (fail.includes(file.name) && !failed.has(file.name)) {
+          failed.add(file.name);
+          return new Response("boom", { status: 500 });
+        }
+        return Response.json({
+          id: `doc-${file.name}`,
+          artifactId: `art-${file.name}`,
+          filename: file.name,
+          status: "ready",
+        });
+      }
+      if (url.endsWith("/index")) return Response.json({});
+      if (url.endsWith("/messages:stream") && init?.method === "POST")
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode("event: done\ndata: {}\n\n"),
+              );
+              controller.close();
+            },
+          }),
+          { status: 200 },
+        );
+      throw new Error(`unexpected fetch ${url}`);
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return { fetchMock, uploads, createBodies };
+}
+
+async function stageAndSend(files: string[]) {
+  const textbox = await screen.findByPlaceholderText(
+    "How can I help you today?",
+  );
+  const fileInput = textbox
+    .closest("form")
+    ?.querySelector('input[type="file"]');
+  if (fileInput === null || fileInput === undefined)
+    throw new Error("file input missing");
+  fireEvent.change(fileInput, {
+    target: {
+      files: files.map((name) => new File(["x"], name, { type: "text/plain" })),
+    },
+  });
+  fireEvent.change(textbox, { target: { value: "Summarize these" } });
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+  await waitFor(() =>
+    expect(screen.getByText(/failed to upload/i)).toBeInTheDocument(),
+  );
+}
+
+test("a resend after a failed start-screen upload goes into the same thread and uploads only what failed", async () => {
+  const { fetchMock, uploads, createBodies } = startScreenUploadFixture([
+    "b.txt",
+  ]);
+  render(<App />);
+  await stageAndSend(["a.txt", "b.txt"]);
+  expect(uploads).toEqual(["a.txt", "b.txt"]);
+
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+  await waitFor(() => expect(window.location.pathname).toBe("/thread/t1"));
+  // One thread, and a.txt, which had landed, is not uploaded again.
+  expect(createBodies).toHaveLength(1);
+  expect(uploads).toEqual(["a.txt", "b.txt", "b.txt"]);
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stream",
+      expect.objectContaining({
+        body: sendBody({
+          content: "Summarize these",
+          documentAttachmentIds: ["doc-a.txt", "doc-b.txt"],
+        }),
+      }),
+    ),
+  );
+});
+
+test("a resend with another project picked starts its own thread", async () => {
+  const { createBodies } = startScreenUploadFixture(
+    ["a.txt"],
+    [projectFixture()],
+  );
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "Project" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Research" }));
+  await stageAndSend(["a.txt"]);
+
+  // The unsent thread is Research's; without a project the resend needs its own.
+  fireEvent.click(screen.getByRole("button", { name: "Remove Research" }));
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+  await waitFor(() => expect(window.location.pathname).toBe("/thread/t2"));
+  expect(createBodies).toEqual([
+    { projectId: "p1", title: "Summarize these" },
+    { title: "Summarize these" },
+  ]);
 });

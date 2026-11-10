@@ -74,6 +74,7 @@ import {
   isImageAttachment,
   toSentAttachment,
   useDocumentAttachments,
+  withLandedUploads,
   type ComposerAttachment,
 } from "./useDocumentAttachments";
 import { rehydrateLoadedMessage, useThreadData } from "./useThreadData";
@@ -405,6 +406,12 @@ export function ThreadShell({
   // The project a chat sent from the start screen lands in. A pick that was
   // archived or deleted since no longer counts.
   const [startProjectPick, setStartProjectID] = useState<string | null>(null);
+  // The thread a start-screen send created before its file flush failed: no
+  // message reached it, so the resend goes there instead of making another.
+  const unsentStartThreadRef = useRef<{
+    threadID: string;
+    projectID: string | null;
+  } | null>(null);
   const startProject =
     startProjectPick === null
       ? null
@@ -1178,16 +1185,33 @@ export function ThreadShell({
       if (attachment !== undefined) Object.assign(attachment, patch);
       setMessages((current) => updateMessageAttachment(current, id, patch));
     };
+    // A send into the thread itself makes it no longer unsent.
+    if (activeThread?.id === unsentStartThreadRef.current?.threadID) {
+      unsentStartThreadRef.current = null;
+    }
     try {
       let targetThread = activeThread;
       if (targetThread === null) {
+        // A resend after a failed start-screen flush goes into the thread made
+        // for it, while that still exists and the pick still names its project.
+        const unsent =
+          route.view === "new" ? unsentStartThreadRef.current : null;
+        unsentStartThreadRef.current = null;
+        // Listed means it still exists: a delete takes it out of the sidebar.
+        const reusable =
+          unsent !== null && unsent.projectID === projectIDForNewThread
+            ? ([...recentThreads, ...starredThreads].find(
+                (item) => item.id === unsent.threadID,
+              ) ?? null)
+            : null;
         targetThread =
-          projectIDForNewThread === null
+          reusable ??
+          (projectIDForNewThread === null
             ? await createThread({ title: content })
             : await createThread({
                 projectId: projectIDForNewThread,
                 title: content,
-              });
+              }));
         // Put the thread in the sidebar the moment it exists. Otherwise Recents
         // stays empty until the first thread event, and that event now arrives
         // only once the answer has finished — the title is generated from the
@@ -1249,7 +1273,18 @@ export function ThreadShell({
           if (failedAttachment !== undefined) {
             // The send stops here with the start screen still on show, so put the
             // files back rather than making the user pick them again.
-            setPendingAttachments(attachmentsToFlush);
+            // The thread was made for this send and holds no message yet: the
+            // resend from the start screen goes into it rather than a second
+            // one. The files that did land keep their ids (the flush wrote
+            // them onto the sent copies only), so the resend uploads just the
+            // ones that failed.
+            setPendingAttachments(
+              withLandedUploads(attachmentsToFlush, options.attachments),
+            );
+            unsentStartThreadRef.current = {
+              threadID: targetThread.id,
+              projectID: projectIDForNewThread,
+            };
             throw new UserFacingError(
               failedAttachment.error ??
                 t("errors.uploadFailed", {
