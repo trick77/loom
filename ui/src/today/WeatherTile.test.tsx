@@ -11,8 +11,10 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import type { Today, TodayWeather } from "../api";
 import { todayFixture, tomorrowFixture } from "../test/today";
+import i18n from "../i18n";
 import {
   airCurve,
+  airScale,
   compassKey,
   tempColor,
   untilMidnight,
@@ -270,7 +272,16 @@ test("air: the index leads, its curve, the pollen by load class", () => {
   expect(cardName(right())).toHaveTextContent("Air & pollen");
   const card = shown(right());
   expect(within(card).getByTestId("air-quality")).toHaveTextContent(
-    "18Air goodup to 31 at 16:00",
+    "18EAQIAir goodup to 31 at 16:00",
+  );
+  // The index names its scale: a US AQI reader takes 45 for good.
+  expect(
+    within(card).getByTitle(
+      "European Air Quality Index (EEA): good to 20, fair to 40, moderate to 60, poor to 80, very poor to 100, extremely poor above 100",
+    ),
+  ).toHaveTextContent("EAQI");
+  expect(airScale(i18n.getFixedT("de"))).toBe(
+    "Europäischer Luftqualitätsindex (EEA): gut bis 20, ordentlich bis 40, mässig bis 60, schlecht bis 80, sehr schlecht bis 100, extrem schlecht über 100",
   );
   expect(
     within(card).getByRole("img", { name: "Air quality by hour" }),
@@ -289,7 +300,7 @@ test("tomorrow's air is its worst; no pollen says so", () => {
   open("Air & pollen");
   const card = shown(right());
   expect(within(card).getByTestId("air-quality")).toHaveTextContent(
-    "64Air poor at worst",
+    "64EAQIAir poor at worst",
   );
   expect(within(card).getByText("Hardly any pollen")).toBeInTheDocument();
   // The worst hour is named when the curve has it.
@@ -308,7 +319,7 @@ test("tomorrow's air is its worst; no pollen says so", () => {
   );
   open("Air & pollen");
   expect(within(shown(right())).getByTestId("air-quality")).toHaveTextContent(
-    "64Air poor at worstaround 14:00",
+    "64EAQIAir poor at worstaround 14:00",
   );
 });
 
@@ -318,7 +329,7 @@ test("air where pollen is unknown shows no pollen at all; no hours, no curve", (
   open("Air & pollen");
   const card = shown(right());
   expect(within(card).getByTestId("air-quality")).toHaveTextContent(
-    "18Air good",
+    "18EAQIAir good",
   );
   expect(within(card).queryByText("Hardly any pollen")).toBeNull();
   expect(within(card).queryByRole("list", { name: "Pollen" })).toBeNull();
@@ -344,7 +355,7 @@ test("today's air names today's peak, not tomorrow morning's", () => {
   );
   open("Air & pollen");
   expect(within(shown(right())).getByTestId("air-quality")).toHaveTextContent(
-    "18Air goodup to 24 at 23:00",
+    "18EAQIAir goodup to 24 at 23:00",
   );
   expect(untilMidnight([{ time: "09:00", aqi: 1 }])).toHaveLength(1);
 });
