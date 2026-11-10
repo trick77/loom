@@ -1009,12 +1009,12 @@ export const en = {
     location: {
       fromMemories: "from your memories",
       title: "Location for weather and sun",
-      home: "From your memories: you live in {{name}}.",
+      home: "Known location from your memories: {{name}}.",
       current: "From your memories: you're in {{name}} right now.",
       change:
         "Somewhere else? Say so in chat, e.g. “I'm in Lisbon this week”. Loom remembers it and switches back afterwards.",
       openMemories: "Open memories",
-      ask: "Where do you live? Then I'll show the weather and sun times here.",
+      ask: "Which place should I show the weather and sun times for?",
       placeholder: "e.g. Munich",
       save: "Save",
       note: "Saved in your memories. You can change it any time in chat.",
