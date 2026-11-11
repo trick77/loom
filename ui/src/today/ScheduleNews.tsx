@@ -25,7 +25,8 @@ export function ScheduleNews({
     <section aria-labelledby={headingId} className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between gap-3">
         <h2
-          className="flex items-center gap-2 text-[13px] font-medium tracking-[0.02em] text-muted"
+          // pl-2.5: flush with the weather heading and the project picker.
+          className="flex items-center gap-2 pl-2.5 text-[13px] font-medium tracking-[0.02em] text-muted"
           id={headingId}
         >
           {t("today.news.title")}

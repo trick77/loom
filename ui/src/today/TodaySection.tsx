@@ -34,7 +34,8 @@ function WeatherBlock({
           chip stays, its popover open or a drop running. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2
-          className="weather-enter text-[13px] font-medium tracking-[0.02em] text-muted"
+          // pl-2.5: flush with the project picker's text above it (its px-2.5).
+          className="weather-enter pl-2.5 text-[13px] font-medium tracking-[0.02em] text-muted"
           id={headingId}
           key={`${today.date}/${today.day}`}
         >

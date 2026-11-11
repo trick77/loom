@@ -30,9 +30,30 @@ type Entry = { kind: "project"; project: Project } | { kind: "create" };
 // text trigger that turns into a removable chip once a project is picked, and a
 // 510px popover with search, a starred group, a 178px scrolling list and a
 // fixed "New project" row.
+// Text in loom's menu colour (ink-bright), not claude.ai's.
 const rowClass =
-  "flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-sm font-[435] leading-5 text-ink";
+  "flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-sm font-[435] leading-5 text-ink-bright";
 const separatorClass = "mx-2.5 my-1 h-px bg-ink/10";
+
+// The list's edge fade, as on claude.ai (measured 2026-11-11): each edge fades
+// over at most 28px, and only as far as the list can still scroll that way, so
+// the fade grows in with the first pixels of a scroll instead of popping in.
+// The eased mask is .scroll-fade-y in index.css; the list only sets its lengths.
+const FADE_MAX = 28;
+
+/** How far a scrolling list fades at each edge: as far as it can still scroll
+ * there, at most FADE_MAX. */
+export function edgeFade(list: {
+  scrollTop: number;
+  clientHeight: number;
+  scrollHeight: number;
+}) {
+  const below = list.scrollHeight - list.clientHeight - list.scrollTop;
+  return {
+    top: Math.min(FADE_MAX, Math.max(0, list.scrollTop)),
+    bottom: below < 1 ? 0 : Math.min(FADE_MAX, below),
+  };
+}
 
 export function StartProjectPicker({
   projects,
@@ -103,12 +124,14 @@ export function StartProjectPicker({
   // Registered after the popover's, so Escape closes the sort menu first.
   useEscapeKey(closeSort, { active: sortOpen });
 
-  // The list fades at the bottom only while more of it is below.
-  const [moreBelow, setMoreBelow] = useState(false);
+  // Written straight to the list's style: a scroll moves the fade on every
+  // event near an edge, and a render of the whole picker each time buys nothing.
   const measureList = useCallback(() => {
     const list = listRef.current;
     if (list === null) return;
-    setMoreBelow(list.scrollTop + list.clientHeight < list.scrollHeight - 1);
+    const { top, bottom } = edgeFade(list);
+    list.style.setProperty("--fade-top", `${top}px`);
+    list.style.setProperty("--fade-bottom", `${bottom}px`);
   }, []);
   useLayoutEffect(measureList, [measureList, open, query, sort, projects]);
 
@@ -172,7 +195,8 @@ export function StartProjectPicker({
       <div
         key={entry.kind === "create" ? "create" : entry.project.id}
         aria-selected={isActive}
-        className={`${rowClass} cursor-pointer ${isActive ? "bg-ink/15" : ""}`}
+        // scroll-my-7: the highlight scrolls its row in clear of the 28px fade.
+        className={`${rowClass} cursor-pointer scroll-my-7 ${isActive ? "bg-ink/15" : ""}`}
         id={optionID(index)}
         onClick={() => choose(entry)}
         onMouseMove={() => {
@@ -182,7 +206,7 @@ export function StartProjectPicker({
       >
         <span
           aria-hidden
-          className="grid h-5 w-5 shrink-0 place-items-center text-ink"
+          className="grid h-5 w-5 shrink-0 place-items-center text-ink-bright"
         >
           {/* loom's project glyph, as in the sidebar. */}
           <Icon
@@ -203,7 +227,7 @@ export function StartProjectPicker({
           aria-controls={open ? `${baseID}-dialog` : undefined}
           aria-expanded={open}
           aria-haspopup="dialog"
-          className={`flex h-7 items-center gap-1 rounded-lg px-2.5 text-sm font-[435] leading-5 text-ink transition-colors duration-200 hover:bg-ink/5 ${open ? "bg-ink/5" : ""}`}
+          className={`flex h-7 items-center gap-1 rounded-lg px-2.5 text-sm font-[435] leading-5 text-ink-bright transition-colors duration-200 hover:bg-ink/5 ${open ? "bg-ink/5" : ""}`}
           onClick={toggle}
           type="button"
         >
@@ -216,7 +240,7 @@ export function StartProjectPicker({
           aria-label={t("projects.startPicker.remove", {
             name: selectedProject.name,
           })}
-          className="flex h-7 max-w-full items-center gap-1 rounded-lg bg-ink/5 px-2.5 text-sm font-[435] leading-5 text-ink transition-colors duration-200 hover:bg-ink/10"
+          className="flex h-7 max-w-full items-center gap-1 rounded-lg bg-ink/5 px-2.5 text-sm font-[435] leading-5 text-ink-bright transition-colors duration-200 hover:bg-ink/10"
           // The chip turns back into the trigger in the same node; focus stays.
           onClick={() => onSelect(null)}
           type="button"
@@ -228,7 +252,7 @@ export function StartProjectPicker({
       {open && (
         <PlacedPopover
           aria-label={t("projects.startPicker.menuLabel")}
-          className="absolute left-0 z-30 flex w-[510px] max-w-[calc(100vw-2rem)] flex-col rounded-[14px] bg-popover text-sm text-ink shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04),0_18px_32px_rgba(0,0,0,0.38)]"
+          className="absolute left-0 z-30 flex w-[510px] max-w-[calc(100vw-2rem)] flex-col rounded-[14px] bg-popover text-sm text-ink-bright shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04),0_18px_32px_rgba(0,0,0,0.38)]"
           id={`${baseID}-dialog`}
         >
           <div className="px-1.5 pt-1.5">
@@ -243,7 +267,7 @@ export function StartProjectPicker({
                 aria-expanded
                 aria-label={t("projects.startPicker.search")}
                 autoFocus
-                className="h-7 min-w-0 flex-1 bg-transparent text-sm leading-5 text-ink outline-none placeholder:text-muted"
+                className="h-7 min-w-0 flex-1 bg-transparent text-sm leading-5 text-ink-bright outline-none placeholder:text-muted"
                 onChange={(event) => {
                   setQuery(event.target.value);
                   setActive(-1);
@@ -259,7 +283,7 @@ export function StartProjectPicker({
                   aria-expanded={sortOpen}
                   aria-haspopup="menu"
                   aria-label={t("projects.startPicker.sortLabel")}
-                  className={`grid h-7 w-7 place-items-center rounded-lg text-muted transition-colors hover:bg-ink/5 hover:text-ink ${sortOpen ? "bg-ink/5 text-ink" : ""}`}
+                  className={`grid h-7 w-7 place-items-center rounded-lg text-muted transition-colors hover:bg-ink/5 hover:text-ink-bright ${sortOpen ? "bg-ink/5 text-ink-bright" : ""}`}
                   onClick={() => setSortOpen((value) => !value)}
                   title={t("projects.startPicker.sortLabel")}
                   type="button"
@@ -314,16 +338,8 @@ export function StartProjectPicker({
           >
             <div
               ref={listRef}
-              className="max-h-[178px] overflow-y-auto px-1.5 pb-1.5"
+              className="scroll-fade-y max-h-[178px] overflow-y-auto px-1.5 pb-1.5"
               onScroll={measureList}
-              style={
-                moreBelow
-                  ? {
-                      maskImage:
-                        "linear-gradient(to bottom, #000 calc(100% - 32px), transparent)",
-                    }
-                  : undefined
-              }
             >
               {starred.length > 0 && (
                 <div
