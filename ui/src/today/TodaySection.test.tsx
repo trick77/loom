@@ -92,11 +92,9 @@ test("today shows the weather and sun tiles, nothing to fold", () => {
   const section = screen.getByRole("region", {
     name: "Today · Monday, November 9",
   });
-  expect(
-    within(section).getByRole("button", {
-      name: "Zürich · from your memories",
-    }),
-  ).toBeInTheDocument();
+  // The chip names the place, never where loom got it from.
+  const chip = within(section).getByRole("button", { name: "Zürich" });
+  expect(chip.textContent?.trim()).toBe("Zürich");
   // The place chip is the only disclosure: no line to expand.
   const toggles = within(section)
     .getAllByRole("button")
@@ -271,9 +269,7 @@ test.each([
 
 test("the place chip explains the memory; without locating, the chat changes it", () => {
   show();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Zürich · from your memories" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Zürich" }));
   const dialog = screen.getByRole("dialog", {
     name: "Location for weather and sun",
   });
@@ -294,9 +290,7 @@ test("a place from memory gives way to the current location, without chat", asyn
     attribution: { text: "© OpenStreetMap", url: "https://osm.example/" },
   });
   show({ canLocate: true });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Zürich · from your memories" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Zürich" }));
   const dialog = screen.getByRole("dialog");
   expect(dialog).toHaveTextContent(
     "Not right? Use your current location: it comes before your memories.",
@@ -329,9 +323,7 @@ test("a located place shows its credit and goes back to the memories", async () 
       url: "https://www.openstreetmap.org/copyright",
     },
   });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Baden · your location" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Baden" }));
   const dialog = screen.getByRole("dialog");
   expect(dialog).toHaveTextContent("Set from your current location: Baden.");
   expect(dialog).toHaveTextContent("It stays until you locate again");
@@ -360,9 +352,7 @@ test("a credit without a web address is shown as text", () => {
     location: { name: "Baden", kind: "located" },
     locationCredit: { text: "© OpenStreetMap", url: "" },
   });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Baden · your location" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Baden" }));
   expect(screen.getByText("© OpenStreetMap")).toBeInTheDocument();
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
 });
@@ -372,9 +362,7 @@ test("an expired session signs out, it is no map provider to retry", async () =>
   vi.mocked(api.locateHere).mockRejectedValueOnce(new AuthExpiredError());
   vi.mocked(api.dropLocated).mockRejectedValueOnce(new AuthExpiredError());
   const { unmount } = show({ canLocate: true });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Zürich · from your memories" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Zürich" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Use my current location" }),
   );
@@ -383,9 +371,7 @@ test("an expired session signs out, it is no map provider to retry", async () =>
   unmount();
 
   show({ location: { name: "Baden", kind: "located" } });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Baden · your location" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Baden" }));
   fireEvent.click(screen.getByRole("button", { name: "Back to memories" }));
   await waitFor(() =>
     expect(handlers.onSessionExpired).toHaveBeenCalledTimes(2),
@@ -407,7 +393,7 @@ test("a failure is gone when the popover opens again", async () => {
   stubGeolocation(1);
   show({ canLocate: true });
   const chip = screen.getByRole("button", {
-    name: "Zürich · from your memories",
+    name: "Zürich",
   });
   fireEvent.click(chip);
   fireEvent.click(
@@ -459,9 +445,7 @@ test("a second click while locating asks once", async () => {
 test("locating from the chip says why it failed", async () => {
   stubGeolocation(1);
   show({ canLocate: true });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Zürich · from your memories" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Zürich" }));
   const button = screen.getByRole("button", {
     name: "Use my current location",
   });

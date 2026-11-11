@@ -1048,8 +1048,6 @@ export const de = {
       wholeHours: "{{h}} h",
     },
     location: {
-      fromMemories: "aus Erinnerungen",
-      fromLocation: "dein Standort",
       title: "Standort für Wetter und Sonne",
       home: "Bekannter Standort aus deinen Erinnerungen: {{name}}.",
       current: "Aus deinen Erinnerungen: Du bist gerade in {{name}}.",

@@ -1025,8 +1025,6 @@ export const en = {
       wholeHours: "{{h}} h",
     },
     location: {
-      fromMemories: "from your memories",
-      fromLocation: "your location",
       title: "Location for weather and sun",
       home: "Known location from your memories: {{name}}.",
       current: "From your memories: you're in {{name}} right now.",
