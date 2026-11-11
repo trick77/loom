@@ -135,7 +135,7 @@ func TestModelCannotSetLoomArgs(t *testing.T) {
 
 // A scheduled run never gets the image tool: it researches unattended.
 func TestScheduledRunGetsNoImageTool(t *testing.T) {
-	run := &Run{e: &Engine{}, scheduled: &ScheduledRun{}}
+	run := &Run{e: &Engine{mcp: fakeMCPService{}}, scheduled: &ScheduledRun{}}
 	tools, _ := run.allowTools([]llm.Tool{
 		{Function: llm.ToolFunction{Name: imageToolName}},
 		{Function: llm.ToolFunction{Name: "fetch__fetch"}},

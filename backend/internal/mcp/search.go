@@ -18,5 +18,6 @@ func SearchServerConfig(baseURL, token string) ServerConfig {
 		URL:       strings.TrimRight(baseURL, "/") + "/mcp",
 		Headers:   map[string]string{"Authorization": "Bearer " + token},
 		BuiltIn:   true,
+		ReadOnly:  true,
 	}
 }

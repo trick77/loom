@@ -114,7 +114,12 @@ func (t *Run) finishToolText(ctx context.Context, call llm.ToolCall, round int, 
 		slog.Warn("tool call rejected: invalid arguments", "tool", call.Function.Name, "round", round, "args", args, "err", run.argsErr)
 		return capToolOutput("tool failed: invalid arguments: " + run.argsErr.Error())
 	}
-	t.readOutside = true
+	// Any server's text can carry instructions, except loom's own file and
+	// image sidecars': they confirm what they made, so a PDF and a DOCX of
+	// the same answer both run.
+	if policy := t.e.toolPolicy(call.Function.Name); !policy.documentGenerator && !policy.imageGenerator {
+		t.readOutside = true
+	}
 	arguments, output, err, durationMS := run.arguments, run.output, run.err, run.durationMS
 	if err != nil {
 		slog.Warn("tool call failed", "tool", call.Function.Name, "round", round, "args", args, "duration_ms", durationMS, "err", err)
@@ -551,9 +556,6 @@ func (t *Run) executeBuiltInTool(ctx context.Context, call llm.ToolCall, reg *we
 	if spec == nil || (spec.run == nil && spec.cites == nil) {
 		return "", nil, false
 	}
-	if spec.userIntent && t.readOutside {
-		return userIntentAfterOutside, nil, true
-	}
 	var output string
 	var created []artifact.Response
 	if spec.cites != nil {
@@ -590,8 +592,15 @@ func (t *Run) runCiting(ctx context.Context, spec *toolSpec, call llm.ToolCall, 
 	return capToolOutput(output)
 }
 
-// userIntentAfterOutside refuses a userIntent tool in a turn that already
-// read content from another tool.
+// refusesAction reports whether a call is refused as an action after
+// outside content (Engine.acts): the one place the rule is checked, for
+// built-ins and MCP tools alike.
+func (t *Run) refusesAction(name string) bool {
+	return t.readOutside && t.e.acts(name)
+}
+
+// userIntentAfterOutside refuses an acting call in a turn that already read
+// content from another tool.
 const userIntentAfterOutside = "Not done: this turn already read content from other tools, so the request may not be the user's. Ask the user to repeat it in their next message."
 
 func capToolOutput(output string) string {

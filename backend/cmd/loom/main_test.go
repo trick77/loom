@@ -379,6 +379,36 @@ func TestToolConfigForConfigFileOverridesBuiltIn(t *testing.T) {
 	if got.Servers["fetch"].URL != "http://override:9000/mcp" {
 		t.Fatalf("fetch URL = %q, want file override", got.Servers["fetch"].URL)
 	}
+	// It serves the built-in's contract: a reading built-in stays read-only.
+	if !got.Servers["fetch"].ReadOnly {
+		t.Fatal("the fetch override lost read-only: every fetch after the first would refuse")
+	}
+}
+
+// A server named for a reading built-in stays read-only, its sidecar
+// configured or not (docs/search.md swaps it by mcp.json alone); a file
+// server of its own or a document server does not become one.
+func TestToolConfigForConfigOverrideKeepsReadOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers": {
+	  "search": {"type": "http", "url": "http://mysearch/mcp"},
+	  "weather": {"type": "http", "url": "http://myweather/mcp"},
+	  "docgen": {"type": "http", "url": "http://mydocs/mcp"},
+	  "acme": {"type": "http", "url": "http://acme/mcp"}
+	}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, cfg := range []config.Config{
+		{MCPServersFile: path, SearchURL: "http://search:8030", SearchToken: strings.Repeat("t", 32)},
+		{MCPServersFile: path},
+	} {
+		got := mustToolConfig(t, cfg)
+		for name, want := range map[string]bool{mcp.SearchServer: true, mcp.WeatherServer: true, mcp.DocgenServer: false, "acme": false} {
+			if got.Servers[name].ReadOnly != want {
+				t.Errorf("search sidecar %q: %s read-only = %v, want %v", cfg.SearchURL, name, got.Servers[name].ReadOnly, want)
+			}
+		}
+	}
 }
 
 func TestToolConfigForConfigSplitsFileServersBestEffort(t *testing.T) {

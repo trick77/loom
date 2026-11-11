@@ -26,7 +26,7 @@ func TestScheduledRunKeepsOnlyPythonOfTheBuiltIns(t *testing.T) {
 		tools = append(tools, specs[i].tool)
 	}
 	tools = append(tools, llm.Tool{Function: llm.ToolFunction{Name: "fetch__fetch"}})
-	run := &Run{e: &Engine{}, scheduled: &ScheduledRun{}}
+	run := &Run{e: &Engine{mcp: fakeMCPService{}}, scheduled: &ScheduledRun{}}
 	kept, offered := run.allowTools(tools, builtIns)
 	if names := orderedToolNames(kept); len(names) != 2 || names[0] != sandboxToolName || names[1] != "fetch__fetch" {
 		t.Fatalf("scheduled tools = %v, want run_python and fetch", names)

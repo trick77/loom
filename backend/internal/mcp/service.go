@@ -66,8 +66,12 @@ const statusCacheTTL = 30 * time.Second
 
 type toolRoute struct {
 	client Client
+	server string
 	name   string
 	title  string
+	// readOnlyHint is the tool's own word that it only reads; ReadsOnly
+	// takes it from a trusted server only.
+	readOnlyHint bool
 }
 
 // registeredServer is one server's client and the tools it last listed. A nil
@@ -465,6 +469,25 @@ func (s *Service) ToolTitle(name string) string {
 	return s.routes[name].title
 }
 
+// ReadsOnly reports whether a tool only reads: its server is configured
+// ReadOnly, or the tool says readOnlyHint and its server is trusted
+// (TrustInstructions): an annotation is the server's own word, which a
+// third-party server could give its sending tool. Anything else, an unknown
+// name included, may act (fail closed).
+func (s *Service) ReadsOnly(name string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	route, ok := s.routes[name]
+	if !ok {
+		return false
+	}
+	cfg := s.cfg.Servers[route.server]
+	return cfg.ReadOnly || (route.readOnlyHint && cfg.TrustInstructions)
+}
+
 // MakesArtifacts reports whether a tool's server may turn its results into
 // artifacts (ServerConfig.Artifacts): such a call gets ArtifactCallTimeout.
 func (s *Service) MakesArtifacts(name string) bool {
@@ -543,7 +566,7 @@ func (s *Service) register(serverName string, client Client, tools []Tool, onDup
 			}
 			continue
 		}
-		s.routes[tool.Name] = toolRoute{client: client, name: tool.OriginalName, title: tool.Title}
+		s.routes[tool.Name] = toolRoute{client: client, server: serverName, name: tool.OriginalName, title: tool.Title, readOnlyHint: tool.ReadOnly}
 		s.tools = append(s.tools, llm.Tool{
 			Type: "function",
 			Function: llm.ToolFunction{

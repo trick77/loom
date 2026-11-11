@@ -45,6 +45,14 @@ type ToolService struct {
 	// server is relevant to, mirroring mcp.Service.ToolsFor. A tool absent here (or
 	// with an empty list) is category-neutral and always returned.
 	ToolCategories map[string][]string
+	// Acting marks exposed tool names that may act (mcp.Service.ReadsOnly
+	// false); every other tool only reads.
+	Acting map[string]bool
+}
+
+// ReadsOnly implements turn.ToolService: every tool not in Acting.
+func (f ToolService) ReadsOnly(name string) bool {
+	return !f.Acting[name]
 }
 
 // Tools implements turn.ToolService.

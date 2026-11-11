@@ -69,6 +69,12 @@ type ServerConfig struct {
 	// Off by default: a server that is not asked to make files cannot write
 	// into anyone's volume or make loom buffer a large reply.
 	Artifacts bool `json:"artifacts"`
+	// ReadOnly marks a server whose tools only read: none changes, creates
+	// or spends anything. Off by default, and then a tool counts as acting
+	// unless it says readOnlyHint on a TrustInstructions server: once outside
+	// content is in a turn, an acting tool refuses, since that content could
+	// be what asks for the call (prompt injection).
+	ReadOnly bool `json:"readOnly"`
 	// BuiltIn marks one of loom's own servers that is discovered best-effort
 	// (a sidecar loom must boot without): status labels it built-in, not
 	// file-defined.
@@ -140,6 +146,7 @@ func FetchServerConfig(pdf PDFExtractor) ServerConfig {
 		Transport:    TransportInProcess,
 		Tools:        []string{"fetch"},
 		PDFExtractor: pdf,
+		ReadOnly:     true,
 	}
 }
 
@@ -157,6 +164,7 @@ func TunewireLibraryServerConfig(baseURL, token string, users []string) ServerCo
 		PerUser:           true,
 		TrustInstructions: true,
 		BuiltIn:           true,
+		ReadOnly:          true,
 		Categories:        tunewireLibraryCategories(),
 	}
 }
@@ -179,6 +187,7 @@ func TunewireCatalogServerConfig(baseURL, token string) ServerConfig {
 		Headers:           map[string]string{"Authorization": "Bearer " + token},
 		TrustInstructions: true,
 		BuiltIn:           true,
+		ReadOnly:          true,
 		// Gated like the library: it was ungated ("a song can come up in any
 		// turn"), but in 90 production days all 164 calls came from music
 		// and recommendation turns, while its schema, instructions and the
@@ -205,5 +214,6 @@ func ObscuraServerConfig(url, token string) ServerConfig {
 		URL:       url,
 		Headers:   map[string]string{"Authorization": "Bearer " + token},
 		Tools:     []string{"browser_navigate", "browser_snapshot"},
+		ReadOnly:  true,
 	}
 }
