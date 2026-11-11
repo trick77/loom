@@ -154,6 +154,7 @@ export const en = {
       savingMemory: "Saving a memory",
       updatingMemory: "Updating a memory",
       forgettingMemory: "Forgetting a memory",
+      changingMemory: "Changing memory",
       activityComplete: "Activity complete",
       gen: {
         image: "image",

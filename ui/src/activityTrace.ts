@@ -260,7 +260,7 @@ export function summarizeToolCall(
   }
   const query = stringValue(args, ["query", "q", "search", "searchQuery"]);
   const url = stringValue(args, ["url", "uri", "href"]);
-  const memory = memoryToolLabel(name);
+  const memory = memoryToolLabel(name, stringValue(args, ["action"]));
   if (memory !== undefined) {
     return { kind: "generated", title: memory };
   }
@@ -550,13 +550,34 @@ function readableToolName(name: string): string {
   );
 }
 
-function memoryToolLabel(name: string): string | undefined {
+// The memory tools take their action as an argument; while it is still
+// streaming in, or is one the tool refuses, the call claims no action. The
+// one-per-action names are traces stored before the tools were merged.
+function memoryToolLabel(
+  name: string,
+  action: string | undefined,
+): string | undefined {
+  if (name === "user_directives" || name === "user_facts") {
+    switch (action?.trim().toLowerCase()) {
+      case "add":
+        return i18n.t("activityTrace.trace.savingMemory");
+      case "update":
+        return i18n.t("activityTrace.trace.updatingMemory");
+      case "remove":
+      case "forget":
+        return i18n.t("activityTrace.trace.forgettingMemory");
+    }
+    return i18n.t("activityTrace.trace.changingMemory");
+  }
   switch (name) {
     case "remember_user_directive":
+    case "remember_user_fact":
       return i18n.t("activityTrace.trace.savingMemory");
     case "update_user_directive":
+    case "update_user_fact":
       return i18n.t("activityTrace.trace.updatingMemory");
     case "forget_user_directive":
+    case "forget_user_fact":
       return i18n.t("activityTrace.trace.forgettingMemory");
   }
   return undefined;
@@ -577,9 +598,15 @@ const KNOWN_TOOL_SOURCES: Record<string, string> = {
   read_project_threads: "sources.projects",
   generate_image: "sources.imageGenerator",
   view_image: "sources.imageViewer",
+  user_directives: "sources.memory",
+  user_facts: "sources.memory",
+  // Traces stored before the memory tools were merged.
   remember_user_directive: "sources.memory",
   update_user_directive: "sources.memory",
   forget_user_directive: "sources.memory",
+  remember_user_fact: "sources.memory",
+  update_user_fact: "sources.memory",
+  forget_user_fact: "sources.memory",
 };
 
 // toolSourceLabel names the tool behind a trace step, so the user always sees

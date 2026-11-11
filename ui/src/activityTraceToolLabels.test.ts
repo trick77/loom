@@ -203,8 +203,31 @@ describe("tool call descriptions and labels", () => {
   });
 
   test("memory tools say what they do", () => {
+    expect(summarizeToolCall("user_directives", '{"action":"add"}').title).toBe(
+      "Saving a memory",
+    );
+    expect(
+      summarizeToolCall("user_facts", '{"action":"forget","ids":["f1"]}').title,
+    ).toBe("Forgetting a memory");
+    expect(
+      summarizeToolCall("user_directives", '{"action":"remove"}').title,
+    ).toBe("Forgetting a memory");
+    expect(summarizeToolCall("user_facts", '{"action":"update"}').title).toBe(
+      "Updating a memory",
+    );
+    // Still streaming, or an action the tool refuses: no action claimed.
+    expect(summarizeToolCall("user_facts", '{"act').title).toBe(
+      "Changing memory",
+    );
+    expect(
+      summarizeToolCall("user_directives", '{"action":"delete"}').title,
+    ).toBe("Changing memory");
+    // Traces stored before the tools were merged.
     expect(summarizeToolCall("remember_user_directive", "{}").title).toBe(
       "Saving a memory",
+    );
+    expect(summarizeToolCall("forget_user_fact", "{}").title).toBe(
+      "Forgetting a memory",
     );
   });
 
@@ -236,6 +259,9 @@ describe("tool call descriptions and labels", () => {
     expect(toolSourceLabel("generate_image")).toBe("Image generator");
     expect(toolSourceLabel("imagegen__generate")).toBe("Image generator");
     expect(toolSourceLabel("forget_user_directive")).toBe("Memory");
+    expect(toolSourceLabel("user_directives")).toBe("Memory");
+    expect(toolSourceLabel("user_facts")).toBe("Memory");
+    expect(toolSourceLabel("update_user_fact")).toBe("Memory");
     expect(toolSourceLabel("view_image")).toBe("Image viewer");
     expect(toolSourceLabel("something_new")).toBe("loom");
   });

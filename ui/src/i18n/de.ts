@@ -157,6 +157,7 @@ export const de = {
       savingMemory: "Erinnerung wird gespeichert",
       updatingMemory: "Erinnerung wird aktualisiert",
       forgettingMemory: "Erinnerung wird gelöscht",
+      changingMemory: "Erinnerungen werden geändert",
       activityComplete: "Aktivität abgeschlossen",
       gen: {
         image: "Bild",
