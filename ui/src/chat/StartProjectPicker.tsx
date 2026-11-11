@@ -34,6 +34,10 @@ type Entry = { kind: "project"; project: Project } | { kind: "create" };
 const rowClass =
   "flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-sm font-[435] leading-5 text-ink-bright";
 const separatorClass = "mx-2.5 my-1 h-px bg-ink/10";
+// Trigger and chip read like a sidebar entry (ink-dim, weight 400), not like
+// the menus (ink-bright): the popover keeps the menu ink.
+const labelClass =
+  "flex h-7 items-center gap-1 rounded-lg px-2.5 text-sm font-normal leading-5 text-ink-dim transition-colors duration-200";
 
 // The list's edge fade, as on claude.ai (measured 2026-11-11): each edge fades
 // over at most 28px, and only as far as the list can still scroll that way, so
@@ -227,7 +231,7 @@ export function StartProjectPicker({
           aria-controls={open ? `${baseID}-dialog` : undefined}
           aria-expanded={open}
           aria-haspopup="dialog"
-          className={`flex h-7 items-center gap-1 rounded-lg px-2.5 text-sm font-[435] leading-5 text-ink-bright transition-colors duration-200 hover:bg-ink/5 ${open ? "bg-ink/5" : ""}`}
+          className={`${labelClass} hover:bg-ink/5 ${open ? "bg-ink/5" : ""}`}
           onClick={toggle}
           type="button"
         >
@@ -240,7 +244,7 @@ export function StartProjectPicker({
           aria-label={t("projects.startPicker.remove", {
             name: selectedProject.name,
           })}
-          className="flex h-7 max-w-full items-center gap-1 rounded-lg bg-ink/5 px-2.5 text-sm font-[435] leading-5 text-ink-bright transition-colors duration-200 hover:bg-ink/10"
+          className={`${labelClass} max-w-full bg-ink/5 hover:bg-ink/10`}
           // The chip turns back into the trigger in the same node; focus stays.
           onClick={() => onSelect(null)}
           type="button"

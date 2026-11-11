@@ -100,19 +100,8 @@ export function LocationChip({
         type="button"
       >
         <PinIcon />
+        {/* The place only: where loom got it from is the popover's to say. */}
         {location.name}
-        {/* The space is for the accessible name; flex drops it on screen. */}
-        {!compact && " "}
-        {!compact && (
-          <span className="text-muted">
-            ·{" "}
-            {t(
-              located
-                ? "today.location.fromLocation"
-                : "today.location.fromMemories",
-            )}
-          </span>
-        )}
       </button>
       {open && (
         <div

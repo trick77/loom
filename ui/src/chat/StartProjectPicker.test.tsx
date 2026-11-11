@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
@@ -225,6 +231,20 @@ describe("StartProjectPicker", () => {
     expect(within(chip).getByText("Malaga City Trip")).toBeInTheDocument();
     fireEvent.click(chip);
     expect(props.onSelect).toHaveBeenCalledWith(null);
+  });
+
+  test("trigger and chip read in the sidebar's ink, not the menus'", () => {
+    renderPicker();
+    const trigger = screen.getByRole("button", { name: "Project" });
+    expect(trigger).toHaveClass("text-ink-dim", "font-normal");
+    expect(trigger).not.toHaveClass("text-ink-bright");
+    cleanup();
+    renderPicker({ selectedProject: projects[0] });
+    const chip = screen.getByRole("button", {
+      name: "Remove Malaga City Trip",
+    });
+    expect(chip).toHaveClass("text-ink-dim", "font-normal");
+    expect(chip).not.toHaveClass("text-ink-bright");
   });
 
   test("removing the chip hands focus to the trigger that replaces it", () => {
