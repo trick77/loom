@@ -224,6 +224,36 @@ body {
   vertical-align: -0.125em;
 }
 
+/* A scrolling list fading out at both edges, as on claude.ai (measured
+   2026-11-11): the list sets --fade-top / --fade-bottom to how far it can still
+   scroll that way (at most 28px); 0px is a hard edge. Eased, not linear. The
+   -webkit- copy is for engines without the unprefixed mask (ShareDialog too). */
+.scroll-fade-y {
+  --fade-top: 0px;
+  --fade-bottom: 0px;
+  --scroll-fade: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0),
+    rgba(0, 0, 0, 0.05) calc(var(--fade-top) * 0.15),
+    rgba(0, 0, 0, 0.15) calc(var(--fade-top) * 0.3),
+    rgba(0, 0, 0, 0.3) calc(var(--fade-top) * 0.45),
+    rgba(0, 0, 0, 0.5) calc(var(--fade-top) * 0.6),
+    rgba(0, 0, 0, 0.7) calc(var(--fade-top) * 0.75),
+    rgba(0, 0, 0, 0.85) calc(var(--fade-top) * 0.87),
+    #000 var(--fade-top),
+    #000 calc(100% - var(--fade-bottom)),
+    rgba(0, 0, 0, 0.85) calc(100% - var(--fade-bottom) * 0.87),
+    rgba(0, 0, 0, 0.7) calc(100% - var(--fade-bottom) * 0.75),
+    rgba(0, 0, 0, 0.5) calc(100% - var(--fade-bottom) * 0.6),
+    rgba(0, 0, 0, 0.3) calc(100% - var(--fade-bottom) * 0.45),
+    rgba(0, 0, 0, 0.15) calc(100% - var(--fade-bottom) * 0.3),
+    rgba(0, 0, 0, 0.05) calc(100% - var(--fade-bottom) * 0.15),
+    rgba(0, 0, 0, 0)
+  );
+  -webkit-mask-image: var(--scroll-fade);
+  mask-image: var(--scroll-fade);
+}
+
 /* Prompt-starter suggestions panel: gentle fade/slide when it opens. */
 @keyframes prompt-panel-in {
   from {

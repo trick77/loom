@@ -4,7 +4,7 @@ import { useState } from "react";
 import { describe, expect, test, vi } from "vitest";
 
 import type { Project } from "../api";
-import { StartProjectPicker } from "./StartProjectPicker";
+import { edgeFade, StartProjectPicker } from "./StartProjectPicker";
 
 function project(overrides: Partial<Project>): Project {
   return {
@@ -306,5 +306,60 @@ describe("StartProjectPicker", () => {
     open();
     expect(screen.queryByText("No matching projects")).not.toBeInTheDocument();
     expect(optionNames()).toEqual(["New project"]);
+  });
+});
+
+describe("list edge fade", () => {
+  test("the list hands its fade lengths to the scroll-fade mask", () => {
+    renderPicker();
+    open();
+    const list = screen.getByRole("listbox").firstElementChild as HTMLElement;
+    expect(list).toHaveClass("scroll-fade-y");
+    const metrics = { scrollTop: 0, clientHeight: 178, scrollHeight: 209 };
+    for (const key of Object.keys(metrics) as (keyof typeof metrics)[]) {
+      Object.defineProperty(list, key, {
+        configurable: true,
+        get: () => metrics[key],
+      });
+    }
+    const fade = () => [
+      list.style.getPropertyValue("--fade-top"),
+      list.style.getPropertyValue("--fade-bottom"),
+    ];
+    fireEvent.scroll(list);
+    expect(fade()).toEqual(["0px", "28px"]);
+    metrics.scrollTop = 15;
+    fireEvent.scroll(list);
+    expect(fade()).toEqual(["15px", "16px"]);
+    metrics.scrollTop = 31;
+    fireEvent.scroll(list);
+    expect(fade()).toEqual(["28px", "0px"]);
+  });
+
+  test("options keep clear of the fade when the highlight scrolls them in", () => {
+    renderPicker();
+    open();
+    for (const option of screen.getAllByRole("option")) {
+      expect(option).toHaveClass("scroll-my-7");
+    }
+  });
+});
+
+describe("edgeFade", () => {
+  const list = (scrollTop: number, scrollHeight = 209) => ({
+    scrollTop,
+    clientHeight: 178,
+    scrollHeight,
+  });
+
+  test("fades toward the edges the list can still scroll to, 28px at most", () => {
+    expect(edgeFade(list(0))).toEqual({ top: 0, bottom: 28 });
+    expect(edgeFade(list(15))).toEqual({ top: 15, bottom: 16 });
+    expect(edgeFade(list(31))).toEqual({ top: 28, bottom: 0 });
+  });
+
+  test("a list that fits, or is within a pixel of its end, fades nowhere", () => {
+    expect(edgeFade(list(0, 178))).toEqual({ top: 0, bottom: 0 });
+    expect(edgeFade(list(30.5))).toEqual({ top: 28, bottom: 0 });
   });
 });
