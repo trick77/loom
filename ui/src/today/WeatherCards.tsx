@@ -1,5 +1,5 @@
 import type { TFunction } from "i18next";
-import { type ReactNode, useId } from "react";
+import { type CSSProperties, type ReactNode, useId } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
@@ -11,6 +11,7 @@ import type {
   TodayRain,
 } from "../api/today";
 import { degrees } from "./format";
+import { stagger, swingFrom, useReveal } from "./useFirstSight";
 import { conditionFor, conditionLabelKey } from "./weatherCodes";
 import { MetricIcon, WeatherIcon } from "./WeatherIcon";
 
@@ -105,8 +106,11 @@ function Lead({
 }
 
 // WindDial is a compass ring with north marked and an arrow to where the
-// wind blows; without a direction only the ring.
+// wind blows; without a direction only the ring. On first sight the arrow
+// swings in from north.
 function WindDial({ from }: { from: number | null }) {
+  const turn =
+    from === null ? 0 : Math.round((((from + 180) % 360) + 360) % 360);
   // The line beside it says the direction: decoration.
   return (
     <svg
@@ -133,17 +137,21 @@ function WindDial({ from }: { from: number | null }) {
       {from === null ? (
         <circle className="fill-ink-soft" cx="20" cy="20" r="2.5" />
       ) : (
-        <g
-          data-testid="wind-arrow"
-          transform={`rotate(${Math.round((((from + 180) % 360) + 360) % 360)} 20 20)`}
-        >
-          <path
-            className="stroke-ink-soft"
-            d="M20 30V10M14.5 15.5 20 10l5.5 5.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-          />
+        <g data-testid="wind-arrow" transform={`rotate(${turn} 20 20)`}>
+          <g
+            className="reveal reveal-arrow"
+            style={
+              { "--reveal-from": `${swingFrom(turn)}deg` } as CSSProperties
+            }
+          >
+            <path
+              className="stroke-ink-soft"
+              d="M20 30V10M14.5 15.5 20 10l5.5 5.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+            />
+          </g>
         </g>
       )}
     </svg>
@@ -169,6 +177,7 @@ export function DetailsCard({
   tomorrow: boolean;
 }) {
   const { t, i18n } = useTranslation();
+  const reveal = useReveal<HTMLDivElement>();
   const lang = i18n.language;
   const icon = (
     kind: Parameters<typeof MetricIcon>[0]["kind"],
@@ -271,7 +280,7 @@ export function DetailsCard({
       icon: icon("sun", "text-sun"),
     });
   return (
-    <div className="flex h-full flex-col justify-between gap-4">
+    <div className="flex h-full flex-col justify-between gap-4" {...reveal}>
       {lead}
       {items.length > 0 && (
         <dl
@@ -316,6 +325,14 @@ const RAIN_DRY_CHANCE = 20;
 // rain a dry card names (the warnings' threshold).
 const NEXT_RAIN_CHANCE = 50;
 
+// On first sight bars grow from the base line one after the other, left to
+// right like the time they stand for: an hour RAIN_HOUR_STEP_MS after the
+// one before, a day DAY_STEP_MS. A day's chance fades in LABEL_AFTER_MS
+// after its bar starts.
+const RAIN_HOUR_STEP_MS = 14;
+const DAY_STEP_MS = 45;
+const LABEL_AFTER_MS = 260;
+
 // weekday is a "YYYY-MM-DD" as a short weekday, built as a local date.
 function weekday(date: string, language: string): string {
   const [y, m, d] = date.split("-").map(Number);
@@ -340,6 +357,7 @@ export function RainCard({
   outlook: TodayOutlookDay[] | null;
 }) {
   const { t, i18n } = useTranslation();
+  const reveal = useReveal<HTMLDivElement>();
   const lang = i18n.language;
   const amounts = rain.map((hour) => hour.precipitation ?? 0);
   const total = amounts.reduce((sum, mm) => sum + mm, 0);
@@ -404,21 +422,21 @@ export function RainCard({
   // A dry card has no hours worth bars: the days ahead and their chances.
   if (!wet && outlook !== null) {
     return (
-      <div className="flex h-full flex-col gap-3">
+      <div className="flex h-full flex-col gap-3" {...reveal}>
         {lead}
         <RainDays days={outlook} />
       </div>
     );
   }
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full flex-col gap-3" {...reveal}>
       {lead}
       <div className="flex flex-1 flex-col">
         <ul
           aria-label={t("today.rain.hours")}
           className="flex min-h-10 flex-1 items-end gap-[2px] border-b border-track"
         >
-          {rain.map((hour) => {
+          {rain.map((hour, i) => {
             const chance = hour.probability ?? (byAmount ? 100 : 0);
             const height = byAmount
               ? ((hour.precipitation ?? 0) / scale) * 100
@@ -447,10 +465,11 @@ export function RainCard({
               >
                 {drawn && (
                   <span
-                    className="w-full rounded-t-[2px] bg-rain"
+                    className="reveal reveal-bar w-full rounded-t-[2px] bg-rain"
                     style={{
                       height: `${Math.max(8, Math.min(100, height))}%`,
                       opacity: 0.35 + 0.65 * Math.min(1, chance / 100),
+                      ...stagger(i, RAIN_HOUR_STEP_MS),
                     }}
                   />
                 )}
@@ -486,7 +505,7 @@ function RainDays({ days }: { days: TodayOutlookDay[] }) {
         className="grid min-h-12 flex-1 gap-1.5 border-b border-track"
         style={columns}
       >
-        {days.map((day) => {
+        {days.map((day, i) => {
           const chance = day.precipitationProbability;
           const label = `${weekday(day.date, i18n.language)} · ${
             chance === null
@@ -500,7 +519,10 @@ function RainDays({ days }: { days: TodayOutlookDay[] }) {
               key={day.date}
               title={label}
             >
-              <span className="text-[11px] text-rain">
+              <span
+                className="reveal reveal-label text-[11px] text-rain"
+                style={stagger(i, DAY_STEP_MS, LABEL_AFTER_MS)}
+              >
                 {chance !== null && chance >= 10
                   ? t("today.percent", { percent: Math.round(chance) })
                   : ""}
@@ -508,10 +530,11 @@ function RainDays({ days }: { days: TodayOutlookDay[] }) {
               <span className="flex w-full max-w-5 flex-1 items-end">
                 {chance !== null && chance > 0 && (
                   <span
-                    className="w-full rounded-t-[2px] bg-rain"
+                    className="reveal reveal-bar w-full rounded-t-[2px] bg-rain"
                     style={{
                       height: `${Math.max(6, Math.min(100, chance))}%`,
                       opacity: 0.35 + 0.65 * Math.min(1, chance / 100),
+                      ...stagger(i, DAY_STEP_MS),
                     }}
                   />
                 )}
@@ -553,6 +576,7 @@ export function tempColor(celsius: number): string {
 // bar on a scale shared by all the days, cold to warm.
 export function OutlookCard({ days }: { days: TodayOutlookDay[] }) {
   const { t, i18n } = useTranslation();
+  const reveal = useReveal<HTMLUListElement>();
   const lowest = Math.min(...days.map((day) => day.low));
   const highest = Math.max(...days.map((day) => day.high));
   const span = Math.max(1, highest - lowest);
@@ -561,8 +585,9 @@ export function OutlookCard({ days }: { days: TodayOutlookDay[] }) {
       aria-label={t("today.cards.outlook")}
       className="grid h-full gap-0.5 text-center"
       style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}
+      {...reveal}
     >
-      {days.map((day) => {
+      {days.map((day, i) => {
         const condition = conditionFor(day.code);
         const rain = day.precipitationProbability;
         return (
@@ -590,13 +615,15 @@ export function OutlookCard({ days }: { days: TodayOutlookDay[] }) {
               aria-hidden="true"
               className="relative min-h-7 w-1.5 flex-1 rounded-full bg-track"
             >
+              {/* On first sight each range opens from its middle. */}
               <span
-                className="absolute inset-x-0 rounded-full"
+                className="reveal reveal-range absolute inset-x-0 rounded-full"
                 data-testid="day-range-bar"
                 style={{
                   top: `${((highest - day.high) / span) * 100}%`,
                   bottom: `${((day.low - lowest) / span) * 100}%`,
                   background: `linear-gradient(to top, ${tempColor(day.low)}, ${tempColor(day.high)})`,
+                  ...stagger(i, DAY_STEP_MS),
                 }}
               />
             </span>
@@ -729,7 +756,8 @@ function AirCurve({
     <div className="flex flex-col gap-1">
       <svg
         aria-label={t("today.air.curve")}
-        className="block w-full"
+        // On first sight the curve draws itself left to right.
+        className="reveal reveal-wipe block w-full"
         height={CURVE_H}
         preserveAspectRatio="none"
         role="img"
@@ -804,10 +832,11 @@ function AirCurve({
 }
 
 // AqiRing is the index as a ring filled to its share of 100, in its band's
-// color, with a leaf inside.
+// color, with a leaf inside; on first sight it fills up.
 function AqiRing({ aqi, level }: { aqi: number | null; level: AirLevel | "" }) {
   const circumference = 2 * Math.PI * 16;
   const share = aqi === null ? 0 : Math.min(1, aqi / 100);
+  const filled = (share * circumference).toFixed(1);
   const color = level === "" ? "text-ink-dim" : AIR_TEXT[level];
   return (
     <svg
@@ -827,11 +856,13 @@ function AqiRing({ aqi, level }: { aqi: number | null; level: AirLevel | "" }) {
       />
       {share > 0 && (
         <circle
+          className="reveal reveal-ring"
           cx="20"
           cy="20"
           r="16"
           stroke="currentColor"
-          strokeDasharray={`${(share * circumference).toFixed(1)} ${circumference.toFixed(1)}`}
+          strokeDasharray={`${filled} ${circumference.toFixed(1)}`}
+          style={{ "--reveal-length": `${filled}px` } as CSSProperties}
           strokeLinecap="round"
           strokeWidth="3.5"
           transform="rotate(-90 20 20)"
@@ -853,6 +884,7 @@ function AqiRing({ aqi, level }: { aqi: number | null; level: AirLevel | "" }) {
 // highest.
 export function AirCard({ air }: { air: TodayAir }) {
   const { t } = useTranslation();
+  const reveal = useReveal<HTMLDivElement>();
   const curve = airCurve(air.hours, CURVE_W, CURVE_H);
   const drawn = curve.runs.some((run) => run.length > 1);
   const curveLevel: AirLevel =
@@ -884,7 +916,7 @@ export function AirCard({ air }: { air: TodayAir }) {
           level: t(`today.air.levels.${air.level}`),
         });
   return (
-    <div className="flex h-full flex-col justify-between gap-2.5">
+    <div className="flex h-full flex-col justify-between gap-2.5" {...reveal}>
       {air.aqi !== null && (
         <Lead
           detail={detail}

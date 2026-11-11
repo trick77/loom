@@ -4,6 +4,7 @@ import type { Today, TodayWeather } from "../api/today";
 import { Carousel, type Slide } from "./Carousel";
 import { degrees } from "./format";
 import { SunCard } from "./SunCard";
+import { stagger, TileEntry, useReveal } from "./useFirstSight";
 import { type Tile, useTileClock } from "./useTileClock";
 import { AirCard, DetailsCard, OutlookCard, RainCard } from "./WeatherCards";
 import {
@@ -15,7 +16,18 @@ import {
 } from "./weatherCodes";
 import { WarningIcon, WeatherIcon } from "./WeatherIcon";
 
-const TILE = "rounded-2xl border border-border bg-card p-[18px] text-ink";
+const TILE =
+  "weather-enter rounded-2xl border border-border bg-card p-[18px] text-ink";
+
+// The tiles enter one after the other, ENTRY_STEP_MS behind the heading and
+// each other; a tile stands ENTRY_SETTLE_MS after it starts (the spring
+// reaches its place at half its 285 ms). Its first card plays from then.
+const ENTRY_STEP_MS = 80;
+const ENTRY_SETTLE_MS = 150;
+
+// NOW_HOUR_STEP_MS is how far each hour of the first card enters after the
+// one before.
+const NOW_HOUR_STEP_MS = 40;
 
 type WeatherTileProps = {
   weather: TodayWeather;
@@ -81,23 +93,28 @@ function TilePair({ weather, today }: WeatherTileProps) {
     });
 
   const clock = useTileClock([course.length, conditions.length]);
-  const tile = (n: Tile, label: string, slides: Slide[]) => (
-    <div className={TILE}>
-      <Carousel
-        clock={{
-          auto: clock.auto,
-          running: clock.running,
-          due: clock.due === n,
-          epoch: clock.epoch,
-        }}
-        index={clock.index[n]}
-        label={label}
-        onHold={n === 0 ? clock.holdLeft : clock.holdRight}
-        onTurn={(to) => clock.turn(n, to)}
-        slides={slides}
-      />
-    </div>
-  );
+  const tile = (n: Tile, label: string, slides: Slide[]) => {
+    const delay = (n + 1) * ENTRY_STEP_MS;
+    return (
+      <div className={TILE} style={{ animationDelay: `${delay}ms` }}>
+        <TileEntry settle={delay + ENTRY_SETTLE_MS}>
+          <Carousel
+            clock={{
+              auto: clock.auto,
+              running: clock.running,
+              due: clock.due === n,
+              epoch: clock.epoch,
+            }}
+            index={clock.index[n]}
+            label={label}
+            onHold={n === 0 ? clock.holdLeft : clock.holdRight}
+            onTurn={(to) => clock.turn(n, to)}
+            slides={slides}
+          />
+        </TileEntry>
+      </div>
+    );
+  };
   return (
     <>
       {tile(0, t("today.cards.weather"), course)}
@@ -112,6 +129,7 @@ function TilePair({ weather, today }: WeatherTileProps) {
 // accent color.
 function NowCard({ weather, today }: WeatherTileProps) {
   const { t } = useTranslation();
+  const reveal = useReveal<HTMLDivElement>();
   const { sun, warning } = today;
   const now = today.day === "today" ? weather.now : null;
   const condition = conditionFor(now?.code ?? weather.day.code);
@@ -130,7 +148,7 @@ function NowCard({ weather, today }: WeatherTileProps) {
           low: degrees(weather.day.low),
         }) + (rainText === null ? "" : ` · ${rainText}`);
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" {...reveal}>
       <div className="flex items-center gap-3.5">
         <WeatherIcon
           condition={condition}
@@ -180,13 +198,14 @@ function NowCard({ weather, today }: WeatherTileProps) {
           aria-label={t("today.hours")}
           className="grid grid-cols-5 gap-1 text-center text-[13px]"
         >
-          {weather.hours.slice(0, 5).map((hour) => {
+          {weather.hours.slice(0, 5).map((hour, i) => {
             const hourCondition = conditionFor(hour.code);
             const hourNight = isNightAt(hour.time, sun);
             return (
               <li
                 key={hour.time}
-                className="flex flex-col items-center gap-1"
+                className="reveal reveal-hour flex flex-col items-center gap-1"
+                style={stagger(i, NOW_HOUR_STEP_MS)}
                 title={t(conditionLabelKey(hourCondition, hourNight))}
               >
                 <span className="text-muted">{hour.time}</span>
