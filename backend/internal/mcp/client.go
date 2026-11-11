@@ -74,6 +74,8 @@ type Tool struct {
 	Description string
 	InputSchema map[string]any
 	ServerName  string
+	// ReadOnly is the tool's own readOnlyHint annotation.
+	ReadOnly bool
 }
 
 // Client is the common interface for MCP tool-serving clients.
@@ -122,6 +124,8 @@ type toolResult struct {
 	InputSchema map[string]any `json:"inputSchema"`
 	Annotations struct {
 		Title string `json:"title"`
+		// ReadOnlyHint is the server's word that the tool changes nothing.
+		ReadOnlyHint bool `json:"readOnlyHint"`
 	} `json:"annotations"`
 }
 
@@ -561,6 +565,7 @@ func exposeTools(serverName string, cfg ServerConfig, tools []toolResult) []Tool
 			Description:  tool.Description,
 			InputSchema:  tool.InputSchema,
 			ServerName:   serverName,
+			ReadOnly:     tool.Annotations.ReadOnlyHint,
 		})
 	}
 	return out

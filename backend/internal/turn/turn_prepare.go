@@ -64,9 +64,10 @@ type Run struct {
 	// A job on the model's own data, or one refused before it started, sets
 	// nothing: it prints nothing the run's tools did not already show.
 	lastStepRan bool
-	// readOutside is set once any tool but the schedule tools returned
-	// content into the turn: from then on its text may carry instructions
-	// the user never gave.
+	// readOutside is set once any tool but an acting built-in (schedules,
+	// memory) returned content into the turn: from then on its text may
+	// carry instructions the user never gave, and no acting call runs
+	// (Engine.acts).
 	readOutside bool
 	// toolFiles are the files MCP tools handed to run_python this turn, by
 	// name (keepToolFiles); dropped with the turn. A turn is one user's, so
@@ -299,9 +300,10 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			knowledgeSources = append(append([]Citation(nil), attachmentSources...), knowledgeSources...)
 		},
 	)
-	// Attached and knowledge documents are text the user did not write in
-	// this message: they count as outside content from the first round.
-	t.readOutside = documentContext != "" || knowledgeContext != ""
+	// Attached and knowledge documents are not outside content: only the
+	// user uploads them (documents.Upload), and counting them locked every
+	// action in a thread or project with documents for good, since every
+	// turn there retrieves excerpts. Only tool results set readOutside.
 	imageArtifactRequired := imageRoute.generate
 	if imageArtifactRequired {
 		// The image path forces its own tools; the drift guess adds nothing.

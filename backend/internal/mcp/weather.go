@@ -32,5 +32,6 @@ func WeatherServerConfig(baseURL, token string) ServerConfig {
 		Headers:    map[string]string{"Authorization": "Bearer " + token},
 		Categories: []string{string(classifier.Weather)},
 		BuiltIn:    true,
+		ReadOnly:   true,
 	}
 }

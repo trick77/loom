@@ -65,6 +65,9 @@ func TestScheduleToolsNeedTheUsersOwnRequest(t *testing.T) {
 		offered[scheduleToolSpecs[i].name] = &scheduleToolSpecs[i]
 	}
 	call := func(r *Run, name string) string {
+		if r.refusesAction(name) {
+			return userIntentAfterOutside
+		}
 		out, _, handled := r.executeBuiltInTool(ctx, llm.ToolCall{Function: llm.ToolCallFunction{Name: name, Arguments: `{"id":"s1"}`}}, nil)
 		if !handled {
 			t.Fatalf("%s not handled", name)

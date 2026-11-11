@@ -157,7 +157,7 @@ func TestTurnRefusesDocumentToolNotOffered(t *testing.T) {
 
 // A scheduled run never gets a document tool: it researches unattended.
 func TestScheduledRunGetsNoDocumentTool(t *testing.T) {
-	run := &Run{e: &Engine{}, scheduled: &ScheduledRun{}}
+	run := &Run{e: &Engine{mcp: fakeMCPService{}}, scheduled: &ScheduledRun{}}
 	tools, _ := run.allowTools([]llm.Tool{
 		turntest.DocgenToolDef("create_pdf_file"),
 		{Function: llm.ToolFunction{Name: "fetch__fetch"}},

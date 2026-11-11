@@ -27,7 +27,8 @@ func userFactsTool() llm.Tool {
 			Description: "Change saved facts ABOUT the user (who they are, work, home, family, tastes; listed with ids in the personal context), only when they explicitly ask: facts they merely mention are picked up automatically. " +
 				"add: \"remember that I …\"; if the fact is already saved, use update instead (add always saves a new one). update: it changed or is wrong. " +
 				"remove (\"forget …\"): the ids of EVERY fact the request covers, in one call; works on long-term facts too, and does not delete the chat threads they came from; tell the user what was forgotten. " +
-				"Not for how you should respond (length, tone, format, language, how to address them): that is a standing instruction, use " + UserDirectivesToolName + ".",
+				"Not for how you should respond (length, tone, format, language, how to address them): that is a standing instruction, use " + UserDirectivesToolName + ". " +
+				memoryFirst,
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{

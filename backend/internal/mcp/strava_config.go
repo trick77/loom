@@ -20,6 +20,7 @@ func StravaServerConfig(baseURL, token string, users []string) ServerConfig {
 		PerUser:           true,
 		TrustInstructions: true,
 		BuiltIn:           true,
+		ReadOnly:          true,
 		Categories:        []string{string(classifier.Training), string(classifier.Health)},
 	}
 }

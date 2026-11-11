@@ -5,6 +5,7 @@
   "_comment_trust": "Optional 'trustInstructions': true puts the server's own instructions (server/discover or initialize) into the system prompt whenever its tools are offered. Leave it off for third-party servers.",
   "_comment_sources": "A tool result whose structuredContent is {\"sources\":[{\"url\",\"title\",\"label\",\"snippet\",\"image\"}]} feeds loom's sources sidebar and [n] citations. List results unnumbered, in sources order: loom prepends 'Source [n]: title — url' lines, the only numbering the model should see.",
   "_comment_artifacts": "Optional 'artifacts': true lets the server's image results (MCP image content: png, jpeg, webp or gif, at most 4 per call and 25 MiB for all of them together; anything else is refused and the model is told) become artifacts in the caller's thread, and its replies grow to fit one. structuredContent {\"images\":[{\"filename\",\"model\",\"provider\",\"width\",\"height\",\"duration_ms\"}]} describes them by position. Off by default: a server without it cannot write files into anyone's volume.",
+  "_comment_readOnly": "Optional 'readOnly': true says every tool of the server only reads: none changes, creates or spends anything. A tool counts as acting unless its server says readOnly or the tool itself says readOnlyHint on a trustInstructions server, and once a turn has read outside content (a page, any tool's result) an acting tool refuses: that content could be what asks for the call (prompt injection). A scheduled run never gets an acting tool. Set it only for a server whose every tool reads.",
   "mcpServers": {
     "peeq": {
       "type": "http",
@@ -13,7 +14,8 @@
         "Authorization": "Bearer ${PEEQ_MCP_TOKEN}"
       },
       "users": "${BACKEND_PEEQ_USERS}",
-      "trustInstructions": true
+      "trustInstructions": true,
+      "readOnly": true
     },
     "ipverse": {
       "type": "http",
@@ -21,7 +23,8 @@
       "headers": {
         "Authorization": "Bearer ${IPVERSE_API_KEY}"
       },
-      "categories": ["coding", "knowledge_discovery"]
+      "categories": ["coding", "knowledge_discovery"],
+      "readOnly": true
     },
     "context7": {
       "type": "http",
@@ -29,7 +32,8 @@
       "headers": {
         "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
       },
-      "categories": ["coding", "how_to"]
+      "categories": ["coding", "how_to"],
+      "readOnly": true
     }
   }
 }

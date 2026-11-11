@@ -122,6 +122,9 @@ type ToolService interface {
 	// ToolTitle is a tool's human-readable name from its server, empty when it
 	// gave none.
 	ToolTitle(name string) string
+	// ReadsOnly reports whether a tool only reads (its server is configured
+	// read-only, or the tool says readOnlyHint); any other tool may act.
+	ReadsOnly(name string) bool
 }
 
 // DocumentService is the RAG document store a turn reads its knowledge from:

@@ -557,6 +557,15 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 			slog.Warn("MCP servers file overrides built-in server", "server", name)
 			delete(required.Servers, name)
 		}
+		// A server named for a reading built-in serves its contract
+		// (docs/<name>.md), configured here or not: it stays read-only, or
+		// every search or fetch after the first would refuse as an action.
+		if readingContracts[name] {
+			server.ReadOnly = true
+		} else if !server.ReadOnly && !actingContracts[name] {
+			slog.Warn("MCP server is not readOnly: its tools count as actions, refused once a turn read outside content and never offered to a scheduled run; set \"readOnly\": true if every tool only reads",
+				"server", name)
+		}
 		if existing, ok := out.FileServers.Servers[name]; ok && existing.BuiltIn {
 			slog.Warn("MCP servers file overrides built-in server", "server", name)
 			// The override replaces the endpoint, never who may use it: a
@@ -583,6 +592,16 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	}
 	return out, nil
 }
+
+// readingContracts are the built-in servers whose every tool only reads;
+// actingContracts the ones that make files and images, acting by design.
+var (
+	readingContracts = map[string]bool{
+		"fetch": true, "obscura": true, mcp.SearchServer: true, mcp.WeatherServer: true,
+		stravaServer: true, tunewireLibraryServer: true, tunewireCatalogServer: true,
+	}
+	actingContracts = map[string]bool{mcp.DocgenServer: true, mcp.ImagegenServer: true}
+)
 
 func docgenConfigured(cfg config.Config) bool {
 	return strings.TrimSpace(cfg.DocgenURL) != ""

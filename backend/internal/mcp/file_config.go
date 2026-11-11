@@ -38,6 +38,8 @@ type fileServer struct {
 	TrustInstructions bool `json:"trustInstructions"`
 	// Artifacts lets the server's images and documents become artifacts.
 	Artifacts bool `json:"artifacts"`
+	// ReadOnly says every tool of the server only reads (ServerConfig.ReadOnly).
+	ReadOnly bool `json:"readOnly"`
 }
 
 // userList accepts `"users": ["a","b"]` and `"users": "a,b"`. set records
@@ -177,6 +179,7 @@ func (f fileServer) toServerConfig(lookupEnv func(string) (string, bool)) (Serve
 		Users:             users,
 		TrustInstructions: f.TrustInstructions,
 		Artifacts:         f.Artifacts,
+		ReadOnly:          f.ReadOnly,
 	}
 	switch transport {
 	case TransportStreamableHTTP:

@@ -246,7 +246,10 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			}
 			sealed[i] = !denied[i] && t.afterLastStep(call.Function.Name)
 			capped[i] = !deferred[i] && !denied[i] && !sealed[i] && t.searchCapped(call.Function.Name)
-			skipped[i] = deferred[i] || denied[i] || sealed[i] || capped[i]
+			// An acting call never starts early, refused or not: the live
+			// check below could refuse it after an earlier call of the round
+			// read outside content, when its effect had already happened.
+			skipped[i] = deferred[i] || denied[i] || sealed[i] || capped[i] || t.e.acts(call.Function.Name)
 		}
 		// The round's independent web reads start now and overlap; everything
 		// below still handles the calls one at a time, in the model's order.
@@ -271,6 +274,10 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				output = fmt.Sprintf("tool failed: unknown tool %q", call.Function.Name)
 			} else if sealed[i] {
 				output = afterLastStepRefusal
+			} else if t.refusesAction(call.Function.Name) {
+				// Checked live: a call the model wrote alongside one that
+				// just read outside content refuses too.
+				output = userIntentAfterOutside
 			} else if capped[i] {
 				output = searchLimitReached
 			} else if deferred[i] {
@@ -364,6 +371,9 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 					imageGenerated = false
 					lastRoundDeferred = false
 					round = 0
+					// readOutside stays: the pages this turn read are still in
+					// the history the picked-up message answers from. An
+					// action it asks for refuses until the next turn.
 					continue
 				}
 			}

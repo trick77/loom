@@ -28,7 +28,7 @@ func userDirectivesTool() llm.Tool {
 			Description: "Change the user's standing instructions (listed with ids in your context): durable rules for how you respond or address them, in every future conversation. " +
 				"Only on an explicit request: add on \"always …\", \"from now on …\", \"remember to …\", \"never …\", \"call me …\" (no duplicates); update on \"make that …\"; remove on \"forget that\", \"stop …\". " +
 				"Not for facts about the user (home, job, tastes): use " + UserFactsToolName + ". Not for one-off task details. " +
-				"Returns the updated list with ids.",
+				memoryFirst + "Returns the updated list with ids.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -50,6 +50,10 @@ func userDirectivesTool() llm.Tool {
 		},
 	}
 }
+
+// memoryFirst tells the model the memory tools refuse after a tool that
+// read content (Engine.acts), so it calls them first.
+const memoryFirst = "Call it before any other tool; after one it refuses. "
 
 // stringArg reads a string tool-call argument, returning "" when absent or not a
 // string.

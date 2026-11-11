@@ -46,8 +46,9 @@ type toolSpec struct {
 	// nothing. Built-ins count themselves.
 	counts *usageCounter
 	// userIntent marks a built-in that acts for the user beyond the turn (a
-	// schedule saved, run or deleted): it refuses once outside content is in
-	// the turn, which could be what asks for it (Run.readOutside).
+	// schedule or a memory saved, run or deleted): it refuses once outside
+	// content is in the turn, which could be what asks for it
+	// (Run.readOutside, Engine.acts).
 	userIntent bool
 	// sharesIntent marks a built-in whose output brings in no outside text,
 	// so calling it first leaves a userIntent tool callable.
@@ -143,6 +144,8 @@ var coreTools = []toolSpec{
 		name:        UserDirectivesToolName,
 		schema:      userDirectivesTool,
 		capPerRound: memoryToolCallsPerRound,
+		// A memory rides in every later prompt: a page must never plant one.
+		userIntent: true,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
 			return capToolOutput(t.e.userDirectivesDigest(ctx, t.user.ID, args))
 		}),
@@ -151,6 +154,7 @@ var coreTools = []toolSpec{
 		name:        UserFactsToolName,
 		schema:      userFactsTool,
 		capPerRound: memoryToolCallsPerRound,
+		userIntent:  true,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
 			return capToolOutput(t.e.userFactsDigest(ctx, t.user.ID, t.thread.ID, args))
 		}),
@@ -218,6 +222,27 @@ func (s *Engine) toolPolicy(name string) *toolSpec {
 		}
 	}
 	return &defaultPolicy
+}
+
+// acts reports whether a call acts for the user beyond the answer: saves a
+// memory, sets up or runs a schedule, makes a file or an image, or does
+// whatever an MCP tool not known to only read does. Once outside content is
+// in the turn (Run.readOutside) such a call refuses: that content could be
+// what asks for it (prompt injection), and only the user may. loom's own
+// built-ins act only when marked: run_python stays open by the
+// maintainer's choice (no network, its files land in this thread only, and
+// Strava or a fetch into a chart is its main use). An MCP tool acts unless
+// its server or the tool says it only reads (mcp.Service.ReadsOnly), so an
+// unknown one fails closed.
+func (s *Engine) acts(name string) bool {
+	policy := s.toolPolicy(name)
+	if policy.userIntent || policy.imageGenerator || policy.documentGenerator {
+		return true
+	}
+	if policy.run != nil || policy.cites != nil {
+		return false
+	}
+	return s.mcp == nil || !s.mcp.ReadsOnly(name)
 }
 
 // defaultPolicy is the policy of a tool loom does not know: the defaults.

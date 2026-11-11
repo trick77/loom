@@ -67,3 +67,5 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 - Every DB query scoped by `user_id`. Per-user file access confined to the user's root (`..`, absolute,
   symlink escape rejected). Admin endpoints role-gated.
 - Personal data → own token per user, never shared (`PerUser`; `_USERS` only grants).
+- Outside content never triggers an action (iron rule, prompt injection, `Engine.acts`). Uploads don't
+  count: every turn retrieves them, doc threads would lock for good.

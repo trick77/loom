@@ -188,12 +188,13 @@ func researchNote(sandbox bool) string {
 }
 
 // allowTools keeps the tools a scheduled run may use: every MCP tool the
-// user may use (offerTools already left out other accounts' servers) and of
-// the built-ins only a scheduledLastStep one (run_python, for a chart the
-// task asks for), so no memory or schedule tool, and never the image or a
-// document tool (an unattended run researches; it does not spend on
-// pictures or call the document sidecar). It records them for dispatch. Any
-// other turn keeps all of them.
+// user may use (offerTools already left out other accounts' servers) that
+// only reads, and of the built-ins only a scheduledLastStep one
+// (run_python, for a chart the task asks for). So no memory or schedule
+// tool, never the image or a document tool (an unattended run researches;
+// it does not spend on pictures or call the document sidecar), and no MCP
+// tool that may act (Engine.acts): the run reads pages nobody watches. It
+// records them for dispatch. Any other turn keeps all of them.
 func (t *Run) allowTools(tools []llm.Tool, builtIns map[string]*toolSpec) ([]llm.Tool, map[string]*toolSpec) {
 	if t.scheduled == nil {
 		return tools, builtIns
@@ -206,8 +207,10 @@ func (t *Run) allowTools(tools []llm.Tool, builtIns map[string]*toolSpec) ([]llm
 	}
 	tools = slices.DeleteFunc(tools, func(tool llm.Tool) bool {
 		name := tool.Function.Name
-		policy := t.e.toolPolicy(name)
-		return (builtIns[name] != nil && allowed[name] == nil) || policy.imageGenerator || policy.documentGenerator
+		if builtIns[name] != nil {
+			return allowed[name] == nil
+		}
+		return t.e.acts(name)
 	})
 	t.scheduledTools = make(map[string]bool, len(tools))
 	for _, tool := range tools {
