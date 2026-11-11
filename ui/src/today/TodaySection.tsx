@@ -29,10 +29,14 @@ function WeatherBlock({
       {today.day === "tomorrow" && today.tonight !== null && (
         <TonightPill warning={today.tonight} />
       )}
+      {/* Enters first, the tiles after it (WeatherTiles). A new shown day
+          (the 20:00 turn) enters its heading again, as its tiles do; the
+          chip stays, its popover open or a drop running. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2
-          className="text-[13px] font-medium tracking-[0.02em] text-muted"
+          className="weather-enter text-[13px] font-medium tracking-[0.02em] text-muted"
           id={headingId}
+          key={`${today.date}/${today.day}`}
         >
           {t(
             today.day === "tomorrow"
@@ -41,7 +45,7 @@ function WeatherBlock({
             { date: formatDay(today.date, i18n.language) },
           )}
         </h2>
-        {chip}
+        {chip && <div className="weather-enter">{chip}</div>}
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-3">
         <WeatherTiles today={today} weather={weather} />

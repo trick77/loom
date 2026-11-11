@@ -107,7 +107,7 @@ test("the sun runs its course once the card is seen, and only once", () => {
   expect(observers).toBe(1);
 });
 
-test("reduced motion shows the sun where it stands", () => {
+test("reduced motion runs the course all the same", () => {
   vi.stubGlobal(
     "matchMedia",
     vi.fn().mockImplementation((query: string) => ({
@@ -118,8 +118,11 @@ test("reduced motion shows the sun where it stands", () => {
     })),
   );
   render(<SunCard day="today" sun={sun} />);
+  expect(dot()).toEqual(sunPoint(0));
+  inView(1);
+  paint(0);
+  paint(SWEEP_MS);
   expect(dot()).toEqual(sunPoint(0.4));
-  expect(observers).toBe(0);
 });
 
 test("without an observer the sun stands where it is", () => {

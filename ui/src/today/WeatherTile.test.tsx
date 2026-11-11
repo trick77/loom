@@ -54,6 +54,28 @@ const shown = (tile = left()) => {
   return slides[0];
 };
 
+test("the tiles enter one after the other, the cards wait to be seen", () => {
+  const { container } = show(todayFixture());
+  const tiles = [...container.querySelectorAll(".weather-enter")];
+  expect(
+    tiles.map((tile) => (tile as HTMLElement).style.animationDelay),
+  ).toEqual(["80ms", "160ms"]);
+  // Unseen (the test's observer never reports), every card waits.
+  const cards = [...container.querySelectorAll("[data-reveal]")];
+  expect(cards).toHaveLength(5);
+  for (const card of cards) expect(card).toHaveAttribute("data-reveal", "wait");
+  // Each moving part keeps its own classes beside its reveal ones.
+  for (const part of [
+    ".reveal.reveal-hour.flex",
+    ".reveal.reveal-bar.w-full",
+    ".reveal.reveal-range.absolute",
+    ".reveal.reveal-arrow",
+    ".reveal.reveal-ring",
+    ".reveal.reveal-wipe.block",
+  ])
+    expect(container.querySelector(part)).not.toBeNull();
+});
+
 test("the tiles open on now and the sun, the other cards out of view", () => {
   show(todayFixture());
   expect(cardName()).toHaveTextContent("Now");

@@ -1,10 +1,10 @@
 import type { TFunction } from "i18next";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { TodaySun } from "../api/today";
-import { useMediaQuery } from "../chat/useMediaQuery";
 import { formatDuration } from "./format";
+import { useFirstSight } from "./useFirstSight";
 
 // The arc is the upper half of an ellipse from sunrise (left) to sunset
 // (right) over the horizon line.
@@ -35,40 +35,19 @@ export function sweepAt(target: number, elapsed: number): number {
   return share === 1 ? target : target * (1 - (1 - share) ** 3);
 }
 
-// SEEN is the share of the card in view that counts as seen: the observer
-// reports any overlap, a sliver below the fold would sweep unseen.
-const SEEN = 0.6;
-
 // useSunSweep is the progress to draw: the sun runs from sunrise to target
-// the first time the card is in view, once per mount. The carousel keeps
-// every card mounted, so a sweep on mount would mostly run unseen. Until
-// then the sun waits at sunrise, where the sweep starts. Reduced motion or
-// no observer: target at once. Not enabled (no sun drawn): no sweep, and a
-// sun that rises later still gets its own.
+// the first time the card is seen (useFirstSight); until then it waits at
+// sunrise, where the sweep starts. Reduced motion sweeps all the same: the
+// sweep plays once and tells where the sun stands. No observer: target at
+// once. Not enabled (no sun drawn): no sweep, and a sun that rises later
+// still gets its own.
 function useSunSweep(target: number, enabled: boolean) {
-  const ref = useRef<SVGSVGElement>(null);
-  const reduced = useMediaQuery("(prefers-reduced-motion: reduce)");
-  // null until the card is seen; then ms into the sweep.
-  const [elapsed, setElapsed] = useState<number | null>(() =>
-    typeof IntersectionObserver === "undefined" ? SWEEP_MS : null,
+  const { ref, seen } = useFirstSight<SVGSVGElement>(enabled);
+  // ms into the sweep, from the moment the card is seen.
+  const [elapsed, setElapsed] = useState(() =>
+    typeof IntersectionObserver === "undefined" ? SWEEP_MS : 0,
   );
-  const moving = enabled && !reduced;
-  const waiting = elapsed === null;
-  useEffect(() => {
-    const node = ref.current;
-    if (!waiting || !moving || node === null) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.intersectionRatio >= SEEN)) return;
-        observer.disconnect();
-        setElapsed(0);
-      },
-      { threshold: SEEN },
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [waiting, moving]);
-  const running = moving && elapsed !== null && elapsed < SWEEP_MS;
+  const running = enabled && seen && elapsed < SWEEP_MS;
   useEffect(() => {
     if (!running) return;
     let start: number | null = null;
@@ -80,11 +59,7 @@ function useSunSweep(target: number, enabled: boolean) {
     });
     return () => cancelAnimationFrame(frame);
   }, [running]);
-  const shown = !moving
-    ? target
-    : elapsed === null
-      ? 0
-      : sweepAt(target, elapsed);
+  const shown = !enabled ? target : !seen ? 0 : sweepAt(target, elapsed);
   return { ref, shown };
 }
 
