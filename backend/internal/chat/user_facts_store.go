@@ -496,7 +496,7 @@ func uniqueInOrder(ids []string) []string {
 }
 
 // RenderFactLine renders one fact as "- [id] (category) content", the form
-// both the system prompt and the fact tools use.
+// both the system prompt and the fact tool use.
 func RenderFactLine(f UserFact) string {
 	return "- [" + f.ID + "] (" + f.Category + ") " + f.Content
 }

@@ -9,84 +9,43 @@ import (
 	"github.com/trick77/loom/internal/llm"
 )
 
-// The directive tools let the model manage the user's "other instructions" — the
-// explicit, user-steered standing instructions shown to it every turn under
-// "Standing instructions the user has explicitly asked you to follow". They are
-// the ONLY way that layer is mutated (the UI is read-only). Facts about the
-// user are a separate layer with their own tools (user_facts_tool.go).
-const (
-	addUserDirectiveToolName     = "remember_user_directive"
-	removeUserDirectiveToolName  = "forget_user_directive"
-	replaceUserDirectiveToolName = "update_user_directive"
-)
+// UserDirectivesToolName is the directive tool: it lets the model manage the
+// user's "other instructions" — the explicit, user-steered standing
+// instructions shown to it every turn under "Standing instructions the user
+// has explicitly asked you to follow". It is the ONLY way that layer is
+// mutated (the UI is read-only). Facts about the user are a separate layer
+// with their own tool (user_facts_tool.go).
+//
+// One tool with an action, not one per action: it rides in every turn's
+// tools, and the three separate schemas repeated the same rules.
+const UserDirectivesToolName = "user_directives"
 
-func addUserDirectiveTool() llm.Tool {
+func userDirectivesTool() llm.Tool {
 	return llm.Tool{
 		Type: "function",
 		Function: llm.ToolFunction{
-			Name: addUserDirectiveToolName,
-			Description: "Save a NEW standing instruction the user has explicitly asked you to follow in every future conversation — a durable preference, rule, or way they want you to behave or be addressed. " +
-				"Call this ONLY on an explicit request like \"always …\", \"from now on …\", \"remember to …\", \"never …\", \"call me …\". " +
-				"Do NOT use it for facts about the user (where they live, their job, what they like): use " + addUserFactToolName + " for those. Not for one-off task details or things they merely mention — only deliberate, lasting instructions about how you respond. " +
-				"The current standing instructions (with their ids) are listed in your context; do not add one that duplicates an existing instruction. " +
-				"Returns the updated list of standing instructions with their ids.",
+			Name: UserDirectivesToolName,
+			Description: "Change the user's standing instructions (listed with ids in your context): durable rules for how you respond or address them, in every future conversation. " +
+				"Only on an explicit request: add on \"always …\", \"from now on …\", \"remember to …\", \"never …\", \"call me …\" (no duplicates); update on \"make that …\"; remove on \"forget that\", \"stop …\". " +
+				"Not for facts about the user (home, job, tastes): use " + UserFactsToolName + ". Not for one-off task details. " +
+				"Returns the updated list with ids.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"content": map[string]any{
-						"type":        "string",
-						"description": "The instruction to save, phrased as a short standing directive (e.g. \"Always answer in metric units\", \"Call me Jan\").",
+					"action": map[string]any{
+						"type": "string",
+						"enum": []any{"add", "update", "remove"},
 					},
-				},
-				"required": []any{"content"},
-			},
-		},
-	}
-}
-
-func removeUserDirectiveTool() llm.Tool {
-	return llm.Tool{
-		Type: "function",
-		Function: llm.ToolFunction{
-			Name: removeUserDirectiveToolName,
-			Description: "Delete one of the user's saved standing instructions when they ask you to forget it or stop doing it (\"forget that\", \"you don't need to … anymore\", \"stop …\"). " +
-				"Pass the id of the instruction exactly as shown in the standing-instructions list in your context. " +
-				"Returns the updated list of standing instructions.",
-			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
 					"id": map[string]any{
 						"type":        "string",
-						"description": "The id of the saved instruction to delete, copied from the standing-instructions list in your context.",
-					},
-				},
-				"required": []any{"id"},
-			},
-		},
-	}
-}
-
-func replaceUserDirectiveTool() llm.Tool {
-	return llm.Tool{
-		Type: "function",
-		Function: llm.ToolFunction{
-			Name: replaceUserDirectiveToolName,
-			Description: "Update the wording of one of the user's saved standing instructions when they ask to change it (\"actually, make that …\", \"change my … to …\"). " +
-				"Pass the id from the standing-instructions list in your context and the full new text. " +
-				"Returns the updated list of standing instructions.",
-			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"id": map[string]any{
-						"type":        "string",
-						"description": "The id of the saved instruction to replace, copied from the standing-instructions list in your context.",
+						"description": "Required for update and remove: the instruction's id from your context.",
 					},
 					"content": map[string]any{
 						"type":        "string",
-						"description": "The new full text for this instruction.",
+						"description": "Required for add and update: the full instruction as a short directive (e.g. \"Always answer in metric units\").",
 					},
 				},
-				"required": []any{"id", "content"},
+				"required": []any{"action"},
 			},
 		},
 	}
@@ -99,12 +58,34 @@ func stringArg(args map[string]any, key string) string {
 	return value
 }
 
-// addUserDirectiveDigest, removeUserDirectiveDigest and replaceUserDirectiveDigest
-// mutate the store then echo the post-mutation list, so the model acts on current
-// state rather than the (now stale) snapshot in its system prompt. They never
-// return errors out-of-band — failures surface as plain tool output.
+// toolAction reads a memory tool's action argument, trimmed and lower-cased.
+// Both tools call deleting "remove" and take "forget" for it too: the user
+// says "forget that" to either layer.
+func toolAction(args map[string]any) string {
+	action := strings.ToLower(strings.TrimSpace(stringArg(args, "action")))
+	if action == "forget" {
+		return "remove"
+	}
+	return action
+}
 
-func (s *Engine) addUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
+// userDirectivesDigest runs one action of the directive tool. Each action
+// mutates the store then echoes the post-mutation list, so the model acts on
+// current state rather than the (now stale) snapshot in its system prompt.
+// It never returns errors out-of-band — failures surface as plain tool output.
+func (s *Engine) userDirectivesDigest(ctx context.Context, userID string, args map[string]any) string {
+	switch toolAction(args) {
+	case "add":
+		return s.addUserDirective(ctx, userID, args)
+	case "update":
+		return s.updateUserDirective(ctx, userID, args)
+	case "remove":
+		return s.removeUserDirective(ctx, userID, args)
+	}
+	return "tool failed: action must be add, update or remove."
+}
+
+func (s *Engine) addUserDirective(ctx context.Context, userID string, args map[string]any) string {
 	content := strings.TrimSpace(stringArg(args, "content"))
 	if content == "" {
 		return "tool failed: content is required."
@@ -118,7 +99,7 @@ func (s *Engine) addUserDirectiveDigest(ctx context.Context, userID string, args
 	return "Saved. The user's current standing instructions:\n" + s.currentDirectivesList(ctx, userID)
 }
 
-func (s *Engine) removeUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
+func (s *Engine) removeUserDirective(ctx context.Context, userID string, args map[string]any) string {
 	id := strings.TrimSpace(stringArg(args, "id"))
 	if id == "" {
 		return "tool failed: id is required."
@@ -133,7 +114,7 @@ func (s *Engine) removeUserDirectiveDigest(ctx context.Context, userID string, a
 	return "Removed. The user's current standing instructions:\n" + s.currentDirectivesList(ctx, userID)
 }
 
-func (s *Engine) replaceUserDirectiveDigest(ctx context.Context, userID string, args map[string]any) string {
+func (s *Engine) updateUserDirective(ctx context.Context, userID string, args map[string]any) string {
 	id := strings.TrimSpace(stringArg(args, "id"))
 	content := strings.TrimSpace(stringArg(args, "content"))
 	if id == "" || content == "" {

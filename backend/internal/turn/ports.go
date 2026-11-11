@@ -41,12 +41,12 @@ type ThreadStore interface {
 	AddMessageCost(context.Context, string, string, int64) (bool, error)
 	// SearchMessages backs the conversation_search tool.
 	SearchMessages(context.Context, string, string, *string, string, int) ([]chat.MessageSearchHit, error)
-	// The user directive methods back the directive tools.
+	// The user directive methods back the directive tool.
 	ListUserDirectives(context.Context, string) ([]chat.UserDirective, error)
 	AddUserDirective(context.Context, string, string) (chat.UserDirective, error)
 	RemoveUserDirective(context.Context, string, string) (bool, error)
 	ReplaceUserDirective(context.Context, string, string, string) (chat.UserDirective, bool, error)
-	// The user fact methods back the fact tools.
+	// The user fact methods back the fact tool.
 	ListActiveUserFacts(context.Context, string) ([]chat.UserFact, error)
 	AddUserFact(context.Context, string, string, string, string, bool) (chat.UserFact, error)
 	UpdateUserFact(context.Context, string, string, string, string) (chat.UserFact, bool, error)

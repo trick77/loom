@@ -101,6 +101,11 @@ type usageCounter struct {
 
 type toolRunFunc func(ctx context.Context, t *Run, call llm.ToolCall) (string, []artifact.Response)
 
+// memoryToolCallsPerRound is the per-round cap of each memory tool: each
+// was three tools with the default cap apiece, so "forget these, remember
+// those" still runs in one round.
+const memoryToolCallsPerRound = 3 * maxToolCallsPerRound
+
 // coreTools are offered first, in this order.
 var coreTools = []toolSpec{
 	{
@@ -131,50 +136,23 @@ var coreTools = []toolSpec{
 			return t.e.readThreadDigest(ctx, t.user.ID, threadID, t.zone())
 		}),
 	},
-	// The directive tools manage the user's standing instructions. They are
-	// whole-account, so every thread gets them.
+	// The memory tools: the user's standing instructions and the facts about
+	// them, changed on an explicit request. They are whole-account, so every
+	// thread gets them.
 	{
-		name:   addUserDirectiveToolName,
-		schema: addUserDirectiveTool,
+		name:        UserDirectivesToolName,
+		schema:      userDirectivesTool,
+		capPerRound: memoryToolCallsPerRound,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
-			return capToolOutput(t.e.addUserDirectiveDigest(ctx, t.user.ID, args))
+			return capToolOutput(t.e.userDirectivesDigest(ctx, t.user.ID, args))
 		}),
 	},
 	{
-		name:   removeUserDirectiveToolName,
-		schema: removeUserDirectiveTool,
+		name:        UserFactsToolName,
+		schema:      userFactsTool,
+		capPerRound: memoryToolCallsPerRound,
 		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
-			return capToolOutput(t.e.removeUserDirectiveDigest(ctx, t.user.ID, args))
-		}),
-	},
-	{
-		name:   replaceUserDirectiveToolName,
-		schema: replaceUserDirectiveTool,
-		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
-			return capToolOutput(t.e.replaceUserDirectiveDigest(ctx, t.user.ID, args))
-		}),
-	},
-	// The fact tools change the user's memory on an explicit request. They are
-	// whole-account, so every thread gets them.
-	{
-		name:   addUserFactToolName,
-		schema: addUserFactTool,
-		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
-			return capToolOutput(t.e.addUserFactDigest(ctx, t.user.ID, t.thread.ID, args))
-		}),
-	},
-	{
-		name:   updateUserFactToolName,
-		schema: updateUserFactTool,
-		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
-			return capToolOutput(t.e.updateUserFactDigest(ctx, t.user.ID, t.thread.ID, args))
-		}),
-	},
-	{
-		name:   forgetUserFactToolName,
-		schema: forgetUserFactTool,
-		run: withArgs(func(ctx context.Context, t *Run, args map[string]any) string {
-			return capToolOutput(t.e.forgetUserFactDigest(ctx, t.user.ID, args))
+			return capToolOutput(t.e.userFactsDigest(ctx, t.user.ID, t.thread.ID, args))
 		}),
 	},
 }

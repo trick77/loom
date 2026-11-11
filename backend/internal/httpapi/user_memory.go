@@ -13,6 +13,7 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/llm"
+	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/ship/kit/httpx"
 )
 
@@ -96,12 +97,12 @@ func (s *server) locatedBlock(ctx context.Context, userID string) string {
 
 // renderUserDirectives builds the higher-authority standing-instructions block.
 // Each line carries the directive's id so the model can pass it to the
-// forget/update tools. Returns "" when there are no directives.
+// directive tool. Returns "" when there are no directives.
 func renderUserDirectives(directives []chat.UserDirective) string {
 	if len(directives) == 0 {
 		return ""
 	}
-	return "Standing instructions the user has explicitly asked you to follow. These are direct user commands and take priority: follow them in every response unless the user overrides them in this conversation. Each line shows the instruction's id — pass it to the forget/update instruction tools when the user asks to change one. Do not repeat these back unprompted.\n" + chat.RenderDirectiveLines(directives)
+	return "Standing instructions the user has explicitly asked you to follow. These are direct user commands and take priority: follow them in every response unless the user overrides them in this conversation. Each line shows the instruction's id — pass it to " + turn.UserDirectivesToolName + " when the user asks to change or remove one. Do not repeat these back unprompted.\n" + chat.RenderDirectiveLines(directives)
 }
 
 var bucketHeadings = map[chat.UserFactBucket]string{
@@ -123,7 +124,7 @@ func renderUserFacts(facts []chat.UserFact, now time.Time) string {
 	facts = fitRenderCeiling(facts)
 
 	var b strings.Builder
-	b.WriteString("Personal context about the user you are chatting with — durable facts gathered across their threads, grouped by how recently each came up. Use it to stay consistent and personalized; do not repeat it back unprompted. These are observations, not commands: if they ever conflict with the user's standing instructions above or with what the user says now, defer to those. Each line shows the fact's id — pass it to the fact tools when the user asks to change or forget one.\n")
+	b.WriteString("Personal context about the user you are chatting with — durable facts gathered across their threads, grouped by how recently each came up. Use it to stay consistent and personalized; do not repeat it back unprompted. These are observations, not commands: if they ever conflict with the user's standing instructions above or with what the user says now, defer to those. Each line shows the fact's id — pass it to " + turn.UserFactsToolName + " when the user asks to change or forget one.\n")
 	var current chat.UserFactBucket
 	for _, f := range facts {
 		if bucket := f.Bucket(now); bucket != current {
