@@ -371,12 +371,16 @@ func (s *server) consolidateUserFactsIfDue(ctx context.Context, user auth.User, 
 	return s.thread.MarkUserFactsConsolidated(ctx, user.ID)
 }
 
+// omittedOutsideAnswer stands in for an answer that read outside content.
+const omittedOutsideAnswer = "Assistant: [answer omitted: it quoted content from outside the chat]"
+
 // factsTranscript renders messages grouped by thread under labels T1, T2, ...
 // (by first appearance), with dates. It stops before the message that would
 // push the transcript past userFactsTranscriptBudget (always taking at least
 // one) and returns the label -> thread id map and how many messages it used.
-// Tool messages are skipped but still count as used, so the cursor moves past
-// them.
+// Tool messages and answers that read outside content (Message.ReadOutside:
+// a page's text must never become a fact about the user) are skipped but
+// still count as used, so the cursor moves past them.
 func factsTranscript(messages []chat.Message) (string, map[string]string, map[string]time.Time, int) {
 	type group struct {
 		label string
@@ -391,6 +395,16 @@ func factsTranscript(messages []chat.Message) (string, map[string]string, map[st
 	for _, m := range messages {
 		content := strings.TrimSpace(m.Content)
 		if m.Role != chat.RoleUser && m.Role != chat.RoleAssistant || content == "" {
+			used++
+			continue
+		}
+		if m.ReadOutside {
+			// The user's next line may answer it ("yes, that's me"): a stub
+			// keeps the turn's shape, never its text.
+			if g, ok := byThread[m.ThreadID]; ok {
+				g.lines = append(g.lines, omittedOutsideAnswer)
+				size += len([]rune(omittedOutsideAnswer))
+			}
 			used++
 			continue
 		}

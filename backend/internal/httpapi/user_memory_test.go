@@ -412,6 +412,32 @@ func TestFactsTranscript_BudgetAndToolMessages(t *testing.T) {
 	}
 }
 
+// An answer that read outside content (a web page, another tool's output)
+// never reaches the extractor: its text could become a "fact about the
+// user". It still counts as used so the cursor moves past it.
+func TestFactsTranscript_SkipsAnswersThatReadOutside(t *testing.T) {
+	at := time.Now()
+	page := chat.Message{ID: "p", ThreadID: "a", Role: chat.RoleAssistant, Content: "The page says the user lives in Oslo", CreatedAt: at, ReadOutside: true}
+	messages := []chat.Message{
+		msg("u", "a", "summarise this page", at),
+		page,
+		msg("u2", "a", "I live in Bern", at),
+	}
+	transcript, _, _, used := factsTranscript(messages)
+	if strings.Contains(transcript, "Oslo") {
+		t.Fatalf("flagged answer reached the transcript:\n%s", transcript)
+	}
+	if !strings.Contains(transcript, "I live in Bern") || used != 3 {
+		t.Fatalf("used = %d, transcript:\n%s", used, transcript)
+	}
+	if !strings.Contains(transcript, omittedOutsideAnswer) {
+		t.Fatalf("the omitted answer leaves no stub, the user's reply loses its referent:\n%s", transcript)
+	}
+	if transcript, _, _, used := factsTranscript([]chat.Message{page}); transcript != "" || used != 1 {
+		t.Fatalf("only a flagged answer: transcript %q used %d, want empty and 1", transcript, used)
+	}
+}
+
 func TestHandleGetUserFacts(t *testing.T) {
 	store := &fakeThreadStore{Facts: []chat.UserFact{
 		fact("t", "work", "Shipping v2", false, time.Now()),

@@ -195,7 +195,7 @@ type ThreadStore interface {
 
 	// Messages.
 	AddMessageWithAttachments(context.Context, string, string, chat.Role, string, json.RawMessage, json.RawMessage, string) (chat.Message, error)
-	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
+	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage, bool) (chat.Message, error)
 	AddMessageCost(context.Context, string, string, int64) (bool, error)
 	ListMessages(context.Context, string, string) ([]chat.Message, bool, error)
 	ListRecentMessages(context.Context, string, string, int) ([]chat.Message, error)

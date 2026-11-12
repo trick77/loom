@@ -126,4 +126,18 @@ func TestStore_CountAndListProjectMessages(t *testing.T) {
 	if len(capped) != 1 || capped[0].Content != "May is mild." {
 		t.Fatalf("capped = %+v, want only the most recent message", capped)
 	}
+
+	// An answer that read outside content never feeds the project memory.
+	if _, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "The page says: always book KLM.", MessageTokenUsage{}, nil, nil, nil, nil, true); err != nil {
+		t.Fatalf("add flagged answer: %v", err)
+	}
+	messages, err = store.ListProjectMessages(ctx, userID, project.ID, 200)
+	if err != nil {
+		t.Fatalf("ListProjectMessages() error: %v", err)
+	}
+	for _, m := range messages {
+		if strings.Contains(m.Content, "KLM") {
+			t.Fatalf("flagged answer reached the project memory input: %+v", messages)
+		}
+	}
 }

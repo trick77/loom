@@ -37,7 +37,7 @@ type ThreadStore interface {
 	SetThreadImageModelIfEmpty(context.Context, string, string, string) (chat.Thread, bool, error)
 	// AddMessageWithCitations persists the assistant answer; AddMessageCost
 	// books the turn's spend not yet on a message (see CostSettler).
-	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage) (chat.Message, error)
+	AddMessageWithCitations(context.Context, string, string, chat.Role, string, chat.MessageTokenUsage, json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage, bool) (chat.Message, error)
 	AddMessageCost(context.Context, string, string, int64) (bool, error)
 	// SearchMessages backs the conversation_search tool.
 	SearchMessages(context.Context, string, string, *string, string, int) ([]chat.MessageSearchHit, error)

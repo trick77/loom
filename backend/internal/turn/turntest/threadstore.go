@@ -288,7 +288,7 @@ func (f *ThreadStore) AddMessageCost(_ context.Context, _ string, messageID stri
 }
 
 // AddMessageWithCitations implements turn.ThreadStore.
-func (f *ThreadStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (chat.Message, error) {
+func (f *ThreadStore) AddMessageWithCitations(ctx context.Context, _ string, threadID string, role chat.Role, content string, usage chat.MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage, readOutside bool) (chat.Message, error) {
 	if len(artifacts) == 0 {
 		artifacts = json.RawMessage("[]")
 	}
@@ -313,6 +313,7 @@ func (f *ThreadStore) AddMessageWithCitations(ctx context.Context, _ string, thr
 		ActivityTrace:    activityTrace,
 		Citations:        citations,
 		ContentBlocks:    contentBlocks,
+		ReadOutside:      role == chat.RoleAssistant && (readOutside || f.threadReadOutside(threadID)),
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		TotalTokens:      usage.TotalTokens,
@@ -327,6 +328,17 @@ func (f *ThreadStore) AddMessageWithCitations(ctx context.Context, _ string, thr
 	}
 	f.Messages = append(f.Messages, message)
 	return message, nil
+}
+
+// threadReadOutside mirrors the store's sticky rule: a thread with a flagged
+// answer flags every later one.
+func (f *ThreadStore) threadReadOutside(threadID string) bool {
+	for _, m := range f.Messages {
+		if m.ThreadID == threadID && m.ReadOutside {
+			return true
+		}
+	}
+	return false
 }
 
 // ListMessages returns a copy of Messages.

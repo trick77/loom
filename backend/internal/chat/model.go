@@ -207,6 +207,10 @@ type Message struct {
 	Model           *string   `json:"model,omitempty"`
 	ReasoningEffort *string   `json:"reasoningEffort,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
+	// ReadOutside marks an answer from a turn that read outside content, or
+	// from any later turn of its thread: the fact extraction skips it. Never
+	// sent to the client.
+	ReadOutside bool `json:"-"`
 }
 
 // IsEmptyJSON reports whether a raw JSON field of a Message carries no array
