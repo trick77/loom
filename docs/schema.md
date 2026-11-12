@@ -2,7 +2,7 @@
 
 # Database schema
 
-29 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
+30 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
 
 ## artifacts
 
@@ -111,6 +111,51 @@ Checks:
 
 - `CHECK (size_bytes >= 0)`
 - `CHECK (status IN ('pending','extracting','embedding','embedded','stale','error'))`
+
+## ideas
+
+Go types:
+
+- `ideas.Idea` (internal/ideas): Idea is one thing to follow up, with the reason why.
+
+| Column | Type | Null | Default | PK |
+| --- | --- | --- | --- | --- |
+| `id` | TEXT | no |  | 1 |
+| `user_id` | TEXT | no |  |  |
+| `state` | TEXT | no |  |  |
+| `title` | TEXT | no |  |  |
+| `reason` | TEXT | no |  |  |
+| `excerpt` | TEXT | no | `''` |  |
+| `thread_id` | TEXT | yes |  |  |
+| `message_id` | TEXT | yes |  |  |
+| `thread_title` | TEXT | no | `''` |  |
+| `had_thread` | INTEGER | no | `0` |  |
+| `due_on` | TEXT | yes |  |  |
+| `remind_on` | TEXT | yes |  |  |
+| `reminded_at` | TEXT | yes |  |  |
+| `remind_dismissed_at` | TEXT | yes |  |  |
+| `done_at` | TEXT | yes |  |  |
+| `deleted_at` | TEXT | yes |  |  |
+| `created_at` | TEXT | no | `datetime('now')` |  |
+| `updated_at` | TEXT | no | `datetime('now')` |  |
+
+Foreign keys:
+
+- `message_id` → `messages` (`id`), on delete SET NULL
+- `thread_id` → `threads` (`id`), on delete SET NULL
+- `user_id` → `users` (`id`), on delete CASCADE
+
+Indexes:
+
+- `idx_ideas_message` (`message_id`) where `message_id IS NOT NULL`
+- `idx_ideas_remind` (`remind_on`) where `reminded_at IS NULL AND remind_on IS NOT NULL`
+- `idx_ideas_thread` (`thread_id`) where `thread_id IS NOT NULL`
+- `idx_ideas_user_state` (`user_id`, `state`, `deleted_at`, `created_at DESC`)
+
+Checks:
+
+- `CHECK (state IN ('proposed', 'open', 'done'))`
+- `CHECK (had_thread IN (0, 1))`
 
 ## message_fts
 
@@ -966,6 +1011,34 @@ In `internal/chat`. UpdateThreadInput holds the optional fields for updating a t
 | `Category` | `*string` | Category, when non-nil, sets the thread's prompt-classifier label. A nil pointer leaves the stored category unchanged. |
 | `ProjectID` | `ProjectIDUpdate` |  |
 
+### ideas.Input
+
+In `internal/ideas`. Input is a new idea or proposal. ThreadID and MessageID are optional; a MessageID needs its ThreadID.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Title` | `string` |  |
+| `Reason` | `string` |  |
+| `Excerpt` | `string` |  |
+| `ThreadID` | `string` |  |
+| `MessageID` | `string` |  |
+| `DueOn` | `OptionalDate` |  |
+| `RemindOn` | `OptionalDate` |  |
+
+### ideas.Patch
+
+In `internal/ideas`. Patch changes an open or done idea; nil and unset fields stay.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Title` | `*string` |  |
+| `Reason` | `*string` |  |
+| `Excerpt` | `*string` |  |
+| `DueOn` | `OptionalDate` |  |
+| `RemindOn` | `OptionalDate` |  |
+| `Done` | `*bool` |  |
+| `RemindDismissed` | `*bool` |  |
+
 ### location.Credit
 
 In `internal/location`. Credit is the map data a located town's name came from.
@@ -1038,6 +1111,26 @@ erDiagram
         TEXT embedded_at
         TEXT thread_id
         TEXT full_text
+    }
+    ideas {
+        TEXT id PK
+        TEXT user_id FK
+        TEXT state
+        TEXT title
+        TEXT reason
+        TEXT excerpt
+        TEXT thread_id FK
+        TEXT message_id FK
+        TEXT thread_title
+        INTEGER had_thread
+        TEXT due_on
+        TEXT remind_on
+        TEXT reminded_at
+        TEXT remind_dismissed_at
+        TEXT done_at
+        TEXT deleted_at
+        TEXT created_at
+        TEXT updated_at
     }
     message_fts {
         INTEGER rowid PK
@@ -1330,6 +1423,9 @@ erDiagram
     documents }o--o| projects : "user_id, project_id"
     documents }o--o| artifacts : "artifact_id"
     documents }o--|| users : "user_id"
+    ideas }o--o| messages : "message_id"
+    ideas }o--o| threads : "thread_id"
+    ideas }o--|| users : "user_id"
     messages }o--|| threads : "user_id, thread_id"
     messages }o--|| users : "user_id"
     notifications }o--o| messages : "message_id"

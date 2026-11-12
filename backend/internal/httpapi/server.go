@@ -13,6 +13,7 @@ import (
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/background"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/ideas"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/mcp"
@@ -85,6 +86,9 @@ type Deps struct {
 	// intervals and a run's findings. Both nil keep scheduled tasks off.
 	Schedules   *schedule.Store
 	ScheduleLLM ScheduleLLM
+	// Ideas keeps what the users want to follow up; it needs no model. Nil
+	// answers the idea endpoints with 503.
+	Ideas *ideas.Store
 	// Push delivers notifications to the users' devices (Web Push) into the
 	// subscriptions PushStore keeps. Either nil keeps push off.
 	Push      PushSender
@@ -140,6 +144,7 @@ type server struct {
 	engine *turn.Engine
 	// schedules is nil while scheduled tasks are off; see scheduleRuns.
 	schedules   *schedule.Store
+	ideas       *ideas.Store
 	scheduleSvc *schedule.Service
 	scheduleLLM ScheduleLLM
 	runs        *scheduleRuns
@@ -364,6 +369,7 @@ func newServer(d Deps) *server {
 		indexHTML:             d.IndexHTML,
 		push:                  d.Push,
 		pushStore:             d.PushStore,
+		ideas:                 d.Ideas,
 	}
 	if s.indexHTML == nil {
 		s.indexHTML = web.IndexHTML
@@ -488,6 +494,14 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.HandleFunc("GET /api/shares/{shareID}", s.handleGetPublicShare)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/download", s.handlePublicShareArtifactDownload)
 	mux.HandleFunc("GET /api/shares/{shareID}/artifacts/{artifactID}/thumbnail", s.handlePublicShareArtifactThumbnail)
+	mux.Handle("GET /api/ideas", s.requireAuth(http.HandlerFunc(s.handleListIdeas)))
+	mux.Handle("GET /api/ideas/count", s.requireAuth(http.HandlerFunc(s.handleCountIdeas)))
+	mux.Handle("POST /api/ideas", s.requireAuth(http.HandlerFunc(s.handleCreateIdea)))
+	mux.Handle("GET /api/ideas/{ideaID}", s.requireAuth(http.HandlerFunc(s.handleGetIdea)))
+	mux.Handle("PATCH /api/ideas/{ideaID}", s.requireAuth(http.HandlerFunc(s.handlePatchIdea)))
+	mux.Handle("DELETE /api/ideas/{ideaID}", s.requireAuth(http.HandlerFunc(s.handleDeleteIdea)))
+	mux.Handle("POST /api/ideas/{ideaID}/restore", s.requireAuth(http.HandlerFunc(s.handleRestoreIdea)))
+	mux.Handle("POST /api/ideas/{ideaID}/confirm", s.requireAuth(http.HandlerFunc(s.handleConfirmIdea)))
 	mux.Handle("GET /api/schedules", s.requireAuth(http.HandlerFunc(s.handleListSchedules)))
 	mux.Handle("POST /api/schedules", s.requireAuth(http.HandlerFunc(s.handleCreateSchedule)))
 	mux.Handle("POST /api/schedules:parse", s.requireAuth(http.HandlerFunc(s.handleParseSchedule)))
