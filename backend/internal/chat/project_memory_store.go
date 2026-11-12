@@ -58,16 +58,24 @@ ON CONFLICT(user_id, project_id) DO UPDATE SET
 	return memory, err
 }
 
-// CountProjectMessages returns the total number of messages across every thread
-// in the project. It gates the background memory refresh.
+// projectMessagesFrom is the project's messages, as the memory reads them.
+// Count and list share it: the refresh window is count minus the last source
+// count, read newest first from the list, so a filter on one alone shifts it.
+const projectMessagesFrom = `
+FROM messages m
+JOIN threads t ON t.user_id = m.user_id AND t.id = m.thread_id
+WHERE m.user_id = ? AND t.project_id = ?`
+
+// CountProjectMessages counts the messages the project memory reads: every
+// message of the project's threads but the answers that read outside content
+// (ListProjectMessages). It gates the background memory refresh and sizes its
+// window. All minus flagged, so both counts stay on covering indexes (the
+// flag sits at the end of a wide row).
 func (s *Store) CountProjectMessages(ctx context.Context, userID, projectID string) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx, `
-SELECT COUNT(*)
-FROM messages m
-JOIN threads t ON t.user_id = m.user_id AND t.id = m.thread_id
-WHERE m.user_id = ? AND t.project_id = ?`,
-		userID, projectID,
+SELECT (SELECT COUNT(*) `+projectMessagesFrom+`) - (SELECT COUNT(*) `+projectMessagesFrom+` AND m.read_outside = 1)`,
+		userID, projectID, userID, projectID,
 	).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count project messages: %w", err)
@@ -87,10 +95,7 @@ func (s *Store) ListProjectMessages(ctx context.Context, userID, projectID strin
 		limit = MemoryRebuildLimit
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT `+transcriptColumnsM+`
-FROM messages m
-JOIN threads t ON t.user_id = m.user_id AND t.id = m.thread_id
-WHERE m.user_id = ? AND t.project_id = ? AND m.read_outside = 0
+SELECT `+transcriptColumnsM+projectMessagesFrom+` AND m.read_outside = 0
 ORDER BY m.created_at DESC, m.rowid DESC
 LIMIT ?`,
 		userID, projectID, limit,
