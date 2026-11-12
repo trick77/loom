@@ -936,6 +936,32 @@ a.ui-activity-tool-url:hover {
   text-underline-offset: 0.14em;
 }
 
+/*
+ * Ideas page rows: the kebab takes the age slot on hover. Plain CSS like the
+ * message actions below (Tailwind's hover-gated group-hover sticks in
+ * Safari); a touch screen always shows the kebab and the age.
+ */
+.ui-idea-kebab {
+  visibility: hidden;
+}
+
+.ui-idea-row:hover .ui-idea-kebab,
+.ui-idea-row:focus-within .ui-idea-kebab,
+.ui-idea-kebab[aria-expanded="true"] {
+  visibility: visible;
+}
+
+.ui-idea-row:hover .ui-idea-age {
+  visibility: hidden;
+}
+
+@media (hover: none) {
+  .ui-idea-kebab,
+  .ui-idea-row:hover .ui-idea-age {
+    visibility: visible;
+  }
+}
+
 .ui-activity-result-domain {
   max-width: 12rem;
   overflow: hidden;

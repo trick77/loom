@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Project, Thread, User } from "../api";
 import i18n from "../i18n";
+import { useOpenIdeasCount } from "../ideas/useOpenIdeasCount";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { UserMenu } from "./UserMenu";
 import { Icon } from "./Icon";
@@ -46,6 +47,7 @@ export const Sidebar = memo(function Sidebar({
   onProjects,
   onMemory,
   onSchedules,
+  onIdeas,
   onOpenSearch,
   onSelectThread,
   onDeleteThread,
@@ -89,6 +91,7 @@ export const Sidebar = memo(function Sidebar({
   onProjects(): void;
   onMemory(): void;
   onSchedules(): void;
+  onIdeas(): void;
   onOpenSearch(): void;
   onSelectThread(threadID: string): void;
   onDeleteThread(thread: Thread): void;
@@ -104,6 +107,7 @@ export const Sidebar = memo(function Sidebar({
   onCloseThreadMenu(): void;
 }) {
   const { t } = useTranslation();
+  const openIdeas = useOpenIdeasCount();
   const addToProject = projectsAvailable ? onAddThreadToProject : undefined;
   return (
     <>
@@ -220,6 +224,16 @@ export const Sidebar = memo(function Sidebar({
               !showAdmin
             }
             onClick={onSchedules}
+          />
+          <SidebarPrimaryItem
+            label={t("sidebar.ideas")}
+            icon="ideas"
+            collapsed={railCollapsed}
+            count={openIdeas}
+            active={
+              (route.view === "ideas" || route.view === "idea") && !showAdmin
+            }
+            onClick={onIdeas}
           />
           {railCollapsed && (
             <div className="mt-2.5 flex h-[26px] items-center justify-center text-[#f0eee7]">

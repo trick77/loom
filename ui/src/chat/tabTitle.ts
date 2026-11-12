@@ -39,6 +39,10 @@ export function tabTitle(
     case "schedule":
       base = i18n.t("tabTitle.schedules");
       break;
+    case "ideas":
+    case "idea":
+      base = i18n.t("tabTitle.ideas");
+      break;
     default: {
       // Erschöpfend: ein neuer RouteState-View erzwingt hier einen Compile-Fehler.
       const _exhaustive: never = route;

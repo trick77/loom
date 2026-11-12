@@ -27,6 +27,10 @@ test("static views map to their label with the Loom suffix", () => {
   expect(tabTitle({ view: "artifacts" }, null, null)).toBe("Artifacts - Loom");
   expect(tabTitle({ view: "memory" }, null, null)).toBe("Memories - Loom");
   expect(tabTitle({ view: "projects" }, null, null)).toBe("Projects - Loom");
+  expect(tabTitle({ view: "ideas" }, null, null)).toBe("Ideas - Loom");
+  expect(tabTitle({ view: "idea", ideaID: "i1" }, null, null)).toBe(
+    "Ideas - Loom",
+  );
 });
 
 test("chat view uses the active thread title", () => {

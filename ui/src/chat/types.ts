@@ -19,4 +19,4 @@ export type MessageWithActivityTrace = Message & {
 };
 
 export type SidebarIconName =
-  "threads" | "projects" | "artifacts" | "memory" | "schedules";
+  "threads" | "projects" | "artifacts" | "memory" | "schedules" | "ideas";

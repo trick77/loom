@@ -41,3 +41,14 @@ test("routes schedule pages", () => {
     "/schedules/s%201",
   );
 });
+
+test("routes the ideas page and one idea on it", () => {
+  expect(routeFromPath("/ideas")).toEqual({ view: "ideas" });
+  expect(routeFromPath("/ideas/i%201")).toEqual({
+    view: "idea",
+    ideaID: "i 1",
+  });
+  expect(routeFromPath("/ideas/")).toEqual({ view: "new" });
+  expect(pathForRoute({ view: "ideas" })).toBe("/ideas");
+  expect(pathForRoute({ view: "idea", ideaID: "i 1" })).toBe("/ideas/i%201");
+});

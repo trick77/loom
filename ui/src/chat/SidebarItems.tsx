@@ -20,12 +20,15 @@ export function SidebarPrimaryItem({
   label,
   collapsed = false,
   active = false,
+  count,
   onClick,
 }: {
   icon: SidebarIconName;
   label: string;
   collapsed?: boolean;
   active?: boolean;
+  /** A trailing count (open ideas); hidden at 0 and in the collapsed rail. */
+  count?: number;
   onClick?(): void;
 }) {
   const className = `flex h-[26px] w-full items-center rounded-md px-1.5 text-left text-[#c7c5bd] ${
@@ -35,6 +38,11 @@ export function SidebarPrimaryItem({
     <>
       <SidebarIcon name={icon} />
       {!collapsed && <span className="truncate">{label}</span>}
+      {!collapsed && count !== undefined && count > 0 && (
+        <span className="ml-auto pr-1 text-[12px] tabular-nums text-[#8f8b82]">
+          {count}
+        </span>
+      )}
     </>
   );
   if (onClick === undefined) {
@@ -68,6 +76,9 @@ function SidebarIcon({ name }: { name: SidebarIconName }) {
   }
   if (name === "schedules") {
     return <Icon name="clock" size="21px" className={className} />;
+  }
+  if (name === "ideas") {
+    return <Icon name="bulb" size="21px" className={className} />;
   }
   return null;
 }
