@@ -138,6 +138,7 @@ Go types:
 | `deleted_at` | TEXT | yes |  |  |
 | `created_at` | TEXT | no | `datetime('now')` |  |
 | `updated_at` | TEXT | no | `datetime('now')` |  |
+| `question` | TEXT | no | `''` |  |
 
 Foreign keys:
 
@@ -948,6 +949,10 @@ In `internal/chat`. MessagePastedText is one large text block the user pasted in
 | --- | --- | --- |
 | `Text` | `string` |  |
 | `LineCount` | `int` |  |
+| `Outside` | `bool` | Outside marks a block of outside text the user sends along without having written it (an idea's passage: a page an answer quoted). Its message counts as having read outside content (Message.ReadOutside), so the turn it starts may not act and fact extraction skips it. |
+| `IdeaID` | `string` | IdeaID, IdeaTitle and Source name where an idea's passage came from (the idea and its thread's title), for the sent message's labels. |
+| `IdeaTitle` | `string` | see `IdeaID` |
+| `Source` | `string` | see `IdeaID` |
 
 ### chat.MessageTokenUsage
 
@@ -1134,6 +1139,7 @@ erDiagram
         TEXT deleted_at
         TEXT created_at
         TEXT updated_at
+        TEXT question
     }
     message_fts {
         INTEGER rowid PK

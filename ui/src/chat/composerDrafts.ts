@@ -157,7 +157,11 @@ export function restoreQueuedDrafts(
     );
     if (text.trim() !== "") texts.push(text);
     message.pastedTexts.forEach((block, index) => {
-      if (matched[index]) pasted.push(pastedTextFromBlock(block));
+      // An idea's passage keeps its outside mark even when it could not be
+      // taken out of the text (it then shows twice): unmarked, the next
+      // send would pass it as the user's own words.
+      if (matched[index] || block.outside === true)
+        pasted.push(pastedTextFromBlock(block));
     });
   }
   return setDraft(drafts, scope, {

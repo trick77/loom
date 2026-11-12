@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Idea, Project } from "../api";
-import { ideaThreadDraft } from "../ideas/ideaText";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
@@ -64,7 +63,7 @@ export function StartPanel({
   onOpenThread(threadID: string): void;
   /** Follow-up cards: open the idea, or fill the composer with it. */
   onOpenIdea?(ideaID: string): void;
-  onStartIdeaThread?(text: string): void;
+  onStartIdeaThread?(idea: Idea): void;
   /** Active projects the new chat can start in. */
   projects: Project[];
   selectedProject: Project | null;
@@ -121,8 +120,7 @@ export function StartPanel({
       ? undefined
       : {
           onOpenIdea,
-          onStartThread: (idea: Idea) =>
-            onStartIdeaThread(ideaThreadDraft(idea, t)),
+          onStartThread: onStartIdeaThread,
           onHide: (ideaID: string) =>
             today.settleIdea(
               ideaID,

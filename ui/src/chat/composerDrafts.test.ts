@@ -6,6 +6,7 @@ import {
   draftScopeKey,
   getDraft,
   restagedDrafts,
+  restoreQueuedDrafts,
   setDraftPastedTexts,
   setDraftText,
   type ComposerDrafts,
@@ -110,6 +111,20 @@ test("restaging loads a sent message back into its scope", () => {
     pastedTexts: [],
   });
   expect(getDraft(next!, "thread:b").text).toBe("other");
+});
+
+test("a handed-back passage keeps its outside mark even when it cannot be taken out of the text", () => {
+  const next = restoreQueuedDrafts({}, "new", [
+    {
+      content: "about this, edited",
+      pastedTexts: [
+        { text: "page text", lineCount: 1, outside: true, ideaId: "i1" },
+      ],
+    },
+  ]);
+  expect(getDraft(next, "new").pastedTexts).toEqual([
+    expect.objectContaining({ text: "page text", outside: true, ideaId: "i1" }),
+  ]);
 });
 
 test("restaging turns pasted blocks back into chips", () => {

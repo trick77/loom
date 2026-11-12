@@ -61,6 +61,11 @@ func (t *Run) pickUpQueued(ctx context.Context, prefix, rounds []llm.Message, b 
 	for _, m := range queued {
 		_ = t.stream.SendJSON("user_message", m)
 		next = append(next, llm.Message{Role: "user", Content: m.Content})
+		// A picked-up message that carries outside text (an idea's
+		// passage) locks the rest of this turn like a page read would.
+		if m.ReadOutside {
+			t.readOutside = true
+		}
 	}
 	slog.Info("picked up queued messages", "thread_id", t.thread.ID, "count", len(queued))
 	return pickUp{split: true, history: next}

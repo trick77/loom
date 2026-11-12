@@ -3,12 +3,14 @@ package ideas
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/sqlutil"
 )
 
@@ -49,7 +51,7 @@ func NewStore(db DBTX) *Store {
 
 const ideaColumns = `id, user_id, state, title, reason, excerpt, thread_id, message_id, thread_title,
     had_thread = 1 AND thread_id IS NULL, due_on, remind_on, reminded_at, remind_dismissed_at,
-    done_at, deleted_at, created_at, updated_at`
+    done_at, deleted_at, created_at, updated_at, question`
 
 // visible is an idea the user sees: confirmed and not deleted.
 const visible = `state IN ('open', 'done') AND deleted_at IS NULL`
@@ -62,7 +64,7 @@ func scanIdea(row rowScanner) (Idea, error) {
 	var createdAt, updatedAt string
 	if err := row.Scan(&idea.ID, &idea.UserID, &idea.State, &idea.Title, &idea.Reason, &idea.Excerpt,
 		&threadID, &messageID, &idea.ThreadTitle, &idea.ThreadDeleted, &dueOn, &remindOn,
-		&remindedAt, &dismissedAt, &doneAt, &deletedAt, &createdAt, &updatedAt); err != nil {
+		&remindedAt, &dismissedAt, &doneAt, &deletedAt, &createdAt, &updatedAt, &idea.Question); err != nil {
 		return Idea{}, err
 	}
 	idea.ThreadID = nullString(threadID)
@@ -199,25 +201,59 @@ func (s *Store) Create(ctx context.Context, userID, state string, in Input, toda
 		}
 		threadTitle = CleanLine(threadTitle, 200)
 	}
+	var question string
 	if messageID != "" {
-		var one int
-		err := s.db.QueryRowContext(ctx, `SELECT 1 FROM messages WHERE user_id = ? AND thread_id = ? AND id = ?`, userID, threadID, messageID).Scan(&one)
+		var rowid int64
+		err := s.db.QueryRowContext(ctx, `SELECT rowid FROM messages WHERE user_id = ? AND thread_id = ? AND id = ?`, userID, threadID, messageID).Scan(&rowid)
 		if errors.Is(err, sql.ErrNoRows) {
 			return Idea{}, ErrNotFound
 		}
 		if err != nil {
 			return Idea{}, fmt.Errorf("look up idea message: %w", err)
 		}
+		if question, err = s.questionBefore(ctx, userID, threadID, rowid); err != nil {
+			return Idea{}, err
+		}
 	}
 	id := sqlutil.NewID()
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO ideas (id, user_id, state, title, reason, excerpt, thread_id, message_id, thread_title, had_thread, due_on, remind_on)
-VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`,
-		id, userID, state, f.title, f.reason, f.excerpt, threadID, messageID, threadTitle, threadID != "", due, remind)
+INSERT INTO ideas (id, user_id, state, title, reason, excerpt, question, thread_id, message_id, thread_title, had_thread, due_on, remind_on)
+VALUES (?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?)`,
+		id, userID, state, f.title, f.reason, f.excerpt, question, threadID, messageID, threadTitle, threadID != "", due, remind)
 	if err != nil {
 		return Idea{}, fmt.Errorf("insert idea: %w", err)
 	}
 	return s.GetAny(ctx, userID, id)
+}
+
+// MaxQuestionRunes caps the question kept with an idea.
+const MaxQuestionRunes = 500
+
+// questionBefore is the user's message right before the captured answer
+// (its rowid) in its thread: what that answer replied to. Pasted blocks come out (a
+// paste can be anyone's text, an idea's passage is outside text): only what
+// the user typed stays. "" when there is none.
+func (s *Store) questionBefore(ctx context.Context, userID, threadID string, before int64) (string, error) {
+	var m chat.Message
+	var pasted string
+	err := s.db.QueryRowContext(ctx, `
+SELECT content, pasted_texts, read_outside FROM messages
+WHERE user_id = ? AND thread_id = ? AND role = 'user'
+  AND rowid < ?
+ORDER BY rowid DESC LIMIT 1`, userID, threadID, before).Scan(&m.Content, &pasted, &m.ReadOutside)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("look up idea question: %w", err)
+	}
+	m.Role, m.PastedTexts = chat.RoleUser, json.RawMessage(pasted)
+	// Fails closed: outside text that cannot be taken out keeps no question.
+	typed, ok := chat.TypedText(m)
+	if !ok {
+		return "", nil
+	}
+	return CleanText(typed, MaxQuestionRunes), nil
 }
 
 // get loads one of the user's ideas that matches where.

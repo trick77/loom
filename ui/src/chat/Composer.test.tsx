@@ -535,3 +535,39 @@ test("ignores a pasted image when attachments are unavailable (incognito)", () =
   expect(notCancelled).toBe(true);
   expect(onAddPastedText).not.toHaveBeenCalled();
 });
+
+test("an idea's passage stages as its own card, with why this answer will not act", () => {
+  const onRemove = vi.fn();
+  render(
+    <Composer
+      variant="start"
+      draft="Vibe Kanban"
+      isSending={false}
+      placeholder="Write a message..."
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+      pastedTexts={[
+        {
+          id: "p1",
+          text: "Vibe Kanban is a board.",
+          lineCount: 1,
+          outside: true,
+          ideaId: "i1",
+          source: "Tech news",
+        },
+      ]}
+      onRemovePastedText={onRemove}
+    />,
+  );
+  expect(screen.getByTestId("passage-card")).toHaveTextContent(
+    "Passage from “Tech news”",
+  );
+  expect(
+    screen.getByText(
+      "With a quoted passage: this answer changes no memories or schedules.",
+    ),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Remove the passage" }));
+  expect(onRemove).toHaveBeenCalledWith("p1");
+});

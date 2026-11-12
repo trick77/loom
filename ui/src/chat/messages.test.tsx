@@ -572,3 +572,52 @@ test("a named link and a short URL link keep their text", () => {
     screen.getByRole("link", { name: "https://ex.com/a" }),
   ).not.toHaveAttribute("title");
 });
+
+test("a sent message with an idea's passage: a chip back to the idea, the passage apart from the user's words", () => {
+  const message = {
+    id: "m1",
+    threadId: "t1",
+    role: "user",
+    content: "Vibe Kanban\n\nWhy: lab week\n\nVibe Kanban is a board.",
+    createdAt: "2026-06-14T00:00:00Z",
+    pastedTexts: [
+      {
+        text: "Vibe Kanban is a board.",
+        lineCount: 1,
+        outside: true,
+        ideaId: "i1",
+        ideaTitle: "Vibe Kanban",
+        source: "Tech news",
+      },
+    ],
+  } as Message;
+  render(
+    <MessageBubble message={message} retryMessage={null} onRetry={vi.fn()} />,
+  );
+  expect(screen.getByTestId("passage-card")).toHaveTextContent(
+    "Vibe Kanban is a board.",
+  );
+  expect(screen.getByText(/Why: lab week/)).not.toHaveTextContent(
+    "Vibe Kanban is a board.",
+  );
+  const pushed = vi.spyOn(window.history, "pushState");
+  fireEvent.click(
+    screen.getByRole("button", { name: "From idea: Vibe Kanban" }),
+  );
+  expect(pushed).toHaveBeenCalledWith({}, "", "/ideas/i1");
+  pushed.mockRestore();
+  window.history.replaceState({}, "", "/");
+});
+
+test("a shared message shows no chip to an idea", () => {
+  const message = {
+    id: "m1",
+    threadId: "t1",
+    role: "user",
+    content: "x\n\npage",
+    createdAt: "2026-06-14T00:00:00Z",
+    pastedTexts: [{ text: "page", lineCount: 1, outside: true, ideaId: "i1" }],
+  } as Message;
+  render(<MessageBubble message={message} retryMessage={null} publicView />);
+  expect(screen.queryByRole("button", { name: /From idea/ })).toBeNull();
+});

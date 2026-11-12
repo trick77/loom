@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { stripPastedBlocks, type PastedTextBlock } from "./pastedText";
+import {
+  createPastedText,
+  pastedTextFromBlock,
+  quotesOutside,
+  stripPastedBlocks,
+  toPastedTextBlock,
+  type PastedTextBlock,
+} from "./pastedText";
 
 // Mirror composeSendContent (ThreadShell): draft first, then each block, joined by
 // "\n\n", empties filtered. The store trims the whole string on insert.
@@ -70,5 +77,38 @@ describe("stripPastedBlocks", () => {
     // present is stripped and matched; absent is not in content, so unmatched and
     // left for the caller to keep inline rather than render as a duplicate chip.
     expect(out.matched).toEqual([true, false]);
+  });
+});
+
+// Lost on any copy (draft, retry, queue), the server would take an idea's
+// passage for the user's own words.
+describe("outside marks", () => {
+  it("survive the wire shape both ways; a plain paste carries none", () => {
+    const marked = {
+      ...createPastedText("page text"),
+      outside: true,
+      ideaId: "i1",
+      ideaTitle: "T",
+      source: "S",
+    };
+    const block = toPastedTextBlock(marked);
+    expect(block).toEqual({
+      text: "page text",
+      lineCount: 1,
+      outside: true,
+      ideaId: "i1",
+      ideaTitle: "T",
+      source: "S",
+    });
+    expect(pastedTextFromBlock(block)).toMatchObject({
+      outside: true,
+      ideaId: "i1",
+    });
+    expect(toPastedTextBlock(createPastedText("mine"))).toEqual({
+      text: "mine",
+      lineCount: 1,
+    });
+    expect(quotesOutside([block])).toBe(true);
+    expect(quotesOutside([{ outside: false }, {}])).toBe(false);
   });
 });

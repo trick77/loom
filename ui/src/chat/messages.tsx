@@ -26,7 +26,8 @@ import {
 } from "../api";
 import i18n from "../i18n";
 import { captureSaving, IdeaCapture } from "../ideas/IdeaCapture";
-import { IdeaCard } from "../ideas/IdeaCard";
+import { IdeaCard, openIdeaPage } from "../ideas/IdeaCard";
+import { PassageCard } from "../ideas/PassageCard";
 import { useIdeaCapture, useOpenCapture } from "../ideas/IdeaCaptureContext";
 import { cutExcerpt } from "../ideas/ideaText";
 import { PROSE_ATTR } from "../ideas/selectionTarget";
@@ -123,21 +124,47 @@ const UserMessageBubble = memo(function UserMessageBubble({
       : { text: message.content, matched: [] as boolean[] };
   }, [message.content, message.pastedTexts]);
   const pastedTexts = message.pastedTexts ?? [];
+  // The idea an idea's passage came from: a chip back to it (not in a share).
+  const fromIdea = publicView
+    ? undefined
+    : pastedTexts.find(
+        (pasted) => pasted.outside === true && pasted.ideaId !== undefined,
+      );
   return (
     <div className="ui-user-message group ml-auto w-fit max-w-full md:max-w-[38.25rem]">
+      {fromIdea?.ideaId !== undefined && (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => openIdeaPage(fromIdea.ideaId as string)}
+            className="inline-flex h-[26px] max-w-full items-center gap-1.5 rounded-full bg-unread/12 px-2.5 font-sans text-[12px] text-unread-ink hover:bg-unread/20"
+          >
+            <Icon name="bulb" size="13px" className="shrink-0" />
+            <span className="truncate">
+              {t("ideas.fromIdea", { title: fromIdea.ideaTitle ?? "" })}
+            </span>
+          </button>
+        </div>
+      )}
       {message.attachments !== undefined && message.attachments.length > 0 && (
         <SentAttachments attachments={message.attachments} />
       )}
       {pastedMatched.some(Boolean) && (
         <div className="mt-2 flex flex-wrap justify-end gap-2">
           {pastedTexts.map((pasted, index) =>
-            pastedMatched[index] ? (
+            !pastedMatched[index] ? null : pasted.outside === true ? (
+              <PassageCard
+                key={`${message.id}-pasted-${index}`}
+                text={pasted.text}
+                source={pasted.source}
+              />
+            ) : (
               <PastedTextCard
                 key={`${message.id}-pasted-${index}`}
                 text={pasted.text}
                 lineCount={pasted.lineCount}
               />
-            ) : null,
+            ),
           )}
         </div>
       )}

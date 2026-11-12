@@ -162,6 +162,19 @@ export type Message = {
 export type MessagePastedText = {
   text: string;
   lineCount: number;
+} & PastedSource;
+
+/**
+ * PastedSource marks a block of outside text sent along without the user
+ * having written it: an idea's passage (a page an answer quoted). The server
+ * counts the message as having read outside content: its turn may not act.
+ */
+export type PastedSource = {
+  outside?: boolean;
+  ideaId?: string;
+  ideaTitle?: string;
+  /** The title of the thread the passage came from. */
+  source?: string;
 };
 
 // QueuedMessage is a message sent while the thread's turn was running, waiting

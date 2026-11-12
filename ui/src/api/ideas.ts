@@ -15,6 +15,11 @@ export type Idea = {
   reason: string;
   /** The captured passage: outside text, always rendered as plain text. */
   excerpt: string;
+  /**
+   * The user's message the captured answer replied to, taken by the server
+   * (pasted blocks left out). "" when there is none.
+   */
+  question: string;
   threadId: string | null;
   messageId: string | null;
   /** The thread's title when the idea was captured; kept after a delete. */

@@ -77,6 +77,8 @@ export const en = {
     removeAttachment: "Remove {{filename}}",
     pastedText: "Pasted text",
     pastedBadge: "Pasted",
+    quotesOutside:
+      "With a quoted passage: this answer changes no memories or schedules.",
     removePastedText_one: "Remove pasted text, {{count}} line",
     removePastedText_other: "Remove pasted text, {{count}} lines",
     attached: "Attached",
@@ -769,6 +771,13 @@ export const en = {
     loadFailed: "Ideas failed to load.",
     actionFailed: "That did not work. Try again.",
     draftWhy: "Why: {{reason}}",
+    draftQuestion: "My question back then: {{question}}",
+    question: "Your question back then",
+    yourQuestion: "Your question",
+    quoted: "“{{text}}”",
+    passageFrom: "Passage from “{{source}}”",
+    removePassage: "Remove the passage",
+    fromIdea: "From idea: {{title}}",
     card: {
       ask: {
         save: "Save this idea?",

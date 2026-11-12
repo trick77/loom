@@ -15,6 +15,8 @@ import (
 type fakeInbox struct {
 	store    *fakeThreadStore
 	contents []string
+	// pasted are the blocks each queued message carries (nil: none).
+	pasted   json.RawMessage
 	consumed bool
 	checks   int
 }
@@ -31,7 +33,7 @@ func (f *fakeInbox) Consume(ctx context.Context) ([]chat.Message, error) {
 	f.consumed = true
 	var out []chat.Message
 	for _, c := range f.contents {
-		m, err := f.store.AddMessageWithAttachments(ctx, testUser.ID, f.store.Thread.ID, chat.RoleUser, c, nil, nil, "send-q")
+		m, err := f.store.AddMessageWithAttachments(ctx, testUser.ID, f.store.Thread.ID, chat.RoleUser, c, nil, f.pasted, "send-q")
 		if err != nil {
 			return nil, err
 		}

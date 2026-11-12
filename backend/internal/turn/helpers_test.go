@@ -78,7 +78,7 @@ func driveTurn(t *testing.T, cfg Config, store *fakeThreadStore, content string,
 	if err != nil {
 		t.Fatal(err)
 	}
-	userMessage, err := store.AddMessageWithAttachments(ctx, testUser.ID, store.Thread.ID, chat.RoleUser, content, nil, nil, "")
+	userMessage, err := store.AddMessageWithAttachments(ctx, testUser.ID, store.Thread.ID, chat.RoleUser, content, nil, store.SendPastedTexts, "")
 	if err != nil {
 		t.Fatal(err)
 	}

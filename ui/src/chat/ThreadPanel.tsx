@@ -41,6 +41,7 @@ import { QueuedMessages } from "./QueuedMessages";
 import type { QueuedBubble } from "./useQueuedMessages";
 import { IdeaCaptureProvider } from "../ideas/IdeaCaptureContext";
 import { SelectionCapture } from "../ideas/SelectionCapture";
+import { questionBefore } from "../ideas/ideaText";
 import { IdeaCard } from "../ideas/IdeaCard";
 
 // MESSAGE_FLASH_MS is how long a message opened by link stays highlighted:
@@ -880,12 +881,17 @@ export function ThreadPanel({
       </div>
     </section>
   );
+  // The question an answer replied to, shown in its capture (the server
+  // takes its own copy on save).
+  const questionFor = (messageId: string) =>
+    questionBefore(messages, messageId);
   // A stored thread offers "Save as idea" under its answers. The provider is
   // always there (its value null without one) so the panel never remounts.
   return (
     <IdeaCaptureProvider
       threadId={onOpenIdea === undefined ? null : (thread?.id ?? null)}
       threadTitle={thread?.title ?? ""}
+      questionFor={questionFor}
       onOpenIdea={onOpenIdea}
     >
       {panel}

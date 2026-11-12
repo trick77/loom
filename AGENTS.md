@@ -70,4 +70,5 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 - Outside content never triggers an action (iron rule, prompt injection, `Engine.acts`). Uploads don't
   count: every turn retrieves them, doc threads would lock for good.
 - Idea tools only propose a card, the user's click saves (they run after pages). Excerpt = outside
-  text, never to a chat model; `ideas_lookup` refuses after outside content and counts as it.
+  text: to a chat model only as a pasted block marked `outside` (message flagged read_outside, its
+  turn locked, later turns see a stand-in); `ideas_lookup` refuses after outside content, counts as it.
