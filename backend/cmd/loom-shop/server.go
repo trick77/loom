@@ -59,8 +59,9 @@ func mcpServer(cfg config, client *http.Client, version string) mcpserver.Server
 		// catalog), and a model cannot tie that to "an online shop".
 		Description: "Search the catalog of Galaxus, Switzerland's largest online shop (with its electronics brand Digitec), " +
 			"for products to buy. Returns the matching products, each " +
-			"with name, brand, type, price incl. VAT in the shop's currency, average rating, review pros and cons, a short " +
-			"description and its product page. Not in the results: stock, delivery times, full reviews. Use it to find, " +
+			"with name, brand, type, price incl. VAT in the shop's currency (and the earlier price when on sale), how soon " +
+			"it ships when the shop says, used or showroom items, average rating, review pros and cons, a short " +
+			"description and its product page. Not in the results: exact delivery dates, full reviews. Use it to find, " +
 			"compare or price products; search again with other words when the results miss.",
 		Schema: mcpserver.ObjectSchema(map[string]any{
 			"query": map[string]any{"type": "string",
@@ -203,14 +204,37 @@ func render(query string, res shopResult) mcpserver.Result {
 		}
 		src := mcpserver.Source{URL: page, Title: title}
 		product := &mcpserver.Product{}
+		extra := res.offers[productID(p.ID)]
 		var snippet []string
 		if pr := p.PriceIfAvailable; pr != nil && pr.AmountInclusive > 0 && strings.TrimSpace(pr.Currency) != "" {
 			price := pr.AmountInclusive
 			product.Price, product.Currency = &price, strings.TrimSpace(pr.Currency)
-			fmt.Fprintf(&text, "Price: %s %.2f incl. VAT\n", product.Currency, price)
-			snippet = append(snippet, fmt.Sprintf("%s %.2f", product.Currency, price))
+			// A sale only when the earlier price is above today's.
+			if was := extra.wasPrice; was != nil && *was > price {
+				product.WasPrice = was
+				fmt.Fprintf(&text, "Price: %s %.2f incl. VAT, reduced from %.2f", product.Currency, price, *was)
+				if extra.rebate > 0 {
+					fmt.Fprintf(&text, " (%d%% off)", extra.rebate)
+				}
+				text.WriteString("\n")
+				snippet = append(snippet, fmt.Sprintf("%s %.2f (was %.2f)", product.Currency, price, *was))
+			} else {
+				fmt.Fprintf(&text, "Price: %s %.2f incl. VAT\n", product.Currency, price)
+				snippet = append(snippet, fmt.Sprintf("%s %.2f", product.Currency, price))
+			}
+			if extra.volume {
+				text.WriteString("Volume discount: cheaper by the piece in quantity\n")
+			}
 		} else {
 			text.WriteString("Price: not listed\n")
+		}
+		if a := availabilityText[extra.availability]; a != "" {
+			product.Availability = extra.availability
+			fmt.Fprintf(&text, "Availability: %s\n", a)
+		}
+		if c := conditionText[extra.condition]; c != "" {
+			product.Condition = extra.condition
+			fmt.Fprintf(&text, "Condition: %s\n", c)
 		}
 		if r := p.RatingSummaryIfAvailable; r != nil && r.RatingCount > 0 {
 			product.Rating, product.RatingCount = r.AverageRating, r.RatingCount

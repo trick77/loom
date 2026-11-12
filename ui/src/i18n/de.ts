@@ -323,6 +323,17 @@ export const de = {
     rating_one: "{{rating}} von 5, {{count}} Bewertung",
     rating_other: "{{rating}} von 5, {{count}} Bewertungen",
     ratingOnly: "{{rating}} von 5",
+    wasPrice: "vorher {{price}}",
+    availability: {
+      in_stock: "An Lager",
+      supplier_stock: "In wenigen Tagen",
+      on_order: "Auf Bestellung, 1–3 Wochen",
+      uncertain: "Liefertermin unsicher",
+    },
+    condition: {
+      used: "Occasion",
+      display: "Ausstellungsstück",
+    },
   },
   artifactCard: {
     previewFailed: "Vorschau fehlgeschlagen",

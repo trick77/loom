@@ -73,6 +73,29 @@ type fakeShop struct {
 	status    int
 	// expire404 answers an unknown session as the spec says: 404, no body.
 	expire404 bool
+	// meta is the result's _meta; a shape the sidecar cannot read when nil.
+	meta any
+}
+
+func (f *fakeShop) metaOr() any {
+	if f.meta != nil {
+		return f.meta
+	}
+	return map[string]any{"response": strings.Repeat("x", 1000)}
+}
+
+// shopMeta is a _meta as the shop sends it, around the given nodes.
+func shopMeta(nodes ...string) any {
+	var meta any
+	_ = json.Unmarshal([]byte(`{"toolName":"search_products","response":{"data":{"serverToolShopSearch":{"products":{"edges":[`+
+		func() string {
+			var edges []string
+			for _, n := range nodes {
+				edges = append(edges, `{"node":`+n+`}`)
+			}
+			return strings.Join(edges, ",")
+		}()+`]}}}}}`), &meta)
+	return meta
 }
 
 func (f *fakeShop) server(t *testing.T) *httptest.Server {
@@ -132,7 +155,7 @@ func (f *fakeShop) server(t *testing.T) *httptest.Server {
 			writeSSE(w, req.ID, map[string]any{
 				"content": content,
 				"isError": f.isError,
-				"_meta":   map[string]any{"response": strings.Repeat("x", 1000)},
+				"_meta":   f.metaOr(),
 			})
 			if f.dropAfter > 0 && f.calls >= f.dropAfter {
 				f.sessions = map[string]bool{}
@@ -234,6 +257,82 @@ func TestLoomGetsTheProducts(t *testing.T) {
 		}
 	}
 	if strings.Contains(got.Text, "utm_") || strings.Contains(got.Text, "vierter") || strings.Contains(got.Text, "No page") {
+		t.Fatalf("text %q", got.Text)
+	}
+}
+
+// The undocumented _meta adds a sale, labels and how soon an item ships, by
+// product id; what it lacks or garbles costs only those.
+func TestOffersFromMeta(t *testing.T) {
+	fake := &fakeShop{result: twoProducts, meta: shopMeta(
+		`{"trackingId":1,"labels":["DISCOUNT","VOLUME_DISCOUNT"],"availability":{"availabilityClassification":"HALF"},
+		  "insteadOfPrice":{"type":"SALES_PRICE_BEFORE","rebate":15,"price":{"amountInclusive":39}}}`,
+		`{"trackingId":2,"labels":["USED",{"odd":1}],"availability":{"availabilityClassification":"QUARTER"}}`,
+		`{"trackingId":"broken"}`,
+	)}
+	svc := loomService(t, config{upstreamURL: fake.server(t).URL})
+	got, err := svc.CallToolResult(context.Background(), shopTool, map[string]any{"query": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := got.Sources[0].Product, got.Sources[1].Product
+	if a == nil || a.WasPrice == nil || *a.WasPrice != 39 || a.Availability != "on_order" || a.Condition != "" {
+		t.Fatalf("first product %+v", a)
+	}
+	if got.Sources[0].Snippet != "CHF 33.00 (was 39.00) · ★ 4.7 (1118)" {
+		t.Fatalf("snippet %q", got.Sources[0].Snippet)
+	}
+	// Two unconfirmed icons both read as uncertain, never as soon.
+	if b == nil || b.Availability != "uncertain" || b.Condition != "used" || b.WasPrice != nil {
+		t.Fatalf("second product %+v", b)
+	}
+	for _, want := range []string{
+		"Price: CHF 33.00 incl. VAT, reduced from 39.00 (15% off)\nVolume discount: cheaper by the piece in quantity\n" +
+			"Availability: not in stock, ordered from the supplier, delivered in about one to three weeks\nRating:",
+		"Price: not listed\nAvailability: not in stock, no firm delivery date (weeks, or not available now)\nCondition: used\n",
+	} {
+		if !strings.Contains(got.Text, want) {
+			t.Fatalf("text %q lacks %q", got.Text, want)
+		}
+	}
+}
+
+// An id sent as a string still joins its extras; one that is neither number
+// nor numeric string costs only them, never the search.
+func TestProductIDLenient(t *testing.T) {
+	for raw, want := range map[string]int64{`24556944`: 24556944, `"24556944"`: 24556944, `"x"`: 0, `null`: 0, `{}`: 0, ``: 0} {
+		if got := productID(json.RawMessage(raw)); got != want {
+			t.Errorf("productID(%s) = %d, want %d", raw, got, want)
+		}
+	}
+	fake := &fakeShop{result: strings.Replace(twoProducts, `"id":1,`, `"id":{"odd":1},`, 1), meta: shopMeta(
+		`{"trackingId":2,"availability":{"availabilityClassification":"TICK"}}`)}
+	svc := loomService(t, config{upstreamURL: fake.server(t).URL})
+	got, err := svc.CallToolResult(context.Background(), shopTool, map[string]any{"query": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Sources) != 2 || got.Sources[1].Product == nil || got.Sources[1].Product.Availability != "in_stock" {
+		t.Fatalf("sources %+v", got.Sources)
+	}
+}
+
+// An earlier price at or below today's is no sale, and an icon the shop
+// newly invents says nothing.
+func TestOfferNoSaleNoGuess(t *testing.T) {
+	fake := &fakeShop{result: twoProducts, meta: shopMeta(
+		`{"trackingId":1,"availability":{"availabilityClassification":"SPARKLE"},
+		  "insteadOfPrice":{"type":"SALES_PRICE_BEFORE","rebate":0,"price":{"amountInclusive":33}}}`,
+	)}
+	svc := loomService(t, config{upstreamURL: fake.server(t).URL})
+	got, err := svc.CallToolResult(context.Background(), shopTool, map[string]any{"query": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := got.Sources[0].Product; p.WasPrice != nil || p.Availability != "" {
+		t.Fatalf("product %+v", p)
+	}
+	if strings.Contains(got.Text, "reduced") || strings.Contains(got.Text, "Availability") {
 		t.Fatalf("text %q", got.Text)
 	}
 }

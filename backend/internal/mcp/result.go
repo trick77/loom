@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/trick77/loom/internal/artifact"
+	"github.com/trick77/toolkit/mcpserver"
 )
 
 // maxStructuredSources caps how many sources one tool result may contribute, so
@@ -34,13 +35,28 @@ type Source struct {
 
 // Product is what a shop knows about a product page (docs/shop.md). A nil
 // Price is no price known; it comes with its ISO 4217 Currency or not at all.
-// Rating is an average out of 5, 0 none.
+// WasPrice is the price before a discount, in Currency. Rating is an average
+// out of 5, 0 none. Availability is one of productAvailabilities, Condition
+// one of productConditions; "" is not known, or new.
 type Product struct {
-	Price       *float64 `json:"price,omitempty"`
-	Currency    string   `json:"currency,omitempty"`
-	Rating      float64  `json:"rating,omitempty"`
-	RatingCount int      `json:"ratingCount,omitempty"`
+	Price        *float64 `json:"price,omitempty"`
+	Currency     string   `json:"currency,omitempty"`
+	WasPrice     *float64 `json:"wasPrice,omitempty"`
+	Rating       float64  `json:"rating,omitempty"`
+	RatingCount  int      `json:"ratingCount,omitempty"`
+	Availability string   `json:"availability,omitempty"`
+	Condition    string   `json:"condition,omitempty"`
 }
+
+// productAvailabilities and productConditions are the contract's values, from
+// toolkit's own constants: a card words only these (ui ProductCards, i18n).
+var (
+	productAvailabilities = map[string]bool{
+		mcpserver.AvailabilityInStock: true, mcpserver.AvailabilitySupplier: true,
+		mcpserver.AvailabilityOnOrder: true, mcpserver.AvailabilityUncertain: true,
+	}
+	productConditions = map[string]bool{mcpserver.ConditionUsed: true, mcpserver.ConditionDisplay: true}
+)
 
 // maxProductRating is the top of the scale a Rating is read on.
 const maxProductRating = 5
@@ -50,8 +66,9 @@ var currencyCode = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // cleanProduct keeps what a card can show truthfully and drops the rest: a
 // price that is not above zero (zero is "none", the contract's nil) or comes
-// without a valid currency, a rating off the scale, a count without its
-// rating. Nothing left is no product.
+// without a valid currency, an earlier price not above today's, a rating off
+// the scale, a count without its rating, an availability or condition the
+// contract does not name. Nothing left is no product.
 func cleanProduct(p *Product) *Product {
 	if p == nil {
 		return nil
@@ -61,6 +78,16 @@ func cleanProduct(p *Product) *Product {
 	if p.Price != nil && *p.Price > 0 && currencyCode.MatchString(currency) {
 		price := *p.Price
 		out.Price, out.Currency = &price, currency
+		if p.WasPrice != nil && *p.WasPrice > price {
+			was := *p.WasPrice
+			out.WasPrice = &was
+		}
+	}
+	if productAvailabilities[p.Availability] {
+		out.Availability = p.Availability
+	}
+	if productConditions[p.Condition] {
+		out.Condition = p.Condition
 	}
 	if p.Rating > 0 && p.Rating <= maxProductRating {
 		out.Rating = p.Rating
