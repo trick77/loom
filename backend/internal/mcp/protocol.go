@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/version"
 )
 
@@ -55,7 +56,7 @@ var clientInfo = map[string]string{"name": "loom", "version": version.String()}
 
 // userAgent names loom on every HTTP request to an MCP server, where Go's
 // default names only the library. A server's configured headers may replace it.
-var userAgent = "loom/" + version.String() + " (+https://github.com/trick77/loom)"
+var userAgent = sidecar.UserAgent("loom", version.String())
 
 // rpcCallError is a JSON-RPC error a server answered with on a 2xx response.
 type rpcCallError struct {

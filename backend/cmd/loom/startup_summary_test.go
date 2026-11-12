@@ -117,6 +117,20 @@ func TestStartupCapabilitiesWeather(t *testing.T) {
 	assertCapability(t, items, "weather", "configured", "not answering yet")
 }
 
+// compose sets the shop URL on every install: a missing token is named.
+func TestStartupCapabilitiesShop(t *testing.T) {
+	items := startupCapabilities(config.Config{ShopURL: "http://shop:8110"}, mcp.Config{}, startupRuntime{})
+	assertCapability(t, items, "product search", "disabled", "set BACKEND_SHOP_TOKEN")
+	items = startupCapabilities(config.Config{}, mcp.Config{}, startupRuntime{})
+	assertCapability(t, items, "product search", "disabled", "set BACKEND_SHOP_URL")
+	sidecar := mcp.Config{Servers: map[string]mcp.ServerConfig{mcp.ShopServer: mcp.ShopServerConfig("http://shop:8110", "t")}}
+	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{ShopToolUp: true})
+	assertCapability(t, items, "product search", "enabled", "loom-shop sidecar")
+	file := mcp.Config{Servers: map[string]mcp.ServerConfig{mcp.ShopServer: {URL: "https://other.example/mcp"}}}
+	items = startupCapabilities(config.Config{}, file, startupRuntime{})
+	assertCapability(t, items, "product search", "configured", "mcp.json server shop not answering yet")
+}
+
 // Who serves the document tools, how many answered, and an mcp.json server
 // whose files would all be dropped.
 func TestStartupCapabilitiesDocgen(t *testing.T) {

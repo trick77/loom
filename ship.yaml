@@ -11,7 +11,7 @@ images:
   # run_python's sidecar ships with every release under the same version, so
   # compose's pair always matches.
   - { suffix: "-sandbox", containerfile: sandbox/Containerfile }
-  # The Go sidecars (docgen, imagegen, search, strava, tunewire, weather) in
+  # The Go sidecars (docgen, imagegen, search, shop, strava, tunewire, weather) in
   # one image, same version as loom; one container each, picked by command.
   - { suffix: "-sidecars", containerfile: sidecars/Containerfile }
 visibility: public

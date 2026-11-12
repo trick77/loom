@@ -44,6 +44,23 @@ describe("tool call descriptions and labels", () => {
     ).toEqual({ kind: "generic", title: "Using peeq", placeholder: true });
   });
 
+  test("a product search is a shop lookup, never a web search", () => {
+    // The name holds "search", which alone would read as web search (globe).
+    expect(
+      summarizeToolCall(
+        "shop__search_products",
+        '{"query":"usb-c charger 65w"}',
+        "Product search",
+      ),
+    ).toEqual({ kind: "lookup", title: "Usb-c charger 65w" });
+    expect(
+      summarizeToolCall("shop__search_products", "{}", "Product search", {
+        running: true,
+      }),
+    ).toEqual({ kind: "generic", title: "Using Shop", placeholder: true });
+    expect(toolSourceLabel("shop__search_products")).toBe("Shop");
+  });
+
   test("the placeholder gives way to the query or, at the result, the title", () => {
     let events = upsertTraceToolCall([], {
       id: "c1",

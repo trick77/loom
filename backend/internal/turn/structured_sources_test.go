@@ -74,6 +74,25 @@ func TestStructuredSourceImageMustBeHTTPS(t *testing.T) {
 	}
 }
 
+// A shop's product details ride the citation to the product cards; a source
+// without them carries none.
+func TestStructuredSourceCarriesProduct(t *testing.T) {
+	reg := newWebSourceRegistryAfter(0)
+	price := 29.9
+	product := &mcp.Product{Price: &price, Currency: "CHF", Rating: 4.7, RatingCount: 853}
+	relabelStructuredSources("- a\n- b", []mcp.Source{
+		{URL: "https://shop.example/a", Title: "A", Image: "https://shop.example/a.jpg", Product: product},
+		{URL: "https://shop.example/b", Title: "B"},
+	}, reg)
+	got := webSourceCitations(reg.all())
+	if got[0].Product == nil || *got[0].Product.Price != 29.9 || got[0].Product.Currency != "CHF" || got[0].Product.RatingCount != 853 {
+		t.Fatalf("product = %+v", got[0].Product)
+	}
+	if got[1].Product != nil {
+		t.Fatalf("plain source carries a product: %+v", got[1].Product)
+	}
+}
+
 func TestRelabelStructuredSourcesSkipsUnusableURLs(t *testing.T) {
 	reg := newWebSourceRegistryAfter(0)
 	out := relabelStructuredSources("1. x", []mcp.Source{{URL: "ftp://nope"}}, reg)

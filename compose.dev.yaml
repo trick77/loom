@@ -53,6 +53,9 @@ services:
       # Weather sidecar, published on a localhost port.
       BACKEND_WEATHER_URL: "${BACKEND_WEATHER_URL:-http://localhost:8100}"
       BACKEND_WEATHER_TOKEN: dev-weather-token-please-change-012345678
+      # Product search sidecar, published on a localhost port.
+      BACKEND_SHOP_URL: "${BACKEND_SHOP_URL:-http://localhost:8110}"
+      BACKEND_SHOP_TOKEN: dev-shop-token-please-change-0123456789ab
       # The Tavily key is the sidecar's alone: over what env_file loads, loom
       # sees only whether one is set (it warns when the sidecar is not configured).
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"
@@ -105,6 +108,8 @@ services:
       search:
         condition: service_healthy
       weather:
+        condition: service_healthy
+      shop:
         condition: service_healthy
       imagegen:
         # Opt-in profile, so not required; discovered at boot once healthy.
@@ -252,6 +257,28 @@ services:
       - "127.0.0.1:8100:8100"
     healthcheck:
       test: ["CMD", "/loom-weather", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+
+  shop:
+    # Product search sidecar, built from source, published on a localhost port.
+    <<: *sidecar-image
+    command: ["/loom-shop", "serve"]
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # Same value as loom's BACKEND_SHOP_TOKEN above.
+      SHOP_TOKEN: dev-shop-token-please-change-0123456789ab
+    ports:
+      - "127.0.0.1:8110:8110"
+    healthcheck:
+      test: ["CMD", "/loom-shop", "healthcheck"]
       interval: 60s
       timeout: 5s
       start_period: 30s

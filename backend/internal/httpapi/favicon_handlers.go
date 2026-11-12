@@ -16,10 +16,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/fsx"
 	"github.com/trick77/ship/kit/httpx"
+	"github.com/trick77/ship/kit/version"
 	"github.com/trick77/toolkit/webfetch"
 )
+
+// faviconUserAgent names loom on icon and source-image fetches, as it does to
+// MCP servers. A shop's image host answered "loom-favicon-cache/1.0" with 403
+// (Galaxus, 2026-11-12) and serves this one.
+var faviconUserAgent = sidecar.UserAgent("loom", version.String())
 
 const (
 	// faviconCacheControl lets browsers cache proxied favicons for a week. After that
@@ -36,7 +43,6 @@ const (
 	// faviconResolveTimeout bounds a whole resolve (page fetch + candidate probes)
 	// so a slow site can't tie the request up for one 5s timeout per candidate.
 	faviconResolveTimeout = 12 * time.Second
-	faviconUserAgent      = "loom-favicon-cache/1.0"
 	// faviconMissTTL is how long a "this site has no usable icon" result is
 	// remembered. Without it every render of a thread citing such a site would redo
 	// the full resolve (a page fetch plus a probe per candidate, up to

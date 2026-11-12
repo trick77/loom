@@ -612,6 +612,7 @@ const KNOWN_TOOL_SOURCES: Record<string, string> = {
   fetch: "sources.fetch",
   obscura: "sources.browser",
   imagegen: "sources.imageGenerator",
+  shop: "sources.shop",
   [DOCUMENT_SERVER]: "sources.files",
   run_python: "sources.python",
   conversation_search: "sources.conversations",

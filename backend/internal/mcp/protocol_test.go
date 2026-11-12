@@ -288,6 +288,41 @@ func TestToolListTTLClamps(t *testing.T) {
 	}
 }
 
+// A source's product details are kept where they make sense and dropped
+// where a server sent nonsense: a card shows nothing rather than a wrong price.
+func TestStructuredSourcesCleansProduct(t *testing.T) {
+	raw := `{"sources":[
+		{"url":"https://s.example/a","product":{"price":29.9,"currency":"chf","rating":4.7,"ratingCount":853}},
+		{"url":"https://s.example/b","product":{"price":-1,"currency":"CHF","rating":9,"ratingCount":-3}},
+		{"url":"https://s.example/c","product":{"price":12,"currency":"Franken"}},
+		{"url":"https://s.example/d","product":{}},
+		{"url":"https://s.example/e"},
+		{"url":"https://s.example/f","product":{"price":0,"currency":"CHF","rating":9,"ratingCount":12}}]}`
+	got := structuredSources(json.RawMessage(raw))
+	if len(got) != 6 {
+		t.Fatalf("sources = %d", len(got))
+	}
+	if p := got[0].Product; p == nil || p.Price == nil || *p.Price != 29.9 || p.Currency != "CHF" || p.Rating != 4.7 || p.RatingCount != 853 {
+		t.Fatalf("a: %+v", got[0].Product)
+	}
+	// Every field out of range: nothing left, no product.
+	if got[1].Product != nil {
+		t.Fatalf("b: %+v", got[1].Product)
+	}
+	// A price needs its currency: without a valid one neither is shown.
+	if got[2].Product != nil {
+		t.Fatalf("c: %+v", got[2].Product)
+	}
+	if got[3].Product != nil || got[4].Product != nil {
+		t.Fatalf("d, e: %+v %+v", got[3].Product, got[4].Product)
+	}
+	// A zero price is none (the contract's nil), and a count without its
+	// rating says nothing: a card reading only "no price" is no card.
+	if got[5].Product != nil {
+		t.Fatalf("f: %+v", got[5].Product)
+	}
+}
+
 func TestStructuredSourcesIgnoresOtherShapes(t *testing.T) {
 	for _, raw := range []string{``, `null`, `"text"`, `[1,2]`, `{"sources":"nope"}`, `{"other":1}`, `{"sources":[{"url":" "}]}`} {
 		if got := structuredSources(json.RawMessage(raw)); got != nil {

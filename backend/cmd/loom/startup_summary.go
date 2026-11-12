@@ -23,6 +23,8 @@ type startupRuntime struct {
 	SearchServerUp bool
 	// WeatherToolUp: discovery found the forecast tool.
 	WeatherToolUp bool
+	// ShopToolUp: discovery found the product search tool.
+	ShopToolUp bool
 }
 
 type startupCapability struct {
@@ -55,6 +57,7 @@ func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startu
 		mcpFileCapability(cfg),
 		searchCapability(mcpConfig, runtime),
 		weatherCapability(cfg, mcpConfig, runtime),
+		shopCapability(cfg, mcpConfig, runtime),
 		imageGenCapability(mcpConfig, runtime),
 		sandboxCapability(cfg),
 		responseLoggingCapability(cfg),
@@ -177,6 +180,27 @@ func weatherCapability(cfg config.Config, mcpConfig mcp.Config, runtime startupR
 		return startupCapability{Name: "weather", Status: "enabled", Detail: who}
 	}
 	return startupCapability{Name: "weather", Status: "configured", Detail: who + " not answering yet; offered once it does"}
+}
+
+// shopCapability says who serves product search: the loom-shop sidecar, or
+// an mcp.json server named shop that replaces it. Like the weather, compose
+// sets the URL on every install, so a missing token is the usual reason.
+func shopCapability(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
+	const name = "product search"
+	server, ok := mcpConfig.Servers[mcp.ShopServer]
+	who := "mcp.json server " + mcp.ShopServer
+	if server.BuiltIn {
+		who = "loom-shop sidecar"
+	}
+	switch {
+	case !ok && strings.TrimSpace(cfg.ShopURL) != "":
+		return startupCapability{Name: name, Status: "disabled", Detail: "set BACKEND_SHOP_TOKEN (loom-shop sidecar)"}
+	case !ok:
+		return startupCapability{Name: name, Status: "disabled", Detail: "set BACKEND_SHOP_URL and BACKEND_SHOP_TOKEN (loom-shop sidecar)"}
+	case runtime.ShopToolUp:
+		return startupCapability{Name: name, Status: "enabled", Detail: who}
+	}
+	return startupCapability{Name: name, Status: "configured", Detail: who + " not answering yet; offered once it does"}
 }
 
 // imageGenCapability says who serves the image tool: the loom-imagegen

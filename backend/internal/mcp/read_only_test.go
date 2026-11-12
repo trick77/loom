@@ -78,6 +78,7 @@ func TestBuiltInServersReadOnly(t *testing.T) {
 		"obscura":    {ObscuraServerConfig("http://o", "t"), true},
 		"search":     {SearchServerConfig("http://s", "t"), true},
 		"weather":    {WeatherServerConfig("http://w", "t"), true},
+		"shop":       {ShopServerConfig("http://s", "t"), true},
 		"strava":     {StravaServerConfig("http://s", "t", nil), true},
 		"tunewire":   {TunewireLibraryServerConfig("http://t", "t", nil), true},
 		"applemusic": {TunewireCatalogServerConfig("http://t", "t"), true},

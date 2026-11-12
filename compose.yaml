@@ -37,6 +37,9 @@ services:
       # Weather sidecar (docs/weather.md), always started; on once
       # BACKEND_WEATHER_TOKEN is set (it comes in through env_file).
       BACKEND_WEATHER_URL: "${BACKEND_WEATHER_URL:-http://weather:8100}"
+      # Product search sidecar (docs/shop.md), always started; on once
+      # BACKEND_SHOP_TOKEN is set (it comes in through env_file).
+      BACKEND_SHOP_URL: "${BACKEND_SHOP_URL:-http://shop:8110}"
       # The Tavily key is the sidecar's alone: over what env_file loads, loom
       # sees only whether one is set (it warns when the sidecar is not configured).
       BACKEND_TAVILY_API_KEY: "${BACKEND_TAVILY_API_KEY:+set}"
@@ -112,6 +115,10 @@ services:
       weather:
         # Discovered at boot: waiting keeps the weather from missing until the
         # next refresh. Healthy without a token too (it then refuses calls).
+        condition: service_healthy
+      shop:
+        # Discovered at boot: waiting keeps product search from missing until
+        # the next refresh. Healthy without a token too (it then refuses calls).
         condition: service_healthy
       imagegen:
         # Discovered at boot like the rest: waiting keeps the image tool from
@@ -387,6 +394,36 @@ services:
       retries: 3
     # The loom network: reachable from loom only, with egress to Open-Meteo
     # and Nominatim (the town at the user's position).
+    networks:
+      - loom
+    labels:
+      traefik.enable: "false"
+
+  shop:
+    # loom's product search over MCP (docs/shop.md): Galaxus's MCP server
+    # answers, no key. Every route needs SHOP_TOKEN; unset, it refuses every
+    # call and product search is off. Stateless: no volume.
+    image: ghcr.io/trick77/loom-sidecars:latest
+    command: ["/loom-shop", "serve"]
+    restart: unless-stopped
+    # Small Go service relaying one MCP call.
+    mem_limit: 128m
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      GOMEMLIMIT: "115MiB" # ~90% of mem_limit, see loom
+      SHOP_TOKEN: "${BACKEND_SHOP_TOKEN:-}"
+    healthcheck:
+      test: ["CMD", "/loom-shop", "healthcheck"]
+      interval: 60s
+      timeout: 5s
+      start_period: 30s
+      start_interval: 5s
+      retries: 3
+    # The loom network: reachable from loom only, with egress to mcp.galaxus.ch.
     networks:
       - loom
     labels:

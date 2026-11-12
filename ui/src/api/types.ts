@@ -248,9 +248,21 @@ export type Citation = {
   favicon?: string;
   // image is a preview picture an MCP source supplied (a video thumbnail).
   image?: string;
+  // product makes a web source a product page, shown as a card under the
+  // answer (docs/shop.md).
+  product?: CitationProduct;
   // site is a web source's site name, which the favicon row groups by;
   // filename may instead be the source's own label (one per channel).
   site?: string;
+};
+
+// CitationProduct is what a shop said about a product page. price comes with
+// its ISO 4217 currency or not at all; rating is out of 5.
+export type CitationProduct = {
+  price?: number;
+  currency?: string;
+  rating?: number;
+  ratingCount?: number;
 };
 
 // Document is an uploaded file tracked for retrieval-augmented generation.

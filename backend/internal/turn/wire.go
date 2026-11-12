@@ -1,5 +1,7 @@
 package turn
 
+import "github.com/trick77/loom/internal/mcp"
+
 // Citation mirrors AnythingLLM's source model: one entry per retrieved chunk
 // (filename = document title, snippet = matched text, score = similarity). The
 // frontend groups these by filename for display ("combine like sources").
@@ -26,6 +28,9 @@ type Citation struct {
 	Favicon string `json:"favicon,omitempty"`
 	// Image is a preview picture (a video thumbnail) an MCP source supplied.
 	Image string `json:"image,omitempty"`
+	// Product makes a web source a product page: the UI shows it as a card
+	// with its price and rating.
+	Product *mcp.Product `json:"product,omitempty"`
 	// Site is a web source's site name, which the favicon row groups by;
 	// Filename may instead carry the source's own label (one per channel).
 	Site string `json:"site,omitempty"`

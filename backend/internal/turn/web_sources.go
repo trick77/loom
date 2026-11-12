@@ -27,6 +27,8 @@ type webSource struct {
 	Favicon string `json:"favicon,omitempty"`
 	// Image is a preview picture a structured source supplied (an https URL).
 	Image string `json:"image,omitempty"`
+	// Product makes the source a product page (a card under the answer).
+	Product *mcp.Product `json:"product,omitempty"`
 	// Site is the host-derived site name, the same as Label unless a
 	// structured source named itself (Label "peeq · Bike Physics", Site
 	// "Peeq"): the favicon row groups by site, the sidebar shows the label.
@@ -267,6 +269,7 @@ func webSourceCitations(sources []webSource) []Citation {
 			Snippet:  ws.Snippet,
 			Favicon:  ws.Favicon,
 			Image:    ws.Image,
+			Product:  ws.Product,
 			Site:     ws.Site,
 		})
 	}

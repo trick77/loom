@@ -183,6 +183,7 @@ export const en = {
       memory: "Memory",
       ideas: "Ideas",
       files: "File generator",
+      shop: "Shop",
       loom: "loom",
     },
   },
@@ -307,6 +308,10 @@ export const en = {
     relevance: "relevance {{percent}}%",
     more: "More",
     close: "Close",
+    products: "Products",
+    noPrice: "no price",
+    rating_one: "{{rating}} out of 5, {{count}} rating",
+    rating_other: "{{rating}} out of 5, {{count}} ratings",
   },
   artifactCard: {
     previewFailed: "Preview failed",
