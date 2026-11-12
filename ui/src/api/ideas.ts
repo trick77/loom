@@ -83,6 +83,22 @@ async function sendIdea(
   return response.json() as Promise<Idea>;
 }
 
+/**
+ * draftIdea asks for a title for an idea being captured. "" when there is no
+ * model or it gave none: the user types one.
+ */
+export async function draftIdea(
+  excerpt: string,
+  reason = "",
+  signal?: AbortSignal,
+): Promise<{ title: string }> {
+  return requestJSON(`/api/ideas:draft`, "failed to draft idea", {
+    method: "POST",
+    json: { excerpt, reason },
+    signal,
+  });
+}
+
 export async function listIdeas(status: IdeaState): Promise<Idea[]> {
   const data = await requestJSON<{ items: Idea[] }>(
     `/api/ideas?status=${status}`,

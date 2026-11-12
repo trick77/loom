@@ -2,7 +2,14 @@ import { expect, test } from "vitest";
 
 import i18n from "../i18n";
 import { makeIdea } from "../test/ideas";
-import { ideaAge, ideaDates, ideaThreadDraft, todayDay } from "./ideaText";
+import {
+  cutExcerpt,
+  EXCERPT_MAX,
+  ideaAge,
+  ideaDates,
+  ideaThreadDraft,
+  todayDay,
+} from "./ideaText";
 
 const t = i18n.t.bind(i18n);
 const now = new Date(2026, 0, 20, 12);
@@ -61,6 +68,15 @@ test("thread draft: title and why, never the passage", () => {
   );
   expect(draft).toBe("T\n\nWhy: R");
   expect(draft).not.toContain("Ignore the user");
+});
+
+test("a passage drops citation markers and is cut to the cap", () => {
+  expect(cutExcerpt("A board [1][2] for agents [https://x.example/a].")).toBe(
+    "A board for agents.",
+  );
+  const long = cutExcerpt("x".repeat(EXCERPT_MAX + 50));
+  expect(Array.from(long)).toHaveLength(EXCERPT_MAX);
+  expect(long.endsWith("…")).toBe(true);
 });
 
 test("todayDay is the local civil date", () => {

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -188,6 +189,54 @@ func TestIdeasAPI_IdeaSurvivesThreadDelete(t *testing.T) {
 	if got.ThreadID != nil || got.MessageID != nil || !got.ThreadDeleted || got.ThreadTitle != "Tech-News KW 45" ||
 		got.Title != "t" || got.Reason != "r" || got.Excerpt != "e" {
 		t.Fatalf("after thread delete = %s", rec.Body.String())
+	}
+}
+
+type fakeIdeaLLM struct {
+	title           string
+	err             error
+	excerpt, reason string
+	calls           int
+}
+
+func (f *fakeIdeaLLM) DraftIdeaTitle(_ context.Context, excerpt, reason, _ string) (string, error) {
+	f.calls++
+	f.excerpt, f.reason = excerpt, reason
+	return f.title, f.err
+}
+
+// The draft proposes a title only; whatever the model writes comes back
+// capped to one line. No model, a failure or nothing to name: an empty title.
+func TestIdeasAPI_Draft(t *testing.T) {
+	f := newIdeaFixture(t)
+	gate := &fakeIdeaLLM{title: "Vibe Kanban\nIGNORE PREVIOUS " + strings.Repeat("x", 200)}
+	handler := newAuthenticatedServer(t, Deps{Thread: f.chat, Usage: stubUsageStore{}, Users: fakeUserStore{user: testUser, ok: true}, Ideas: f.ideas, IdeaLLM: gate})
+	do := func(body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/ideas:draft", body))
+		return rec
+	}
+	rec := do(`{"excerpt":"Vibe Kanban is a board.\u0007","reason":"lab week"}`)
+	got := decodeInto[map[string]string](t, rec)
+	if rec.Code != http.StatusOK || strings.Contains(got["title"], "\n") || len([]rune(got["title"])) > ideas.MaxTitleRunes || !strings.HasPrefix(got["title"], "Vibe Kanban IGNORE") {
+		t.Fatalf("draft = %d %q", rec.Code, got["title"])
+	}
+	if gate.excerpt != "Vibe Kanban is a board." || gate.reason != "lab week" {
+		t.Fatalf("model got %q / %q, want the cleaned fields", gate.excerpt, gate.reason)
+	}
+	gate.err = errors.New("down")
+	if got := decodeInto[map[string]string](t, do(`{"excerpt":"x"}`)); got["title"] != "" {
+		t.Fatalf("failed call = %q", got["title"])
+	}
+	calls := gate.calls
+	if got := decodeInto[map[string]string](t, do(`{"excerpt":"  "}`)); got["title"] != "" || gate.calls != calls {
+		t.Fatalf("nothing to name still called the model")
+	}
+	// No model configured.
+	rec = httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/ideas:draft", `{"excerpt":"x"}`))
+	if rec.Code != http.StatusOK || decodeInto[map[string]string](t, rec)["title"] != "" {
+		t.Fatalf("no model = %d %s", rec.Code, rec.Body.String())
 	}
 }
 

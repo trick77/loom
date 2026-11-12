@@ -5,6 +5,30 @@ import { formatTimeAgo } from "../timeago";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Field caps in runes, as the server enforces them.
+export const TITLE_MAX = 80;
+export const REASON_MAX = 500;
+export const EXCERPT_MAX = 1200;
+
+/**
+ * cutExcerpt makes an answer's plain text an idea's passage: citation
+ * markers ([1], [https://…]) go, it is cut to the cap, ending in an
+ * ellipsis when cut.
+ */
+export function cutExcerpt(text: string): string {
+  const clean = text
+    .replace(/\[(?:\d+(?:\s*,\s*\d+)*|https?:\/\/[^\]\s]+)\]/g, "")
+    .replace(/[ \t]+([.,;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  const runes = Array.from(clean);
+  if (runes.length <= EXCERPT_MAX) return clean;
+  return `${runes
+    .slice(0, EXCERPT_MAX - 1)
+    .join("")
+    .trimEnd()}…`;
+}
+
 /** A 'YYYY-MM-DD' civil date as local midnight (no zone shift). */
 export function parseDay(day: string): Date {
   const [y, m, d] = day.split("-").map(Number);

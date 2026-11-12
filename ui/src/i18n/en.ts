@@ -759,6 +759,15 @@ export const en = {
     loadFailed: "Ideas failed to load.",
     actionFailed: "That did not work. Try again.",
     draftWhy: "Why: {{reason}}",
+    capture: {
+      button: "Save as idea",
+      title: "Save idea",
+      suggested: "suggested",
+      source: "Source: “{{title}}”",
+      save: "Save",
+      saved: "Idea saved",
+      view: "View",
+    },
     form: {
       titleNew: "New idea",
       titleEdit: "Edit idea",
