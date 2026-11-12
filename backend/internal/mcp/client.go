@@ -331,6 +331,7 @@ func (c *remoteClient) Probe(ctx context.Context) error {
 	if err != nil {
 		return scrubURLError(err)
 	}
+	req.Header.Set("User-Agent", userAgent)
 	for key, value := range c.cfg.Headers {
 		req.Header.Set(key, value)
 	}
@@ -425,6 +426,7 @@ func (c *remoteClient) call(ctx context.Context, method string, params map[strin
 	// types; spec-compliant servers answer 406 otherwise and may reply with an
 	// SSE stream instead of a bare JSON body.
 	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("User-Agent", userAgent)
 	if modern {
 		setModernHeaders(req, method, params)
 	} else {

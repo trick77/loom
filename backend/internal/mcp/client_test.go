@@ -200,6 +200,67 @@ func TestRemoteClientProbeUsesLightweightHTTPRequest(t *testing.T) {
 	}
 }
 
+// TestRemoteClientSendsUserAgent: every request names loom (Go's default
+// names only the HTTP library), and a server's own headers may replace it.
+func TestRemoteClientSendsUserAgent(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		headers map[string]string
+		want    func(string) bool
+	}{
+		{"loom", nil, func(ua string) bool {
+			return strings.HasPrefix(ua, "loom/") && strings.HasSuffix(ua, " (+https://github.com/trick77/loom)")
+		}},
+		{"configured header wins", map[string]string{"User-Agent": "custom/1"}, func(ua string) bool { return ua == "custom/1" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var agents []string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				agents = append(agents, r.Header.Get("User-Agent"))
+				mu.Unlock()
+				if r.Method == http.MethodHead {
+					return
+				}
+				var req rpcRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("Decode request: %v", err)
+					return
+				}
+				switch req.Method {
+				case "server/discover":
+					http.Error(w, "Bad Request: No valid session ID provided", http.StatusBadRequest)
+				case "initialize":
+					writeRPCResult(t, w, req.ID, map[string]any{"protocolVersion": "2025-06-18"})
+				case "tools/list":
+					writeRPCResult(t, w, req.ID, map[string]any{"tools": []map[string]any{}})
+				}
+			}))
+			t.Cleanup(server.Close)
+			client := NewRemoteClient("s", ServerConfig{
+				Transport: TransportStreamableHTTP, URL: server.URL, Headers: tc.headers,
+			}, server.Client())
+			if _, err := client.ListTools(context.Background()); err != nil {
+				t.Fatalf("ListTools() error: %v", err)
+			}
+			if err := client.(*remoteClient).Probe(context.Background()); err != nil {
+				t.Fatalf("Probe() error: %v", err)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(agents) < 4 {
+				t.Fatalf("requests = %d, want discover, initialize, list and probe", len(agents))
+			}
+			for i, ua := range agents {
+				if !tc.want(ua) {
+					t.Errorf("request %d User-Agent = %q", i, ua)
+				}
+			}
+		})
+	}
+}
+
 func TestStdioClientListsTools(t *testing.T) {
 	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
 		runMCPTestHelper(t)
