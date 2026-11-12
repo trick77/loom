@@ -79,8 +79,9 @@ type Project struct {
 type ProjectMemory struct {
 	ProjectID string `json:"projectId"`
 	Content   string `json:"content"`
-	// SourceMessageCount records the total project message count at the last
-	// refresh; it gates the background auto-refresh (see CountProjectMessages).
+	// SourceMessageCount records CountProjectMessages at the last refresh (the
+	// messages the memory reads, not every message); it gates the background
+	// auto-refresh.
 	SourceMessageCount int        `json:"-"`
 	UpdatedAt          *time.Time `json:"updatedAt"`
 }

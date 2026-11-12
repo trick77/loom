@@ -77,6 +77,35 @@ func TestStore_ProjectMemoryLifecycle(t *testing.T) {
 	}
 }
 
+// The count runs after every project turn: both halves stay on covering
+// indexes, never the wide message rows (read_outside sits at their end).
+func TestCountProjectMessages_StaysOnCoveringIndexes(t *testing.T) {
+	db := openTestDB(t)
+	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT (SELECT COUNT(*) `+projectMessagesFrom+`) - (SELECT COUNT(*) `+projectMessagesFrom+` AND m.read_outside = 1)`, "u", "p", "u", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	joined := strings.Join(plan, "\n")
+	for _, line := range plan {
+		if strings.Contains(line, "SEARCH m ") && !strings.Contains(line, "COVERING INDEX") && !strings.Contains(line, "idx_messages_read_outside") {
+			t.Fatalf("a count reads message rows:\n%s", joined)
+		}
+	}
+	if !strings.Contains(joined, "idx_messages_read_outside") {
+		t.Fatalf("flagged count does not use the partial index:\n%s", joined)
+	}
+}
+
 func TestStore_CountAndListProjectMessages(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -139,5 +168,9 @@ func TestStore_CountAndListProjectMessages(t *testing.T) {
 		if strings.Contains(m.Content, "KLM") {
 			t.Fatalf("flagged answer reached the project memory input: %+v", messages)
 		}
+	}
+	// The count sizes the refresh window over the list: both leave it out.
+	if count, err := store.CountProjectMessages(ctx, userID, project.ID); err != nil || count != len(messages) {
+		t.Fatalf("count = %d (err %v), want %d like the list", count, err, len(messages))
 	}
 }
