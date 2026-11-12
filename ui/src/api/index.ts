@@ -15,6 +15,7 @@ export * from "./stream";
 export * from "./user";
 export * from "./mcp";
 export * from "./schedules";
+export * from "./ideas";
 export * from "./appleMusic";
 export * from "./strava";
 export * from "./push";

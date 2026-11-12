@@ -131,6 +131,11 @@ const ScheduleDetailPage = lazy(() =>
     default: module.ScheduleDetailPage,
   })),
 );
+const IdeasPage = lazy(() =>
+  import("../ideas/IdeasPage").then((module) => ({
+    default: module.IdeasPage,
+  })),
+);
 const SettingsModal = lazy(() =>
   import("../settings/SettingsModal").then((module) => ({
     default: module.SettingsModal,
@@ -673,6 +678,20 @@ export function ThreadShell({
     [navigateToNew],
   );
 
+  // "Start a thread about it" from an idea: the new-chat screen with the idea
+  // as a draft. Same batching as handleUseArtifactInThread: the draft is set
+  // in the handler that switches the route. It never sends, and text already
+  // typed there stays, above the idea.
+  const handleStartThreadFromIdea = useCallback(
+    (text: string) => {
+      const typed = getDraft(drafts, "new").text.trimEnd();
+      navigateToNew();
+      setDraftText("new", typed === "" ? text : `${typed}\n\n${text}`);
+      requestComposerFocus();
+    },
+    [drafts, navigateToNew, setDraftText, requestComposerFocus],
+  );
+
   const navigateToThreads = useCallback(() => {
     onThread();
     closeMobileSidebar();
@@ -701,6 +720,12 @@ export function ThreadShell({
     onThread();
     closeMobileSidebar();
     go({ view: "schedules" });
+  }, [go, onThread, closeMobileSidebar]);
+
+  const navigateToIdeas = useCallback(() => {
+    onThread();
+    closeMobileSidebar();
+    go({ view: "ideas" });
   }, [go, onThread, closeMobileSidebar]);
 
   const navigateToSchedule = useCallback(
@@ -1795,6 +1820,7 @@ export function ThreadShell({
           onProjects={navigateToProjects}
           onMemory={navigateToMemory}
           onSchedules={navigateToSchedules}
+          onIdeas={navigateToIdeas}
           onOpenSearch={openSearch}
           onSelectThread={selectThread}
           onDeleteThread={openDeleteModal}
@@ -1851,6 +1877,16 @@ export function ThreadShell({
               onOpenSidebar={openMobileSidebar}
               onOpenSchedule={navigateToSchedule}
               onOpenThread={(threadID) => void selectThread(threadID)}
+              onSessionExpired={onSessionExpired}
+            />
+          </Suspense>
+        ) : route.view === "ideas" || route.view === "idea" ? (
+          <Suspense fallback={null}>
+            <IdeasPage
+              key={route.view === "idea" ? `idea:${route.ideaID}` : "ideas"}
+              initialIdeaID={route.view === "idea" ? route.ideaID : null}
+              onOpenSidebar={openMobileSidebar}
+              onStartThread={handleStartThreadFromIdea}
               onSessionExpired={onSessionExpired}
             />
           </Suspense>

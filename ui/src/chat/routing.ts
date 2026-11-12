@@ -7,7 +7,10 @@ export type RouteState =
   | { view: "projects" }
   | { view: "project"; projectID: string }
   | { view: "schedules" }
-  | { view: "schedule"; scheduleID: string };
+  | { view: "schedule"; scheduleID: string }
+  | { view: "ideas" }
+  // The list with that idea expanded.
+  | { view: "idea"; ideaID: string };
 
 export function routeFromPath(path: string): RouteState {
   if (path.startsWith("/thread/")) {
@@ -27,6 +30,11 @@ export function routeFromPath(path: string): RouteState {
     const scheduleID = decodeURIComponent(path.slice("/schedules/".length));
     if (scheduleID !== "") return { view: "schedule", scheduleID };
   }
+  if (path === "/ideas") return { view: "ideas" };
+  if (path.startsWith("/ideas/")) {
+    const ideaID = decodeURIComponent(path.slice("/ideas/".length));
+    if (ideaID !== "") return { view: "idea", ideaID };
+  }
   return { view: "new" };
 }
 
@@ -45,6 +53,9 @@ export function pathForRoute(route: RouteState): string {
   if (route.view === "schedules") return "/schedules";
   if (route.view === "schedule")
     return `/schedules/${encodeURIComponent(route.scheduleID)}`;
+  if (route.view === "ideas") return "/ideas";
+  if (route.view === "idea")
+    return `/ideas/${encodeURIComponent(route.ideaID)}`;
   return `/thread/${encodeURIComponent(route.threadID)}`;
 }
 
