@@ -779,7 +779,7 @@ export const de = {
     menu: "Aktionen zur Idee",
     empty: "Noch keine Ideen",
     emptyHint:
-      "Tippe unter einer Antwort auf die Glühbirne und schreib dazu, warum du sie weiterverfolgen willst.",
+      "Tippe unter einer Antwort auf die Glühbirne oder markiere eine Stelle darin und schreib dazu, warum du sie weiterverfolgen willst.",
     emptyDone: "Noch nichts erledigt",
     loadFailed: "Die Ideen konnten nicht geladen werden.",
     actionFailed: "Das hat nicht geklappt. Versuch es nochmals.",

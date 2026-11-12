@@ -11,7 +11,11 @@ import { useMediaQuery } from "../chat/useMediaQuery";
 import { useMenuPlacement } from "../chat/useMenuPlacement";
 import { FollowUpRow, type IdeaDates } from "./FollowUpRow";
 import { canHover, ideaInputClass } from "./IdeaEditDialog";
-import { useIdeaCapture, type CaptureRequest } from "./IdeaCaptureContext";
+import {
+  captureKey,
+  useIdeaCapture,
+  type CaptureRequest,
+} from "./IdeaCaptureContext";
 import { defaultRemindOn, REASON_MAX, TITLE_MAX, todayDay } from "./ideaText";
 import { useIdeaDraft } from "./useIdeaDraft";
 
@@ -27,9 +31,13 @@ type Draft = {
 const noDates: IdeaDates = { dueOn: null, remindOn: null };
 
 // drafts keeps what was typed into a capture that was closed unsaved, and
-// the proposed title, by message, until it is opened again for that message
-// (or saved): reopening asks the model nothing again.
+// the proposed title, by message and passage, until it is opened again for
+// that passage (or saved): reopening asks the model nothing again. Another
+// passage of the same answer (a marked one) is another draft: the whole
+// answer's title must not stand for it.
 const drafts = new Map<string, Draft>();
+
+const draftKey = captureKey;
 
 // saving holds the messages whose capture is being saved: it stays open
 // until the answer, so a failure can still be shown.
@@ -195,7 +203,7 @@ function CaptureForm({
 }) {
   const capture = useIdeaCapture();
   const { t } = useTranslation();
-  const kept = drafts.get(request.messageId);
+  const kept = drafts.get(draftKey(request));
   const [reason, setReason] = useState(kept?.reason ?? "");
   const [title, setTitle] = useState(kept?.title ?? "");
   const [titleEdited, setTitleEdited] = useState(kept?.titleEdited ?? false);
@@ -228,15 +236,15 @@ function CaptureForm({
   useEffect(() => {
     latest.current = { reason, title, titleEdited, dates, datesEdited };
   }, [reason, title, titleEdited, dates, datesEdited]);
+  const key = draftKey(request);
   useEffect(() => {
-    const messageId = request.messageId;
     return () => {
       const draft = latest.current;
       if (draft.reason.trim() !== "" || draft.title !== "")
-        drafts.set(messageId, draft);
-      else drafts.delete(messageId);
+        drafts.set(key, draft);
+      else drafts.delete(key);
     };
-  }, [request.messageId]);
+  }, [key]);
 
   // The title is proposed as the capture opens, unless it has one (typed or
   // proposed before), and asked again as the reason changes, for the due
@@ -285,7 +293,7 @@ function CaptureForm({
         dueOn: dates.dueOn,
         remindOn: dates.remindOn,
       });
-      drafts.delete(request.messageId);
+      drafts.delete(key);
       latest.current = {
         reason: "",
         title: "",

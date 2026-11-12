@@ -13,8 +13,20 @@ import { useTranslation } from "react-i18next";
 
 import { Icon } from "../chat/Icon";
 
-/** What a capture starts from: the message and the passage it keeps. */
-export type CaptureRequest = { messageId: string; excerpt: string };
+/**
+ * What a capture starts from: the message and the passage it keeps.
+ * passage marks a marked passage; without it the capture is the whole
+ * answer's (its lightbulb's).
+ */
+export type CaptureRequest = {
+  messageId: string;
+  excerpt: string;
+  passage?: boolean;
+};
+
+/** One capture's identity: its kept draft, a turned-down offer. */
+export const captureKey = (request: CaptureRequest) =>
+  `${request.messageId}\n${request.passage === true ? "p" : "a"}\n${request.excerpt}`;
 
 export type IdeaCaptureValue = {
   threadId: string;

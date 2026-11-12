@@ -40,6 +40,7 @@ import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
 import { QueuedMessages } from "./QueuedMessages";
 import type { QueuedBubble } from "./useQueuedMessages";
 import { IdeaCaptureProvider } from "../ideas/IdeaCaptureContext";
+import { SelectionCapture } from "../ideas/SelectionCapture";
 import { IdeaCard } from "../ideas/IdeaCard";
 
 // MESSAGE_FLASH_MS is how long a message opened by link stays highlighted:
@@ -888,6 +889,7 @@ export function ThreadPanel({
       onOpenIdea={onOpenIdea}
     >
       {panel}
+      <SelectionCapture />
     </IdeaCaptureProvider>
   );
 }
