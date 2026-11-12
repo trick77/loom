@@ -936,6 +936,33 @@ a.ui-activity-tool-url:hover {
   text-underline-offset: 0.14em;
 }
 
+/* A message opened by link (an idea's "Jump to the passage") glows once. */
+@keyframes ui-message-flash {
+  from {
+    background-color: color-mix(in srgb, var(--color-unread) 14%, transparent);
+    box-shadow: 0 0 0 10px
+      color-mix(in srgb, var(--color-unread) 14%, transparent);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+.ui-message-flash {
+  border-radius: 12px;
+  /* MESSAGE_FLASH_MS in ThreadPanel.tsx */
+  animation: ui-message-flash 1.6s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-message-flash {
+    animation: none;
+    outline: 1px solid color-mix(in srgb, var(--color-unread) 45%, transparent);
+    outline-offset: 6px;
+  }
+}
+
 /*
  * Ideas page rows: the kebab takes the age slot on hover. Plain CSS like the
  * message actions below (Tailwind's hover-gated group-hover sticks in

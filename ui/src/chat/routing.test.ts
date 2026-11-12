@@ -24,6 +24,21 @@ test("routes thread pages", () => {
   expect(pathForRoute({ view: "thread", threadID: "t1" })).toBe("/thread/t1");
 });
 
+test("a thread opens at one message", () => {
+  expect(routeFromPath("/thread/t1", "?message=m%201")).toEqual({
+    view: "thread",
+    threadID: "t1",
+    messageID: "m 1",
+  });
+  expect(routeFromPath("/thread/t1", "?message=")).toEqual({
+    view: "thread",
+    threadID: "t1",
+  });
+  expect(
+    pathForRoute({ view: "thread", threadID: "t1", messageID: "m 1" }),
+  ).toBe("/thread/t1?message=m%201");
+});
+
 test("old /chat URLs are not supported (no backward compatibility)", () => {
   expect(routeFromPath("/chat/t1")).toEqual({ view: "new" });
   expect(routeFromPath("/chats")).toEqual({ view: "new" });

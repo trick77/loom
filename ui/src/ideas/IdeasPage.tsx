@@ -43,6 +43,7 @@ export function IdeasPage({
   initialIdeaID,
   onOpenSidebar,
   onStartThread,
+  onOpenMessage,
   onSessionExpired,
 }: {
   /** The idea to open on arrival (/ideas/:id). */
@@ -50,6 +51,8 @@ export function IdeasPage({
   onOpenSidebar(): void;
   /** Opens the new-thread screen with this draft; never sends. */
   onStartThread(text: string): void;
+  /** Opens the thread at the message the idea was captured from. */
+  onOpenMessage(threadID: string, messageID: string | null): void;
   onSessionExpired(): void;
 }) {
   const { t } = useTranslation();
@@ -282,6 +285,7 @@ export function IdeasPage({
                     )
                   }
                   onStartThread={() => onStartThread(ideaThreadDraft(idea, t))}
+                  onJump={jumpTo(idea, onOpenMessage)}
                   onDone={() => void setDone(idea, idea.state !== "done")}
                   onEdit={() => setEditing(idea)}
                   onDelete={() => void remove(idea)}
@@ -316,6 +320,15 @@ export function IdeasPage({
   );
 }
 
+// jumpTo opens the idea's message, or is undefined without a thread.
+function jumpTo(
+  idea: Idea,
+  open: (threadID: string, messageID: string | null) => void,
+): (() => void) | undefined {
+  const threadID = idea.threadId;
+  return threadID === null ? undefined : () => open(threadID, idea.messageId);
+}
+
 function insertAt(list: Idea[], idea: Idea, index: number): Idea[] {
   if (list.some((i) => i.id === idea.id)) return list;
   const at = index < 0 || index > list.length ? 0 : index;
@@ -327,6 +340,7 @@ function IdeaRow({
   open,
   onToggle,
   onStartThread,
+  onJump,
   onDone,
   onEdit,
   onDelete,
@@ -335,6 +349,8 @@ function IdeaRow({
   open: boolean;
   onToggle(): void;
   onStartThread(): void;
+  /** Undefined once the thread is gone (or the idea never had one). */
+  onJump?(): void;
   onDone(): void;
   onEdit(): void;
   onDelete(): void;
@@ -435,15 +451,18 @@ function IdeaRow({
               <Icon name="messages" size="14px" />
               {t("ideas.startThread")}
             </button>
-            <button
-              type="button"
-              className={solidButton}
-              disabled
-              title={idea.threadDeleted ? t("ideas.threadGone") : undefined}
-            >
-              <Icon name="externalLink" size="14px" />
-              {t("ideas.jumpToPassage")}
-            </button>
+            {(onJump !== undefined || idea.threadDeleted) && (
+              <button
+                type="button"
+                className={solidButton}
+                disabled={onJump === undefined}
+                onClick={onJump}
+                title={idea.threadDeleted ? t("ideas.threadGone") : undefined}
+              >
+                <Icon name="externalLink" size="14px" />
+                {t("ideas.jumpToPassage")}
+              </button>
+            )}
             <button type="button" className={ghostButton} onClick={onDone}>
               <Icon name="check" size="14px" />
               {t(done ? "ideas.reopen" : "ideas.done")}
