@@ -39,6 +39,7 @@ import { threadCostPrefix } from "../metrics";
 import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
 import { QueuedMessages } from "./QueuedMessages";
 import type { QueuedBubble } from "./useQueuedMessages";
+import { IdeaCaptureProvider } from "../ideas/IdeaCaptureContext";
 
 // MESSAGE_FLASH_MS is how long a message opened by link stays highlighted:
 // the .ui-message-flash animation's length, and the outline's under reduced
@@ -138,7 +139,10 @@ export function ThreadPanel({
   openAtAnswer = false,
   openAtMessageID = null,
   onOpenedAtMessage,
+  onOpenIdea,
 }: {
+  /** Opens a saved idea; without it the thread offers no idea capture. */
+  onOpenIdea?(ideaID: string): void;
   thread: Thread | null;
   /** Opens the thread at this message, highlighted for a moment (an idea's
    *  "Jump to the passage"). Unknown in the thread: opens as usual. */
@@ -557,7 +561,7 @@ export function ThreadPanel({
 
   useOutsideRefPointerDown(headerMenuOpen, headerMenuRef, onCloseThreadMenu);
 
-  return (
+  const panel = (
     <section className="flex h-svh min-h-0 flex-col">
       <header
         aria-label={t("thread.header")}
@@ -864,5 +868,16 @@ export function ThreadPanel({
         )}
       </div>
     </section>
+  );
+  // A stored thread offers "Save as idea" under its answers. The provider is
+  // always there (its value null without one) so the panel never remounts.
+  return (
+    <IdeaCaptureProvider
+      threadId={onOpenIdea === undefined ? null : (thread?.id ?? null)}
+      threadTitle={thread?.title ?? ""}
+      onOpenIdea={onOpenIdea}
+    >
+      {panel}
+    </IdeaCaptureProvider>
   );
 }

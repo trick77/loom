@@ -270,6 +270,7 @@ func runServer() error {
 	if llmClient != nil {
 		deps.Schedules = schedule.NewStore(db)
 		deps.ScheduleLLM = llmClient
+		deps.IdeaLLM = llmClient
 		// Places are read from the facts with the model and looked up with
 		// the weather sidecar: off while either is.
 		deps.Locations = location.NewStore(db)

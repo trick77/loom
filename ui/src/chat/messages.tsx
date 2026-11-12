@@ -25,6 +25,9 @@ import {
   type MessagePastedText,
 } from "../api";
 import i18n from "../i18n";
+import { captureSaving, IdeaCapture } from "../ideas/IdeaCapture";
+import { useIdeaCapture, useOpenCapture } from "../ideas/IdeaCaptureContext";
+import { cutExcerpt } from "../ideas/ideaText";
 import { MessageMetrics } from "../MessageMetrics";
 import { formatMessageTime } from "../metrics";
 import { ActivityTracePanel } from "./ActivityTracePanel";
@@ -296,6 +299,8 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
         <MessageActions
           copyLabel={t("messages.copyResponse")}
           copyText={copyText}
+          ideaSource={proseText}
+          messageId={message.id}
           retryLabel={t("messages.retryResponse")}
           onRetry={
             retryMessage === null
@@ -700,6 +705,8 @@ export const AssistantProse = memo(function AssistantProse({
 function MessageActions({
   copyLabel,
   copyText,
+  ideaSource,
+  messageId,
   retryLabel,
   onRetry,
   metricsMessage,
@@ -710,6 +717,10 @@ function MessageActions({
 }: {
   copyLabel: string;
   copyText: string;
+  /** The answer's markdown, the passage of "Save as idea" (a stored thread
+   *  offers it). Turned into plain text only when the bulb is clicked. */
+  ideaSource?: string;
+  messageId?: string;
   retryLabel: string;
   onRetry?: () => void;
   metricsMessage?: Message;
@@ -792,6 +803,39 @@ function MessageActions({
         <Icon name="retry" size="0.875rem" />
       </button>
     ) : null;
+  // The lightbulb: only in a stored thread (an incognito chat and a share
+  // provide no capture) and for a message with a stored id.
+  const capture = useIdeaCapture();
+  const openCapture = useOpenCapture(capture, messageId);
+  const captureOpen = openCapture !== null;
+  const bulbButton =
+    capture !== null && messageId !== undefined && ideaSource !== undefined ? (
+      <button
+        className={`grid h-6 w-5 place-items-center transition-colors hover:text-[#f3f0e8] ${
+          captureOpen ? "text-unread-ink" : "text-[#858178]"
+        }`}
+        // The open capture's outside-click ignores its own bulb: the click
+        // below toggles it.
+        data-idea-bulb={messageId}
+        onClick={() => {
+          // A capture being saved stays until its answer.
+          if (captureSaving()) return;
+          if (captureOpen) capture.close();
+          else
+            capture.open({
+              messageId,
+              // An idea keeps the answer's words, not its citation markers.
+              excerpt: cutExcerpt(markdownToPlainText(ideaSource)),
+            });
+        }}
+        type="button"
+        title={t("ideas.capture.button")}
+        aria-label={t("ideas.capture.button")}
+        aria-expanded={captureOpen}
+      >
+        <Icon name="bulb" size="1rem" />
+      </button>
+    ) : null;
   const volumeButton = speakable ? (
     <button
       className={`grid h-6 w-5 place-items-center transition-colors hover:text-[#f3f0e8] ${
@@ -831,10 +875,11 @@ function MessageActions({
   // The assistant answer: copy sits leftmost, then read-aloud and retry, with the
   // time-led metrics status line pushed to the right edge (ml-auto inside MessageMetrics).
   return (
-    <div className="mt-2 flex items-center gap-0.5">
+    <div className="relative mt-2 flex items-center gap-0.5">
       {copyButton}
       {volumeButton}
       {retryButton}
+      {bulbButton}
       {metricsMessage && (
         <MessageMetrics
           message={metricsMessage}
@@ -842,6 +887,7 @@ function MessageActions({
           threadCostNanoUsd={threadCostNanoUsd}
         />
       )}
+      {openCapture !== null && <IdeaCapture request={openCapture} />}
     </div>
   );
 }

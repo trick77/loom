@@ -87,8 +87,10 @@ type Deps struct {
 	Schedules   *schedule.Store
 	ScheduleLLM ScheduleLLM
 	// Ideas keeps what the users want to follow up; it needs no model. Nil
-	// answers the idea endpoints with 503.
-	Ideas *ideas.Store
+	// answers the idea endpoints with 503. IdeaLLM proposes a title for one
+	// being captured; nil leaves the title to the user.
+	Ideas   *ideas.Store
+	IdeaLLM IdeaLLM
 	// Push delivers notifications to the users' devices (Web Push) into the
 	// subscriptions PushStore keeps. Either nil keeps push off.
 	Push      PushSender
@@ -105,6 +107,12 @@ type ScheduleLLM interface {
 	ParseSchedule(ctx context.Context, text string) (string, bool, error)
 	ExtractFindings(ctx context.Context, task, answer string) ([]llm.Finding, error)
 	SummarizeRun(ctx context.Context, task, answer, responseLanguage string) (string, error)
+}
+
+// IdeaLLM drafts an idea being captured. A tool-less helper call whose reply
+// is read as JSON only: the passage is outside text.
+type IdeaLLM interface {
+	DraftIdeaTitle(ctx context.Context, excerpt, reason, responseLanguage string) (string, error)
 }
 
 type server struct {
@@ -145,6 +153,7 @@ type server struct {
 	// schedules is nil while scheduled tasks are off; see scheduleRuns.
 	schedules   *schedule.Store
 	ideas       *ideas.Store
+	ideaLLM     IdeaLLM
 	scheduleSvc *schedule.Service
 	scheduleLLM ScheduleLLM
 	runs        *scheduleRuns
@@ -370,6 +379,7 @@ func newServer(d Deps) *server {
 		push:                  d.Push,
 		pushStore:             d.PushStore,
 		ideas:                 d.Ideas,
+		ideaLLM:               d.IdeaLLM,
 	}
 	if s.indexHTML == nil {
 		s.indexHTML = web.IndexHTML
@@ -497,6 +507,7 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("GET /api/ideas", s.requireAuth(http.HandlerFunc(s.handleListIdeas)))
 	mux.Handle("GET /api/ideas/count", s.requireAuth(http.HandlerFunc(s.handleCountIdeas)))
 	mux.Handle("POST /api/ideas", s.requireAuth(http.HandlerFunc(s.handleCreateIdea)))
+	mux.Handle("POST /api/ideas:draft", s.requireAuth(http.HandlerFunc(s.handleDraftIdea)))
 	mux.Handle("GET /api/ideas/{ideaID}", s.requireAuth(http.HandlerFunc(s.handleGetIdea)))
 	mux.Handle("PATCH /api/ideas/{ideaID}", s.requireAuth(http.HandlerFunc(s.handlePatchIdea)))
 	mux.Handle("DELETE /api/ideas/{ideaID}", s.requireAuth(http.HandlerFunc(s.handleDeleteIdea)))

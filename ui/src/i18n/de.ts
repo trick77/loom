@@ -779,6 +779,15 @@ export const de = {
     loadFailed: "Die Ideen konnten nicht geladen werden.",
     actionFailed: "Das hat nicht geklappt. Versuch es nochmals.",
     draftWhy: "Warum: {{reason}}",
+    capture: {
+      button: "Als Idee festhalten",
+      title: "Idee festhalten",
+      suggested: "vorgeschlagen",
+      source: "Quelle: «{{title}}»",
+      save: "Festhalten",
+      saved: "Idee festgehalten",
+      view: "Ansehen",
+    },
     form: {
       titleNew: "Neue Idee",
       titleEdit: "Idee bearbeiten",

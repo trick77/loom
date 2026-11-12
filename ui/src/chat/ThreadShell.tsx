@@ -728,6 +728,15 @@ export function ThreadShell({
     go({ view: "ideas" });
   }, [go, onThread, closeMobileSidebar]);
 
+  const navigateToIdea = useCallback(
+    (ideaID: string) => {
+      onThread();
+      closeMobileSidebar();
+      go({ view: "idea", ideaID });
+    },
+    [go, onThread, closeMobileSidebar],
+  );
+
   const navigateToSchedule = useCallback(
     (scheduleID: string) => {
       onThread();
@@ -2006,6 +2015,7 @@ export function ThreadShell({
                 : null
             }
             onOpenedAtMessage={handleOpenedAtMessage}
+            onOpenIdea={navigateToIdea}
             threadProject={activeThreadProject}
             share={activeShare}
             onShareChange={handleShareChange}

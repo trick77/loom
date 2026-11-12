@@ -7,15 +7,11 @@ import { ErrorText } from "../chat/ErrorText";
 import { Icon } from "../chat/Icon";
 import { useEscapeKey } from "../chat/useEscapeKey";
 import { modalCancelButtonClass } from "../ThreadActionsMenu";
+import { EXCERPT_MAX, REASON_MAX, TITLE_MAX } from "./ideaText";
 
 // 16px on touch: iOS zooms the page into a smaller input.
 export const ideaInputClass =
   "w-full rounded-[10px] border border-[#3f3f3d] bg-[#262624] px-2.5 py-2 text-base text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f] md:text-[15px]";
-
-// Field caps, as the server enforces them.
-export const TITLE_MAX = 80;
-export const REASON_MAX = 500;
-export const EXCERPT_MAX = 1200;
 
 /** A hover device gets the reason focused; a touch one keeps its keyboard down. */
 export function canHover(): boolean {

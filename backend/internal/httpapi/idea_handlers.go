@@ -1,12 +1,15 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
 	"github.com/trick77/loom/internal/ideas"
+	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/ship/kit/httpx"
 )
@@ -123,6 +126,52 @@ func (s *server) handleCreateIdea(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, idea)
+}
+
+// ideaDraftTimeout bounds the title proposal: the capture form opens with
+// an empty title and fills it when this answers.
+const ideaDraftTimeout = 15 * time.Second
+
+type draftIdeaRequest struct {
+	Excerpt string `json:"excerpt"`
+	Reason  string `json:"reason"`
+}
+
+// handleDraftIdea proposes a title for an idea being captured. No model, a
+// failed call or an unusable reply all answer an empty title: the user types
+// one. The reply never reaches a tool or a store; it is capped and cleaned
+// like any title.
+func (s *server) handleDraftIdea(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok || !s.ideasOn(w) {
+		return
+	}
+	var req draftIdeaRequest
+	if err := decodeJSONBody(w, r, &req); err != nil {
+		writeDecodeError(w, err)
+		return
+	}
+	excerpt := ideas.CleanText(req.Excerpt, ideas.MaxExcerptRunes)
+	reason := ideas.CleanLine(req.Reason, ideas.MaxReasonRunes)
+	title := ""
+	// One proposal per user at a time: a second request while one runs gets
+	// no title rather than another model call.
+	release, free := s.inflight.tryAcquire("idea-draft:" + user.ID)
+	if free {
+		defer release()
+	}
+	if free && s.ideaLLM != nil && (excerpt != "" || reason != "") {
+		ctx, cancel := context.WithTimeout(r.Context(), ideaDraftTimeout)
+		defer cancel()
+		inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "idea_draft", Round: 1}
+		drafted, err := s.ideaLLM.DraftIdeaTitle(llm.WithInferenceMetadata(ctx, inference), excerpt, reason, user.ResponseLanguageName())
+		if err != nil {
+			slog.Warn("draft idea title failed", "user_id", user.ID, "err", err)
+		} else {
+			title = ideas.CleanLine(drafted, ideas.MaxTitleRunes)
+		}
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"title": title})
 }
 
 type patchIdeaRequest struct {
