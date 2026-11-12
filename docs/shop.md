@@ -27,11 +27,14 @@ numbers them):
 ```
 
 `product` makes a source a card: `price` incl. VAT with its ISO 4217 `currency` (both left out when the shop lists no
-price), `rating` out of 5 and `ratingCount`. loom drops what it cannot show truthfully (a negative price, a price
-without a valid currency, a rating off the scale) and a source with nothing left is a plain one. `image` is fetched by
+price), `wasPrice` (before a discount), `rating` out of 5 and `ratingCount`, `availability` (`in_stock`,
+`supplier_stock`, `on_order`, `uncertain`; soonest first) and `condition` (`used`, `display`). loom drops what it
+cannot show truthfully (a negative price, a price without a valid currency, an earlier price not above today's, a
+rating off the scale, a value the contract does not name) and a source with nothing left is a plain one. `image` is fetched by
 loom's image proxy, never by the reader's browser. No results is a text saying so with an empty `sources` list.
 
-The results hold no stock, delivery time or full reviews; the shop's summary of review pros and cons is in the text.
+The results hold no exact delivery date or full reviews; the shop's summary of review pros and cons is in the text,
+and `availability` is a rough class only (see Provider).
 
 ## Provider
 
@@ -48,6 +51,18 @@ It holds every fact about the shop:
 - Product and image links lose the shop's `utm_*` parameters.
 - The shop also offers an MCP Apps view (`ui://mcp-app`); loom draws its own cards and never loads it.
 - Every request names the sidecar: `loom-shop/<version> (+https://github.com/trick77/loom)`.
+
+The documented text has no sale, label or delivery: those come from the result's `_meta`, the shop's raw catalog
+answer, which is no contract. The sidecar reads it node by node, by `trackingId` (= the text's `id`), and anything
+missing or changed costs only these extras (`cmd/loom-shop/offer.go`):
+
+- `insteadOfPrice` `{type: "SALES_PRICE_BEFORE", rebate, price}` is the earlier price and percent off.
+- `labels`: `USED` and `SHOWROOM` set the condition, `VOLUME_DISCOUNT` a note; `DISCOUNT` is the sale above.
+- `availability.availabilityClassification` is the delivery icon. Read off product pages on 2026-11-12: `TICK` ships
+  from the shop's stock in a day or two, `FULL` from a supplier's or third party's stock in a few days, `HALF` is
+  ordered from the supplier (a window of one to three weeks). `THREE_QUARTER` and `QUARTER` were not seen on a page,
+  and one of them also stands for "not available, no date": both are `uncertain`, never sooner. Any other value says
+  nothing. The search seems to leave out what cannot be had (a product not available never came up by name).
 
 ## Setup (sidecar)
 

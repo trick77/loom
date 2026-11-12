@@ -68,6 +68,46 @@ describe("ProductCards", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a sale, how soon it ships and a used item", () => {
+    const used = source("https://shop.example/p/used", 6, {
+      title: "Used phone",
+      product: {
+        price: 33,
+        currency: "CHF",
+        wasPrice: 39,
+        availability: "on_order",
+        condition: "used",
+      },
+    });
+    render(<ProductCards sources={[used]} />);
+    const card = screen.getByRole("link");
+    expect(
+      within(card).getByRole("img", { name: /^was CHF\s39\.00$/ }),
+    ).toHaveTextContent(/^CHF\s39\.00$/);
+    expect(within(card).getByText("On order, 1–3 weeks")).toBeInTheDocument();
+    expect(within(card).getByText("Used")).toBeInTheDocument();
+  });
+
+  it("shows no earlier price that is not above today's", () => {
+    const odd = source("https://shop.example/p/odd", 7, {
+      title: "Odd",
+      product: { price: 33, currency: "CHF", wasPrice: 30 },
+    });
+    render(<ProductCards sources={[odd]} />);
+    expect(screen.getByRole("link").querySelector("s")).toBeNull();
+  });
+
+  it("shows at most twelve cards", () => {
+    const many = Array.from({ length: 30 }, (_, i) =>
+      source(`https://shop.example/p/${i}`, i + 1, {
+        title: `P${i}`,
+        product: { rating: 4 },
+      }),
+    );
+    render(<ProductCards sources={many} />);
+    expect(screen.getAllByRole("link")).toHaveLength(12);
+  });
+
   it("renders nothing without a product", () => {
     const { container } = render(<ProductCards sources={[article]} />);
     expect(container).toBeEmptyDOMElement();

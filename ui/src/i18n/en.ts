@@ -315,6 +315,17 @@ export const en = {
     rating_one: "{{rating}} out of 5, {{count}} rating",
     rating_other: "{{rating}} out of 5, {{count}} ratings",
     ratingOnly: "{{rating}} out of 5",
+    wasPrice: "was {{price}}",
+    availability: {
+      in_stock: "In stock",
+      supplier_stock: "In a few days",
+      on_order: "On order, 1–3 weeks",
+      uncertain: "Delivery date uncertain",
+    },
+    condition: {
+      used: "Used",
+      display: "Showroom",
+    },
   },
   artifactCard: {
     previewFailed: "Preview failed",

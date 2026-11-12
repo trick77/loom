@@ -323,6 +323,26 @@ func TestStructuredSourcesCleansProduct(t *testing.T) {
 	}
 }
 
+// A sale needs a price below the earlier one; availability and condition
+// only take the values the contract names.
+func TestStructuredSourcesCleansOffer(t *testing.T) {
+	raw := `{"sources":[
+		{"url":"https://s.example/a","product":{"price":30,"currency":"CHF","wasPrice":40,"availability":"on_order","condition":"used"}},
+		{"url":"https://s.example/b","product":{"price":30,"currency":"CHF","wasPrice":30,"availability":"soon","condition":"mint"}},
+		{"url":"https://s.example/c","product":{"wasPrice":40,"availability":"uncertain"}}]}`
+	got := structuredSources(json.RawMessage(raw))
+	if p := got[0].Product; p == nil || p.WasPrice == nil || *p.WasPrice != 40 || p.Availability != "on_order" || p.Condition != "used" {
+		t.Fatalf("a: %+v", got[0].Product)
+	}
+	if p := got[1].Product; p == nil || p.WasPrice != nil || p.Availability != "" || p.Condition != "" {
+		t.Fatalf("b: %+v", got[1].Product)
+	}
+	// Without a price there is no sale; the availability alone still makes a card.
+	if p := got[2].Product; p == nil || p.WasPrice != nil || p.Availability != "uncertain" {
+		t.Fatalf("c: %+v", got[2].Product)
+	}
+}
+
 func TestStructuredSourcesIgnoresOtherShapes(t *testing.T) {
 	for _, raw := range []string{``, `null`, `"text"`, `[1,2]`, `{"sources":"nope"}`, `{"other":1}`, `{"sources":[{"url":" "}]}`} {
 		if got := structuredSources(json.RawMessage(raw)); got != nil {

@@ -274,9 +274,17 @@ export type Citation = {
 export type CitationProduct = {
   price?: number;
   currency?: string;
+  // wasPrice is the price before a discount, in currency (always above price).
+  wasPrice?: number;
   rating?: number;
   ratingCount?: number;
+  availability?: ProductAvailability;
+  condition?: "used" | "display";
 };
+
+// ProductAvailability is how soon a product ships, soonest first.
+export type ProductAvailability =
+  "in_stock" | "supplier_stock" | "on_order" | "uncertain";
 
 // Document is an uploaded file tracked for retrieval-augmented generation.
 export type Document = {

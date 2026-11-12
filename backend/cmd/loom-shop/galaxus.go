@@ -79,14 +79,19 @@ type shopResult struct {
 	TotalCount          int           `json:"totalCount"`
 	Products            []shopProduct `json:"products"`
 	ErrorMessage        string        `json:"errorMessage"`
+	// offers are what the result's _meta adds, by product id (offer.go).
+	offers map[int64]offer
 }
 
 type shopProduct struct {
-	Name             string `json:"name"`
-	Properties       string `json:"properties"`
-	Description      string `json:"description"`
-	ProductType      string `json:"productType"`
-	Brand            string `json:"brand"`
+	// ID joins a product to _meta's extras. Raw, read leniently (productID):
+	// a changed id costs the extras, never the search.
+	ID               json.RawMessage `json:"id"`
+	Name             string          `json:"name"`
+	Properties       string          `json:"properties"`
+	Description      string          `json:"description"`
+	ProductType      string          `json:"productType"`
+	Brand            string          `json:"brand"`
 	PriceIfAvailable *struct {
 		AmountInclusive float64 `json:"amountInclusive"`
 		Currency        string  `json:"currency"`
@@ -187,7 +192,8 @@ func (u *upstream) callTool(ctx context.Context, session string, args shopSearch
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
-		IsError bool `json:"isError"`
+		IsError bool            `json:"isError"`
+		Meta    json.RawMessage `json:"_meta"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
 		return shopResult{}, fmt.Errorf("decode result: %w", err)
@@ -207,6 +213,7 @@ func (u *upstream) callTool(ctx context.Context, session string, args shopSearch
 	for _, text := range texts {
 		var out shopResult
 		if decodeErr = json.Unmarshal([]byte(text), &out); decodeErr == nil {
+			out.offers = offers(result.Meta)
 			return out, nil
 		}
 	}

@@ -1,9 +1,15 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { Citation, CitationProduct } from "../api";
+import type { Citation, CitationProduct, ProductAvailability } from "../api";
 import type { DisplayMap } from "./sourcePills";
 import { sourceImageURL } from "./SourcesSidebar";
+
+// MAX_PRODUCT_CARDS bounds the row. An answer that cites nothing shows every
+// product it gathered: five searches made 100 cards, and their 100 pictures
+// at once had the shop's image host refuse some. The sources sidebar still
+// lists them all.
+const MAX_PRODUCT_CARDS = 12;
 
 // ProductCards shows the product pages behind an answer as a row of cards:
 // picture, name, price and rating, each linking to its page. It takes the web
@@ -17,10 +23,12 @@ export function ProductCards({
   display?: DisplayMap;
 }) {
   const { t } = useTranslation();
-  const products = sources.filter(
-    (s): s is Citation & { url: string; product: CitationProduct } =>
-      s.product !== undefined && s.url !== undefined && s.url !== "",
-  );
+  const products = sources
+    .filter(
+      (s): s is Citation & { url: string; product: CitationProduct } =>
+        s.product !== undefined && s.url !== undefined && s.url !== "",
+    )
+    .slice(0, MAX_PRODUCT_CARDS);
   if (products.length === 0) return null;
   return (
     <ul
@@ -50,7 +58,16 @@ function ProductCard({
   const { product } = source;
   const title = source.title?.trim() || source.url;
   const price = formatPrice(product, i18n.language);
+  const wasPrice =
+    product.price !== undefined &&
+    product.wasPrice !== undefined &&
+    product.wasPrice > product.price
+      ? formatPrice({ ...product, price: product.wasPrice }, i18n.language)
+      : undefined;
   const rated = product.rating !== undefined && product.rating > 0;
+  const availability = product.availability
+    ? AVAILABILITY[product.availability]
+    : undefined;
   return (
     <a
       href={source.url}
@@ -68,11 +85,29 @@ function ProductCard({
             {number}
           </span>
         )}
+        {/* Bottom left, clipped to the well: a long label at the top would
+            run into the citation number. */}
+        {product.condition !== undefined && (
+          <span className="absolute bottom-1 left-1 max-w-[calc(100%-0.5rem)] truncate rounded-full bg-raised px-1.5 text-[11px] leading-[18px] text-ink-dim">
+            {t(`citations.condition.${product.condition}`)}
+          </span>
+        )}
       </span>
       <span className="flex flex-1 flex-col gap-1 px-2 py-1.5">
         <span className="line-clamp-2 text-[12px] leading-snug text-ink-soft">
           {title}
         </span>
+        {availability !== undefined && (
+          <span className="flex items-center gap-1 text-[11px] text-muted">
+            <span
+              aria-hidden="true"
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${availability.dot}`}
+            />
+            <span className="truncate">
+              {t(`citations.availability.${product.availability}`)}
+            </span>
+          </span>
+        )}
         {/* Wraps rather than clips: a four-digit count beside a price is
             wider than the card. */}
         <span className="mt-auto flex flex-wrap items-baseline justify-between gap-x-1 text-[12px] tabular-nums">
@@ -80,6 +115,21 @@ function ProductCard({
             className={`whitespace-nowrap ${price ? "font-medium text-ink" : "text-muted"}`}
           >
             {price ?? t("citations.noPrice")}
+            {wasPrice !== undefined && (
+              <>
+                {" "}
+                {/* role=img like the rating: <s> is a deletion, whose name
+                    screen readers ignore, so "39.00" would read as a price. */}
+                <span
+                  role="img"
+                  aria-label={t("citations.wasPrice", { price: wasPrice })}
+                >
+                  <s className="text-[11px] font-normal text-muted">
+                    {wasPrice}
+                  </s>
+                </span>
+              </>
+            )}
           </span>
           {rated && (
             // role=img: a plain span may not carry a name, and a screen
@@ -109,6 +159,15 @@ function ProductCard({
     </a>
   );
 }
+
+// AVAILABILITY colours each availability's dot: soon is green, a wait the
+// sun's amber, uncertain the muted ink (never red: it may still ship).
+const AVAILABILITY: Record<ProductAvailability, { dot: string }> = {
+  in_stock: { dot: "bg-success" },
+  supplier_stock: { dot: "bg-success" },
+  on_order: { dot: "bg-sun" },
+  uncertain: { dot: "bg-muted" },
+};
 
 // ProductImage is the product's picture through the backend's image proxy,
 // fitted whole into the card (shop pictures come tall, wide and square). One

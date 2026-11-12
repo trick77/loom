@@ -54,8 +54,8 @@ github.com/trick77/ship/kit v0.22.0 h1:TcdewoOha26SzH1ZTTw/QLYzrIHbXxGBJ0ktc5ARi
 github.com/trick77/ship/kit v0.22.0/go.mod h1:cE+kQhN2nb5j2ML174YKdGrC41M2GxnILzQLqFupsHE=
 github.com/trick77/ship/kit/auth v0.4.1 h1:l+X3QgRjFyuqdbHc4D9L1faRok6poaCh9vbXohCUYPw=
 github.com/trick77/ship/kit/auth v0.4.1/go.mod h1:yyGvxIwJgLVf63MqYMkI+yglI3Qppe9+Kw9Gty5D+1A=
-github.com/trick77/toolkit v0.3.3 h1:WwtyEyi/fgELHf2g6oFa/Ldg+KAdshlZKlD6foBz904=
-github.com/trick77/toolkit v0.3.3/go.mod h1:8o2jn+f4FxaWh0Z2CLCAuhaEmR+morfaMG/LPjuobJE=
+github.com/trick77/toolkit v0.3.4 h1:cttRZAM8ws5SFZfXiIaAok/IZP3nDkYkNyKEt5RjNZ0=
+github.com/trick77/toolkit v0.3.4/go.mod h1:8o2jn+f4FxaWh0Z2CLCAuhaEmR+morfaMG/LPjuobJE=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/yuin/goldmark v1.4.15/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/yuin/goldmark v1.7.1/go.mod h1:uzxRWxtg69N339t3louHJ7+O03ezfj6PlliRlaOzY1E=
