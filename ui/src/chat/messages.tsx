@@ -26,6 +26,7 @@ import {
 } from "../api";
 import i18n from "../i18n";
 import { captureSaving, IdeaCapture } from "../ideas/IdeaCapture";
+import { IdeaCard } from "../ideas/IdeaCard";
 import { useIdeaCapture, useOpenCapture } from "../ideas/IdeaCaptureContext";
 import { cutExcerpt } from "../ideas/ideaText";
 import { MessageMetrics } from "../MessageMetrics";
@@ -355,6 +356,9 @@ const AssistantBlock = memo(function AssistantBlock({
   }
   if (block.type === "artifact") {
     return <GeneratedArtifactCard artifact={block.artifact} />;
+  }
+  if (block.type === "idea") {
+    return <IdeaCard card={block.idea} />;
   }
   return (
     <AssistantProse sources={sources} display={display}>

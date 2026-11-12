@@ -77,6 +77,14 @@ type Run struct {
 	// outdoorCharted is set once an outdoor_windows result asked for its
 	// chart: one chart a turn, not one per call (today, tomorrow, week).
 	outdoorCharted bool
+	// ideaCards are the cards the running idea_propose call proposed; the
+	// loop moves them into the turn's blocks and the stream.
+	ideaCards []IdeaCard
+	// ideasRead is set once ideas_lookup ran: an idea's text may be a page's
+	// words saved with one click, so it counts as outside content for every
+	// acting tool but a further lookup (refusesAction) and for the answer's
+	// read_outside flag.
+	ideasRead bool
 }
 
 // RunConfig is a persisted turn's fixed state as the stream handler knows it.

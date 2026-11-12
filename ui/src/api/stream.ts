@@ -2,6 +2,7 @@ import { AuthExpiredError, UserFacingError } from "./http";
 import { browserTimezone } from "./schedules";
 import type {
   Artifact,
+  IdeaCardData,
   Citation,
   Message,
   MessagePastedText,
@@ -39,6 +40,8 @@ export type StreamHandlers = {
   onToolCall?(event: ToolCallEvent): void;
   onToolResult?(event: ToolResultEvent): void;
   onArtifact?(artifact: Artifact): void;
+  /** An idea tool proposed something; the card asks for the user's click. */
+  onIdeaCard?(card: IdeaCardData): void;
   onKnowledgeSources?(sources: Citation[]): void;
   // Web sources gathered so far this turn, re-sent after every tool round so
   // inline [n] markers resolve while the answer is still streaming. Always a full
@@ -372,6 +375,9 @@ function dispatchSSEEvent(
       break;
     case "artifact":
       handlers.onArtifact?.(payload as Artifact);
+      break;
+    case "idea_card":
+      handlers.onIdeaCard?.(payload as IdeaCardData);
       break;
     case "knowledge_sources":
       handlers.onKnowledgeSources?.(

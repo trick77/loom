@@ -243,6 +243,32 @@ func (s *Store) GetAny(ctx context.Context, userID, id string) (Idea, error) {
 	return s.get(ctx, userID, id, "1 = 1")
 }
 
+// GetMany loads the user's ideas by id in any state, deleted ones included
+// (the cards in a thread show what became of them). Unknown ids are absent.
+func (s *Store) GetMany(ctx context.Context, userID string, ids []string) (map[string]Idea, error) {
+	out := make(map[string]Idea, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	args := []any{userID}
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+ideaColumns+` FROM ideas WHERE user_id = ? AND id IN (`+sqlutil.Placeholders(len(ids))+`)`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get ideas: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		idea, err := scanIdea(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan idea: %w", err)
+		}
+		out[idea.ID] = idea
+	}
+	return out, rows.Err()
+}
+
 // List is the user's open or done ideas. Open ones whose follow-up date has
 // come (remind_on ≤ today) lead, then newest first; done ones by when they
 // were done. It first purges what the 30 days of retention let go (Purge);
@@ -278,6 +304,43 @@ func (s *Store) List(ctx context.Context, userID, state string, today time.Time)
 		return nil, fmt.Errorf("iterate ideas: %w", err)
 	}
 	return items, nil
+}
+
+// Search is the user's open ideas, and done ones when asked, those whose
+// title or reason contains query when one is given (case-insensitive):
+// open first (due follow-ups, then newest), then done (latest first). One
+// purge, one query: the idea tools' lookup.
+func (s *Store) Search(ctx context.Context, userID string, includeDone bool, query string, today time.Time) ([]Idea, error) {
+	if err := s.Purge(ctx, userID); err != nil {
+		slog.Warn("purge ideas", "user_id", userID, "err", err)
+	}
+	states := `('open')`
+	if includeDone {
+		states = `('open', 'done')`
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT `+ideaColumns+` FROM ideas
+WHERE user_id = ? AND deleted_at IS NULL AND state IN `+states+`
+ORDER BY state = 'done', (remind_on IS NOT NULL AND remind_on <= ?) DESC, COALESCE(done_at, created_at) DESC, rowid DESC`,
+		userID, FormatDate(today))
+	if err != nil {
+		return nil, fmt.Errorf("search ideas: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	// The match is case-folded here, not in SQL: SQLite's lower() and LIKE
+	// fold ASCII only, and "Öl" must find "Ölheizung".
+	q := strings.ToLower(strings.TrimSpace(query))
+	items := make([]Idea, 0)
+	for rows.Next() {
+		idea, err := scanIdea(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan idea: %w", err)
+		}
+		if q != "" && !strings.Contains(strings.ToLower(idea.Title), q) && !strings.Contains(strings.ToLower(idea.Reason), q) {
+			continue
+		}
+		items = append(items, idea)
+	}
+	return items, rows.Err()
 }
 
 // Purge deletes the user's ideas deleted more than 30 days ago and the

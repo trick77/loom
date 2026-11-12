@@ -596,7 +596,12 @@ func (t *Run) runCiting(ctx context.Context, spec *toolSpec, call llm.ToolCall, 
 // outside content (Engine.acts): the one place the rule is checked, for
 // built-ins and MCP tools alike.
 func (t *Run) refusesAction(name string) bool {
-	return t.readOutside && t.e.acts(name)
+	if !t.e.acts(name) {
+		return false
+	}
+	// The ideas a lookup read lock the turn's acting tools as outside
+	// content does, but not another lookup: narrowing a search is no action.
+	return t.readOutside || (t.ideasRead && name != ideasLookupToolName)
 }
 
 // userIntentAfterOutside refuses an acting call in a turn that already read

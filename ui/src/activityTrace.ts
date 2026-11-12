@@ -264,6 +264,10 @@ export function summarizeToolCall(
   if (memory !== undefined) {
     return { kind: "generated", title: memory };
   }
+  const idea = ideaToolLabel(name, stringValue(args, ["action"]));
+  if (idea !== undefined) {
+    return { kind: "generated", title: idea };
+  }
   if (/conversation_search/i.test(name)) {
     // Distinct kind so the trace renders a loupe (own-history search) rather than
     // the globe used for web search — see ActivityTracePanel.
@@ -583,6 +587,23 @@ function memoryToolLabel(
   return undefined;
 }
 
+// The idea tools: a lookup, and a proposal the user still has to click.
+function ideaToolLabel(
+  name: string,
+  action: string | undefined,
+): string | undefined {
+  if (name === "ideas_lookup")
+    return i18n.t("activityTrace.trace.lookingUpIdeas");
+  if (name !== "idea_propose") return undefined;
+  switch (action?.trim().toLowerCase()) {
+    case "remove":
+      return i18n.t("activityTrace.trace.proposingIdeaDelete");
+    case "done":
+      return i18n.t("activityTrace.trace.proposingIdeaDone");
+  }
+  return i18n.t("activityTrace.trace.proposingIdea");
+}
+
 // Built-in MCP servers and loom's own tools, by the name their label uses.
 const KNOWN_TOOL_SOURCES: Record<string, string> = {
   search: "sources.tavily",
@@ -600,6 +621,8 @@ const KNOWN_TOOL_SOURCES: Record<string, string> = {
   view_image: "sources.imageViewer",
   user_directives: "sources.memory",
   user_facts: "sources.memory",
+  ideas_lookup: "sources.ideas",
+  idea_propose: "sources.ideas",
   // Traces stored before the memory tools were merged.
   remember_user_directive: "sources.memory",
   update_user_directive: "sources.memory",

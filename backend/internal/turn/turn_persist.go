@@ -49,7 +49,7 @@ func (t *Run) PersistAssistantTurn(ctx context.Context, result *LoopResult) (cha
 	t.stampToolTitles(result.ActivityTrace, result.Blocks)
 	activityTraceJSON, contentBlocksJSON := MarshalTurnJSON(t.thread.ID, result.ActivityTrace, result.Blocks)
 	turnCost, turnPriced := t.acc.TurnCost()
-	assistantMessage, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, MessageMetricsWithCost(result.StreamResult, t.acc.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, t.citationsJSON(result.WebSources), contentBlocksJSON, t.readOutside)
+	assistantMessage, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, result.Content, MessageMetricsWithCost(result.StreamResult, t.acc.Total(), time.Since(t.start), turnCost, turnPriced), artifactsJSON, activityTraceJSON, t.citationsJSON(result.WebSources), contentBlocksJSON, t.readOutside || t.ideasRead)
 	if err != nil {
 		return chat.Message{}, err
 	}
@@ -74,7 +74,7 @@ func (t *Run) persistSegment(ctx context.Context, b *blockBuilder, artifacts []a
 	t.titles.MergeIntoBlocks(b.blocks)
 	t.stampToolTitles(trace, b.blocks)
 	traceJSON, blocksJSON := MarshalTurnJSON(t.thread.ID, trace, b.blocks)
-	segment, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, b.prose(), chat.MessageTokenUsage{}, artifactsJSON, traceJSON, t.citationsJSON(sources), blocksJSON, t.readOutside)
+	segment, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, b.prose(), chat.MessageTokenUsage{}, artifactsJSON, traceJSON, t.citationsJSON(sources), blocksJSON, t.readOutside || t.ideasRead)
 	if err != nil {
 		return chat.Message{}, err
 	}

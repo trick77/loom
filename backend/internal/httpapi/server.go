@@ -403,8 +403,13 @@ func newServer(d Deps) *server {
 	if s.locations != nil {
 		places = enginePlaces{s: s}
 	}
+	var ideaTools turn.IdeaTools
+	if s.ideas != nil {
+		ideaTools = ideaToolRunner{s: s}
+	}
 	s.engine = turn.New(turn.Config{
 		Schedules:                  scheduleTools,
+		Ideas:                      ideaTools,
 		Places:                     places,
 		Thread:                     d.Thread,
 		Usage:                      d.Usage,

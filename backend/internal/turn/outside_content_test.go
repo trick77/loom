@@ -22,6 +22,8 @@ func TestActs(t *testing.T) {
 		scheduleCreateToolName:                 true,
 		scheduleRunToolName:                    true,
 		scheduleListToolName:                   false,
+		ideasLookupToolName:                    true,
+		ideaProposeToolName:                    false,
 		conversationSearchToolName:             false,
 		sandboxToolName:                        false,
 		viewImageToolName:                      false,
