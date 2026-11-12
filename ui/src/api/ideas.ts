@@ -54,6 +54,15 @@ export const IDEAS_CHANGED = "loom:ideas-changed";
 
 const ideaUrl = (id: string) => `/api/ideas/${encodeURIComponent(id)}`;
 
+// IdeaGoneError is an idea the server no longer has for this call: deleted,
+// purged, a proposal already handled (a second click, another tab).
+export class IdeaGoneError extends Error {
+  constructor() {
+    super("idea not found");
+    this.name = "IdeaGoneError";
+  }
+}
+
 // The zone makes "today" the user's day: follow-up dates and their order.
 const zoneHeaders = () => ({ "X-Loom-Timezone": browserTimezone() });
 
@@ -71,6 +80,7 @@ async function sendIdea(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.status === 401) throw new AuthExpiredError();
+  if (response.status === 404) throw new IdeaGoneError();
   if (!response.ok) {
     const data = (await response.json().catch(() => ({}))) as {
       error?: string;

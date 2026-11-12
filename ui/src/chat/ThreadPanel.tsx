@@ -40,6 +40,7 @@ import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
 import { QueuedMessages } from "./QueuedMessages";
 import type { QueuedBubble } from "./useQueuedMessages";
 import { IdeaCaptureProvider } from "../ideas/IdeaCaptureContext";
+import { IdeaCard } from "../ideas/IdeaCard";
 
 // MESSAGE_FLASH_MS is how long a message opened by link stays highlighted:
 // the .ui-message-flash animation's length, and the outline's under reduced
@@ -734,6 +735,15 @@ export function ThreadPanel({
                     <GeneratedArtifactCard
                       key={`stream-artifact-${block.artifact.id}`}
                       artifact={block.artifact}
+                    />,
+                  );
+                  return;
+                }
+                if (block.type === "idea") {
+                  elements.push(
+                    <IdeaCard
+                      key={`stream-idea-${block.idea.ideaId}-${index}`}
+                      card={block.idea}
                     />,
                   );
                   return;

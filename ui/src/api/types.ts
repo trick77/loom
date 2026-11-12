@@ -98,10 +98,26 @@ export type Thread = {
 // panel), or a generated artifact. The backend persists assistant messages as an
 // ordered ContentBlock[] so text, tool activity and images render in the exact
 // chronological order they arrived; the live stream reconstructs the same order.
+/**
+ * IdeaCardData is an idea tool's card: what the user's click would commit
+ * (title, reason, dates; never the passage) and, overlaid on every load,
+ * what became of it.
+ */
+export type IdeaCardData = {
+  ideaId: string;
+  action: "save" | "remove" | "done";
+  state: "proposed" | "open" | "done" | "deleted" | "gone";
+  title: string;
+  reason: string;
+  dueOn: string | null;
+  remindOn: string | null;
+};
+
 export type ContentBlock =
   | { type: "text"; content: string }
   | { type: "trace"; events: ActivityTraceEvent[] }
-  | { type: "artifact"; artifact: Artifact };
+  | { type: "artifact"; artifact: Artifact }
+  | { type: "idea"; idea: IdeaCardData };
 
 export type Message = {
   id: string;

@@ -266,7 +266,7 @@ func indexTools(tools []toolSpec) map[string]*toolSpec {
 // built-in's definition. On a duplicate name the first spec wins.
 func (s *Engine) registry() ([]toolSpec, map[string]*toolSpec) {
 	s.toolsOnce.Do(func() {
-		tools := slices.Concat(coreTools, []toolSpec{outdoorToolSpec}, scheduleToolSpecs, []toolSpec{sandboxToolSpec, viewImageToolSpec})
+		tools := slices.Concat(coreTools, []toolSpec{outdoorToolSpec}, scheduleToolSpecs, ideaToolSpecs, []toolSpec{sandboxToolSpec, viewImageToolSpec})
 		for i := range tools {
 			tools[i].tool = tools[i].schema()
 		}

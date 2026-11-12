@@ -29,6 +29,7 @@ type Engine struct {
 	memory                    Memory
 	// schedules runs the schedule tools; nil keeps them off.
 	schedules ScheduleTools
+	ideas     IdeaTools
 	// places is where a user is, for outdoor_windows; nil plans only where
 	// the user names.
 	places Places
@@ -72,6 +73,8 @@ type Config struct {
 	Memory Memory
 	// Schedules runs the schedule tools; nil keeps them off.
 	Schedules ScheduleTools
+	// Ideas runs the idea tools; nil keeps them off.
+	Ideas IdeaTools
 	// Places is where a user is today; nil plans outdoor windows only where
 	// the user names.
 	Places Places
@@ -106,6 +109,7 @@ func New(c Config) *Engine {
 		projectSummaryTokenBudget:  c.ProjectSummaryTokenBudget,
 		memory:                     memory,
 		schedules:                  c.Schedules,
+		ideas:                      c.Ideas,
 		places:                     c.Places,
 		reasoningTitleHold:         c.ReasoningTitleHold,
 		reasoningTitleStartBytes:   c.ReasoningTitleStartBytes,

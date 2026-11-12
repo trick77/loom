@@ -296,6 +296,15 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 						artifacts = append(artifacts, response)
 						b.addArtifact(response)
 					}
+					// An idea card joins the timeline where it was proposed.
+					for _, card := range t.takeIdeaCards() {
+						b.addIdea(card)
+						if err := t.stream.SendJSON("idea_card", card); err != nil {
+							cancelRuns()
+							cancelTools()
+							return LoopResult{}, err
+						}
+					}
 				} else {
 					var run toolRun
 					if runs[i] != nil {

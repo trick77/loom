@@ -68,6 +68,7 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 		name      string
 		artifacts bool
 		images    bool
+		ideas     bool
 		thread    chat.Thread
 		gate      toolGate
 		want      []string
@@ -97,6 +98,11 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 			gate: withSandbox(docgenOn),
 			want: concat(core, mcpNames),
 		},
+		{
+			name: "ideas", artifacts: true, ideas: true,
+			gate: docgenOff,
+			want: concat(core, []string{"ideas_lookup", "idea_propose", "view_image"}, mcpNames),
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -109,6 +115,9 @@ func TestAvailableToolsOfferedSetAndOrder(t *testing.T) {
 			e := &Engine{usersDir: t.TempDir(), mcp: fakeMCPService{ToolList: offered, Artifacts: artifacts}}
 			if tc.artifacts {
 				e.artifacts = fakeArtifactStore{}
+			}
+			if tc.ideas {
+				e.ideas = &fakeIdeaTools{}
 			}
 			got := orderedToolNames(e.availableTools(tc.thread, tc.gate))
 			if !reflect.DeepEqual(got, tc.want) {
