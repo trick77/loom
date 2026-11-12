@@ -759,7 +759,7 @@ export const en = {
     menu: "Idea actions",
     empty: "No ideas yet",
     emptyHint:
-      "Tap the lightbulb under an answer and note why you want to follow it up.",
+      "Tap the lightbulb under an answer, or mark a passage in it, and note why you want to follow it up.",
     emptyDone: "Nothing done yet",
     loadFailed: "Ideas failed to load.",
     actionFailed: "That did not work. Try again.",

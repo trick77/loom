@@ -29,6 +29,7 @@ import { captureSaving, IdeaCapture } from "../ideas/IdeaCapture";
 import { IdeaCard } from "../ideas/IdeaCard";
 import { useIdeaCapture, useOpenCapture } from "../ideas/IdeaCaptureContext";
 import { cutExcerpt } from "../ideas/ideaText";
+import { PROSE_ATTR } from "../ideas/selectionTarget";
 import { MessageMetrics } from "../MessageMetrics";
 import { formatMessageTime } from "../metrics";
 import { ActivityTracePanel } from "./ActivityTracePanel";
@@ -248,14 +249,28 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
     () => ({ selected: selection.numbers, hovered: hoveredSource }),
     [selection.numbers, hoveredSource],
   );
-  const prose = blocks.map((block, index) => (
-    <AssistantBlock
-      key={`${message.id}-block-${index}`}
-      block={block}
-      sources={sources}
-      display={numbering.display}
-    />
-  ));
+  const prose = blocks.map((block, index) => {
+    const rendered = (
+      <AssistantBlock
+        key={`${message.id}-block-${index}`}
+        block={block}
+        sources={sources}
+        display={numbering.display}
+      />
+    );
+    // Text blocks are where a marked passage can become an idea (not in a
+    // share: no capture there).
+    return block.type === "text" && !publicView ? (
+      <div
+        key={`${message.id}-block-${index}`}
+        {...{ [PROSE_ATTR]: message.id }}
+      >
+        {rendered}
+      </div>
+    ) : (
+      rendered
+    );
+  });
   return (
     <div className="max-w-[46rem] space-y-3">
       {/* The drawer's state lives here, above both the prose and the Sources row,
@@ -811,7 +826,8 @@ function MessageActions({
   // provide no capture) and for a message with a stored id.
   const capture = useIdeaCapture();
   const openCapture = useOpenCapture(capture, messageId);
-  const captureOpen = openCapture !== null;
+  // The bulb's own capture (the whole answer), not a marked passage's.
+  const captureOpen = openCapture !== null && openCapture.passage !== true;
   const bulbButton =
     capture !== null && messageId !== undefined && ideaSource !== undefined ? (
       <button
@@ -891,7 +907,10 @@ function MessageActions({
           threadCostNanoUsd={threadCostNanoUsd}
         />
       )}
-      {openCapture !== null && <IdeaCapture request={openCapture} />}
+      {openCapture !== null && (
+        // A capture of another passage of the same answer is a new form.
+        <IdeaCapture key={openCapture.excerpt} request={openCapture} />
+      )}
     </div>
   );
 }

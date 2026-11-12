@@ -21,8 +21,17 @@ export function cutExcerpt(text: string): string {
     .replace(/[ \t]+([.,;:!?])/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
-  const runes = Array.from(clean);
-  if (runes.length <= EXCERPT_MAX) return clean;
+  return capExcerpt(clean);
+}
+
+/**
+ * capExcerpt cuts a passage to the cap, ending in an ellipsis when cut, and
+ * changes nothing else: a marked passage is read from the page already
+ * clean (code keeps its indentation and brackets).
+ */
+export function capExcerpt(text: string): string {
+  const runes = Array.from(text);
+  if (runes.length <= EXCERPT_MAX) return text;
   return `${runes
     .slice(0, EXCERPT_MAX - 1)
     .join("")

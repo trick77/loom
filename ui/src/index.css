@@ -989,6 +989,17 @@ a.ui-activity-tool-url:hover {
   }
 }
 
+/* The offer to save a marked passage fades in; nothing moves. */
+.ui-idea-select-in {
+  animation: prompt-fade-in 150ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-idea-select-in {
+    animation: none;
+  }
+}
+
 .ui-activity-result-domain {
   max-width: 12rem;
   overflow: hidden;
