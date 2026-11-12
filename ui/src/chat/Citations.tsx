@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import type { Citation } from "../api";
 import type { DisplayMap } from "./sourcePills";
+import { ProductCards } from "./ProductCards";
 import { hostOf, SourceFavicon } from "./SourceFavicon";
 import { sourceImageURL, SourcesSidebar } from "./SourcesSidebar";
 
@@ -210,6 +211,7 @@ export function MessageCitations({
 
   return (
     <div className="ui-meta-text mt-1 space-y-2 text-[#9a8f7e]">
+      <ProductCards sources={webSources} display={display} />
       <div className="flex flex-wrap items-center gap-2">
         {webSources.length > 0 ? (
           <button

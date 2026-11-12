@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
-# loom's Go sidecars in one image: docgen, imagegen, search, strava, tunewire,
-# weather (docs/<name>.md). One build, scan and signature per release instead
-# of six; each still runs as its own container, the binary picked by compose's
+# loom's Go sidecars in one image: docgen, imagegen, search, shop, strava,
+# tunewire, weather (docs/<name>.md). One build, scan and signature per release
+# instead of seven; each still runs as its own container, the binary picked by compose's
 # command. Build from the repository root:
 #   docker build -f sidecars/Containerfile -t loom-sidecars .
 
@@ -11,6 +11,7 @@ COPY backend/go.mod backend/go.sum ./
 COPY backend/cmd/loom-docgen/ ./cmd/loom-docgen/
 COPY backend/cmd/loom-imagegen/ ./cmd/loom-imagegen/
 COPY backend/cmd/loom-search/ ./cmd/loom-search/
+COPY backend/cmd/loom-shop/ ./cmd/loom-shop/
 COPY backend/cmd/loom-strava/ ./cmd/loom-strava/
 COPY backend/cmd/loom-tunewire/ ./cmd/loom-tunewire/
 COPY backend/cmd/loom-weather/ ./cmd/loom-weather/
@@ -27,7 +28,7 @@ COPY backend/internal/inference/ ./internal/inference/
 COPY backend/internal/sidecar/ ./internal/sidecar/
 COPY backend/internal/loomuser/ ./internal/loomuser/
 COPY backend/internal/geo/ ./internal/geo/
-# ship release passes the release version. One go build for all six shares the
+# ship release passes the release version. One go build for all seven shares the
 # compile of kit, toolkit and sidecar, and fetches only the modules they import,
 # not all of loom's.
 ARG VERSION=dev
@@ -36,6 +37,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       ./cmd/loom-docgen \
       ./cmd/loom-imagegen \
       ./cmd/loom-search \
+      ./cmd/loom-shop \
       ./cmd/loom-strava \
       ./cmd/loom-tunewire \
       ./cmd/loom-weather \

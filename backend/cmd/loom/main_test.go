@@ -105,6 +105,53 @@ func TestToolConfigForConfigAddsSearchSidecar(t *testing.T) {
 	}
 }
 
+// The shop sidecar is a best-effort built-in, its tool offered on shopping
+// questions only.
+func TestToolConfigForConfigAddsShopSidecar(t *testing.T) {
+	tc, err := toolConfigForConfig(config.Config{ShopURL: "http://shop:8110", ShopToken: strings.Repeat("t", 32)}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, ok := tc.FileServers.Servers[mcp.ShopServer]
+	if !ok || !sc.BuiltIn || !sc.ReadOnly || sc.URL != "http://shop:8110/mcp" || len(sc.Categories) != 1 || sc.Categories[0] != "shopping" {
+		t.Fatalf("shop = %+v (present %v)", sc, ok)
+	}
+	// compose sets the URL on every install: without a token it stays off.
+	if _, ok := mustToolConfig(t, config.Config{ShopURL: "http://shop:8110"}).Servers[mcp.ShopServer]; ok {
+		t.Fatal("shop registered without its token")
+	}
+}
+
+// An mcp.json server named shop serves the contract with the sidecar off
+// (no token): it is still offered on shopping questions only, unless it names
+// its own categories.
+func TestToolConfigForConfigShopReplacementKeepsCategory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(path, []byte(`{"mcpServers": {
+	  "shop": { "type": "http", "url": "https://other.example/mcp" },
+	  "weather": { "type": "http", "url": "https://wx.example/mcp" },
+	  "acme": { "type": "http", "url": "https://acme.example/mcp", "readOnly": true }
+	}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := mustToolConfig(t, config.Config{MCPServersFile: path, ShopURL: "http://shop:8110", WeatherURL: "http://weather:8100"})
+	if cats := got.Servers[mcp.ShopServer].Categories; len(cats) != 1 || cats[0] != "shopping" || !got.Servers[mcp.ShopServer].ReadOnly {
+		t.Fatalf("shop = %+v", got.Servers[mcp.ShopServer])
+	}
+	if cats := got.Servers[mcp.WeatherServer].Categories; len(cats) != 1 || cats[0] != "weather" {
+		t.Fatalf("weather = %+v", got.Servers[mcp.WeatherServer])
+	}
+	if got.Servers["acme"].Categories != nil {
+		t.Fatalf("acme gained categories: %v", got.Servers["acme"].Categories)
+	}
+	if err := os.WriteFile(path, []byte(`{"mcpServers": {"shop": {"type": "http", "url": "https://o.example/mcp", "categories": []}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cats := mustToolConfig(t, config.Config{MCPServersFile: path}).Servers[mcp.ShopServer].Categories; cats == nil || len(cats) != 0 {
+		t.Fatalf("explicit [] = %v, want offered always", cats)
+	}
+}
+
 // The weather sidecar is a best-effort built-in, its tools offered on weather
 // questions only.
 func TestToolConfigForConfigAddsWeatherSidecar(t *testing.T) {

@@ -197,7 +197,8 @@ func newServer(cfg config, client *http.Client, version string) http.Handler {
 }
 
 func newServerAt(cfg config, client *http.Client, version string, now func() time.Time) http.Handler {
-	agent := userAgent(version)
+	// Named to the providers, as the map provider's usage policy asks.
+	agent := sidecar.UserAgent("loom-weather", version)
 	w := &weather{
 		provider: openMeteo{http: client, forecastURL: strings.TrimRight(cfg.forecastURL, "/"),
 			geocodingURL: strings.TrimRight(cfg.geocodingURL, "/"), airQualityURL: strings.TrimRight(cfg.airQualityURL, "/"),
@@ -216,12 +217,6 @@ func newServerAt(cfg config, client *http.Client, version string, now func() tim
 	api := http.NewServeMux()
 	api.Handle("/mcp", mcpserver.New(w.mcpServer(version)))
 	return sidecar.Handler(cfg.token, api)
-}
-
-// userAgent names the sidecar to the providers, as the map provider's usage
-// policy asks.
-func userAgent(version string) string {
-	return "loom-weather/" + version + " (+https://github.com/trick77/loom)"
 }
 
 func (w *weather) mcpServer(version string) mcpserver.Server {

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -16,7 +17,9 @@ func getSourceImage(s *server, target string) *httptest.ResponseRecorder {
 }
 
 func TestHandleSourceImage_proxiesWithoutCachingOnDisk(t *testing.T) {
-	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	var agent string
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		agent = r.Header.Get("User-Agent")
 		writePNG(w)
 	}))
 	defer upstream.Close()
@@ -32,6 +35,11 @@ func TestHandleSourceImage_proxiesWithoutCachingOnDisk(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(cacheDir); len(entries) != 0 {
 		t.Fatalf("source images must not be written to disk, found %d entries", len(entries))
+	}
+	// loom names itself and where to find it: a shop's image host refused
+	// the old "loom-favicon-cache/1.0" (403) and serves this one.
+	if !strings.HasPrefix(agent, "loom/") || !strings.HasSuffix(agent, " (+https://github.com/trick77/loom)") {
+		t.Fatalf("User-Agent = %q", agent)
 	}
 }
 

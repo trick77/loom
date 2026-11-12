@@ -1,10 +1,6 @@
 package mcp
 
-import (
-	"strings"
-
-	"github.com/trick77/loom/internal/classifier"
-)
+import "strings"
 
 // The weather contract (docs/weather.md) as loom addresses it. The
 // loom-weather sidecar serves it; its tests hold these to its names.
@@ -30,7 +26,7 @@ func WeatherServerConfig(baseURL, token string) ServerConfig {
 		Transport:  TransportStreamableHTTP,
 		URL:        strings.TrimRight(baseURL, "/") + "/mcp",
 		Headers:    map[string]string{"Authorization": "Bearer " + token},
-		Categories: []string{string(classifier.Weather)},
+		Categories: ContractCategories[WeatherServer],
 		BuiltIn:    true,
 		ReadOnly:   true,
 	}

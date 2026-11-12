@@ -185,6 +185,7 @@ export const de = {
       memory: "Erinnerungen",
       ideas: "Ideen",
       files: "Dateigenerator",
+      shop: "Shop",
       loom: "loom",
     },
   },
@@ -315,6 +316,10 @@ export const de = {
     relevance: "Relevanz {{percent}}%",
     more: "Mehr",
     close: "Schliessen",
+    products: "Produkte",
+    noPrice: "kein Preis",
+    rating_one: "{{rating}} von 5, {{count}} Bewertung",
+    rating_other: "{{rating}} von 5, {{count}} Bewertungen",
   },
   artifactCard: {
     previewFailed: "Vorschau fehlgeschlagen",

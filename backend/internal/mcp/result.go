@@ -21,13 +21,57 @@ const maxStructuredSources = 20
 // Source is one citable item a tool result carries in
 // structuredContent.sources: the convention loom reads so any MCP server can
 // feed the sources sidebar and the model's [n] markers. URL is required; the
-// rest is display detail; Image is a preview picture (a video thumbnail).
+// rest is display detail; Image is a preview picture (a video thumbnail);
+// Product makes the link a product page, shown as a card under the answer.
 type Source struct {
-	URL     string `json:"url"`
-	Title   string `json:"title"`
-	Label   string `json:"label"`
-	Snippet string `json:"snippet"`
-	Image   string `json:"image"`
+	URL     string   `json:"url"`
+	Title   string   `json:"title"`
+	Label   string   `json:"label"`
+	Snippet string   `json:"snippet"`
+	Image   string   `json:"image"`
+	Product *Product `json:"product,omitempty"`
+}
+
+// Product is what a shop knows about a product page (docs/shop.md). A nil
+// Price is no price known; it comes with its ISO 4217 Currency or not at all.
+// Rating is an average out of 5, 0 none.
+type Product struct {
+	Price       *float64 `json:"price,omitempty"`
+	Currency    string   `json:"currency,omitempty"`
+	Rating      float64  `json:"rating,omitempty"`
+	RatingCount int      `json:"ratingCount,omitempty"`
+}
+
+// maxProductRating is the top of the scale a Rating is read on.
+const maxProductRating = 5
+
+// currencyCode is an ISO 4217 code, upper-cased before the match.
+var currencyCode = regexp.MustCompile(`^[A-Z]{3}$`)
+
+// cleanProduct keeps what a card can show truthfully and drops the rest: a
+// price that is not above zero (zero is "none", the contract's nil) or comes
+// without a valid currency, a rating off the scale, a count without its
+// rating. Nothing left is no product.
+func cleanProduct(p *Product) *Product {
+	if p == nil {
+		return nil
+	}
+	out := Product{}
+	currency := strings.ToUpper(strings.TrimSpace(p.Currency))
+	if p.Price != nil && *p.Price > 0 && currencyCode.MatchString(currency) {
+		price := *p.Price
+		out.Price, out.Currency = &price, currency
+	}
+	if p.Rating > 0 && p.Rating <= maxProductRating {
+		out.Rating = p.Rating
+		if p.RatingCount > 0 {
+			out.RatingCount = p.RatingCount
+		}
+	}
+	if out == (Product{}) {
+		return nil
+	}
+	return &out
 }
 
 // CallResult is a tool call's model-facing text plus the sources it cited,
@@ -351,6 +395,7 @@ func structuredSources(raw json.RawMessage) []Source {
 	usable := false
 	for i := range sources {
 		sources[i].URL = strings.TrimSpace(sources[i].URL)
+		sources[i].Product = cleanProduct(sources[i].Product)
 		usable = usable || sources[i].URL != ""
 	}
 	if !usable {

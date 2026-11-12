@@ -50,6 +50,9 @@ func (r *webSourceRegistry) addSource(src mcp.Source) (int, bool) {
 		if image := httpsURL(src.Image); image != "" && r.sources[pos].Image == "" {
 			r.sources[pos].Image = image
 		}
+		if src.Product != nil && r.sources[pos].Product == nil {
+			r.sources[pos].Product = src.Product
+		}
 	}
 	return idx, true
 }

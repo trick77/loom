@@ -125,6 +125,11 @@ type Config struct {
 	// WeatherToken is its WEATHER_TOKEN; without one the weather is off.
 	WeatherURL   string
 	WeatherToken string
+	// ShopURL is the loom-shop sidecar (docs/shop.md); empty keeps product
+	// search off unless an mcp.json server named shop serves it. ShopToken is
+	// its SHOP_TOKEN; without one product search is off.
+	ShopURL   string
+	ShopToken string
 	// DocgenURL is the loom-docgen sidecar (docs/docgen.md); empty keeps the
 	// document tools off unless an mcp.json server named docgen serves them.
 	// DocgenToken is its DOCGEN_TOKEN (sidecar.TokenProblem), required with
@@ -299,6 +304,8 @@ func Load() (Config, error) {
 		SearchToken:             r.String("BACKEND_SEARCH_TOKEN", ""),
 		WeatherURL:              optional(r, "BACKEND_WEATHER_URL", ""),
 		WeatherToken:            r.String("BACKEND_WEATHER_TOKEN", ""),
+		ShopURL:                 optional(r, "BACKEND_SHOP_URL", ""),
+		ShopToken:               r.String("BACKEND_SHOP_TOKEN", ""),
 		DocgenURL:               optional(r, "BACKEND_DOCGEN_URL", ""),
 		DocgenToken:             r.String("BACKEND_DOCGEN_TOKEN", ""),
 		ObscuraMCPURL:           r.String("BACKEND_OBSCURA_MCP_URL", ""),
@@ -382,6 +389,9 @@ func Load() (Config, error) {
 		r.Fail("%s", msg)
 	}
 	if msg := weatherProblem(cfg); msg != "" {
+		r.Fail("%s", msg)
+	}
+	if msg := shopProblem(cfg); msg != "" {
 		r.Fail("%s", msg)
 	}
 	if msg := docgenProblem(cfg); msg != "" {
@@ -597,6 +607,19 @@ func weatherProblem(cfg Config) string {
 // token both set.
 func (c Config) WeatherOn() bool {
 	return strings.TrimSpace(c.WeatherURL) != "" && c.WeatherToken != ""
+}
+
+// shopProblem says what is wrong with a configured shop sidecar. Product
+// search is optional like the weather: without a token it is off (ShopOn).
+func shopProblem(cfg Config) string {
+	return sidecarProblem("BACKEND_SHOP_URL", cfg.ShopURL, "BACKEND_SHOP_TOKEN", cfg.ShopToken,
+		"product search runs in the loom-shop sidecar, which shares it and refuses every call without it; leave it empty to keep product search off", "docs/shop.md", true)
+}
+
+// ShopOn reports whether the shop sidecar is configured: a URL and a token
+// both set.
+func (c Config) ShopOn() bool {
+	return strings.TrimSpace(c.ShopURL) != "" && c.ShopToken != ""
 }
 
 // docgenProblem says what is wrong with a configured docgen sidecar.

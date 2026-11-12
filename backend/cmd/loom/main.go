@@ -178,10 +178,11 @@ func runServer() error {
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
 	discoveredTools, imageToolUp, searchToolUp, searchServerUp, docgenTools := 0, false, false, false, 0
-	weatherToolUp := false
+	weatherToolUp, shopToolUp := false, false
 	if toolService != nil {
 		discoveredTools = len(toolService.Tools())
 		weatherToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool))
+		shopToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ShopServer, mcp.ShopSearchTool))
 		imageToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool))
 		searchToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.SearchServer, mcp.SearchTool))
 		searchServerUp = mcpService.Answered(mcp.SearchServer)
@@ -226,6 +227,7 @@ func runServer() error {
 		SearchToolUp:        searchToolUp,
 		SearchServerUp:      searchServerUp,
 		WeatherToolUp:       weatherToolUp,
+		ShopToolUp:          shopToolUp,
 	})
 
 	// Post-turn refreshes outlive their request; serve() drains this group before
@@ -551,6 +553,12 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 	if cfg.WeatherOn() {
 		out.FileServers.Servers[mcp.WeatherServer] = mcp.WeatherServerConfig(cfg.WeatherURL, cfg.WeatherToken)
 	}
+	// loom-shop likewise (docs/shop.md): a dead sidecar costs product search.
+	// An mcp.json server named shop replaces it. compose sets the URL; without
+	// a token product search is simply off.
+	if cfg.ShopOn() {
+		out.FileServers.Servers[mcp.ShopServer] = mcp.ShopServerConfig(cfg.ShopURL, cfg.ShopToken)
+	}
 	// loom-docgen likewise (docs/docgen.md): a dead sidecar costs the
 	// document tools. An mcp.json server named docgen replaces it.
 	if docgenConfigured(cfg) {
@@ -592,6 +600,11 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 					"server", name, "categories", existing.Categories)
 			}
 		}
+		// Offered where its contract is with the sidecar off too: compose's
+		// URL without a token leaves no built-in to inherit from.
+		if cats, ok := mcp.ContractCategories[name]; ok && server.Categories == nil {
+			server.Categories = cats
+		}
 		out.FileServers.Servers[name] = server
 	}
 	return out, nil
@@ -601,7 +614,7 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 // actingContracts the ones that make files and images, acting by design.
 var (
 	readingContracts = map[string]bool{
-		"fetch": true, "obscura": true, mcp.SearchServer: true, mcp.WeatherServer: true,
+		"fetch": true, "obscura": true, mcp.SearchServer: true, mcp.WeatherServer: true, mcp.ShopServer: true,
 		stravaServer: true, tunewireLibraryServer: true, tunewireCatalogServer: true,
 	}
 	actingContracts = map[string]bool{mcp.DocgenServer: true, mcp.ImagegenServer: true}

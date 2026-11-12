@@ -272,6 +272,32 @@ func TestLoadImagegenSidecarProblems(t *testing.T) {
 	}
 }
 
+func TestLoadShopSidecar(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_SHOP_URL", "http://shop:8110")
+	// compose sets the URL on every install: without a token product search
+	// is off, never a failed boot.
+	if cfg, err := Load(); err != nil || cfg.ShopOn() {
+		t.Fatalf("no token: on=%v, %v", cfg.ShopOn(), err)
+	}
+	t.Setenv("BACKEND_SHOP_TOKEN", "short")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_SHOP_TOKEN must be at least 32") {
+		t.Fatalf("short token: %v", err)
+	}
+	t.Setenv("BACKEND_SHOP_TOKEN", strings.Repeat("a", 32))
+	if cfg, err := Load(); err != nil || !cfg.ShopOn() || cfg.ShopURL != "http://shop:8110" {
+		t.Fatalf("configured: %+v, %v", cfg, err)
+	}
+	t.Setenv("BACKEND_SHOP_URL", "shop:8110")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "BACKEND_SHOP_URL must be an absolute") {
+		t.Fatalf("relative url: %v", err)
+	}
+	t.Setenv("BACKEND_SHOP_URL", "off")
+	if cfg, err := Load(); err != nil || cfg.ShopURL != "" || cfg.ShopOn() {
+		t.Fatalf("off: %+v, %v", cfg, err)
+	}
+}
+
 func TestLoadWeatherSidecar(t *testing.T) {
 	requiredEnv(t)
 	t.Setenv("BACKEND_WEATHER_URL", "http://weather:8100")
