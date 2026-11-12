@@ -26,7 +26,7 @@ func userDirectivesTool() llm.Tool {
 		Function: llm.ToolFunction{
 			Name: UserDirectivesToolName,
 			Description: "Change the user's standing instructions (listed with ids in your context): durable rules for how you respond or address them, in every future conversation. " +
-				"Only on an explicit request: add on \"always …\", \"from now on …\", \"remember to …\", \"never …\", \"call me …\" (no duplicates); update on \"make that …\"; remove on \"forget that\", \"stop …\". " +
+				"Only on an explicit request: add on \"always …\", \"from now on …\", \"remember to …\", \"never …\", \"call me …\" (no duplicates); update on \"make that …\"; remove on \"forget that\", \"stop …\"; on remove, if " + askIfUnclear + ". " +
 				"Not for facts about the user (home, job, tastes): use " + UserFactsToolName + ". Not for one-off task details. " +
 				memoryFirst + "Returns the updated list with ids.",
 			Parameters: map[string]any{
@@ -50,6 +50,11 @@ func userDirectivesTool() llm.Tool {
 		},
 	}
 }
+
+// askIfUnclear guards remove in both memory tools: the user has no undo for a
+// forget (a fact retires with no way back, a directive is deleted), so a guess
+// is worse than a question. A clear group request still goes in one call.
+const askIfUnclear = "unsure which one is meant, or only a loose fit: list the candidates and ask, remove none of them"
 
 // memoryFirst tells the model the memory tools refuse after a tool that
 // read content (Engine.acts), so it calls them first.

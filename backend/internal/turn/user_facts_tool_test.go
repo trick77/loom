@@ -94,15 +94,33 @@ func TestMemoryTools_DescriptionsSeparateFactsFromDirectives(t *testing.T) {
 	if !strings.Contains(directives, UserFactsToolName) {
 		t.Fatalf("%s must route facts about the user to the fact tool:\n%s", UserDirectivesToolName, directives)
 	}
-	for _, want := range []string{"EVERY fact", "long-term", "does not delete the chat threads"} {
+	for _, want := range []string{"EVERY fact", "everything about my old job", "long-term", "does not delete the chat threads they came from"} {
 		if !strings.Contains(facts, want) {
 			t.Fatalf("%s description missing %q:\n%s", UserFactsToolName, want, facts)
 		}
 	}
 }
 
+// The user has no undo for a forget: an unclear or loose match asks instead
+// of removing, in both tools, and the rule is part of the remove action's
+// sentence, not a stray clause elsewhere.
+func TestMemoryTools_RemoveAsksWhenUnclear(t *testing.T) {
+	for _, tool := range []llm.Tool{userFactsTool(), userDirectivesTool()} {
+		desc := tool.Function.Description
+		for _, want := range []string{"unsure which one is meant", "only a loose fit", "list the candidates and ask, remove none of them"} {
+			if !strings.Contains(desc, want) {
+				t.Errorf("%s description missing %q:\n%s", tool.Function.Name, want, desc)
+			}
+		}
+		remove := strings.LastIndex(desc[:max(strings.Index(desc, askIfUnclear), 0)], "remove")
+		if remove < 0 || strings.Contains(desc[remove:strings.Index(desc, askIfUnclear)], ". ") {
+			t.Errorf("%s: the ask rule must sit in the remove sentence:\n%s", tool.Function.Name, desc)
+		}
+	}
+}
+
 // The two tools ride in every turn: together they stay well under the six
-// tools they replaced (~4.9 KB).
+// tools they replaced (~4.9 KB). 3000 since the ask-before-forget rule.
 func TestMemoryToolsSchemaSize(t *testing.T) {
 	total := 0
 	for _, tool := range []llm.Tool{userDirectivesTool(), userFactsTool()} {
@@ -113,7 +131,7 @@ func TestMemoryToolsSchemaSize(t *testing.T) {
 		total += len(raw)
 	}
 	t.Logf("memory tools: %d bytes", total)
-	if total > 2800 {
-		t.Errorf("memory tools = %d bytes, want at most 2800", total)
+	if total > 3000 {
+		t.Errorf("memory tools = %d bytes, want at most 3000", total)
 	}
 }
