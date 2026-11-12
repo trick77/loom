@@ -31,6 +31,7 @@ const props = () => ({
   initialIdeaID: null as string | null,
   onOpenSidebar: vi.fn(),
   onStartThread: vi.fn(),
+  onOpenMessage: vi.fn(),
   onSessionExpired: vi.fn(),
 });
 
@@ -97,9 +98,28 @@ test("an open idea shows its passage as plain text", async () => {
   expect(container.querySelector("a")).toBeNull();
   expect(container.querySelector("b")).toBeNull();
   expect(container.querySelector("strong")).toBeNull();
+});
+
+test("jump to the passage opens the thread at the message", async () => {
+  const p = props();
+  render(<IdeasPage {...p} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Vibe Kanban/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Jump to the passage" }));
+  expect(p.onOpenMessage).toHaveBeenCalledWith("t1", "m1");
+});
+
+test("jump is disabled once the thread is gone, absent without one", async () => {
+  render(<IdeasPage {...props()} />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Passkeys instead of OIDC/ }),
+  );
   expect(
     screen.getByRole("button", { name: "Jump to the passage" }),
   ).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: /Rye at 30 %/ }));
+  expect(
+    screen.queryByRole("button", { name: "Jump to the passage" }),
+  ).not.toBeInTheDocument();
 });
 
 test("start a thread fills a draft and never sends", async () => {

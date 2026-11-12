@@ -3,21 +3,24 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
 import type { Thread } from "../api";
-import { ThreadPanel } from "./ThreadPanel";
+import { MESSAGE_FLASH_MS, ThreadPanel } from "./ThreadPanel";
 import type { MessageWithActivityTrace } from "./types";
 
 function panel(
   thread: Thread,
   messages: MessageWithActivityTrace[],
   openAtAnswer = false,
+  openAtMessageID: string | null = null,
 ) {
   const handlers = {
     onOpenSchedule: vi.fn(),
+    onOpenedAtMessage: vi.fn(),
   };
   render(
     <ThreadPanel
       thread={thread}
       openAtAnswer={openAtAnswer}
+      openAtMessageID={openAtMessageID}
       threadProject={null}
       share={null}
       onShareChange={vi.fn()}
@@ -180,6 +183,39 @@ test("read news opens at the end", () => {
   try {
     panel({ ...thread, scheduleId: "s1" }, messages);
     expect(transcriptScrollTop()).toBe(2000);
+  } finally {
+    restore();
+  }
+});
+
+// An idea's "Jump to the passage" opens the thread at its message, which
+// glows for a moment; one the thread does not hold opens it as usual.
+test("a thread opens at a linked message and highlights it", () => {
+  vi.useFakeTimers();
+  const restore = fakeLayout({ "Find new films": 400, "Two new films.": 900 });
+  try {
+    const handlers = panel(thread, messages, false, "u1");
+    expect(transcriptScrollTop()).toBe(300);
+    const target = document.querySelector('[data-message-id="u1"]');
+    expect(target).toHaveClass("ui-message-flash");
+    // The shell drops the param from the URL once the panel used it.
+    expect(handlers.onOpenedAtMessage).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(MESSAGE_FLASH_MS + 10);
+    expect(target).not.toHaveClass("ui-message-flash");
+  } finally {
+    restore();
+    vi.useRealTimers();
+  }
+});
+
+test("an unknown linked message opens the thread at the end", () => {
+  const restore = fakeLayout({ "Two new films.": 100 });
+  try {
+    const handlers = panel(thread, messages, false, "gone");
+    expect(transcriptScrollTop()).toBe(2000);
+    expect(document.querySelector(".ui-message-flash")).toBeNull();
+    // A dead link leaves the URL too.
+    expect(handlers.onOpenedAtMessage).toHaveBeenCalledTimes(1);
   } finally {
     restore();
   }

@@ -204,7 +204,7 @@ export function ThreadShell({
   onSessionExpired,
 }: ThreadShellProps) {
   const { t, i18n } = useTranslation();
-  const { route, routeRef, go } = useRouteState();
+  const { route, routeRef, go, replace } = useRouteState();
   // The textarea contents and the staged "Pasted" chips, keyed by the surface that
   // owns them (see composerDrafts.ts). They belong to the thread they were typed
   // in: leaving that thread must not carry them into the next one, and must not
@@ -815,14 +815,29 @@ export function ThreadShell({
     void handleUnarchiveProject(project).then(reloadThreads);
   }
 
+  // messageID opens the thread at that message (an idea's "Jump to the
+  // passage").
   const selectThread = useCallback(
-    async (threadID: string) => {
+    async (threadID: string, messageID?: string | null) => {
       onThread();
       closeMobileSidebar();
-      go({ view: "thread", threadID });
+      go(
+        messageID == null
+          ? { view: "thread", threadID }
+          : { view: "thread", threadID, messageID },
+      );
     },
     [go, onThread, closeMobileSidebar],
   );
+
+  // The thread opened at its message: the param leaves the URL, so a reload
+  // or Back later opens the thread as usual instead of jumping again.
+  const handleOpenedAtMessage = useCallback(() => {
+    const current = routeRef.current;
+    if (current.view === "thread" && current.messageID !== undefined) {
+      replace({ view: "thread", threadID: current.threadID });
+    }
+  }, [routeRef, replace]);
 
   // A notification opens the run's thread; an auto-disable opens the
   // schedule, where it can be enabled again.
@@ -1887,6 +1902,9 @@ export function ThreadShell({
               initialIdeaID={route.view === "idea" ? route.ideaID : null}
               onOpenSidebar={openMobileSidebar}
               onStartThread={handleStartThreadFromIdea}
+              onOpenMessage={(threadID, messageID) =>
+                void selectThread(threadID, messageID)
+              }
               onSessionExpired={onSessionExpired}
             />
           </Suspense>
@@ -1980,6 +1998,14 @@ export function ThreadShell({
           <ThreadPanel
             thread={activeThread}
             openAtAnswer={openAtAnswer}
+            openAtMessageID={
+              route.view === "thread" &&
+              route.messageID !== undefined &&
+              activeThread?.id === route.threadID
+                ? route.messageID
+                : null
+            }
+            onOpenedAtMessage={handleOpenedAtMessage}
             threadProject={activeThreadProject}
             share={activeShare}
             onShareChange={handleShareChange}

@@ -3,7 +3,8 @@ export type RouteState =
   | { view: "threads" }
   | { view: "artifacts" }
   | { view: "memory" }
-  | { view: "thread"; threadID: string }
+  // messageID opens the thread at that message (/thread/:id?message=:mid).
+  | { view: "thread"; threadID: string; messageID?: string }
   | { view: "projects" }
   | { view: "project"; projectID: string }
   | { view: "schedules" }
@@ -12,10 +13,14 @@ export type RouteState =
   // The list with that idea expanded.
   | { view: "idea"; ideaID: string };
 
-export function routeFromPath(path: string): RouteState {
+export function routeFromPath(path: string, search = ""): RouteState {
   if (path.startsWith("/thread/")) {
     const threadID = decodeURIComponent(path.slice("/thread/".length));
-    if (threadID !== "") return { view: "thread", threadID };
+    const messageID = new URLSearchParams(search).get("message") ?? "";
+    if (threadID !== "")
+      return messageID === ""
+        ? { view: "thread", threadID }
+        : { view: "thread", threadID, messageID };
   }
   if (path === "/threads") return { view: "threads" };
   if (path === "/artifacts") return { view: "artifacts" };
@@ -39,7 +44,7 @@ export function routeFromPath(path: string): RouteState {
 }
 
 export function routeFromLocation(): RouteState {
-  return routeFromPath(window.location.pathname);
+  return routeFromPath(window.location.pathname, window.location.search);
 }
 
 export function pathForRoute(route: RouteState): string {
@@ -56,12 +61,20 @@ export function pathForRoute(route: RouteState): string {
   if (route.view === "ideas") return "/ideas";
   if (route.view === "idea")
     return `/ideas/${encodeURIComponent(route.ideaID)}`;
-  return `/thread/${encodeURIComponent(route.threadID)}`;
+  const thread = `/thread/${encodeURIComponent(route.threadID)}`;
+  return route.messageID === undefined
+    ? thread
+    : `${thread}?message=${encodeURIComponent(route.messageID)}`;
 }
 
 export function navigate(route: RouteState) {
   const path = pathForRoute(route);
-  if (window.location.pathname !== path) {
+  // Only a route that carries a query compares it: a foreign one (?utm=, a
+  // callback's) must not turn a same-page navigation into a history entry.
+  const current = path.includes("?")
+    ? window.location.pathname + window.location.search
+    : window.location.pathname;
+  if (current !== path) {
     window.history.pushState({}, "", path);
   }
 }

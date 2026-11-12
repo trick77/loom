@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { navigate, routeFromLocation, type RouteState } from "./routing";
+import {
+  navigate,
+  pathForRoute,
+  routeFromLocation,
+  type RouteState,
+} from "./routing";
 
 // useRouteState owns the shell's route: the current route, a ref holding the
 // latest value for async flows that must not act on a stale one, the popstate
@@ -39,5 +44,12 @@ export function useRouteState() {
     setRoute(next);
   }, []);
 
-  return { route, routeRef, go };
+  // replace swaps the current history entry instead of adding one.
+  const replace = useCallback((next: RouteState) => {
+    window.history.replaceState({}, "", pathForRoute(next));
+    routeRef.current = next;
+    setRoute(next);
+  }, []);
+
+  return { route, routeRef, go, replace };
 }

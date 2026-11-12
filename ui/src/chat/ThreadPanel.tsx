@@ -40,6 +40,67 @@ import { useOutsideRefPointerDown } from "./useOutsidePointerDown";
 import { QueuedMessages } from "./QueuedMessages";
 import type { QueuedBubble } from "./useQueuedMessages";
 
+// MESSAGE_FLASH_MS is how long a message opened by link stays highlighted:
+// the .ui-message-flash animation's length, and the outline's under reduced
+// motion (no animationend there).
+export const MESSAGE_FLASH_MS = 1600;
+// ANCHOR_MS is how long that message is held at the top while content above
+// it still grows (images, highlighted code), unless the reader scrolls.
+const ANCHOR_MS = 1500;
+
+// holdOpenedMessage highlights a message opened by link and keeps it at the
+// top while the content above it settles. reanchor returns false once the
+// panel went back to following the latest message (a send, jump to bottom).
+// It returns the release.
+function holdOpenedMessage(
+  transcript: HTMLElement,
+  target: HTMLElement,
+  reanchor: () => boolean,
+): () => void {
+  target.classList.remove("ui-message-flash");
+  // Restart the animation when the same message is opened again.
+  void target.offsetWidth;
+  target.classList.add("ui-message-flash");
+  const content = transcript.firstElementChild;
+  let observer: ResizeObserver | null = null;
+  const stopAnchor = () => observer?.disconnect();
+  if (typeof ResizeObserver === "function" && content !== null) {
+    observer = new ResizeObserver(() => {
+      if (!reanchor()) stopAnchor();
+    });
+    observer.observe(content);
+  }
+  const unflash = () => target.classList.remove("ui-message-flash");
+  // A child's own animation (a card's reveal) bubbles up: not the flash.
+  const flashEnded = (event: AnimationEvent) => {
+    if (event.target === target) unflash();
+  };
+  const anchorTimer = window.setTimeout(stopAnchor, ANCHOR_MS);
+  const flashTimer = window.setTimeout(unflash, MESSAGE_FLASH_MS);
+  target.addEventListener("animationend", flashEnded);
+  // The reader takes over (wheel, touch, the scrollbar, a key anywhere): no
+  // more re-anchoring.
+  const userScroll = ["wheel", "touchstart", "pointerdown"] as const;
+  userScroll.forEach((type) =>
+    transcript.addEventListener(type, stopAnchor, {
+      once: true,
+      passive: true,
+    }),
+  );
+  document.addEventListener("keydown", stopAnchor, { once: true });
+  return () => {
+    stopAnchor();
+    unflash();
+    window.clearTimeout(anchorTimer);
+    window.clearTimeout(flashTimer);
+    target.removeEventListener("animationend", flashEnded);
+    userScroll.forEach((type) =>
+      transcript.removeEventListener(type, stopAnchor),
+    );
+    document.removeEventListener("keydown", stopAnchor);
+  };
+}
+
 export function ThreadPanel({
   thread,
   threadProject,
@@ -75,8 +136,15 @@ export function ThreadPanel({
   onCloseThreadMenu,
   onOpenSchedule,
   openAtAnswer = false,
+  openAtMessageID = null,
+  onOpenedAtMessage,
 }: {
   thread: Thread | null;
+  /** Opens the thread at this message, highlighted for a moment (an idea's
+   *  "Jump to the passage"). Unknown in the thread: opens as usual. */
+  openAtMessageID?: string | null;
+  /** Called once the thread was opened at openAtMessageID. */
+  onOpenedAtMessage?(): void;
   /** The thread holds unread schedule news: it opens at the start of the
    *  latest answer, not at the end. Read once, as the thread opens. */
   openAtAnswer?: boolean;
@@ -384,14 +452,16 @@ export function ThreadPanel({
   // Unread news opens at the start of its answer: a long report read from its
   // end is read backwards. The flag is read only as the thread opens, the
   // read that follows clears it.
+  // A message to open at is read the same way, and again when the route
+  // names another message of the thread already open.
   const openedThreadRef = useRef<string | null | undefined>(undefined);
-  useLayoutEffect(() => {
-    const threadID = thread?.id ?? null;
-    if (openedThreadRef.current === threadID) return;
-    openedThreadRef.current = threadID;
-    const transcript = transcriptRef.current;
-    const answer = answerStartRef.current;
-    if (openAtAnswer && transcript !== null) {
+  // Ends the highlight and the re-anchoring of the last message opened by
+  // link; run on the next open and on unmount.
+  const releaseOpenedRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => releaseOpenedRef.current?.(), []);
+  // scrollToTop brings el to the top of the transcript, out of stick-to-bottom.
+  const scrollToTop = useCallback(
+    (transcript: HTMLElement, el: HTMLElement | null) => {
       shouldStickToBottomRef.current = false;
       if (scrollFrameRef.current !== null) {
         window.cancelAnimationFrame(scrollFrameRef.current);
@@ -399,22 +469,67 @@ export function ThreadPanel({
       }
       const padding = parseFloat(getComputedStyle(transcript).paddingTop) || 0;
       transcript.scrollTop =
-        answer === null
+        el === null
           ? 0
           : Math.max(
               0,
               transcript.scrollTop +
-                answer.getBoundingClientRect().top -
+                el.getBoundingClientRect().top -
                 transcript.getBoundingClientRect().top -
                 padding,
             );
       setShowJumpToBottom(!isNearBottom(transcript));
+    },
+    [],
+  );
+  useLayoutEffect(() => {
+    const threadID = thread?.id ?? null;
+    const opening = `${threadID}|${openAtMessageID ?? ""}`;
+    if (openedThreadRef.current === opening) return;
+    const sameThread = openedThreadRef.current?.startsWith(`${threadID}|`);
+    openedThreadRef.current = opening;
+    const transcript = transcriptRef.current;
+    const target =
+      openAtMessageID === null || transcript === null
+        ? undefined
+        : Array.from(
+            transcript.querySelectorAll<HTMLElement>("[data-message-id]"),
+          ).find((el) => el.dataset.messageId === openAtMessageID);
+    // Another thread, or another message: the last one's hold ends. Only the
+    // param dropping (the shell cleaning the URL) leaves it running.
+    if (!sameThread || target !== undefined) {
+      releaseOpenedRef.current?.();
+      releaseOpenedRef.current = null;
+    }
+    // Consumed, found or not: the shell drops the param from the URL.
+    if (openAtMessageID !== null) onOpenedAtMessage?.();
+    if (target !== undefined && transcript !== null) {
+      scrollToTop(transcript, target);
+      releaseOpenedRef.current = holdOpenedMessage(transcript, target, () => {
+        // Back to following the latest message (a send): let go.
+        if (shouldStickToBottomRef.current) return false;
+        scrollToTop(transcript, target);
+        return true;
+      });
+      return;
+    }
+    // The same thread, its message param only dropped: stay where it is.
+    if (sameThread) return;
+    if (openAtAnswer && transcript !== null) {
+      scrollToTop(transcript, answerStartRef.current);
       return;
     }
     shouldStickToBottomRef.current = true;
     setShowJumpToBottom(false);
     scrollToLatest();
-  }, [openAtAnswer, scrollToLatest, thread?.id]);
+  }, [
+    openAtAnswer,
+    openAtMessageID,
+    onOpenedAtMessage,
+    scrollToLatest,
+    scrollToTop,
+    thread?.id,
+  ]);
 
   useLayoutEffect(() => {
     if (shouldStickToBottomRef.current) {
@@ -572,6 +687,7 @@ export function ThreadPanel({
                 <div
                   key={message.clientKey ?? message.id}
                   ref={index === answerStartIndex ? answerStartRef : undefined}
+                  data-message-id={message.id}
                   className="space-y-6"
                 >
                   <MessageBubble
