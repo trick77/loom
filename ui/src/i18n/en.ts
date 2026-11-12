@@ -314,6 +314,7 @@ export const en = {
     noPrice: "no price",
     rating_one: "{{rating}} out of 5, {{count}} rating",
     rating_other: "{{rating}} out of 5, {{count}} ratings",
+    ratingOnly: "{{rating}} out of 5",
   },
   artifactCard: {
     previewFailed: "Preview failed",

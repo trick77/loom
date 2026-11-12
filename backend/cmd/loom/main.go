@@ -178,11 +178,12 @@ func runServer() error {
 		slog.Info("tools discovered", "count", len(discovered.Tools()))
 	}
 	discoveredTools, imageToolUp, searchToolUp, searchServerUp, docgenTools := 0, false, false, false, 0
-	weatherToolUp, shopToolUp := false, false
+	weatherToolUp, shopToolUp, shopServerUp := false, false, false
 	if toolService != nil {
 		discoveredTools = len(toolService.Tools())
 		weatherToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherForecastTool))
 		shopToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ShopServer, mcp.ShopSearchTool))
+		shopServerUp = mcpService.Answered(mcp.ShopServer)
 		imageToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.ImagegenServer, mcp.ImagegenTool))
 		searchToolUp = toolService.HasTool(mcp.ExposedToolName(mcp.SearchServer, mcp.SearchTool))
 		searchServerUp = mcpService.Answered(mcp.SearchServer)
@@ -228,6 +229,7 @@ func runServer() error {
 		SearchServerUp:      searchServerUp,
 		WeatherToolUp:       weatherToolUp,
 		ShopToolUp:          shopToolUp,
+		ShopServerUp:        shopServerUp,
 	})
 
 	// Post-turn refreshes outlive their request; serve() drains this group before
@@ -611,10 +613,13 @@ func toolConfigForConfig(cfg config.Config, pdf mcp.PDFExtractor) (toolServerCon
 }
 
 // readingContracts are the built-in servers whose every tool only reads;
-// actingContracts the ones that make files and images, acting by design.
+// actingContracts the ones that make files and images, acting by design. Not
+// shop: an existing mcp.json server of that common name may place orders, and
+// forcing it read-only would let outside content call it; a replacement says
+// "readOnly": true itself (docs/shop.md).
 var (
 	readingContracts = map[string]bool{
-		"fetch": true, "obscura": true, mcp.SearchServer: true, mcp.WeatherServer: true, mcp.ShopServer: true,
+		"fetch": true, "obscura": true, mcp.SearchServer: true, mcp.WeatherServer: true,
 		stravaServer: true, tunewireLibraryServer: true, tunewireCatalogServer: true,
 	}
 	actingContracts = map[string]bool{mcp.DocgenServer: true, mcp.ImagegenServer: true}

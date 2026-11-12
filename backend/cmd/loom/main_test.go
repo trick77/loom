@@ -135,8 +135,14 @@ func TestToolConfigForConfigShopReplacementKeepsCategory(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := mustToolConfig(t, config.Config{MCPServersFile: path, ShopURL: "http://shop:8110", WeatherURL: "http://weather:8100"})
-	if cats := got.Servers[mcp.ShopServer].Categories; len(cats) != 1 || cats[0] != "shopping" || !got.Servers[mcp.ShopServer].ReadOnly {
+	if cats := got.Servers[mcp.ShopServer].Categories; len(cats) != 1 || cats[0] != "shopping" {
 		t.Fatalf("shop = %+v", got.Servers[mcp.ShopServer])
+	}
+	// "shop" is a common name: a server of that name may order things, so
+	// it reads only when it says so (an acting tool stays refused after
+	// outside content).
+	if got.Servers[mcp.ShopServer].ReadOnly {
+		t.Fatal("a shop server that never said readOnly became read-only")
 	}
 	if cats := got.Servers[mcp.WeatherServer].Categories; len(cats) != 1 || cats[0] != "weather" {
 		t.Fatalf("weather = %+v", got.Servers[mcp.WeatherServer])

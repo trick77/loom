@@ -322,6 +322,7 @@ export const de = {
     noPrice: "kein Preis",
     rating_one: "{{rating}} von 5, {{count}} Bewertung",
     rating_other: "{{rating}} von 5, {{count}} Bewertungen",
+    ratingOnly: "{{rating}} von 5",
   },
   artifactCard: {
     previewFailed: "Vorschau fehlgeschlagen",
