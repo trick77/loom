@@ -63,7 +63,8 @@ describe("ProductCards", () => {
     expect(within(links[1]).getByText("no price")).toBeInTheDocument();
     expect(links[1].querySelector("img")).toBeNull();
     expect(
-      within(links[1]).getByLabelText("4.0 out of 5, 0 ratings"),
+      // No count known: none is announced (never "0 ratings").
+      within(links[1]).getByRole("img", { name: "4.0 out of 5" }),
     ).toBeInTheDocument();
   });
 

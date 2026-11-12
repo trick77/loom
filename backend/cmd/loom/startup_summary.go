@@ -23,8 +23,10 @@ type startupRuntime struct {
 	SearchServerUp bool
 	// WeatherToolUp: discovery found the forecast tool.
 	WeatherToolUp bool
-	// ShopToolUp: discovery found the product search tool.
-	ShopToolUp bool
+	// ShopToolUp: discovery found the product search tool. ShopServerUp: its
+	// server answered, with or without the tool (SHOP_UPSTREAM_URL=off).
+	ShopToolUp   bool
+	ShopServerUp bool
 }
 
 type startupCapability struct {
@@ -162,45 +164,49 @@ func searchCapability(mcpConfig mcp.Config, runtime startupRuntime) startupCapab
 	return startupCapability{Name: "Web search", Status: "configured", Detail: who + " not answering yet; offered once it does"}
 }
 
-// weatherCapability says who serves the weather: the loom-weather sidecar, or
-// an mcp.json server named weather that replaces it. compose sets the URL on
-// every install, so a missing token is the usual reason it is off.
-func weatherCapability(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
-	server, ok := mcpConfig.Servers[mcp.WeatherServer]
-	who := "mcp.json server " + mcp.WeatherServer
-	if server.BuiltIn {
-		who = "loom-weather sidecar"
-	}
-	switch {
-	case !ok && strings.TrimSpace(cfg.WeatherURL) != "":
-		return startupCapability{Name: "weather", Status: "disabled", Detail: "set BACKEND_WEATHER_TOKEN (loom-weather sidecar)"}
-	case !ok:
-		return startupCapability{Name: "weather", Status: "disabled", Detail: "set BACKEND_WEATHER_URL and BACKEND_WEATHER_TOKEN (loom-weather sidecar)"}
-	case runtime.WeatherToolUp:
-		return startupCapability{Name: "weather", Status: "enabled", Detail: who}
-	}
-	return startupCapability{Name: "weather", Status: "configured", Detail: who + " not answering yet; offered once it does"}
+// optionalSidecar is a token-gated sidecar compose starts on every install
+// (its URL always set), or an mcp.json server of its name replacing it.
+type optionalSidecar struct {
+	name    string // the capability's name
+	server  string // the MCP server and contract name
+	tool    string // the tool that shows it is served
+	sidecar string // the binary, loom-<server>
+	env     string // BACKEND_<ENV>_URL and _TOKEN
+	url     string // the configured URL
+	toolUp  bool   // discovery found tool
+	// serverUp: the server answered discovery, with or without tool.
+	serverUp bool
 }
 
-// shopCapability says who serves product search: the loom-shop sidecar, or
-// an mcp.json server named shop that replaces it. Like the weather, compose
-// sets the URL on every install, so a missing token is the usual reason.
-func shopCapability(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
-	const name = "product search"
-	server, ok := mcpConfig.Servers[mcp.ShopServer]
-	who := "mcp.json server " + mcp.ShopServer
+// sidecarCapability says who serves an optional sidecar's contract and why
+// it is off: a missing token is the usual reason, compose setting the URL.
+func sidecarCapability(s optionalSidecar, mcpConfig mcp.Config) startupCapability {
+	server, ok := mcpConfig.Servers[s.server]
+	who := "mcp.json server " + s.server
 	if server.BuiltIn {
-		who = "loom-shop sidecar"
+		who = s.sidecar + " sidecar"
 	}
 	switch {
-	case !ok && strings.TrimSpace(cfg.ShopURL) != "":
-		return startupCapability{Name: name, Status: "disabled", Detail: "set BACKEND_SHOP_TOKEN (loom-shop sidecar)"}
+	case !ok && strings.TrimSpace(s.url) != "":
+		return startupCapability{Name: s.name, Status: "disabled", Detail: "set BACKEND_" + s.env + "_TOKEN (" + s.sidecar + " sidecar)"}
 	case !ok:
-		return startupCapability{Name: name, Status: "disabled", Detail: "set BACKEND_SHOP_URL and BACKEND_SHOP_TOKEN (loom-shop sidecar)"}
-	case runtime.ShopToolUp:
-		return startupCapability{Name: name, Status: "enabled", Detail: who}
+		return startupCapability{Name: s.name, Status: "disabled", Detail: "set BACKEND_" + s.env + "_URL and BACKEND_" + s.env + "_TOKEN (" + s.sidecar + " sidecar)"}
+	case s.toolUp:
+		return startupCapability{Name: s.name, Status: "enabled", Detail: who}
+	case s.serverUp:
+		return startupCapability{Name: s.name, Status: "disabled", Detail: who + " serves no " + s.tool + " tool"}
 	}
-	return startupCapability{Name: name, Status: "configured", Detail: who + " not answering yet; offered once it does"}
+	return startupCapability{Name: s.name, Status: "configured", Detail: who + " not answering yet; offered once it does"}
+}
+
+func weatherCapability(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
+	return sidecarCapability(optionalSidecar{name: "weather", server: mcp.WeatherServer, tool: mcp.WeatherForecastTool,
+		sidecar: "loom-weather", env: "WEATHER", url: cfg.WeatherURL, toolUp: runtime.WeatherToolUp}, mcpConfig)
+}
+
+func shopCapability(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) startupCapability {
+	return sidecarCapability(optionalSidecar{name: "product search", server: mcp.ShopServer, tool: mcp.ShopSearchTool,
+		sidecar: "loom-shop", env: "SHOP", url: cfg.ShopURL, toolUp: runtime.ShopToolUp, serverUp: runtime.ShopServerUp}, mcpConfig)
 }
 
 // imageGenCapability says who serves the image tool: the loom-imagegen

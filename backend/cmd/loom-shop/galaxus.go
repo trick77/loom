@@ -338,7 +338,9 @@ func findReply(body io.Reader, contentType string, id int64) (rpcReply, error) {
 		if err := json.Unmarshal(raw, &reply); err != nil {
 			return rpcReply{}, fmt.Errorf("decode answer: %w", err)
 		}
-		if !sameID(reply.ID, id) {
+		// A request-level error comes back with id null: its message is
+		// still the answer the caller needs.
+		if !sameID(reply.ID, id) && (reply.Error == nil || string(reply.ID) != "null") {
 			return rpcReply{}, errors.New("the answer is to another request")
 		}
 		return reply, nil

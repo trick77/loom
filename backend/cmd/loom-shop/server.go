@@ -55,7 +55,10 @@ func mcpServer(cfg config, client *http.Client, version string) mcpserver.Server
 	srv.Tools = []mcpserver.Tool{{
 		Name:  toolName,
 		Title: "Product search",
-		Description: "Search an online shop's catalog (Switzerland) for products to buy. Returns the matching products, each " +
+		// The shop by name: a user asks for "Galaxus" or "Digitec" (one
+		// catalog), and a model cannot tie that to "an online shop".
+		Description: "Search the catalog of Galaxus, Switzerland's largest online shop (with its electronics brand Digitec), " +
+			"for products to buy. Returns the matching products, each " +
 			"with name, brand, type, price incl. VAT in the shop's currency, average rating, review pros and cons, a short " +
 			"description and its product page. Not in the results: stock, delivery times, full reviews. Use it to find, " +
 			"compare or price products; search again with other words when the results miss.",
@@ -94,12 +97,38 @@ type wholeInt int
 
 func (w *wholeInt) UnmarshalJSON(raw []byte) error {
 	text := strings.Trim(strings.TrimSpace(string(raw)), `"`)
+	// null is an unset optional (strict tool schemas send them), as
+	// encoding/json treats it.
+	if text == "null" {
+		return nil
+	}
 	f, err := strconv.ParseFloat(text, 64)
 	if err != nil || f != math.Trunc(f) || math.Abs(f) > math.MaxInt32 {
 		return fmt.Errorf("%s is not a whole number", raw)
 	}
 	*w = wholeInt(f)
 	return nil
+}
+
+// languageNames are the shop's languages by the names a model may send
+// instead of a code.
+var languageNames = map[string]string{
+	"english": "en", "german": "de", "deutsch": "de", "french": "fr", "français": "fr", "francais": "fr",
+	"italian": "it", "italiano": "it", "dutch": "nl", "nederlands": "nl",
+}
+
+// shopLanguage is the shop's code for what a model sent: a code, a regional
+// tag ("de-CH") or a language's name; anything else asks in English, as the
+// tool's description says.
+func shopLanguage(raw string) string {
+	lang := strings.ToLower(strings.TrimSpace(raw))
+	if code, ok := languageNames[lang]; ok {
+		return code
+	}
+	if base, _, _ := strings.Cut(strings.ReplaceAll(lang, "_", "-"), "-"); slices.Contains(languages, base) {
+		return base
+	}
+	return "en"
 }
 
 // runSearch is one call: arguments checked against the contract, the shop
@@ -143,11 +172,7 @@ func searchRequest(raw json.RawMessage) (shopSearch, error) {
 	case req.First > maxMaxResults:
 		req.First = maxMaxResults
 	}
-	if req.Language == "" {
-		req.Language = "en"
-	} else if !slices.Contains(languages, req.Language) {
-		return shopSearch{}, fmt.Errorf("language must be one of %s", strings.Join(languages, ", "))
-	}
+	req.Language = shopLanguage(req.Language)
 	for name, v := range map[string]int{"min_price": req.MinPrice, "max_price": req.MaxPrice} {
 		if v < 0 || v > maxPrice {
 			return shopSearch{}, fmt.Errorf("%s must be between 1 and %d", name, maxPrice)
@@ -214,7 +239,10 @@ func render(query string, res shopResult) mcpserver.Result {
 		sources = append(sources, src)
 	}
 	var head strings.Builder
-	if c := res.CorrectedSearchTerm; c != nil && strings.TrimSpace(*c) != "" {
+	// A "correction" that only repeats the query (case, spacing) would read
+	// as a changed search.
+	if c := res.CorrectedSearchTerm; c != nil && strings.TrimSpace(*c) != "" &&
+		!strings.EqualFold(strings.Join(strings.Fields(*c), " "), strings.Join(strings.Fields(query), " ")) {
 		fmt.Fprintf(&head, "The shop searched for %q instead of %q.\n", strings.TrimSpace(*c), query)
 	}
 	if len(sources) == 0 {

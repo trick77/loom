@@ -9,8 +9,9 @@ content like a web page, and the products come back as citations and as cards un
 
 ## Tool
 
-`search_products` takes `query` (required), `language` (`en`, `de`, `fr`, `it`, `nl`; default `en`, the
-conversation's language, product data comes back in it), `max_results` (1-20, default 8; more is lowered to 20, loom's
+`search_products` takes `query` (required), `language` (`en`, `de`, `fr`, `it`, `nl`, the conversation's language,
+product data comes back in it; a regional tag like `de-CH` or a language's name is read as its code, anything else as
+`en`), `max_results` (1-20, default 8; more is lowered to 20, loom's
 limit of sources per call), `min_price` and `max_price` (whole units of the shop's currency, 1-1,000,000).
 
 It answers unnumbered text, one block per product, and the same products, in the same order, as sources (loom
@@ -64,4 +65,6 @@ and `SHOP_UPSTREAM_URL` (`https://mcp.galaxus.ch/`; `off` serves no tool).
 ## Replacing it
 
 An `mcp.json` server named `shop` answering `search_products` with the shapes above replaces the sidecar (it overrides
-the built-in by name, keeps its `shopping` category and stays read-only).
+the built-in by name and keeps its `shopping` category). It must set `"readOnly": true`: unlike search and weather,
+loom never forces it, since a server of that common name may place orders, and a tool counted as reading may be called
+after outside content.

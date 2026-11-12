@@ -126,6 +126,9 @@ func TestStartupCapabilitiesShop(t *testing.T) {
 	sidecar := mcp.Config{Servers: map[string]mcp.ServerConfig{mcp.ShopServer: mcp.ShopServerConfig("http://shop:8110", "t")}}
 	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{ShopToolUp: true})
 	assertCapability(t, items, "product search", "enabled", "loom-shop sidecar")
+	// Up, but serving no tool (SHOP_UPSTREAM_URL=off): not "not answering".
+	items = startupCapabilities(config.Config{}, sidecar, startupRuntime{ShopServerUp: true})
+	assertCapability(t, items, "product search", "disabled", "loom-shop sidecar serves no search_products tool")
 	file := mcp.Config{Servers: map[string]mcp.ServerConfig{mcp.ShopServer: {URL: "https://other.example/mcp"}}}
 	items = startupCapabilities(config.Config{}, file, startupRuntime{})
 	assertCapability(t, items, "product search", "configured", "mcp.json server shop not answering yet")

@@ -87,10 +87,16 @@ function ProductCard({
             <span
               role="img"
               className="whitespace-nowrap text-muted"
-              aria-label={t("citations.rating", {
-                rating: product.rating?.toFixed(1),
-                count: product.ratingCount ?? 0,
-              })}
+              aria-label={
+                product.ratingCount !== undefined && product.ratingCount > 0
+                  ? t("citations.rating", {
+                      rating: product.rating?.toFixed(1),
+                      count: product.ratingCount,
+                    })
+                  : t("citations.ratingOnly", {
+                      rating: product.rating?.toFixed(1),
+                    })
+              }
             >
               <span className="text-sun">★</span> {product.rating?.toFixed(1)}
               {product.ratingCount !== undefined && product.ratingCount > 0 && (

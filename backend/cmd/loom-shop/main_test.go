@@ -289,15 +289,46 @@ func TestNoteAndMissingTotal(t *testing.T) {
 	}
 }
 
-// Whole numbers as models send them: 6.0 and "30" are 6 and 30.
-func TestWholeNumberArguments(t *testing.T) {
-	fake := &fakeShop{result: twoProducts}
+// Arguments as models send them: 6.0 and "30" are 6 and 30, null is unset,
+// a regional tag or a language's name is its language, anything else English.
+func TestLenientArguments(t *testing.T) {
+	for _, tc := range []struct {
+		args map[string]any
+		want map[string]any
+	}{
+		{map[string]any{"query": "x", "max_results": 6.0, "max_price": "30", "language": "de-CH"},
+			map[string]any{"first": float64(6), "maxPrice": float64(30), "language": "de"}},
+		{map[string]any{"query": "x", "max_results": nil, "min_price": nil, "max_price": nil, "language": "French"},
+			map[string]any{"first": float64(defaultMaxResults), "language": "fr"}},
+		{map[string]any{"query": "x", "language": "es"}, map[string]any{"language": "en"}},
+		{map[string]any{"query": "x", "language": "pt_BR"}, map[string]any{"language": "en"}},
+	} {
+		fake := &fakeShop{result: twoProducts}
+		svc := loomService(t, config{upstreamURL: fake.server(t).URL})
+		if _, err := svc.CallToolResult(context.Background(), shopTool, tc.args); err != nil {
+			t.Fatalf("%v: %v", tc.args, err)
+		}
+		for k, v := range tc.want {
+			if fake.args[0][k] != v {
+				t.Fatalf("%v: shop got %v, want %s=%v", tc.args, fake.args[0], k, v)
+			}
+		}
+		if _, ok := fake.args[0]["minPrice"]; ok && tc.args["min_price"] == nil {
+			t.Fatalf("null min_price sent: %v", fake.args[0])
+		}
+	}
+}
+
+// A correction that only repeats the query (case, spacing) is no correction.
+func TestSameTermIsNoCorrection(t *testing.T) {
+	fake := &fakeShop{result: strings.Replace(twoProducts, `"usb-c ladegerät"`, `"USB-C  Ladegerät"`, 1)}
 	svc := loomService(t, config{upstreamURL: fake.server(t).URL})
-	if _, err := svc.CallToolResult(context.Background(), shopTool, map[string]any{"query": "x", "max_results": 6.0, "max_price": "30"}); err != nil {
+	got, err := svc.CallToolResult(context.Background(), shopTool, map[string]any{"query": "usb-c ladegerät"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if fake.args[0]["first"] != float64(6) || fake.args[0]["maxPrice"] != float64(30) {
-		t.Fatalf("shop got %v", fake.args[0])
+	if strings.Contains(got.Text, "instead of") {
+		t.Fatalf("text %q", got.Text)
 	}
 }
 
@@ -329,7 +360,6 @@ func TestErrorsAreToolErrors(t *testing.T) {
 		"negative":      {&fakeShop{}, map[string]any{"query": "x", "max_results": -1}, "max_results"},
 		"fraction":      {&fakeShop{}, map[string]any{"query": "x", "max_results": 2.5}, "invalid arguments"},
 		"word count":    {&fakeShop{}, map[string]any{"query": "x", "max_results": "ten"}, "invalid arguments"},
-		"language":      {&fakeShop{}, map[string]any{"query": "x", "language": "es"}, "language must be one of"},
 		"price range":   {&fakeShop{}, map[string]any{"query": "x", "min_price": 50, "max_price": 10}, "min_price must not be above"},
 		"price bound":   {&fakeShop{}, map[string]any{"query": "x", "max_price": maxPrice + 1}, "max_price must be between"},
 		"intent unsent": {&fakeShop{}, map[string]any{"query": "x", "userIntent": "for my wife"}, "invalid arguments"},
@@ -361,6 +391,11 @@ func TestFindReplyPlainJSON(t *testing.T) {
 	}
 	if _, err := findReply(strings.NewReader(`{"id":8,"result":1}`), "application/json", 7); err == nil {
 		t.Fatal("an answer to another request was accepted")
+	}
+	// A request-level error comes with id null: its message is the answer.
+	reply, err = findReply(strings.NewReader(`{"jsonrpc":"2.0","error":{"code":-32602,"message":"first must be <= 50"},"id":null}`), "application/json", 7)
+	if err != nil || reply.Error == nil || reply.Error.Message != "first must be <= 50" {
+		t.Fatalf("null-id error: %+v, %v", reply, err)
 	}
 	if _, err := findReply(strings.NewReader("event: message\ndata: {\"id\":1}\n\n"), "text/event-stream", 2); err == nil {
 		t.Fatal("a stream without the answer was accepted")
