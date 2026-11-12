@@ -7,6 +7,7 @@ export function makeIdea(overrides: Partial<Idea> = {}): Idea {
     title: "Vibe Kanban",
     reason: "Topic for the AI lab week, submit by 12 January.",
     excerpt: "Vibe Kanban is an open-source board.",
+    question: "What was new in AI coding tools this week?",
     threadId: "t1",
     messageId: "m1",
     threadTitle: "Tech news week 45",

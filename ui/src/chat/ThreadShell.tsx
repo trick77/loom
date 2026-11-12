@@ -28,6 +28,7 @@ import {
   streamMessage,
   type Artifact,
   type ContentBlock,
+  type Idea,
   type Message,
   type MessagePastedText,
   type QueuedMessage,
@@ -46,6 +47,7 @@ import type { MessageWithActivityTrace } from "./types";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
 import { toPastedTextBlock, type PastedText } from "./pastedText";
+import { ideaPassageBlock, ideaThreadDraft } from "../ideas/ideaText";
 import {
   clearDraft,
   composeContent,
@@ -679,17 +681,36 @@ export function ThreadShell({
   );
 
   // "Start a thread about it" from an idea: the new-chat screen with the idea
-  // as a draft. Same batching as handleUseArtifactInThread: the draft is set
-  // in the handler that switches the route. It never sends, and text already
-  // typed there stays, above the idea.
+  // as a draft (title, reason, the question back then) and its passage as a
+  // block marked outside text. Same batching as handleUseArtifactInThread:
+  // the draft is set in the handler that switches the route. It never sends,
+  // and text already typed there stays, above the idea.
   const handleStartThreadFromIdea = useCallback(
-    (text: string) => {
+    (idea: Idea) => {
+      const text = ideaThreadDraft(idea, t);
       const typed = getDraft(drafts, "new").text.trimEnd();
       navigateToNew();
-      setDraftText("new", typed === "" ? text : `${typed}\n\n${text}`);
+      // A second click for the same idea adds its text once.
+      setDraftText(
+        "new",
+        typed === ""
+          ? text
+          : typed.includes(text)
+            ? typed
+            : `${typed}\n\n${text}`,
+      );
+      const passage = ideaPassageBlock(idea);
+      if (passage !== null) addPastedText("new", passage.text, passage.source);
       requestComposerFocus();
     },
-    [drafts, navigateToNew, setDraftText, requestComposerFocus],
+    [
+      drafts,
+      navigateToNew,
+      setDraftText,
+      addPastedText,
+      requestComposerFocus,
+      t,
+    ],
   );
 
   const navigateToThreads = useCallback(() => {

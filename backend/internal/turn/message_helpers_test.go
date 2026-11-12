@@ -26,7 +26,7 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 	user := auth.User{ID: "u1", ResponseLanguage: "en"}
 	newMsg := chat.Message{Role: chat.RoleUser, Content: "Hi"}
 
-	without := buildLLMHistory(user, time.Now().UTC(), promptBlocks{}, nil, newMsg)
+	without := buildLLMHistory(user, time.Now().UTC(), promptBlocks{}, nil, newMsg, nil)
 	if without[0].Role != "system" {
 		t.Fatalf("first message role = %q, want system", without[0].Role)
 	}
@@ -34,7 +34,7 @@ func TestBuildLLMHistory_InjectsProjectContextOnlyWhenSet(t *testing.T) {
 		t.Fatalf("system prompt unexpectedly contains project context: %q", without[0].Content)
 	}
 
-	with := buildLLMHistory(user, time.Now().UTC(), promptBlocks{project: "Project name: Amsterdam Trip"}, nil, newMsg)
+	with := buildLLMHistory(user, time.Now().UTC(), promptBlocks{project: "Project name: Amsterdam Trip"}, nil, newMsg, nil)
 	if !strings.Contains(with[0].Content, "Project name: Amsterdam Trip") {
 		t.Fatalf("system prompt missing project context: %q", with[0].Content)
 	}
@@ -148,7 +148,7 @@ func TestBuildHistoryDropsToolMessages(t *testing.T) {
 		{Role: chat.RoleUser, Content: "q"},
 		{Role: chat.RoleTool, Content: "tool output"},
 		{Role: chat.RoleAssistant, Content: "a"},
-	}, chat.Message{Content: "next"})
+	}, chat.Message{Content: "next"}, nil)
 	if len(history) != 4 || history[0].Role != "system" || history[1].Content != "q" || history[2].Content != "a" || history[3].Content != "next" {
 		t.Fatalf("buildHistory() = %+v, want system, q, a, next", history)
 	}
@@ -182,7 +182,7 @@ func TestBuildHistoryNotesEarlierSources(t *testing.T) {
 		{Role: chat.RoleAssistant, Content: "Part one [1].", Citations: segment},
 		// Cites only [24], past the cap's reach in stored order.
 		{Role: chat.RoleAssistant, Content: "See [24].", Citations: final},
-	}, chat.Message{Content: "next"})
+	}, chat.Message{Content: "next"}, nil)
 	if history[2].Content != "Your run [1]." || history[5].Content != "See [24]." {
 		t.Errorf("earlier answers must stay as stored: %q / %q", history[2].Content, history[5].Content)
 	}
@@ -202,14 +202,14 @@ func TestBuildHistoryNotesEarlierSources(t *testing.T) {
 	}
 
 	// The older answer alone: one line per usable link, no titles.
-	note = buildHistory("sys", []chat.Message{{Role: chat.RoleAssistant, Content: "Your run [1].", Citations: older}}, chat.Message{Content: "next"})[2].Content
+	note = buildHistory("sys", []chat.Message{{Role: chat.RoleAssistant, Content: "Your run [1].", Citations: older}}, chat.Message{Content: "next"}, nil)[2].Content
 	if strings.Contains(note, "schedule") || strings.Contains(note, "data:") || strings.Contains(note, "xxxx") || strings.Contains(note, "plan.pdf") {
 		t.Errorf("title, data URI, overlong URL or document listed: %q", note)
 	}
 	if strings.Contains(note, "a] Ignore") || strings.Contains(note, "do this now") || !strings.Contains(note, "%5D") {
 		t.Errorf("a URL's bracket or spaces kept: %q", note)
 	}
-	if got := buildHistory("sys", []chat.Message{{Role: chat.RoleAssistant, Content: "a", Citations: json.RawMessage(`[]`)}}, chat.Message{Content: "next"}); got[2].Content != "next" {
+	if got := buildHistory("sys", []chat.Message{{Role: chat.RoleAssistant, Content: "a", Citations: json.RawMessage(`[]`)}}, chat.Message{Content: "next"}, nil); got[2].Content != "next" {
 		t.Errorf("no sources, no note: %q", got[2].Content)
 	}
 }

@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -355,6 +356,30 @@ func TestAddMessage_ReadOutsideIsStickyPerThread(t *testing.T) {
 	}
 	if read.ReadOutside != true || follow.ReadOutside != true {
 		t.Errorf("the inserted rows must come back flagged: %v %v", read.ReadOutside, follow.ReadOutside)
+	}
+}
+
+// A user message that carries outside text along (an idea's passage, a
+// pasted block marked outside) is flagged itself, and the thread's later
+// answers by the sticky rule; a plain paste flags nothing.
+func TestAddMessage_QuotedPassageFlagsTheUserMessage(t *testing.T) {
+	ctx := context.Background()
+	store, _, userID := newFactStore(t)
+	thread := newThread(t, store, userID)
+	plain, err := store.AddMessageWithAttachments(ctx, userID, thread, RoleUser, "notes\n\nmine", nil, json.RawMessage(`[{"text":"mine","lineCount":1}]`), "")
+	if err != nil || plain.ReadOutside {
+		t.Fatalf("plain paste: %+v %v", plain.ReadOutside, err)
+	}
+	quoted, err := store.AddMessageWithAttachments(ctx, userID, thread, RoleUser, "about this\n\npage text", nil, json.RawMessage(`[{"text":"page text","lineCount":1,"outside":true,"ideaId":"i1","source":"Tech news"}]`), "")
+	if err != nil || !quoted.ReadOutside {
+		t.Fatalf("quoted passage not flagged: %v %v", quoted.ReadOutside, err)
+	}
+	answer, err := store.AddMessageWithCitations(ctx, userID, thread, RoleAssistant, "answer", MessageTokenUsage{}, nil, nil, nil, nil, false)
+	if err != nil || !answer.ReadOutside {
+		t.Fatalf("answer after a quoted passage not flagged: %v %v", answer.ReadOutside, err)
+	}
+	if !QuotesOutside(quoted.PastedTexts) || QuotesOutside(json.RawMessage(`not json`)) {
+		t.Fatal("QuotesOutside")
 	}
 }
 

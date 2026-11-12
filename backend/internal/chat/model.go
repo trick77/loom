@@ -209,8 +209,9 @@ type Message struct {
 	ReasoningEffort *string   `json:"reasoningEffort,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
 	// ReadOutside marks an answer from a turn that read outside content, or
-	// from any later turn of its thread: the fact extraction skips it. Never
-	// sent to the client.
+	// from any later turn of its thread, and a user message that carried
+	// outside text along (a pasted block marked outside): the fact extraction
+	// skips it. Never sent to the client.
 	ReadOutside bool `json:"-"`
 }
 
@@ -263,6 +264,32 @@ const (
 type MessagePastedText struct {
 	Text      string `json:"text"`
 	LineCount int    `json:"lineCount"`
+	// Outside marks a block of outside text the user sends along without
+	// having written it (an idea's passage: a page an answer quoted). Its
+	// message counts as having read outside content (Message.ReadOutside),
+	// so the turn it starts may not act and fact extraction skips it.
+	Outside bool `json:"outside,omitempty"`
+	// IdeaID, IdeaTitle and Source name where an idea's passage came from
+	// (the idea and its thread's title), for the sent message's labels.
+	IdeaID    string `json:"ideaId,omitempty"`
+	IdeaTitle string `json:"ideaTitle,omitempty"`
+	Source    string `json:"source,omitempty"`
+}
+
+// QuotesOutside reports whether a message's pasted blocks carry outside
+// text (MessagePastedText.Outside). A column that does not decode counts as
+// none: the blocks are render-only.
+func QuotesOutside(pastedTexts json.RawMessage) bool {
+	var blocks []MessagePastedText
+	if json.Unmarshal(pastedTexts, &blocks) != nil {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Outside {
+			return true
+		}
+	}
+	return false
 }
 
 // MessageTokenUsage carries token counts and cost information recorded for a

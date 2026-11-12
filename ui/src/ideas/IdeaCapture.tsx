@@ -203,6 +203,10 @@ function CaptureForm({
 }) {
   const capture = useIdeaCapture();
   const { t } = useTranslation();
+  // Read once as the form opens: what the answer replied to.
+  const [question] = useState(
+    () => capture?.questionFor(request.messageId) ?? "",
+  );
   const kept = drafts.get(draftKey(request));
   const [reason, setReason] = useState(kept?.reason ?? "");
   const [title, setTitle] = useState(kept?.title ?? "");
@@ -330,6 +334,17 @@ function CaptureForm({
           <Icon name="close" size="16px" />
         </button>
       </div>
+      {question !== "" && (
+        // Kept with the idea by the server on save: the user's own words.
+        <div className="mt-2.5 flex items-baseline gap-2 text-[13px] leading-[18px]">
+          <span className="shrink-0 text-[12px] text-[#807d74]">
+            {t("ideas.yourQuestion")}
+          </span>
+          <span className="min-w-0 truncate text-ink-dim">
+            {t("ideas.quoted", { text: question.replace(/\s+/g, " ") })}
+          </span>
+        </div>
+      )}
       {request.excerpt !== "" && (
         // A two-line preview: paragraph breaks would only spend its lines.
         // Plain text, never markup (the passage is outside text).

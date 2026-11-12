@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"slices"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
+	"github.com/trick77/loom/internal/ideas"
 )
 
 // maxPastedTextsBytes caps the serialized paste-blocks column. The block text is
@@ -22,11 +24,39 @@ func MarshalPastedTexts(blocks []chat.MessagePastedText) json.RawMessage {
 	if len(blocks) == 0 {
 		return json.RawMessage("[]")
 	}
+	blocks = slices.Clone(blocks)
+	for i := range blocks {
+		if !blocks[i].Outside {
+			// Only an idea's passage names its idea.
+			blocks[i].IdeaID, blocks[i].IdeaTitle, blocks[i].Source = "", "", ""
+			continue
+		}
+		// The labels are render-only: one short line each; the id is an id.
+		blocks[i].Source = labelLine(blocks[i].Source)
+		blocks[i].IdeaTitle = labelLine(blocks[i].IdeaTitle)
+		if len(blocks[i].IdeaID) > maxPastedIdeaIDBytes {
+			blocks[i].IdeaID = ""
+		}
+	}
+	// The blocks are folded into the content, which the store caps far below
+	// this: only a forged payload is this big, and it loses its chips.
 	raw, err := json.Marshal(blocks)
 	if err != nil || len(raw) > maxPastedTextsBytes {
 		return json.RawMessage("[]")
 	}
 	return raw
+}
+
+// maxPastedIdeaIDBytes bounds an idea id on a pasted block (ids are short).
+const maxPastedIdeaIDBytes = 64
+
+// maxPastedSourceRunes caps a pasted block's labels (a thread or idea title).
+const maxPastedSourceRunes = 200
+
+// labelLine is a label cleaned like an idea's title: one line, no control
+// or bidi characters, at most maxPastedSourceRunes.
+func labelLine(s string) string {
+	return ideas.CleanLine(s, maxPastedSourceRunes)
 }
 
 // ResolveSentAttachments turns the image-artifact and document ids a user sent

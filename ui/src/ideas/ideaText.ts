@@ -1,6 +1,8 @@
 import type { TFunction } from "i18next";
 
-import type { Idea } from "../api";
+import type { Idea, Message } from "../api";
+import type { PastedSource } from "../api/types";
+import { stripPastedBlocks } from "../chat/pastedText";
 import { formatTimeAgo } from "../timeago";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -140,13 +142,58 @@ export function ideaDates(
 }
 
 /**
- * The composer draft for "Start a thread about it": the title and the
- * reason, the user's own words. Never the passage: it is outside text (a
- * page an answer quoted) and never goes back to a model, not even through a
- * draft the user sends. It only fills the composer, it never sends.
+ * The composer draft for "Start a thread about it": the title, the reason
+ * and the question the captured answer replied to, the user's own words, as
+ * text. The passage is outside text (a page an answer quoted): it rides along
+ * as a separate block marked outside (ideaPassageBlock), so the turn it
+ * starts may not act on it. It only fills the composer, it never sends.
  */
 export function ideaThreadDraft(idea: Idea, t: TFunction): string {
-  return [idea.title, t("ideas.draftWhy", { reason: idea.reason })].join(
-    "\n\n",
-  );
+  const lines = [t("ideas.draftWhy", { reason: idea.reason })];
+  if (idea.question.trim() !== "")
+    lines.push(t("ideas.draftQuestion", { question: idea.question }));
+  return [idea.title, lines.join("\n")].join("\n\n");
+}
+
+/**
+ * questionBefore is the user's message right before messageId: what that
+ * answer replied to, without pasted blocks (what the server keeps with the
+ * idea on save). "" when there is none.
+ */
+export function questionBefore(
+  messages: readonly Pick<Message, "id" | "role" | "content" | "pastedTexts">[],
+  messageId: string,
+): string {
+  const at = messages.findIndex((m) => m.id === messageId);
+  for (let i = at - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== "user") continue;
+    const blocks = m.pastedTexts ?? [];
+    if (blocks.length === 0) return m.content.trim();
+    const { text, matched } = stripPastedBlocks(m.content, blocks);
+    // Fails closed like the server: an idea's passage that could not be
+    // taken out must not show as the user's words.
+    if (
+      blocks.some((block, index) => block.outside === true && !matched[index])
+    )
+      return "";
+    return text.trim();
+  }
+  return "";
+}
+
+/** The idea's passage as a block marked outside text; null without one. */
+export function ideaPassageBlock(
+  idea: Idea,
+): { text: string; source: PastedSource } | null {
+  if (idea.excerpt.trim() === "") return null;
+  return {
+    text: idea.excerpt,
+    source: {
+      outside: true,
+      ideaId: idea.id,
+      ideaTitle: idea.title,
+      source: idea.threadTitle,
+    },
+  };
 }

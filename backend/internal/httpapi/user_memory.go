@@ -374,6 +374,10 @@ func (s *server) consolidateUserFactsIfDue(ctx context.Context, user auth.User, 
 // omittedOutsideAnswer stands in for an answer that read outside content.
 const omittedOutsideAnswer = "Assistant: [answer omitted: it quoted content from outside the chat]"
 
+// omittedOutsideMessage stands in for a user message that carried outside
+// text along (an idea's passage).
+const omittedOutsideMessage = "User: [message omitted: it quoted content from outside the chat]"
+
 // factsTranscript renders messages grouped by thread under labels T1, T2, ...
 // (by first appearance), with dates. It stops before the message that would
 // push the transcript past userFactsTranscriptBudget (always taking at least
@@ -400,10 +404,15 @@ func factsTranscript(messages []chat.Message) (string, map[string]string, map[st
 		}
 		if m.ReadOutside {
 			// The user's next line may answer it ("yes, that's me"): a stub
-			// keeps the turn's shape, never its text.
+			// keeps the turn's shape, never its text. A user message is
+			// flagged when it carried outside text along (an idea's passage).
+			stub := omittedOutsideAnswer
+			if m.Role == chat.RoleUser {
+				stub = omittedOutsideMessage
+			}
 			if g, ok := byThread[m.ThreadID]; ok {
-				g.lines = append(g.lines, omittedOutsideAnswer)
-				size += len([]rune(omittedOutsideAnswer))
+				g.lines = append(g.lines, stub)
+				size += len([]rune(stub))
 			}
 			used++
 			continue

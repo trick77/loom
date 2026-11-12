@@ -41,6 +41,8 @@ type turnInput struct {
 	thread      chat.Thread
 	userMessage chat.Message
 	prior       []chat.Message
+	// picked are the other queued messages answered with userMessage.
+	picked      []chat.Message
 	imageIDs    []string
 	documentIDs []string
 	imageParts  []llm.MessageContentPart
@@ -216,6 +218,7 @@ func (c *turnChain) nextFromQueue() (*turnInput, error) {
 		thread:      thread,
 		userMessage: consumed[last],
 		prior:       append(prior, consumed[:last]...),
+		picked:      consumed[:last],
 	}, nil
 }
 
@@ -276,7 +279,9 @@ func (c *turnChain) runTurn(in turnInput) {
 	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, user.ResponseLanguageName())
 	defer titles.Wait()
 	defer titles.WaitWorking()
-	titles.SpawnWorking(userMessage.Content)
+	// A quoted passage (outside text) names nothing: the titles read the
+	// user's own words.
+	titles.SpawnWorking(chat.WithoutOutsideText(userMessage))
 
 	run := s.engine.Prepare(turn.RunConfig{
 		Stream:      stream,
@@ -295,6 +300,7 @@ func (c *turnChain) runTurn(in turnInput) {
 		ImageAttachmentIDs:    in.imageIDs,
 		DocumentAttachmentIDs: in.documentIDs,
 		PriorMessages:         in.prior,
+		Picked:                in.picked,
 		ImageParts:            in.imageParts,
 	})
 	// titleThread names an as-yet-untitled thread. It runs after the answer so the
@@ -305,7 +311,7 @@ func (c *turnChain) runTurn(in turnInput) {
 	titleThread := func(assistantMessage string) {
 		// A scheduled run's thread carries its schedule's name, which a
 		// follow-up may match by chance.
-		if thread.ScheduleID != nil || !turn.ShouldGenerateThreadTitle(thread.Title, userMessage.Content) {
+		if thread.ScheduleID != nil || !turn.ShouldGenerateThreadTitle(thread.Title, chat.WithoutOutsideText(userMessage)) {
 			return
 		}
 		// The thread is being deleted, so there is nothing left to name: the title

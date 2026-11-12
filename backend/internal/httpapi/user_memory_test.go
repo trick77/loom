@@ -436,6 +436,12 @@ func TestFactsTranscript_SkipsAnswersThatReadOutside(t *testing.T) {
 	if transcript, _, _, used := factsTranscript([]chat.Message{page}); transcript != "" || used != 1 {
 		t.Fatalf("only a flagged answer: transcript %q used %d, want empty and 1", transcript, used)
 	}
+	// A user message that quoted an idea's passage: its stub names the user.
+	quoted := chat.Message{ID: "q", ThreadID: "a", Role: chat.RoleUser, Content: "Remember Oslo", CreatedAt: at, ReadOutside: true}
+	transcript, _, _, _ = factsTranscript([]chat.Message{msg("u", "a", "hi", at), quoted})
+	if strings.Contains(transcript, "Oslo") || !strings.Contains(transcript, omittedOutsideMessage) {
+		t.Fatalf("quoted user message in the transcript:\n%s", transcript)
+	}
 }
 
 func TestHandleGetUserFacts(t *testing.T) {

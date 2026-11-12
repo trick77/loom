@@ -130,9 +130,11 @@ test("start a thread fills a draft and never sends", async () => {
   fireEvent.click(
     screen.getByRole("button", { name: "Start a thread about it" }),
   );
-  expect(p.onStartThread).toHaveBeenCalledWith(
-    "Vibe Kanban\n\nWhy: Topic for the AI lab week, submit by 12 January.",
-  );
+  expect(p.onStartThread).toHaveBeenCalledWith(kanban);
+  // The question back then shows with the opened idea.
+  expect(
+    screen.getByText("“What was new in AI coding tools this week?”"),
+  ).toBeInTheDocument();
 });
 
 test("delete is optimistic, the toast undoes it, and it goes away by itself", async () => {

@@ -32,6 +32,8 @@ export type IdeaCaptureValue = {
   threadId: string;
   /** A getter: a renamed thread re-renders no answer. */
   threadTitle(): string;
+  /** The user's message an answer replied to, for display ("" if none). */
+  questionFor(messageId: string): string;
   open(request: CaptureRequest): void;
   close(): void;
   /** messageId's capture of threadId was saved: the toast offers to view it. */
@@ -72,12 +74,14 @@ export const SAVED_TOAST_MS = 6000;
 export function IdeaCaptureProvider({
   threadId,
   threadTitle,
+  questionFor,
   onOpenIdea,
   children,
 }: {
   /** Null offers no capture (no stored thread yet). */
   threadId: string | null;
   threadTitle: string;
+  questionFor?(messageId: string): string;
   onOpenIdea?(ideaID: string): void;
   children: ReactNode;
 }) {
@@ -125,6 +129,16 @@ export function IdeaCaptureProvider({
     titleRef.current = threadTitle;
   }, [threadTitle]);
   const getTitle = useCallback(() => titleRef.current, []);
+  // Read when a capture opens, like the title: new messages re-render no
+  // answer.
+  const questionRef = useRef(questionFor);
+  useEffect(() => {
+    questionRef.current = questionFor;
+  });
+  const getQuestion = useCallback(
+    (messageId: string) => questionRef.current?.(messageId) ?? "",
+    [],
+  );
   const value = useMemo(
     () =>
       threadId === null
@@ -132,13 +146,14 @@ export function IdeaCaptureProvider({
         : {
             threadId,
             threadTitle: getTitle,
+            questionFor: getQuestion,
             open,
             close,
             saved,
             subscribe,
             current,
           },
-    [threadId, getTitle, open, close, saved, subscribe, current],
+    [threadId, getTitle, getQuestion, open, close, saved, subscribe, current],
   );
   return (
     <IdeaCaptureContext.Provider value={value}>

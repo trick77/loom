@@ -22,9 +22,13 @@ type Idea struct {
 	State  string `json:"state"`
 	Title  string `json:"title"`
 	Reason string `json:"reason"`
-	// Excerpt is the captured passage: outside text, shown by the UI only,
-	// never handed to a model.
-	Excerpt   string  `json:"excerpt"`
+	// Excerpt is the captured passage: outside text. It reaches a model only
+	// as a pasted block marked outside (chat.MessagePastedText.Outside),
+	// which locks the turn that answers it.
+	Excerpt string `json:"excerpt"`
+	// Question is the user's message the captured answer replied to, taken
+	// by the server on save without pasted blocks: the user's own words.
+	Question  string  `json:"question"`
 	ThreadID  *string `json:"threadId"`
 	MessageID *string `json:"messageId"`
 	// ThreadTitle is the thread's title when the idea was captured; it stays

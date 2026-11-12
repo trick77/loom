@@ -49,7 +49,7 @@ export function forgetCardOutcomes() {
 
 // openIdeaPage goes to /ideas/:id through the shell's own router (it
 // listens to popstate).
-function openIdeaPage(ideaID: string) {
+export function openIdeaPage(ideaID: string) {
   window.history.pushState({}, "", `/ideas/${encodeURIComponent(ideaID)}`);
   window.dispatchEvent(new PopStateEvent("popstate"));
 }

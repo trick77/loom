@@ -65,9 +65,10 @@ type Run struct {
 	// nothing: it prints nothing the run's tools did not already show.
 	lastStepRan bool
 	// readOutside is set once any tool but an acting built-in (schedules,
-	// memory) returned content into the turn: from then on its text may
-	// carry instructions the user never gave, and no acting call runs
-	// (Engine.acts).
+	// memory) returned content into the turn, or from the start when the
+	// turn answers a message carrying a quoted passage (answersOutside): from
+	// then on its text may carry instructions the user never gave, and no
+	// acting call runs (Engine.acts).
 	readOutside bool
 	// toolFiles are the files MCP tools handed to run_python this turn, by
 	// name (keepToolFiles); dropped with the turn. A turn is one user's, so
@@ -124,6 +125,11 @@ type PrepareInput struct {
 	ImageAttachmentIDs    []string
 	DocumentAttachmentIDs []string
 	PriorMessages         []chat.Message
+	// Picked are the queued messages this turn answers along with its user
+	// message (taken from the queue together; also in PriorMessages). A
+	// quoted passage among them locks the turn and stays in its history; an
+	// earlier one, answered or not, never does. Nil for a plain send.
+	Picked []chat.Message
 	// ImageParts are the vision parts for the images the user attached this
 	// turn, resolved (and validated) before anything was persisted.
 	ImageParts []llm.MessageContentPart
@@ -177,6 +183,10 @@ func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
 		timezone:    c.Timezone,
 		loc:         zoneLocation(c.Timezone),
 		scheduled:   c.Scheduled,
+		// A question that carries outside text along (an idea's passage,
+		// flagged on insert) is answered like a turn that read a page: no
+		// action, and the answer is kept out of fact extraction.
+		readOutside: answersOutside(c.UserMessage, in.Picked),
 	}
 	t.plan = t.prepare(in)
 	return t
@@ -185,6 +195,10 @@ func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
 // prepare assembles the turn's plan; see Prepare.
 func (t *Run) prepare(in PrepareInput) turnPlan {
 	imageParts := in.ImageParts
+	// own is the message as the routing calls read it: a quoted passage
+	// (outside text) left out, so it cannot pick the category, the tools or
+	// a forced image generation.
+	own := chat.WithoutOutsideText(t.userMessage)
 	// category drives the prompt-classifier block injected below. On the first
 	// message we classify now (before the answer history is built) and use the
 	// fresh result; on later turns we reuse the stored category.
@@ -242,15 +256,15 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	parallel(
 		func() {
 			if !scheduled {
-				imageRoute = t.e.classifyImageTurn(in.StreamCtx, t.inference, t.userMessage.Content, len(in.ImageAttachmentIDs) > 0, in.PriorMessages)
+				imageRoute = t.e.classifyImageTurn(in.StreamCtx, t.inference, own, len(in.ImageAttachmentIDs) > 0, in.PriorMessages)
 			}
 		},
 		func() {
 			switch {
 			case scheduled:
-				classified = t.e.classifyScheduledRun(in.StreamCtx, t.inference, t.userMessage.Content)
+				classified = t.e.classifyScheduledRun(in.StreamCtx, t.inference, own)
 			case freshlyClassified:
-				classified = t.e.classifyFirstTurn(in.StreamCtx, t.inference, t.userMessage.Content)
+				classified = t.e.classifyFirstTurn(in.StreamCtx, t.inference, own)
 			}
 		},
 		// Semantic drift detection: on a continued turn whose sticky category does
@@ -270,7 +284,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			driftInference := gateInference(t.inference, "classify_drift")
 			driftCtx, cancelDrift := context.WithTimeout(in.StreamCtx, t.e.gateTimeout())
 			defer cancelDrift()
-			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), t.userMessage.Content)
+			turnCategory, _ = t.e.llm.ClassifyThread(llm.WithInferenceMetadata(driftCtx, driftInference), own)
 		},
 		func() { userContext = t.e.memory.UserContext(in.ReqCtx, t.user.ID) },
 		// A scheduled run brings no project memory, knowledge or documents
@@ -312,6 +326,11 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// user uploads them (documents.Upload), and counting them locked every
 	// action in a thread or project with documents for good, since every
 	// turn there retrieves excerpts. Only tool results set readOutside.
+	if t.readOutside {
+		// The forced image route runs the generator without the action
+		// check: a turn that answers outside text gets no forced action.
+		imageRoute = imageRouting{}
+	}
 	imageArtifactRequired := imageRoute.generate
 	if imageArtifactRequired {
 		// The image path forces its own tools; the drift guess adds nothing.
@@ -328,7 +347,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		category = classified
 	}
 
-	gate := newToolGate(category, turnCategory, t.userMessage.Content)
+	gate := newToolGate(category, turnCategory, own)
 	gate.sandbox = sandboxOn
 	tools := t.offer(gate)
 	fileToolGuidance := ""
@@ -365,7 +384,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 		project:      projectContext,
 		knowledge:    knowledgeContext,
 		document:     documentContext,
-	}, in.PriorMessages, t.userMessage)
+	}, in.PriorMessages, t.userMessage, answering(in.Picked))
 	// editSourceID is the image whose original pixels are forwarded to the image
 	// model for direct editing (image-to-image). Defaults to the photo the user
 	// attached this turn; the follow-up branch below sets it to a reused prior image.

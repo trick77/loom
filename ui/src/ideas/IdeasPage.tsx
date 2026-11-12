@@ -25,7 +25,7 @@ import {
   menuItemClass,
 } from "../ThreadActionsMenu";
 import { IdeaEditDialog } from "./IdeaEditDialog";
-import { ideaAge, ideaDates, ideaThreadDraft } from "./ideaText";
+import { ideaAge, ideaDates } from "./ideaText";
 import { useIdeaCounts } from "./useOpenIdeasCount";
 
 // UNDO_MS is how long the "deleted" toast offers its undo.
@@ -49,8 +49,8 @@ export function IdeasPage({
   /** The idea to open on arrival (/ideas/:id). */
   initialIdeaID: string | null;
   onOpenSidebar(): void;
-  /** Opens the new-thread screen with this draft; never sends. */
-  onStartThread(text: string): void;
+  /** Opens the new-thread screen with this idea as a draft; never sends. */
+  onStartThread(idea: Idea): void;
   /** Opens the thread at the message the idea was captured from. */
   onOpenMessage(threadID: string, messageID: string | null): void;
   onSessionExpired(): void;
@@ -284,7 +284,7 @@ export function IdeasPage({
                       current === idea.id ? null : idea.id,
                     )
                   }
-                  onStartThread={() => onStartThread(ideaThreadDraft(idea, t))}
+                  onStartThread={() => onStartThread(idea)}
                   onJump={jumpTo(idea, onOpenMessage)}
                   onDone={() => void setDone(idea, idea.state !== "done")}
                   onEdit={() => setEditing(idea)}
@@ -432,6 +432,16 @@ function IdeaRow({
       />
       {open && (
         <div className="prompt-panel-in px-3 pb-3.5">
+          {idea.question !== "" && (
+            <>
+              <div className="mb-1.5 mt-3.5 text-[12px] text-[#807d74]">
+                {t("ideas.question")}
+              </div>
+              <p className="whitespace-pre-wrap text-[15px] leading-[22px] text-ink-dim">
+                {t("ideas.quoted", { text: idea.question })}
+              </p>
+            </>
+          )}
           {idea.excerpt !== "" && (
             <>
               <div className="mb-1.5 mt-3.5 text-[12px] text-[#807d74]">

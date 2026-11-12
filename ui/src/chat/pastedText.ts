@@ -3,6 +3,8 @@
 // claude.ai). The block's text is folded back into the outgoing message content
 // on send — it is never uploaded, indexed, or counted against attachment limits.
 
+import type { PastedSource } from "../api/types";
+
 // A paste collapses into a chip when it exceeds EITHER threshold — a wall of
 // characters or a tall block of lines. claude.ai keys off character count only
 // (its cutoff is ~4091); we collapse sooner and also on line count to keep the
@@ -17,7 +19,7 @@ export type PastedText = {
   id: string;
   text: string;
   lineCount: number;
-};
+} & PastedSource;
 
 // PastedTextBlock is the persisted, wire shape of a collapsed paste (no client-only
 // id): what the composer sends and the backend stores/returns on a message so the
@@ -25,14 +27,40 @@ export type PastedText = {
 export type PastedTextBlock = {
   text: string;
   lineCount: number;
-};
+} & PastedSource;
+
+// sourceOf keeps a block's outside marks (an idea's passage) through every
+// copy: lost on the way, the server would take the passage for the user's
+// own words.
+function sourceOf(from: PastedSource): PastedSource {
+  if (from.outside !== true) return {};
+  return {
+    outside: true,
+    ideaId: from.ideaId,
+    ideaTitle: from.ideaTitle,
+    source: from.source,
+  };
+}
 
 export function toPastedTextBlock(pasted: PastedText): PastedTextBlock {
-  return { text: pasted.text, lineCount: pasted.lineCount };
+  return {
+    text: pasted.text,
+    lineCount: pasted.lineCount,
+    ...sourceOf(pasted),
+  };
 }
 
 export function pastedTextFromBlock(block: PastedTextBlock): PastedText {
-  return { ...createPastedText(block.text), lineCount: block.lineCount };
+  return {
+    ...createPastedText(block.text),
+    lineCount: block.lineCount,
+    ...sourceOf(block),
+  };
+}
+
+/** quotesOutside: a staged or sent block carries outside text. */
+export function quotesOutside(blocks: readonly PastedSource[]): boolean {
+  return blocks.some((block) => block.outside === true);
 }
 
 // StripPastedResult carries the bubble text (blocks removed) plus, per input block,
@@ -61,6 +89,8 @@ export function stripPastedBlocks(
   const matched = new Array<boolean>(blocks.length).fill(false);
   let end = content.length;
   for (let i = blocks.length - 1; i >= 0; i--) {
+    // An empty block matches nothing (as on the server, chat.StripPastedBlocks).
+    if (blocks[i].text.trim() === "") continue;
     const hay = content.slice(0, end);
     let index = hay.lastIndexOf(blocks[i].text);
     if (index === -1) {

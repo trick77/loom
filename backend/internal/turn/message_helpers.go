@@ -131,7 +131,7 @@ func (t *Run) GenerateAndSendThreadTitle(ctx context.Context, assistantMessage s
 	if runes := []rune(assistantMessage); len(runes) > titleSourceLimit {
 		assistantMessage = string(runes[:titleSourceLimit])
 	}
-	title, err := t.e.llm.GenerateThreadTitle(llm.WithInferenceMetadata(titleCtx, titleInference), t.userMessage.Content, assistantMessage, t.user.ResponseLanguageName())
+	title, err := t.e.llm.GenerateThreadTitle(llm.WithInferenceMetadata(titleCtx, titleInference), chat.WithoutOutsideText(t.userMessage), assistantMessage, t.user.ResponseLanguageName())
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ type promptBlocks struct {
 
 // now is the turn's time in the user's zone (Run.now): its date is the one the
 // prompt calls today.
-func buildLLMHistory(user auth.User, now time.Time, blocks promptBlocks, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+func buildLLMHistory(user auth.User, now time.Time, blocks promptBlocks, messages []chat.Message, newUserMessage chat.Message, answering map[string]bool) []llm.Message {
 	// Tool guidance (e.g. the file-creation guardrail) travels with the tools it
 	// describes: it is passed non-empty only when those tools are offered this
 	// turn, so the prompt never names a tool that was gated out of the request.
@@ -175,13 +175,13 @@ func buildLLMHistory(user auth.User, now time.Time, blocks promptBlocks, message
 			systemContent += "\n\n" + block
 		}
 	}
-	return buildHistory(systemContent, messages, newUserMessage)
+	return buildHistory(systemContent, messages, newUserMessage, answering)
 }
 
 // buildHistory is the model history every chat turn sends: the system prompt,
 // the prior user and assistant turns (tool rows are not replayed), then the
 // new user message.
-func buildHistory(systemContent string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
+func buildHistory(systemContent string, messages []chat.Message, newUserMessage chat.Message, answering map[string]bool) []llm.Message {
 	history := []llm.Message{{Role: "system", Content: systemContent}}
 	for _, message := range messages {
 		switch message.Role {
@@ -191,10 +191,45 @@ func buildHistory(systemContent string, messages []chat.Message, newUserMessage 
 			if strings.TrimSpace(message.Content) == "" {
 				continue
 			}
-			history = append(history, llm.Message{Role: string(message.Role), Content: message.Content})
+			content := message.Content
+			// An earlier quoted passage (outside text) stays with the turn
+			// that read it (or failed to): as the user's words it would reach
+			// this one unlocked. The messages this turn answers keep it: the
+			// turn is locked (answersOutside).
+			if !answering[message.ID] {
+				content = chat.WithoutOutsideText(message)
+			}
+			history = append(history, llm.Message{Role: string(message.Role), Content: content})
 		}
 	}
 	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content + earlierSourcesNote(messages)})
+}
+
+// answering is the set of queued messages a turn answers along with its own
+// (taken from the queue together); nil for a plain send.
+func answering(picked []chat.Message) map[string]bool {
+	if len(picked) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(picked))
+	for _, m := range picked {
+		set[m.ID] = true
+	}
+	return set
+}
+
+// answersOutside reports whether the turn answers a message that carried
+// outside text along: its own or a queued one taken with it.
+func answersOutside(own chat.Message, picked []chat.Message) bool {
+	if own.ReadOutside {
+		return true
+	}
+	for _, m := range picked {
+		if m.ReadOutside {
+			return true
+		}
+	}
+	return false
 }
 
 // Bounds of earlierSourcesNote: the whole note, not per answer, so a long
@@ -314,7 +349,7 @@ func incognitoSystemPromptForUser(user auth.User, now time.Time) string {
 // RunConfig.Timezone.
 func BuildIncognitoHistory(user auth.User, timezone string, messages []chat.Message, newUserMessage chat.Message) []llm.Message {
 	now := time.Now().In(zoneLocation(timezone))
-	return buildHistory(incognitoSystemPromptForUser(user, now), messages, newUserMessage)
+	return buildHistory(incognitoSystemPromptForUser(user, now), messages, newUserMessage, nil)
 }
 
 // ShouldGenerateThreadTitle reports whether a thread still carries the title it

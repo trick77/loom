@@ -80,6 +80,8 @@ export const de = {
     removeAttachment: "{{filename}} entfernen",
     pastedText: "Eingefügter Text",
     pastedBadge: "Eingefügt",
+    quotesOutside:
+      "Mit zitierter Stelle: diese Antwort ändert keine Erinnerungen und Zeitpläne.",
     removePastedText_one: "Eingefügten Text entfernen, {{count}} Zeile",
     removePastedText_other: "Eingefügten Text entfernen, {{count}} Zeilen",
     attached: "Angehängt",
@@ -789,6 +791,13 @@ export const de = {
     loadFailed: "Die Ideen konnten nicht geladen werden.",
     actionFailed: "Das hat nicht geklappt. Versuch es nochmals.",
     draftWhy: "Warum: {{reason}}",
+    draftQuestion: "Meine Frage damals: {{question}}",
+    question: "Deine Frage damals",
+    yourQuestion: "Deine Frage",
+    quoted: "«{{text}}»",
+    passageFrom: "Stelle aus «{{source}}»",
+    removePassage: "Stelle entfernen",
+    fromIdea: "Aus Idee: {{title}}",
     card: {
       ask: {
         save: "Als Idee festhalten?",

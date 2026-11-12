@@ -65,7 +65,8 @@ type messageInsert struct {
 	// clientMessageID is the id the client gave the send; "" when none.
 	clientMessageID string
 	// readOutside flags an assistant row (Message.ReadOutside); ignored for
-	// any other role.
+	// any other role. A user row is flagged by its pasted blocks
+	// (QuotesOutside).
 	readOutside bool
 }
 
@@ -139,6 +140,10 @@ func insertMessageTx(ctx context.Context, tx execer, in messageInsert) (string, 
 		*column.raw = normalized
 	}
 
+	// A user message that carries outside text (an idea's passage) is
+	// flagged itself: fact extraction and project memory skip it, and the
+	// answers after it in the thread are flagged by the sticky rule.
+	userQuotesOutside := role == RoleUser && QuotesOutside(pastedTexts)
 	messageID := sqlutil.NewID()
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO messages (
@@ -171,7 +176,7 @@ INSERT INTO messages (
 VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
     -- Sticky per thread: a later answer can pass an earlier page's text on
     -- from the history without calling a tool.
-    CASE WHEN ? = 'assistant' AND (? OR EXISTS (
+    CASE WHEN ? THEN 1 WHEN ? = 'assistant' AND (? OR EXISTS (
         SELECT 1 FROM messages p WHERE p.user_id = ? AND p.thread_id = ? AND p.read_outside = 1
     )) THEN 1 ELSE 0 END)`,
 		messageID,
@@ -197,7 +202,7 @@ VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
 		usage.Model,
 		usage.ReasoningEffort,
 		in.clientMessageID,
-		role, in.readOutside, userID, threadID,
+		userQuotesOutside, role, in.readOutside, userID, threadID,
 	)
 	if err != nil {
 		return "", fmt.Errorf("insert message: %w", err)

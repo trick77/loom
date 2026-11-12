@@ -42,6 +42,7 @@ function renderBubble({
   provided = true,
   publicView = false,
   onOpenIdea = vi.fn(),
+  questionFor = undefined as ((messageId: string) => string) | undefined,
 } = {}) {
   const bubble = (
     <MessageBubble
@@ -55,6 +56,7 @@ function renderBubble({
       <IdeaCaptureProvider
         threadId="t1"
         threadTitle="Tech news week 45"
+        questionFor={questionFor}
         onOpenIdea={onOpenIdea}
       >
         {bubble}
@@ -296,4 +298,16 @@ test("the saved toast leaves by itself", async () => {
     vi.advanceTimersByTime(SAVED_TOAST_MS + 10);
   });
   expect(screen.queryByRole("status")).toBeNull();
+});
+
+test("the capture shows the question the answer replied to (the server keeps its own copy)", () => {
+  const questionFor = vi.fn(() => "What was new this week?");
+  renderBubble({ questionFor });
+  fireEvent.click(screen.getByRole("button", { name: "Save as idea" }));
+  const dialog = screen.getByRole("dialog");
+  expect(questionFor).toHaveBeenCalledWith("m1");
+  expect(within(dialog).getByText("Your question")).toBeInTheDocument();
+  expect(
+    within(dialog).getByText("“What was new this week?”"),
+  ).toBeInTheDocument();
 });

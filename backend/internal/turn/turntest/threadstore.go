@@ -22,6 +22,9 @@ type ThreadStore struct {
 	AssistantContextErr error
 	// UserClientMessageID is the send id the last user message was stored with.
 	UserClientMessageID string
+	// SendPastedTexts are the pasted blocks a test's turn sends with its
+	// user message (nil: none).
+	SendPastedTexts json.RawMessage
 	// Queue holds the messages queued on Thread.
 	Queue             MessageQueue
 	LastCitations     json.RawMessage
@@ -266,6 +269,8 @@ func (f *ThreadStore) AddMessageWithAttachments(_ context.Context, _ string, thr
 		Attachments:     attachments,
 		PastedTexts:     pastedTexts,
 		ClientMessageID: clientMessageID,
+		// As the real store: a user message carrying outside text is flagged.
+		ReadOutside: role == chat.RoleUser && chat.QuotesOutside(pastedTexts),
 	}
 	f.Messages = append(f.Messages, message)
 	return message, nil

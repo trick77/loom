@@ -38,3 +38,17 @@ test("requestFocus bumps the focus tick", () => {
   });
   expect(result.current.focusTick).toBe(before + 1);
 });
+
+test("an idea's passage is staged marked outside; the same idea again replaces it", () => {
+  const { result } = renderHook(() => useComposerDrafts());
+  const source = { outside: true, ideaId: "i1", ideaTitle: "T", source: "S" };
+  act(() => {
+    result.current.addPastedText("new", "mine");
+    result.current.addPastedText("new", "passage", source);
+    result.current.addPastedText("new", "passage again", source);
+  });
+  const staged = getDraft(result.current.drafts, "new").pastedTexts;
+  expect(staged.map((p) => p.text)).toEqual(["mine", "passage again"]);
+  expect(staged[1]).toMatchObject(source);
+  expect(staged[0].outside).toBeUndefined();
+});

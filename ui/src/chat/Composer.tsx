@@ -21,7 +21,12 @@ import { Icon } from "./Icon";
 import { useModelInfo } from "../useContextWindow";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
 import { PastedTextCard } from "./PastedTextCard";
-import { shouldCollapsePaste, type PastedText } from "./pastedText";
+import {
+  quotesOutside,
+  shouldCollapsePaste,
+  type PastedText,
+} from "./pastedText";
+import { PassageCard } from "../ideas/PassageCard";
 import {
   isImageAttachment,
   type ComposerAttachment,
@@ -173,261 +178,273 @@ export function Composer({
     [onAttachError, onAttachFiles],
   );
   return (
-    <form
-      className={`ui-composer relative flex flex-col rounded-[20px] border ${incognito ? "border-dashed border-[#5a5852]" : "border-[#4b4a46]"} bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (submitStops) {
-          onStop();
-          return;
-        }
-        if (sendDisabled || (queueing && !canSend)) return;
-        onSend();
-      }}
-    >
-      {hasStagedRow && (
-        <div
-          aria-label={
-            attachments.length > 0
-              ? t("composer.attachments")
-              : t("composer.pastedText")
-          }
-          className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[164px]`}
-        >
-          <div className="flex flex-wrap gap-2">
-            {pastedTexts.map((pasted) => (
-              <PastedTextPill
-                key={pasted.id}
-                pasted={pasted}
-                onRemove={onRemovePastedText}
-              />
-            ))}
-            {attachments.map((attachment) => (
-              <AttachmentPill
-                key={attachment.id}
-                attachment={attachment}
-                onRemove={onRemoveAttachment}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      <textarea
-        ref={textareaRef}
-        rows={1}
-        className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} ${hasStagedRow ? "pt-2" : "pt-5"} pb-3 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
-        placeholder={placeholder}
-        value={draft}
-        onPaste={(event) => {
-          const text = event.clipboardData.getData("text/plain");
-          // A pasted screenshot / image goes through the same staging + upload path
-          // as the file picker and drag-drop. Only when attachments are available
-          // (onAttachFiles defined — omitted e.g. in incognito) and the clipboard
-          // carries no text: copying a cell range or rich content puts an image
-          // rendering *alongside* the text, and there the text is what the user
-          // meant — so a non-empty text/plain falls through to normal text paste.
-          if (onAttachFiles !== undefined && text.trim() === "") {
-            const clipboardImages = clipboardImageFiles(event.clipboardData);
-            if (clipboardImages.length > 0) {
-              // A clipboard image does nothing useful in a textarea, so suppress the
-              // native paste whether or not the type is one we accept.
-              event.preventDefault();
-              const images = clipboardImages
-                .map(toSupportedImageFile)
-                .filter((file): file is File => file !== null);
-              if (images.length > 0) attachFiles(images);
-              // Mirror the picker/drag-drop feedback for an unsupported image type
-              // (e.g. a TIFF/HEIC screenshot) rather than silently doing nothing.
-              else onAttachError?.(UNSUPPORTED_FILE_MESSAGE);
-              return;
-            }
-          }
-          // A large or tall plain-text paste collapses into a removable "Pasted"
-          // chip instead of flooding the textarea (char- or line-count threshold).
-          if (onAddPastedText === undefined) return;
-          if (!shouldCollapsePaste(text)) return;
+    <>
+      <form
+        className={`ui-composer relative flex flex-col rounded-[20px] border ${incognito ? "border-dashed border-[#5a5852]" : "border-[#4b4a46]"} bg-[#2a2a28] shadow-[0_14px_24px_rgba(0,0,0,0.22)]`}
+        onSubmit={(event) => {
           event.preventDefault();
-          // preventDefault suppresses the native paste, which would normally also
-          // replace any selected text. Since the paste becomes a chip rather than
-          // inline text, drop the selected range ourselves so a "select-all + paste
-          // to replace" gesture doesn't leave the old draft behind (it would
-          // otherwise be sent alongside the pasted block).
-          const target = event.currentTarget;
-          const start = target.selectionStart ?? 0;
-          const end = target.selectionEnd ?? 0;
-          if (end > start)
-            onDraftChange(draft.slice(0, start) + draft.slice(end));
-          onAddPastedText(text);
+          if (submitStops) {
+            onStop();
+            return;
+          }
+          if (sendDisabled || (queueing && !canSend)) return;
+          onSend();
         }}
-        onChange={(event) => {
-          // Any edit re-opens the popover a prior Escape had dismissed.
-          setSuggestionsDismissed(false);
-          onDraftChange(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (showSuggestions) {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setSelectedIndex((current) => (current + 1) % suggestions.length);
-              return;
+      >
+        {hasStagedRow && (
+          <div
+            aria-label={
+              attachments.length > 0
+                ? t("composer.attachments")
+                : t("composer.pastedText")
             }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setSelectedIndex(
-                (current) =>
-                  (current - 1 + suggestions.length) % suggestions.length,
-              );
-              return;
+            className={`ui-sidebar-scroll ${padX} flex-none overflow-y-auto pt-5 pb-2 max-h-[164px]`}
+          >
+            <div className="flex flex-wrap gap-2">
+              {pastedTexts.map((pasted) => (
+                <PastedTextPill
+                  key={pasted.id}
+                  pasted={pasted}
+                  onRemove={onRemovePastedText}
+                />
+              ))}
+              {attachments.map((attachment) => (
+                <AttachmentPill
+                  key={attachment.id}
+                  attachment={attachment}
+                  onRemove={onRemoveAttachment}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          className={`ui-composer-text ui-sidebar-scroll ${textareaMinH} w-full resize-none overflow-y-auto bg-transparent ${padX} ${hasStagedRow ? "pt-2" : "pt-5"} pb-3 text-[#f3f0e8] outline-none placeholder:text-[#aaa79e] max-h-[150px] md:max-h-[264px]`}
+          placeholder={placeholder}
+          value={draft}
+          onPaste={(event) => {
+            const text = event.clipboardData.getData("text/plain");
+            // A pasted screenshot / image goes through the same staging + upload path
+            // as the file picker and drag-drop. Only when attachments are available
+            // (onAttachFiles defined — omitted e.g. in incognito) and the clipboard
+            // carries no text: copying a cell range or rich content puts an image
+            // rendering *alongside* the text, and there the text is what the user
+            // meant — so a non-empty text/plain falls through to normal text paste.
+            if (onAttachFiles !== undefined && text.trim() === "") {
+              const clipboardImages = clipboardImageFiles(event.clipboardData);
+              if (clipboardImages.length > 0) {
+                // A clipboard image does nothing useful in a textarea, so suppress the
+                // native paste whether or not the type is one we accept.
+                event.preventDefault();
+                const images = clipboardImages
+                  .map(toSupportedImageFile)
+                  .filter((file): file is File => file !== null);
+                if (images.length > 0) attachFiles(images);
+                // Mirror the picker/drag-drop feedback for an unsupported image type
+                // (e.g. a TIFF/HEIC screenshot) rather than silently doing nothing.
+                else onAttachError?.(UNSUPPORTED_FILE_MESSAGE);
+                return;
+              }
             }
-            if (event.key === "Escape") {
-              event.preventDefault();
-              setSuggestionsDismissed(true);
-              return;
-            }
-            if (event.key === "Tab") {
-              event.preventDefault();
-              onDraftChange(`/${suggestions[activeIndex].name}`);
-              return;
+            // A large or tall plain-text paste collapses into a removable "Pasted"
+            // chip instead of flooding the textarea (char- or line-count threshold).
+            if (onAddPastedText === undefined) return;
+            if (!shouldCollapsePaste(text)) return;
+            event.preventDefault();
+            // preventDefault suppresses the native paste, which would normally also
+            // replace any selected text. Since the paste becomes a chip rather than
+            // inline text, drop the selected range ourselves so a "select-all + paste
+            // to replace" gesture doesn't leave the old draft behind (it would
+            // otherwise be sent alongside the pasted block).
+            const target = event.currentTarget;
+            const start = target.selectionStart ?? 0;
+            const end = target.selectionEnd ?? 0;
+            if (end > start)
+              onDraftChange(draft.slice(0, start) + draft.slice(end));
+            onAddPastedText(text);
+          }}
+          onChange={(event) => {
+            // Any edit re-opens the popover a prior Escape had dismissed.
+            setSuggestionsDismissed(false);
+            onDraftChange(event.target.value);
+          }}
+          onKeyDown={(event) => {
+            if (showSuggestions) {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                setSelectedIndex(
+                  (current) => (current + 1) % suggestions.length,
+                );
+                return;
+              }
+              if (event.key === "ArrowUp") {
+                event.preventDefault();
+                setSelectedIndex(
+                  (current) =>
+                    (current - 1 + suggestions.length) % suggestions.length,
+                );
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setSuggestionsDismissed(true);
+                return;
+              }
+              if (event.key === "Tab") {
+                event.preventDefault();
+                onDraftChange(`/${suggestions[activeIndex].name}`);
+                return;
+              }
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                // A fully typed command submits (runSlashCommand fires downstream);
+                // a partial one first completes to the highlighted command.
+                if (matchSlashCommand(draft) !== null) {
+                  if (isSending ? queueing && canSend : !sendDisabled) onSend();
+                } else {
+                  onDraftChange(`/${suggestions[activeIndex].name}`);
+                }
+                return;
+              }
             }
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
-              // A fully typed command submits (runSlashCommand fires downstream);
-              // a partial one first completes to the highlighted command.
-              if (matchSlashCommand(draft) !== null) {
-                if (isSending ? queueing && canSend : !sendDisabled) onSend();
-              } else {
-                onDraftChange(`/${suggestions[activeIndex].name}`);
-              }
-              return;
+              if (isSending ? queueing && canSend : !sendDisabled) onSend();
             }
-          }
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            if (isSending ? queueing && canSend : !sendDisabled) onSend();
-          }
-        }}
-      />
-      {showSuggestions && (
-        <div className="absolute bottom-full left-3 z-10 mb-2 w-[280px] overflow-hidden rounded-xl border border-[#4b4a46] bg-[#2f2f2c] py-1 shadow-[0_14px_28px_rgba(0,0,0,0.32)]">
-          {suggestions.map((command, index) => (
-            <button
-              key={command.name}
-              type="button"
-              // Prevent the textarea from losing focus (which would fire before onClick).
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onDraftChange(`/${command.name}`)}
-              onMouseEnter={() => setSelectedIndex(index)}
-              className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left ${
-                index === activeIndex ? "bg-[#3a3a37]" : ""
-              }`}
-            >
-              <span className="font-mono text-sm text-[#f3f0e8]">
-                /{command.name}
-              </span>
-              <span className="truncate text-xs text-[#aaa79e]">
-                {t(command.description)}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-      <div
-        className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}
-      >
-        {incognito ? (
-          // Uploads persist (indexing / artifact rows), so they are unavailable in an
-          // ephemeral incognito thread — the attach affordance is omitted entirely. The
-          // empty span preserves the send button's right-alignment.
-          <span aria-hidden />
-        ) : (
-          <button
-            className="leading-none disabled:opacity-40"
-            type="button"
-            aria-label={t("composer.addAttachment")}
-            disabled={onAttachFiles === undefined}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Icon name="plus" size="24px" />
-          </button>
-        )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept={ATTACHMENT_ACCEPT}
-          className="hidden"
-          onChange={(event) => {
-            const files = Array.from(event.target.files ?? []);
-            // Reset so picking the same file again re-fires change.
-            event.target.value = "";
-            if (files.length > 0) attachFiles(files);
           }}
         />
-        <div className="ui-meta-text flex items-center text-[#d8d4ca]">
-          {/* Static label of the configured chat model (its display name from
-              /api/model) — a name, not a picker. Hidden on the narrowest widths
-              so the send button always fits. */}
-          <span className="mr-2 hidden select-none text-[13px] leading-none text-[#aaa79e] sm:inline">
-            {modelInfo?.displayName}
-          </span>
-          {queueing && (
-            <button
-              className="ml-2 grid h-7 w-7 place-items-center rounded-md bg-[#3a3a37] text-[#eeeae2] transition-colors hover:bg-[#4b4a46]"
-              type="button"
-              aria-label={t("composer.stopResponse")}
-              onClick={() => onStop()}
-            >
-              <svg
-                className={sendIconClass}
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                fill="currentColor"
+        {showSuggestions && (
+          <div className="absolute bottom-full left-3 z-10 mb-2 w-[280px] overflow-hidden rounded-xl border border-[#4b4a46] bg-[#2f2f2c] py-1 shadow-[0_14px_28px_rgba(0,0,0,0.32)]">
+            {suggestions.map((command, index) => (
+              <button
+                key={command.name}
+                type="button"
+                // Prevent the textarea from losing focus (which would fire before onClick).
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => onDraftChange(`/${command.name}`)}
+                onMouseEnter={() => setSelectedIndex(index)}
+                className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left ${
+                  index === activeIndex ? "bg-[#3a3a37]" : ""
+                }`}
               >
-                <rect x="5.5" y="5.5" width="13" height="13" rx="2" />
-              </svg>
+                <span className="font-mono text-sm text-[#f3f0e8]">
+                  /{command.name}
+                </span>
+                <span className="truncate text-xs text-[#aaa79e]">
+                  {t(command.description)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div
+          className={`flex h-11 flex-none items-center justify-between ${padX} text-[#d8d4ca]`}
+        >
+          {incognito ? (
+            // Uploads persist (indexing / artifact rows), so they are unavailable in an
+            // ephemeral incognito thread — the attach affordance is omitted entirely. The
+            // empty span preserves the send button's right-alignment.
+            <span aria-hidden />
+          ) : (
+            <button
+              className="leading-none disabled:opacity-40"
+              type="button"
+              aria-label={t("composer.addAttachment")}
+              disabled={onAttachFiles === undefined}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Icon name="plus" size="24px" />
             </button>
           )}
-          <button
-            className={`ui-composer-send ml-2 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
-            disabled={!submitStops && !canSend}
-            type="submit"
-            aria-label={
-              submitStops
-                ? t("composer.stopResponse")
-                : queueing
-                  ? t("composer.queueMessage")
-                  : t("composer.sendMessage")
-            }
-          >
-            {submitStops ? (
-              <svg
-                className={sendIconClass}
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                fill="currentColor"
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ATTACHMENT_ACCEPT}
+            className="hidden"
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              // Reset so picking the same file again re-fires change.
+              event.target.value = "";
+              if (files.length > 0) attachFiles(files);
+            }}
+          />
+          <div className="ui-meta-text flex items-center text-[#d8d4ca]">
+            {/* Static label of the configured chat model (its display name from
+              /api/model) — a name, not a picker. Hidden on the narrowest widths
+              so the send button always fits. */}
+            <span className="mr-2 hidden select-none text-[13px] leading-none text-[#aaa79e] sm:inline">
+              {modelInfo?.displayName}
+            </span>
+            {queueing && (
+              <button
+                className="ml-2 grid h-7 w-7 place-items-center rounded-md bg-[#3a3a37] text-[#eeeae2] transition-colors hover:bg-[#4b4a46]"
+                type="button"
+                aria-label={t("composer.stopResponse")}
+                onClick={() => onStop()}
               >
-                <rect x="5.5" y="5.5" width="13" height="13" rx="2" />
-              </svg>
-            ) : (
-              <svg
-                className={sendIconClass}
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                fill="none"
-              >
-                <path
-                  d="M12 19V5M6.5 10.5 12 5l5.5 5.5"
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+                <svg
+                  className={sendIconClass}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="currentColor"
+                >
+                  <rect x="5.5" y="5.5" width="13" height="13" rx="2" />
+                </svg>
+              </button>
             )}
-          </button>
+            <button
+              className={`ui-composer-send ml-2 grid h-7 w-7 place-items-center rounded-md text-[#eeeae2] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${actionButtonClass}`}
+              disabled={!submitStops && !canSend}
+              type="submit"
+              aria-label={
+                submitStops
+                  ? t("composer.stopResponse")
+                  : queueing
+                    ? t("composer.queueMessage")
+                    : t("composer.sendMessage")
+              }
+            >
+              {submitStops ? (
+                <svg
+                  className={sendIconClass}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="currentColor"
+                >
+                  <rect x="5.5" y="5.5" width="13" height="13" rx="2" />
+                </svg>
+              ) : (
+                <svg
+                  className={sendIconClass}
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  fill="none"
+                >
+                  <path
+                    d="M12 19V5M6.5 10.5 12 5l5.5 5.5"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
-      </div>
-    </form>
+      </form>
+      {quotesOutside(pastedTexts) && (
+        // Why the answer to this message will not touch memories or
+        // schedules: the passage is outside text (the server locks the turn).
+        <p className="ui-meta-text mx-1 mt-2 flex items-center gap-1.5 text-[12px] text-[#807d74]">
+          <Icon name="lock" size="13px" className="shrink-0" />
+          {t("composer.quotesOutside")}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -460,6 +477,16 @@ function PastedTextPill({
   pasted: PastedText;
   onRemove?: (id: string) => void;
 }) {
+  if (pasted.outside === true)
+    return (
+      <PassageCard
+        text={pasted.text}
+        source={pasted.source}
+        onRemove={
+          onRemove === undefined ? undefined : () => onRemove(pasted.id)
+        }
+      />
+    );
   return (
     <PastedTextCard
       text={pasted.text}
