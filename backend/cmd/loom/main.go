@@ -28,6 +28,7 @@ import (
 	"github.com/trick77/loom/internal/config"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/httpapi"
+	"github.com/trick77/loom/internal/ideas"
 	"github.com/trick77/loom/internal/llm"
 	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/mcp"
@@ -261,6 +262,8 @@ func runServer() error {
 		PublicURL:                  cfg.PublicURL,
 		KnowledgeInlineTokenBudget: cfg.KnowledgeInlineTokenBudget,
 		ProjectSummaryTokenBudget:  cfg.ProjectSummaryTokenBudget,
+		// Ideas work without a model.
+		Ideas: ideas.NewStore(db),
 	}
 	// Scheduled tasks run chat turns and read intervals with the model: they
 	// are on whenever chat is.
