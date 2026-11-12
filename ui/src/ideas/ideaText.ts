@@ -51,6 +51,41 @@ export function formatDay(day: string, language: string): string {
   }).format(parseDay(day));
 }
 
+/** "Mon 5 Jan" / "Mo., 5. Jan." */
+export function formatWeekday(day: string, language: string): string {
+  return new Intl.DateTimeFormat(language, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(parseDay(day));
+}
+
+/** The 'YYYY-MM-DD' day n days after day (before it when n < 0). */
+export function addDays(day: string, n: number): string {
+  const d = parseDay(day);
+  d.setDate(d.getDate() + n);
+  return todayDay(d);
+}
+
+/** Whole days from a to b ('YYYY-MM-DD'), negative when b is earlier. */
+export function daysBetween(a: string, b: string): number {
+  return Math.round((parseDay(b).getTime() - parseDay(a).getTime()) / DAY_MS);
+}
+
+/**
+ * The follow-up date for a due date, as the server computes it
+ * (ideas.DefaultRemindOn): a week before; when that is not after today, the
+ * day before; else today. A passed due date gets none.
+ */
+export function defaultRemindOn(due: string, today: string): string | null {
+  if (due < today) return null;
+  for (const days of [7, 1]) {
+    const day = addDays(due, -days);
+    if (day > today) return day;
+  }
+  return today;
+}
+
 /**
  * The age slot of a row: "due date passed" for an open idea past its due
  * date, "open for N weeks" from four weeks on (both flagged warn), else how

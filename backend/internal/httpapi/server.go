@@ -112,7 +112,7 @@ type ScheduleLLM interface {
 // IdeaLLM drafts an idea being captured. A tool-less helper call whose reply
 // is read as JSON only: the passage is outside text.
 type IdeaLLM interface {
-	DraftIdeaTitle(ctx context.Context, excerpt, reason, responseLanguage string) (string, error)
+	DraftIdea(ctx context.Context, excerpt, reason, today, responseLanguage string) (llm.IdeaDraft, error)
 }
 
 type server struct {

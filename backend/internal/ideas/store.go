@@ -343,6 +343,107 @@ ORDER BY state = 'done', (remind_on IS NOT NULL AND remind_on <= ?) DESC, COALES
 	return items, rows.Err()
 }
 
+// FollowUp is an idea whose follow-up date may have come, with its owner's
+// zone: whether it has is the owner's date, not the server's.
+type FollowUp struct {
+	Idea     Idea
+	Timezone string
+}
+
+// FollowUpWindowDays is how long after its follow-up date an idea without a
+// due date still counts as one: the start page lists it that long, and the
+// notifier drops one older than that unsent.
+const FollowUpWindowDays = 14
+
+// FollowUpCursor is where the last page of FollowUpsDue ended; the zero
+// value starts at the beginning.
+type FollowUpCursor struct{ RemindOn, ID string }
+
+// FollowUpsDue is a page of the open ideas not yet followed up, and not
+// hidden, whose follow-up date is on or before latest (the latest date
+// anywhere on earth), in (remind_on, id) order after the cursor. The caller
+// decides per user's zone and claims each (ClaimFollowUp); it pages on, so
+// candidates not yet due in their zone never hide ones that are.
+func (s *Store) FollowUpsDue(ctx context.Context, latest time.Time, after FollowUpCursor, limit int) ([]FollowUp, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT `+ideaColumns+`, (SELECT timezone FROM users u WHERE u.id = ideas.user_id)
+FROM ideas
+WHERE reminded_at IS NULL AND remind_dismissed_at IS NULL
+  AND remind_on IS NOT NULL AND remind_on <= ?
+  AND state = 'open' AND deleted_at IS NULL
+  AND (remind_on > ? OR (remind_on = ? AND id > ?))
+ORDER BY remind_on, id
+LIMIT ?`, FormatDate(latest), after.RemindOn, after.RemindOn, after.ID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list follow-ups: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []FollowUp
+	for rows.Next() {
+		var f FollowUp
+		var tz sql.NullString
+		idea, err := scanIdea(scanAppend{rows, &tz})
+		if err != nil {
+			return nil, fmt.Errorf("scan follow-up: %w", err)
+		}
+		f.Idea, f.Timezone = idea, tz.String
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// scanAppend scans a row into an idea's columns plus extra ones after them.
+type scanAppend struct {
+	rows  *sql.Rows
+	extra any
+}
+
+func (s scanAppend) Scan(dest ...any) error { return s.rows.Scan(append(dest, s.extra)...) }
+
+// ClaimFollowUp marks an idea's follow-up as sent, once: false when it was
+// claimed already, moved, done or deleted meanwhile. The notification goes
+// out only after a claim (the two stores share no transaction, and one
+// notification too many is worse than one missed).
+func (s *Store) ClaimFollowUp(ctx context.Context, userID, id, remindOn string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `
+UPDATE ideas SET reminded_at = datetime('now')
+WHERE user_id = ? AND id = ? AND reminded_at IS NULL AND remind_on = ?
+  AND remind_dismissed_at IS NULL AND state = 'open' AND deleted_at IS NULL`, userID, id, remindOn)
+	if err != nil {
+		return false, fmt.Errorf("claim follow-up: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// FollowUpsForToday is what the start page lists under "Follow-up": open
+// ideas whose follow-up date has come and that the user has not hidden, up
+// to limit, soonest due first. One with a due date shows until that date;
+// one without, for two weeks after its follow-up date.
+func (s *Store) FollowUpsForToday(ctx context.Context, userID string, today time.Time, limit int) ([]Idea, error) {
+	day := FormatDate(today)
+	rows, err := s.db.QueryContext(ctx, `
+SELECT `+ideaColumns+` FROM ideas
+WHERE user_id = ? AND state = 'open' AND deleted_at IS NULL
+  AND remind_on IS NOT NULL AND remind_on <= ? AND remind_dismissed_at IS NULL
+  AND ((due_on IS NOT NULL AND due_on >= ?) OR (due_on IS NULL AND remind_on >= ?))
+ORDER BY COALESCE(due_on, remind_on), rowid
+LIMIT ?`, userID, day, day, FormatDate(today.AddDate(0, 0, -FollowUpWindowDays)), limit)
+	if err != nil {
+		return nil, fmt.Errorf("list follow-ups for today: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]Idea, 0)
+	for rows.Next() {
+		idea, err := scanIdea(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan idea: %w", err)
+		}
+		items = append(items, idea)
+	}
+	return items, rows.Err()
+}
+
 // Purge deletes the user's ideas deleted more than 30 days ago and the
 // proposals nobody confirmed within 30 days.
 func (s *Store) Purge(ctx context.Context, userID string) error {

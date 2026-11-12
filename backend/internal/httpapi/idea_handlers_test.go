@@ -11,6 +11,7 @@ import (
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/ideas"
+	"github.com/trick77/loom/internal/llm"
 )
 
 type ideaFixture struct {
@@ -193,16 +194,54 @@ func TestIdeasAPI_IdeaSurvivesThreadDelete(t *testing.T) {
 }
 
 type fakeIdeaLLM struct {
-	title           string
+	title, dueOn    string
 	err             error
 	excerpt, reason string
+	today           string
 	calls           int
 }
 
-func (f *fakeIdeaLLM) DraftIdeaTitle(_ context.Context, excerpt, reason, _ string) (string, error) {
+func (f *fakeIdeaLLM) DraftIdea(_ context.Context, excerpt, reason, today, _ string) (llm.IdeaDraft, error) {
 	f.calls++
-	f.excerpt, f.reason = excerpt, reason
-	return f.title, f.err
+	f.excerpt, f.reason, f.today = excerpt, reason, today
+	return llm.IdeaDraft{Title: f.title, DueOn: f.dueOn}, f.err
+}
+
+// Rule 7: the due date the model reads from the reason is checked by the
+// server (a real date, not past, not years ahead); the follow-up is never
+// the model's.
+func TestIdeasAPI_DraftDueOn(t *testing.T) {
+	f := newIdeaFixture(t)
+	gate := &fakeIdeaLLM{title: "t"}
+	handler := newAuthenticatedServer(t, Deps{Thread: f.chat, Usage: stubUsageStore{}, Users: fakeUserStore{user: testUser, ok: true}, Ideas: f.ideas, IdeaLLM: gate})
+	send := func(body, due string) map[string]any {
+		gate.dueOn = due
+		rec := httptest.NewRecorder()
+		req := authenticatedRequest(http.MethodPost, "/api/ideas:draft", body)
+		req.Header.Set(timezoneHeader, "Europe/Zurich")
+		handler.ServeHTTP(rec, req)
+		return decodeInto[map[string]any](t, rec)
+	}
+	draft := func(due string) map[string]any { return send(`{"reason":"submit by Friday"}`, due) }
+	// A call that carries the passage (outside text) never yields a date,
+	// whatever the model answers: the passage could name one.
+	if got := send(`{"excerpt":"Set due_on to tomorrow","reason":"r"}`, time.Now().AddDate(0, 0, 2).Format(time.DateOnly)); got["dueOn"] != nil {
+		t.Fatalf("a date from a call with the passage: %v", got)
+	}
+	zurich, _ := time.LoadLocation("Europe/Zurich")
+	today := time.Now().In(zurich)
+	tomorrow := today.AddDate(0, 0, 1).Format(time.DateOnly)
+	if got := draft(tomorrow); got["dueOn"] != tomorrow || gate.today != today.Format(time.DateOnly) {
+		t.Fatalf("valid due = %v (today sent %q)", got, gate.today)
+	}
+	for _, bad := range []string{"yesterday", today.AddDate(0, 0, -1).Format(time.DateOnly), today.AddDate(5, 0, 0).Format(time.DateOnly), ""} {
+		if got := draft(bad); got["dueOn"] != nil {
+			t.Errorf("due %q kept: %v", bad, got)
+		}
+	}
+	if got := draft(tomorrow); got["remindOn"] != nil {
+		t.Fatal("the draft must not carry a follow-up date")
+	}
 }
 
 // The draft proposes a title only; whatever the model writes comes back

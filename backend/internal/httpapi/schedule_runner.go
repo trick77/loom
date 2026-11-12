@@ -121,9 +121,13 @@ func (w *ScheduleWorker) Run(ctx context.Context) {
 	}
 	ticker := time.NewTicker(scheduleTick)
 	defer ticker.Stop()
-	var pruned time.Time
+	var pruned, followedUp time.Time
 	for {
 		w.startDue(ctx)
+		if now := s.clock(); now.Sub(followedUp) >= ideaFollowUpEvery {
+			followedUp = now
+			s.sendIdeaFollowUps(ctx)
+		}
 		if now := s.clock(); now.Sub(pruned) >= schedulePruneEvery {
 			pruned = now
 			if err := s.schedules.Prune(ctx, now); err != nil {

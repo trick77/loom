@@ -3,7 +3,10 @@ import { expect, test } from "vitest";
 import i18n from "../i18n";
 import { makeIdea } from "../test/ideas";
 import {
+  addDays,
   cutExcerpt,
+  daysBetween,
+  defaultRemindOn,
   EXCERPT_MAX,
   ideaAge,
   ideaDates,
@@ -81,4 +84,20 @@ test("a passage drops citation markers and is cut to the cap", () => {
 
 test("todayDay is the local civil date", () => {
   expect(todayDay(new Date(2026, 0, 5, 23, 59))).toBe("2026-01-05");
+});
+
+// The server's rule (ideas.DefaultRemindOn), so the chip shows what it saves.
+test("defaultRemindOn: a week before, else the day before, else today; none once passed", () => {
+  expect(defaultRemindOn("2026-01-30", "2026-01-20")).toBe("2026-01-23");
+  expect(defaultRemindOn("2026-01-25", "2026-01-20")).toBe("2026-01-24");
+  expect(defaultRemindOn("2026-01-21", "2026-01-20")).toBe("2026-01-20");
+  expect(defaultRemindOn("2026-01-20", "2026-01-20")).toBe("2026-01-20");
+  expect(defaultRemindOn("2026-01-19", "2026-01-20")).toBeNull();
+});
+
+test("addDays and daysBetween cross months and DST", () => {
+  expect(addDays("2026-03-25", 7)).toBe("2026-04-01");
+  expect(addDays("2026-01-05", -7)).toBe("2025-12-29");
+  expect(daysBetween("2026-03-25", "2026-04-01")).toBe(7);
+  expect(daysBetween("2026-10-20", "2026-10-27")).toBe(7);
 });

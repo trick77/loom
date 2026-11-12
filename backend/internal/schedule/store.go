@@ -44,6 +44,8 @@ const (
 const (
 	KindScheduleRun      = "schedule_run"
 	KindScheduleDisabled = "schedule_disabled"
+	// KindIdeaDue is an idea's follow-up before its due date (IdeaID set).
+	KindIdeaDue = "idea_due"
 )
 
 // ErrNotFound is a schedule that does not exist for the user.
@@ -548,8 +550,8 @@ WHERE user_id = ? AND schedule_id = ? ORDER BY finds DESC, last_used_at DESC, qu
 // CreateNotification adds an item to the user's inbox.
 func (st *Store) CreateNotification(ctx context.Context, userID string, n Notification) error {
 	_, err := st.db.ExecContext(ctx, `
-INSERT INTO notifications (id, user_id, kind, schedule_id, thread_id, message_id, title, body)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, sqlutil.NewID(), userID, n.Kind, n.ScheduleID, n.ThreadID, n.MessageID, n.Title, n.Body)
+INSERT INTO notifications (id, user_id, kind, schedule_id, thread_id, message_id, idea_id, title, body)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, sqlutil.NewID(), userID, n.Kind, n.ScheduleID, n.ThreadID, n.MessageID, n.IdeaID, n.Title, n.Body)
 	if err != nil {
 		return fmt.Errorf("create notification: %w", err)
 	}
@@ -590,7 +592,7 @@ RETURNING unread_runs`, userID, *n.ScheduleID).Scan(&unread)
 // ListNotifications returns the user's latest notifications, newest first.
 func (st *Store) ListNotifications(ctx context.Context, userID string, limit int) ([]Notification, error) {
 	rows, err := st.db.QueryContext(ctx, `
-SELECT id, kind, schedule_id, thread_id, message_id, title, body, created_at, read_at FROM notifications
+SELECT `+notificationColumns+` FROM notifications
 WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list notifications: %w", err)
@@ -601,7 +603,7 @@ WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?`, userID, limit)
 // ListUnread returns the user's unread notifications of kind, newest first.
 func (st *Store) ListUnread(ctx context.Context, userID, kind string, limit int) ([]Notification, error) {
 	rows, err := st.db.QueryContext(ctx, `
-SELECT id, kind, schedule_id, thread_id, message_id, title, body, created_at, read_at FROM notifications
+SELECT `+notificationColumns+` FROM notifications
 WHERE user_id = ? AND kind = ? AND read_at IS NULL ORDER BY created_at DESC, rowid DESC LIMIT ?`, userID, kind, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list unread notifications: %w", err)
@@ -609,18 +611,20 @@ WHERE user_id = ? AND kind = ? AND read_at IS NULL ORDER BY created_at DESC, row
 	return scanNotifications(rows)
 }
 
+const notificationColumns = "id, kind, schedule_id, thread_id, message_id, idea_id, title, body, created_at, read_at"
+
 func scanNotifications(rows *sql.Rows) ([]Notification, error) {
 	defer func() { _ = rows.Close() }()
 	out := []Notification{}
 	for rows.Next() {
 		var n Notification
-		var scheduleID, threadID, messageID, readAt sql.NullString
+		var scheduleID, threadID, messageID, ideaID, readAt sql.NullString
 		var created string
 		var err error
-		if err = rows.Scan(&n.ID, &n.Kind, &scheduleID, &threadID, &messageID, &n.Title, &n.Body, &created, &readAt); err != nil {
+		if err = rows.Scan(&n.ID, &n.Kind, &scheduleID, &threadID, &messageID, &ideaID, &n.Title, &n.Body, &created, &readAt); err != nil {
 			return nil, fmt.Errorf("scan notification: %w", err)
 		}
-		n.ScheduleID, n.ThreadID, n.MessageID = nullString(scheduleID), nullString(threadID), nullString(messageID)
+		n.ScheduleID, n.ThreadID, n.MessageID, n.IdeaID = nullString(scheduleID), nullString(threadID), nullString(messageID), nullString(ideaID)
 		if n.CreatedAt, err = sqlutil.ParseTime(created); err != nil {
 			return nil, err
 		}
@@ -655,6 +659,12 @@ func (st *Store) MarkThreadRead(ctx context.Context, userID, threadID string) er
 	return st.markRead(ctx, readThread, userID, threadID)
 }
 
+// MarkIdeaRead marks an idea's follow-up notices read: the user marked it
+// done or hid the follow-up, the bell has nothing left to say about it.
+func (st *Store) MarkIdeaRead(ctx context.Context, userID, ideaID string) error {
+	return st.markRead(ctx, readIdea, userID, ideaID)
+}
+
 // readScope picks the unread notifications a read marks: reset starts the
 // unread run count of their schedules anew, mark marks them. Both take the
 // user id (?1), then the scope's own argument (?2).
@@ -664,6 +674,7 @@ var (
 	readAll    = newReadScope("")
 	readOne    = newReadScope(` AND id = ?2`)
 	readThread = newReadScope(` AND thread_id = ?2 AND kind = '` + KindScheduleRun + `'`)
+	readIdea   = newReadScope(` AND idea_id = ?2 AND kind = '` + KindIdeaDue + `'`)
 )
 
 // newReadScope builds a scope from its filter on the user's unread

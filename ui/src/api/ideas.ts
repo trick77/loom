@@ -93,20 +93,36 @@ async function sendIdea(
   return response.json() as Promise<Idea>;
 }
 
+export type IdeaDraft = {
+  title: string;
+  /** A deadline the reason names, checked by the server; null when none. */
+  dueOn: string | null;
+};
+
 /**
- * draftIdea asks for a title for an idea being captured. "" when there is no
- * model or it gave none: the user types one.
+ * draftIdea asks for a title for an idea being captured and the due date its
+ * reason names. "" / null when there is no model or it gave none: the user
+ * types them.
  */
 export async function draftIdea(
   excerpt: string,
   reason = "",
   signal?: AbortSignal,
-): Promise<{ title: string }> {
-  return requestJSON(`/api/ideas:draft`, "failed to draft idea", {
-    method: "POST",
-    json: { excerpt, reason },
-    signal,
-  });
+): Promise<IdeaDraft> {
+  const data = await requestJSON<Partial<IdeaDraft>>(
+    `/api/ideas:draft`,
+    "failed to draft idea",
+    {
+      method: "POST",
+      json: { excerpt, reason },
+      headers: zoneHeaders(),
+      signal,
+    },
+  );
+  return {
+    title: typeof data.title === "string" ? data.title : "",
+    dueOn: typeof data.dueOn === "string" ? data.dueOn : null,
+  };
 }
 
 export async function listIdeas(status: IdeaState): Promise<Idea[]> {

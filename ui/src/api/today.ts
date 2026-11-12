@@ -1,4 +1,5 @@
 import { AuthExpiredError, requestJSON, UserFacingError } from "./http";
+import type { Idea } from "./ideas";
 import { browserTimezone } from "./schedules";
 
 export type TodayLocation = {
@@ -173,6 +174,8 @@ export type Today = {
   tonight: TodayWarning | null;
   /** Unread schedule runs, newest first. */
   runs: TodayRun[];
+  /** Ideas due for a follow-up, soonest due first (at most 3). */
+  ideas: Idea[];
   /** RFC3339: when the shown day changes next (20:00 or midnight). */
   refreshAt: string | null;
 };
@@ -307,6 +310,7 @@ export function normalizeToday(raw: Partial<Today> | null): Today {
     // midnight: an older server's small hours fall while everyone sleeps.
     tonight: tonightOf(normalizeWarning(today.tonight, "today")),
     runs: Array.isArray(today.runs) ? today.runs : [],
+    ideas: Array.isArray(today.ideas) ? today.ideas : [],
     refreshAt: typeof today.refreshAt === "string" ? today.refreshAt : null,
   };
 }

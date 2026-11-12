@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   announce,
+  AuthExpiredError,
   getToday,
+  IDEAS_CHANGED,
   markNotificationRead,
   NOTIFICATIONS_CHANGED,
   THREAD_NEWS_CHANGED,
+  updateIdea,
+  type IdeaPatch,
   type Today,
 } from "../api";
 
@@ -38,6 +42,8 @@ export function useToday() {
   const [state, setState] = useState<TodayState>({ status: "loading" });
   // Runs read here stay hidden even if a reload races the read.
   const [read, setRead] = useState<ReadonlySet<string>>(() => new Set());
+  // Follow-up cards hidden or done here, likewise.
+  const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
   const alive = useRef(true);
   // When the last load answered, and when its shown day ends.
   const loaded = useRef<{ at: number; refreshAt: number | null } | null>(null);
@@ -61,6 +67,7 @@ export function useToday() {
       const refreshAt = refreshTime(fresh.refreshAt);
       loaded.current = { at: Date.now(), refreshAt };
       setState({ status: "ready", today: fresh });
+      return true;
     } catch {
       if (!alive.current || mine < applied.current) return;
       // A failed reload keeps what is showing.
@@ -99,12 +106,14 @@ export function useToday() {
     };
     window.addEventListener(NOTIFICATIONS_CHANGED, onChanged);
     window.addEventListener(THREAD_NEWS_CHANGED, onChanged);
+    window.addEventListener(IDEAS_CHANGED, onChanged);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive.current = false;
       window.clearTimeout(first);
       window.removeEventListener(NOTIFICATIONS_CHANGED, onChanged);
       window.removeEventListener(THREAD_NEWS_CHANGED, onChanged);
+      window.removeEventListener(IDEAS_CHANGED, onChanged);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [load]);
@@ -154,18 +163,59 @@ export function useToday() {
 
   const markOneRead = useCallback((id: string) => markRead([id]), [markRead]);
 
+  // settleIdea hides a follow-up card (patch remindDismissed) or marks its
+  // idea done, the card gone before the server answers; it comes back when
+  // the change failed. onExpired signs out on an expired session.
+  // Once saved it reloads, so the next follow-up moves up into the free
+  // place, and forgets the id after that reload: the server no longer lists
+  // the card, and a follow-up set on it again later shows again.
+  const settleIdea = useCallback(
+    (id: string, patch: IdeaPatch, onExpired: () => void) => {
+      const forget = () =>
+        setSettled((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      setSettled((prev) => new Set([...prev, id]));
+      updateIdea(id, patch).then(
+        () => {
+          announcing.current = true;
+          try {
+            announce(IDEAS_CHANGED);
+            // The server read the idea's notice in the bell along with it.
+            announce(NOTIFICATIONS_CHANGED);
+          } finally {
+            announcing.current = false;
+          }
+          // Only a fresh answer may let go: a failed reload still shows the
+          // card from before.
+          void load().then((fresh) => {
+            if (fresh) forget();
+          });
+        },
+        (err: unknown) => {
+          forget();
+          if (err instanceof AuthExpiredError) onExpired();
+        },
+      );
+    },
+    [load],
+  );
+
   const visible = useMemo<TodayState>(
     () =>
-      state.status === "ready" && read.size > 0
+      state.status === "ready" && (read.size > 0 || settled.size > 0)
         ? {
             status: "ready",
             today: {
               ...state.today,
               runs: state.today.runs.filter((run) => !read.has(run.id)),
+              ideas: state.today.ideas.filter((idea) => !settled.has(idea.id)),
             },
           }
         : state,
-    [state, read],
+    [state, read, settled],
   );
 
   return {
@@ -173,5 +223,6 @@ export function useToday() {
     reload: load,
     markRead: markOneRead,
     markAllRead: markRead,
+    settleIdea,
   };
 }
