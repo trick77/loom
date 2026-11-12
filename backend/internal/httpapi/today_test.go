@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -155,6 +156,17 @@ func todayHandler(srv *server, now time.Time) http.Handler {
 	srv.now = func() time.Time { return now }
 	return auth.NewMiddleware(fakeSessionStore{userID: testUser.ID}, fakeUserStore{user: testUser, ok: true}).
 		RequireAuth(http.HandlerFunc(srv.handleToday))
+}
+
+// withTool serves the next visits from a new server whose MCP service also
+// has tool. The tool set is copied, never written in place: an earlier
+// visit's background place derivation reads the old one concurrently.
+func (tf *todayFixture) withTool(tool string) {
+	mcp := tf.deps.MCP.(fakeMCPService)
+	mcp.Available = maps.Clone(mcp.Available)
+	mcp.Available[tool] = true
+	tf.deps.MCP = mcp
+	tf.handler = todayHandler(newServer(tf.deps), morning)
 }
 
 func (tf *todayFixture) get(t *testing.T) todayResponse {
@@ -379,9 +391,10 @@ func TestTodayWithoutAPlace(t *testing.T) {
 	if got.CanLocate {
 		t.Fatalf("can locate without the reverse lookup: %+v", got)
 	}
-	mcp := tf.deps.MCP.(fakeMCPService)
-	mcp.Available[weather.ReverseGeocodeTool] = true
-	tf.handler = todayHandler(newServer(tf.deps), morning)
+	// A new server with its own tool set: the first request's background
+	// place derivation may still be reading the old one's (a shared map
+	// written here raced it).
+	tf.withTool(weather.ReverseGeocodeTool)
 	if got := tf.get(t); !got.AskLocation || !got.CanLocate {
 		t.Fatalf("with the reverse lookup = %+v", got)
 	}
@@ -391,9 +404,7 @@ func TestTodayWithoutAPlace(t *testing.T) {
 // with it too, and the town located holds over it, with its credit.
 func TestTodayLocatedOverTheMemory(t *testing.T) {
 	tf := newTodayFixture(t, true)
-	mcp := tf.deps.MCP.(fakeMCPService)
-	mcp.Available[weather.ReverseGeocodeTool] = true
-	tf.handler = todayHandler(newServer(tf.deps), morning)
+	tf.withTool(weather.ReverseGeocodeTool)
 	got := tf.get(t)
 	if got.Location == nil || got.Location.Name != "Zürich" || got.Location.Kind != location.KindHome || got.AskLocation || !got.CanLocate ||
 		got.LocationCredit != nil {
