@@ -1,8 +1,10 @@
 import { useId, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
+import type { Idea } from "../api";
 import type { Today, TodayWeather } from "../api/today";
 import { formatDay } from "./format";
+import { IdeaFollowUps } from "./IdeaFollowUps";
 import { LocationChip } from "./LocationChip";
 import { LocationPrompt } from "./LocationPrompt";
 import { ScheduleNews } from "./ScheduleNews";
@@ -65,6 +67,7 @@ export function TodaySection({
   onMarkAllRead,
   onReload,
   onSessionExpired,
+  ideaActions,
 }: {
   today: Today;
   onOpenThread(threadID: string): void;
@@ -72,12 +75,21 @@ export function TodaySection({
   onMarkAllRead(ids: string[]): void;
   onReload(): void;
   onSessionExpired(): void;
+  /** What the follow-up cards do; without it they are not shown. */
+  ideaActions?: {
+    onStartThread(idea: Idea): void;
+    onOpenIdea(ideaID: string): void;
+    onHide(ideaID: string): void;
+    onDone(ideaID: string): void;
+  };
 }) {
   const weather = today.weather;
+  const ideas = ideaActions === undefined ? [] : today.ideas;
   if (
     weather === null &&
     today.sun === null &&
     today.runs.length === 0 &&
+    ideas.length === 0 &&
     !today.askLocation
   ) {
     return null;
@@ -103,6 +115,9 @@ export function TodaySection({
         today.sun !== null && (
           <SunLine chip={chip(true)} day={today.day} sun={today.sun} />
         )
+      )}
+      {ideaActions !== undefined && (
+        <IdeaFollowUps ideas={ideas} {...ideaActions} />
       )}
       <ScheduleNews
         onMarkAllRead={() => onMarkAllRead(today.runs.map((run) => run.id))}

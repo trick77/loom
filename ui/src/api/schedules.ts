@@ -79,8 +79,10 @@ export type ScheduleMemoryKind = "sources" | "queries";
 
 export type AppNotification = {
   id: string;
-  kind: "schedule_run" | "schedule_disabled";
+  kind: "schedule_run" | "schedule_disabled" | "idea_due";
   scheduleId: string | null;
+  /** idea_due: the idea to follow up. */
+  ideaId?: string | null;
   threadId: string | null;
   messageId: string | null;
   title: string;

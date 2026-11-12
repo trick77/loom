@@ -455,22 +455,35 @@ function NotificationToast({
   );
 }
 
+// Each kind's tile: a failed schedule warns, an idea's follow-up is the bulb.
+const tiles: Record<
+  AppNotification["kind"],
+  { icon: Parameters<typeof Icon>[0]["name"]; className: string }
+> = {
+  schedule_run: { icon: "clock", className: "bg-[#2c2c29] text-[#d8d5cc]" },
+  schedule_disabled: {
+    icon: "alertCircle",
+    className: "bg-[rgba(217,83,79,0.16)] text-[#ec8f8b]",
+  },
+  idea_due: { icon: "bulb", className: "bg-unread/16 text-unread-ink" },
+};
+
 function NotificationText({ notification }: { notification: AppNotification }) {
+  const { t } = useTranslation();
+  const tile = tiles[notification.kind] ?? tiles.schedule_run;
   return (
     <div className="flex gap-2.5">
       <div
-        className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${notification.kind === "schedule_disabled" ? "bg-[rgba(217,83,79,0.16)] text-[#ec8f8b]" : "bg-[#2c2c29] text-[#d8d5cc]"}`}
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${tile.className}`}
       >
-        <Icon
-          name={
-            notification.kind === "schedule_disabled" ? "alertCircle" : "clock"
-          }
-          size="17px"
-        />
+        <Icon name={tile.icon} size="17px" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="font-medium leading-[19px] text-[#ecece6]">
-          {notification.title}
+          {/* The server sends the idea's own title; the label is the UI's. */}
+          {notification.kind === "idea_due"
+            ? t("notifications.ideaDue", { title: notification.title })
+            : notification.title}
         </div>
         {notification.body !== "" && (
           <div className="mt-0.5 line-clamp-2 text-[13px] leading-[18px] text-[#a29f96]">

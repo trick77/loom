@@ -849,10 +849,14 @@ export function ThreadShell({
   }, [routeRef, replace]);
 
   // A notification opens the run's thread; an auto-disable opens the
-  // schedule, where it can be enabled again.
+  // schedule, where it can be enabled again; a follow-up opens its idea (a
+  // deleted one leaves the ideas page).
   const openNotification = useCallback(
     (notification: AppNotification) => {
-      if (
+      if (notification.kind === "idea_due") {
+        if (notification.ideaId) navigateToIdea(notification.ideaId);
+        else navigateToIdeas();
+      } else if (
         notification.kind === "schedule_disabled" &&
         notification.scheduleId !== null
       ) {
@@ -868,7 +872,7 @@ export function ThreadShell({
         navigateToSchedule(notification.scheduleId);
       }
     },
-    [navigateToSchedule, selectThread],
+    [navigateToSchedule, navigateToIdea, navigateToIdeas, selectThread],
   );
 
   const handleSetThreadStarred = useCallback(
@@ -1993,6 +1997,8 @@ export function ThreadShell({
             onRemoveAttachment={handleRemovePendingAttachment}
             onEnterIncognito={enterIncognito}
             onOpenThread={(threadID) => void selectThread(threadID)}
+            onOpenIdea={navigateToIdea}
+            onStartIdeaThread={handleStartThreadFromIdea}
             projects={projects}
             selectedProject={startProject}
             onSelectProject={setStartProjectID}

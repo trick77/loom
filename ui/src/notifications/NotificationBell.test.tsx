@@ -113,6 +113,31 @@ test("shows a dot while anything is unread, the inbox on click", async () => {
   expect(onManage).toHaveBeenCalled();
 });
 
+test("an idea's follow-up reads as one, with its own title, and opens on click", async () => {
+  const due: api.AppNotification = {
+    ...run,
+    id: "n3",
+    kind: "idea_due",
+    scheduleId: null,
+    threadId: null,
+    messageId: null,
+    ideaId: "i1",
+    title: "Vibe Kanban",
+    body: "Lab week topic",
+  };
+  vi.mocked(api.listNotifications).mockResolvedValue([due]);
+  vi.mocked(api.unreadNotificationCount).mockResolvedValue(1);
+  const onOpen = vi.fn();
+  render(
+    <Bell placement="header" onOpen={onOpen} onManageSchedules={vi.fn()} />,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Notifications, some unread/ }),
+  );
+  fireEvent.click(await screen.findByText("Follow-up: Vibe Kanban"));
+  expect(onOpen).toHaveBeenCalledWith(due);
+});
+
 test("mark all read clears the dot", async () => {
   vi.mocked(api.unreadNotificationCount).mockResolvedValue(1);
   render(

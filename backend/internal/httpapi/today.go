@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/auth"
+	"github.com/trick77/loom/internal/ideas"
 	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/sun"
@@ -73,6 +74,10 @@ type todayResponse struct {
 	// tomorrow.
 	Tonight *todayWarning `json:"tonight"`
 	Runs    []todayRun    `json:"runs"`
+	// Ideas are the follow-ups whose date has come (todayFollowUps at most),
+	// listed above the runs. Always the user's real today, also while the
+	// page shows tomorrow's weather.
+	Ideas []ideas.Idea `json:"ideas"`
 	// RefreshAt is when the day shown changes next: the page reloads then.
 	RefreshAt *time.Time `json:"refreshAt"`
 }
@@ -201,7 +206,7 @@ func (s *server) handleToday(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user.Timezone = s.rememberTimezone(ctx, user, r)
 	now := s.clock()
-	out := todayResponse{Runs: s.todayRuns(ctx, user)}
+	out := todayResponse{Runs: s.todayRuns(ctx, user), Ideas: s.todayIdeas(ctx, user)}
 	if s.locationOn() {
 		// The facts may have changed since the last sweep: derive in the
 		// background, the next visit shows it. Unchanged facts cost two queries.
@@ -292,6 +297,22 @@ func (s *server) locationSettled(ctx context.Context, user auth.User) bool {
 	}
 	kept, err := s.locations.FactsHash(ctx, user.ID)
 	return err == nil && kept == hash
+}
+
+// todayFollowUps is how many idea follow-ups the start page lists.
+const todayFollowUps = 3
+
+// todayIdeas is the user's follow-ups for today (FollowUpsForToday).
+func (s *server) todayIdeas(ctx context.Context, user auth.User) []ideas.Idea {
+	if s.ideas == nil {
+		return []ideas.Idea{}
+	}
+	items, err := s.ideas.FollowUpsForToday(ctx, user.ID, s.civilToday(user), todayFollowUps)
+	if err != nil {
+		slog.Warn("list idea follow-ups failed", "user_id", user.ID, "err", err)
+		return []ideas.Idea{}
+	}
+	return items
 }
 
 // todayRuns is the schedule results the user has not read, newest first.

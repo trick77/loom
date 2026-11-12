@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Project } from "../api";
+import type { Idea, Project } from "../api";
+import { ideaThreadDraft } from "../ideas/ideaText";
 import { SidebarOpenButton } from "../SidebarOpenButton";
 import { Composer } from "./Composer";
 import { ErrorText } from "./ErrorText";
@@ -40,6 +41,8 @@ export function StartPanel({
   onSelectProject,
   onCreateProject,
   onSessionExpired,
+  onOpenIdea,
+  onStartIdeaThread,
 }: {
   userID: string;
   displayName: string;
@@ -59,6 +62,9 @@ export function StartPanel({
   onRemoveAttachment(id: string): void;
   onEnterIncognito(): void;
   onOpenThread(threadID: string): void;
+  /** Follow-up cards: open the idea, or fill the composer with it. */
+  onOpenIdea?(ideaID: string): void;
+  onStartIdeaThread?(text: string): void;
   /** Active projects the new chat can start in. */
   projects: Project[];
   selectedProject: Project | null;
@@ -108,7 +114,24 @@ export function StartPanel({
     todayState.status === "error" ||
     (todayState.status === "ready" &&
       todayState.today.weather === null &&
-      todayState.today.runs.length === 0);
+      todayState.today.runs.length === 0 &&
+      todayState.today.ideas.length === 0);
+  const ideaActions =
+    onOpenIdea === undefined || onStartIdeaThread === undefined
+      ? undefined
+      : {
+          onOpenIdea,
+          onStartThread: (idea: Idea) =>
+            onStartIdeaThread(ideaThreadDraft(idea, t)),
+          onHide: (ideaID: string) =>
+            today.settleIdea(
+              ideaID,
+              { remindDismissed: true },
+              onSessionExpired,
+            ),
+          onDone: (ideaID: string) =>
+            today.settleIdea(ideaID, { done: true }, onSessionExpired),
+        };
   return (
     <section className="@container flex h-svh min-h-0 flex-col">
       <header
@@ -198,6 +221,7 @@ export function StartPanel({
               onSessionExpired={onSessionExpired}
               onReload={() => void today.reload()}
               today={todayState.today}
+              ideaActions={ideaActions}
             />
           )}
         </div>

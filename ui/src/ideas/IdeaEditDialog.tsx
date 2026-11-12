@@ -7,7 +7,15 @@ import { ErrorText } from "../chat/ErrorText";
 import { Icon } from "../chat/Icon";
 import { useEscapeKey } from "../chat/useEscapeKey";
 import { modalCancelButtonClass } from "../ThreadActionsMenu";
-import { EXCERPT_MAX, REASON_MAX, TITLE_MAX } from "./ideaText";
+import { FollowUpRow, type IdeaDates } from "./FollowUpRow";
+import {
+  defaultRemindOn,
+  EXCERPT_MAX,
+  REASON_MAX,
+  TITLE_MAX,
+  todayDay,
+} from "./ideaText";
+import { useIdeaDraft } from "./useIdeaDraft";
 
 // 16px on touch: iOS zooms the page into a smaller input.
 export const ideaInputClass =
@@ -38,6 +46,30 @@ export function IdeaEditDialog({
   const [title, setTitle] = useState(idea?.title ?? "");
   const [reason, setReason] = useState(idea?.reason ?? "");
   const [excerpt, setExcerpt] = useState(idea?.excerpt ?? "");
+  const [dates, setDates] = useState<IdeaDates>({
+    dueOn: idea?.dueOn ?? null,
+    remindOn: idea?.remindOn ?? null,
+  });
+  const [datesEdited, setDatesEdited] = useState(false);
+  // Read by a late answer: a call already running when the user set or
+  // dropped a date must not move it back.
+  const datesEditedRef = useRef(false);
+  const [today] = useState(() => todayDay());
+  // A new idea's reason is asked for the due date it names, as in the
+  // capture; its title and passage are the user's to type, and the passage
+  // never goes to the model. An edit keeps its dates as they are.
+  useIdeaDraft(
+    "",
+    reason,
+    { enabled: idea === null && !datesEdited },
+    (draft) => {
+      if (draft.dueOn !== null && !datesEditedRef.current)
+        setDates({
+          dueOn: draft.dueOn,
+          remindOn: defaultRemindOn(draft.dueOn, today),
+        });
+    },
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const pressedBackdrop = useRef(false);
@@ -52,7 +84,15 @@ export function IdeaEditDialog({
     setSaving(true);
     setError("");
     try {
-      const input = { title, reason, excerpt };
+      // A new idea sends both dates: the follow-up shown is the one saved.
+      // An edit sends them only when changed here, so a stale dialog never
+      // moves back a date set elsewhere meanwhile (and with it a sent
+      // follow-up that would go out again).
+      const changed =
+        idea === null ||
+        dates.dueOn !== idea.dueOn ||
+        dates.remindOn !== idea.remindOn;
+      const input = { title, reason, excerpt, ...(changed ? dates : {}) };
       onSaved(
         idea === null
           ? await createIdea(input)
@@ -119,6 +159,15 @@ export function IdeaEditDialog({
             onChange={(event) => setReason(event.target.value)}
           />
         </label>
+        <FollowUpRow
+          value={dates}
+          today={today}
+          onChange={(next) => {
+            setDates(next);
+            setDatesEdited(true);
+            datesEditedRef.current = true;
+          }}
+        />
         <label className="mt-3 block">
           <span className="mb-1.5 block text-[12px] text-[#a8a59c]">
             {t("ideas.form.title")}

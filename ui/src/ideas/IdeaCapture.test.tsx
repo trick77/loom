@@ -15,6 +15,7 @@ import { MessageBubble } from "../chat/messages";
 import { makeIdea } from "../test/ideas";
 import { forgetCaptureDrafts } from "./IdeaCapture";
 import { IdeaCaptureProvider, SAVED_TOAST_MS } from "./IdeaCaptureContext";
+import { DRAFT_DEBOUNCE_MS } from "./useIdeaDraft";
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
@@ -69,7 +70,10 @@ beforeEach(() => {
   // Here, not after: the last test's unmount keeps its capture's draft.
   forgetCaptureDrafts();
   setNarrow(false);
-  vi.mocked(api.draftIdea).mockResolvedValue({ title: "Vibe Kanban" });
+  vi.mocked(api.draftIdea).mockResolvedValue({
+    title: "Vibe Kanban",
+    dueOn: null,
+  });
 });
 
 afterEach(() => {
@@ -122,6 +126,8 @@ test("capture: the reason is required, the title is proposed, save stores it wit
     excerpt: "Vibe Kanban is a board for coding agents.",
     threadId: "t1",
     messageId: "m1",
+    dueOn: null,
+    remindOn: null,
   });
   expect(changed).toHaveBeenCalled();
   window.removeEventListener(api.IDEAS_CHANGED, changed);
@@ -131,7 +137,7 @@ test("capture: the reason is required, the title is proposed, save stores it wit
 });
 
 test("a title the user typed is never overwritten by the proposal", async () => {
-  let answerDraft: (value: { title: string }) => void = () => {};
+  let answerDraft: (value: api.IdeaDraft) => void = () => {};
   vi.mocked(api.draftIdea).mockReturnValue(
     new Promise((resolve) => {
       answerDraft = resolve;
@@ -141,8 +147,92 @@ test("a title the user typed is never overwritten by the proposal", async () => 
   fireEvent.click(screen.getByRole("button", { name: "Save as idea" }));
   const title = screen.getByLabelText("Title");
   fireEvent.change(title, { target: { value: "Mine" } });
-  await act(async () => answerDraft({ title: "Proposed" }));
+  await act(async () => answerDraft({ title: "Proposed", dueOn: null }));
   expect(title).toHaveValue("Mine");
+});
+
+// A local 'YYYY-MM-DD' n days from now.
+function dayFromNow(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+test("a reason naming a deadline brings the due date and a follow-up a week before; the user can move or drop it", async () => {
+  vi.mocked(api.createIdea).mockResolvedValue(makeIdea({ id: "i9" }));
+  const due = dayFromNow(30);
+  renderBubble();
+  fireEvent.click(screen.getByRole("button", { name: "Save as idea" }));
+  const dialog = screen.getByRole("dialog");
+  await within(dialog).findByDisplayValue("Vibe Kanban");
+  expect(within(dialog).getByRole("button", { name: "Set follow-up" }));
+  vi.mocked(api.draftIdea).mockResolvedValue({
+    title: "Other title",
+    dueOn: due,
+  });
+  vi.useFakeTimers();
+  fireEvent.change(within(dialog).getByLabelText(/Why do you want/), {
+    target: { value: "lab week, submit by then" },
+  });
+  // Debounced: asked once the typing pauses, with the reason alone (the
+  // passage is outside text and is never where a date comes from).
+  expect(api.draftIdea).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    vi.advanceTimersByTime(DRAFT_DEBOUNCE_MS + 10);
+  });
+  vi.useRealTimers();
+  expect(api.draftIdea).toHaveBeenLastCalledWith(
+    "",
+    "lab week, submit by then",
+    expect.any(AbortSignal),
+  );
+  const chip = await within(dialog).findByRole("button", {
+    name: /Follow-up .* · 1 week before\. Change follow-up/,
+  });
+  // A proposed title stays put once there.
+  expect(within(dialog).getByLabelText(/^Title/)).toHaveValue("Vibe Kanban");
+  fireEvent.click(chip);
+  fireEvent.click(
+    within(dialog).getByRole("menuitem", { name: "2 weeks before" }),
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(api.createIdea).toHaveBeenCalled());
+  expect(api.createIdea).toHaveBeenCalledWith(
+    expect.objectContaining({ dueOn: due, remindOn: dayFromNow(16) }),
+  );
+});
+
+test("dates the user dropped stay dropped when the next proposal comes", async () => {
+  vi.mocked(api.createIdea).mockResolvedValue(makeIdea({ id: "i9" }));
+  vi.mocked(api.draftIdea).mockResolvedValue({
+    title: "Vibe Kanban",
+    dueOn: dayFromNow(30),
+  });
+  vi.useFakeTimers();
+  renderBubble();
+  fireEvent.click(screen.getByRole("button", { name: "Save as idea" }));
+  const dialog = screen.getByRole("dialog");
+  const reason = within(dialog).getByLabelText(/Why do you want/);
+  fireEvent.change(reason, { target: { value: "by then" } });
+  await act(async () => {
+    vi.advanceTimersByTime(DRAFT_DEBOUNCE_MS + 10);
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "No due date" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "No follow-up" }));
+  fireEvent.change(reason, { target: { value: "by then, really" } });
+  await act(async () => {
+    vi.advanceTimersByTime(DRAFT_DEBOUNCE_MS + 10);
+  });
+  vi.useRealTimers();
+  expect(
+    within(dialog).queryByRole("button", { name: "No due date" }),
+  ).toBeNull();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(api.createIdea).toHaveBeenCalledWith(
+      expect.objectContaining({ dueOn: null, remindOn: null }),
+    ),
+  );
 });
 
 test("a closed capture keeps its reason until reopened for the same message", () => {

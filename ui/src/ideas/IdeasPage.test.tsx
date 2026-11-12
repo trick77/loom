@@ -24,6 +24,7 @@ vi.mock("../api", async () => {
     updateIdea: vi.fn(),
     deleteIdea: vi.fn(),
     restoreIdea: vi.fn(),
+    draftIdea: vi.fn(),
   };
 });
 
@@ -288,6 +289,8 @@ test("new idea needs a reason, then lands on top", async () => {
     title: "Fresh",
     reason: "because",
     excerpt: "",
+    dueOn: null,
+    remindOn: null,
   });
   expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Fresh");
 });
@@ -304,4 +307,99 @@ test("edit saves the changed fields", async () => {
   });
   fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
   expect(await screen.findByText("Kanban!")).toBeInTheDocument();
+});
+
+test("edit shows the follow-up chip; × drops the follow-up, the due date stays", async () => {
+  vi.mocked(api.updateIdea).mockResolvedValue({ ...passkeys, remindOn: null });
+  render(<IdeasPage {...props()} />);
+  const row = (await screen.findByText("Passkeys instead of OIDC")).closest(
+    "li",
+  )!;
+  fireEvent.click(within(row).getByRole("button", { name: "Idea actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+  const dialog = screen.getByRole("dialog", { name: "Edit idea" });
+  expect(within(dialog).getByTestId("follow-up-row")).toHaveTextContent(
+    /Due .*12.*Follow-up .*5.* · 1 week before/,
+  );
+  fireEvent.click(within(dialog).getByRole("button", { name: "No follow-up" }));
+  expect(
+    within(dialog).getByRole("button", { name: "Set follow-up" }),
+  ).toBeInTheDocument();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(api.updateIdea).toHaveBeenCalledWith(
+      "i3",
+      expect.objectContaining({ dueOn: "2099-01-12", remindOn: null }),
+    ),
+  );
+  // An edit never asks the model.
+  expect(api.draftIdea).not.toHaveBeenCalled();
+});
+
+test("past its due date an idea takes no follow-up until the date is dropped", async () => {
+  const late = makeIdea({
+    id: "i9",
+    title: "Late",
+    dueOn: "2020-01-10",
+    remindOn: null,
+  });
+  vi.mocked(api.listIdeas).mockResolvedValue([late]);
+  render(<IdeasPage {...props()} />);
+  const row = (await screen.findByText("Late")).closest("li")!;
+  fireEvent.click(within(row).getByRole("button", { name: "Idea actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+  const dialog = screen.getByRole("dialog", { name: "Edit idea" });
+  const followUp = within(dialog).getByTestId("follow-up-row");
+  expect(followUp).toHaveTextContent("due date passed");
+  expect(
+    within(followUp).queryByRole("button", { name: "Set follow-up" }),
+  ).toBeNull();
+  fireEvent.click(
+    within(followUp).getByRole("button", { name: "No due date" }),
+  );
+  expect(
+    within(followUp).getByRole("button", { name: "Set follow-up" }),
+  ).toBeInTheDocument();
+});
+
+test("an edit that leaves the dates alone does not send them (a stale dialog moves nothing back)", async () => {
+  vi.mocked(api.updateIdea).mockResolvedValue(passkeys);
+  render(<IdeasPage {...props()} />);
+  const row = (await screen.findByText("Passkeys instead of OIDC")).closest(
+    "li",
+  )!;
+  fireEvent.click(within(row).getByRole("button", { name: "Idea actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+  const dialog = screen.getByRole("dialog", { name: "Edit idea" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(api.updateIdea).toHaveBeenCalled());
+  const sent = vi.mocked(api.updateIdea).mock.calls[0][1];
+  expect(sent).not.toHaveProperty("dueOn");
+  expect(sent).not.toHaveProperty("remindOn");
+});
+
+test("a picked follow-up date is taken when the field is left, not per keystroke", async () => {
+  vi.mocked(api.updateIdea).mockResolvedValue(passkeys);
+  render(<IdeasPage {...props()} />);
+  const row = (await screen.findByText("Passkeys instead of OIDC")).closest(
+    "li",
+  )!;
+  fireEvent.click(within(row).getByRole("button", { name: "Idea actions" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
+  const dialog = screen.getByRole("dialog", { name: "Edit idea" });
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: /Change follow-up/ }),
+  );
+  fireEvent.click(
+    within(dialog).getByRole("menuitem", { name: "Pick a date" }),
+  );
+  const input = within(dialog).getByLabelText("Follow-up date");
+  fireEvent.change(input, { target: { value: "2099-01-01" } });
+  // Still picking: a keystroke on its way commits nothing.
+  expect(within(dialog).getByLabelText("Follow-up date")).toBeInTheDocument();
+  fireEvent.change(input, { target: { value: "2099-01-10" } });
+  fireEvent.blur(input);
+  expect(within(dialog).getByTestId("follow-up-row")).toHaveTextContent(
+    /Follow-up .*10.* · 2 days before/,
+  );
 });

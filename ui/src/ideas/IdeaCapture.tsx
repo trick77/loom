@@ -2,18 +2,29 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
-import { announce, createIdea, draftIdea, IDEAS_CHANGED } from "../api";
+import { announce, createIdea, IDEAS_CHANGED } from "../api";
 import { describeActionError } from "../chat/actionErrors";
 import { ErrorText } from "../chat/ErrorText";
 import { Icon } from "../chat/Icon";
 import { useEscapeKey } from "../chat/useEscapeKey";
 import { useMediaQuery } from "../chat/useMediaQuery";
 import { useMenuPlacement } from "../chat/useMenuPlacement";
+import { FollowUpRow, type IdeaDates } from "./FollowUpRow";
 import { canHover, ideaInputClass } from "./IdeaEditDialog";
 import { useIdeaCapture, type CaptureRequest } from "./IdeaCaptureContext";
-import { REASON_MAX, TITLE_MAX } from "./ideaText";
+import { defaultRemindOn, REASON_MAX, TITLE_MAX, todayDay } from "./ideaText";
+import { useIdeaDraft } from "./useIdeaDraft";
 
-type Draft = { reason: string; title: string; titleEdited: boolean };
+type Draft = {
+  reason: string;
+  title: string;
+  titleEdited: boolean;
+  dates: IdeaDates;
+  /** The user set or dropped a date: the draft call no longer moves them. */
+  datesEdited: boolean;
+};
+
+const noDates: IdeaDates = { dueOn: null, remindOn: null };
 
 // drafts keeps what was typed into a capture that was closed unsaved, and
 // the proposed title, by message, until it is opened again for that message
@@ -188,25 +199,35 @@ function CaptureForm({
   const [reason, setReason] = useState(kept?.reason ?? "");
   const [title, setTitle] = useState(kept?.title ?? "");
   const [titleEdited, setTitleEdited] = useState(kept?.titleEdited ?? false);
+  const [dates, setDates] = useState<IdeaDates>(kept?.dates ?? noDates);
+  const [datesEdited, setDatesEdited] = useState(kept?.datesEdited ?? false);
+  const [today] = useState(() => todayDay());
   // A save survives this form remounting (popover ↔ sheet at the breakpoint).
   const [saving, setSaving] = useState(() =>
     savingCaptures.has(request.messageId),
   );
-  // Read by the late title proposal: a field the user emptied stays empty.
-  const titleEditedRef = useRef(titleEdited);
+  // Read by a late proposal: a field the user emptied stays empty, dates the
+  // user set stay.
+  const editedRef = useRef({ title: titleEdited, dates: datesEdited });
   useEffect(() => {
-    titleEditedRef.current = titleEdited;
-  }, [titleEdited]);
+    editedRef.current = { title: titleEdited, dates: datesEdited };
+  }, [titleEdited, datesEdited]);
   const [error, setError] = useState("");
   const close = useClose(request);
   useEscapeKey(close);
 
   // What was typed, and a proposed title, survive a close until this
   // message's capture opens again.
-  const latest = useRef<Draft>({ reason, title, titleEdited });
+  const latest = useRef<Draft>({
+    reason,
+    title,
+    titleEdited,
+    dates,
+    datesEdited,
+  });
   useEffect(() => {
-    latest.current = { reason, title, titleEdited };
-  }, [reason, title, titleEdited]);
+    latest.current = { reason, title, titleEdited, dates, datesEdited };
+  }, [reason, title, titleEdited, dates, datesEdited]);
   useEffect(() => {
     const messageId = request.messageId;
     return () => {
@@ -218,25 +239,33 @@ function CaptureForm({
   }, [request.messageId]);
 
   // The title is proposed as the capture opens, unless it has one (typed or
-  // proposed before); a title the user typed is never overwritten. The
-  // request is aborted with the capture (StrictMode runs this twice).
-  const needsTitle = title === "" && !titleEdited;
-  useEffect(() => {
-    if (!needsTitle) return;
-    const controller = new AbortController();
-    draftIdea(request.excerpt, "", controller.signal).then(
-      (draft) => {
-        if (!controller.signal.aborted && draft.title !== "")
-          setTitle((current) =>
-            current === "" && !titleEditedRef.current ? draft.title : current,
-          );
-      },
-      () => {},
-    );
-    return () => controller.abort();
-    // Asked once per opening: typing a title must not re-ask.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request.excerpt]);
+  // proposed before), and asked again as the reason changes, for the due
+  // date it names. A proposed title stays once there (no title jumping
+  // while the reason is typed); one the user typed is never overwritten. A
+  // due date the reason names brings the server's default follow-up; dates
+  // the user set or dropped are left alone, and an answer without a date
+  // (no model, a busy or failed call) drops none.
+  useIdeaDraft(
+    request.excerpt,
+    reason,
+    // Nothing left to ask once the dates are the user's and the title is
+    // set: no call whose answer would be thrown away.
+    {
+      askNow: title === "" && !titleEdited,
+      enabled: !datesEdited || (title === "" && !titleEdited),
+    },
+    (draft) => {
+      if (draft.title !== "")
+        setTitle((current) =>
+          current === "" && !editedRef.current.title ? draft.title : current,
+        );
+      if (draft.dueOn !== null && !editedRef.current.dates)
+        setDates({
+          dueOn: draft.dueOn,
+          remindOn: defaultRemindOn(draft.dueOn, today),
+        });
+    },
+  );
 
   const canSave = reason.trim() !== "" && !saving && capture !== null;
   const save = async () => {
@@ -252,9 +281,18 @@ function CaptureForm({
         excerpt: request.excerpt,
         threadId,
         messageId: request.messageId,
+        // Both sent: the follow-up shown is the one saved.
+        dueOn: dates.dueOn,
+        remindOn: dates.remindOn,
       });
       drafts.delete(request.messageId);
-      latest.current = { reason: "", title: "", titleEdited: false };
+      latest.current = {
+        reason: "",
+        title: "",
+        titleEdited: false,
+        dates: noDates,
+        datesEdited: false,
+      };
       announce(IDEAS_CHANGED);
       savingCaptures.delete(request.messageId);
       capture.saved(idea.id, threadId, request.messageId);
@@ -306,6 +344,14 @@ function CaptureForm({
           className={`${ideaInputClass} block resize-none font-serif font-[360] leading-[22px]`}
         />
       </label>
+      <FollowUpRow
+        value={dates}
+        today={today}
+        onChange={(next) => {
+          setDates(next);
+          setDatesEdited(true);
+        }}
+      />
       <label className="mt-3 block">
         <span className="mb-1.5 flex justify-between text-[12px] text-[#a8a59c]">
           {t("ideas.form.title")}

@@ -203,6 +203,9 @@ func (s *server) pushNotification(ctx context.Context, userID string, n schedule
 		// One schedule's newer run replaces its older one on the lock screen.
 		p.Tag = "schedule-" + *n.ScheduleID
 	}
+	if n.IdeaID != nil {
+		p.Tag = "idea-" + *n.IdeaID
+	}
 	s.background.Spawn(context.WithoutCancel(ctx), "push:"+userID, func(ctx context.Context) {
 		subs, err := s.pushStore.List(ctx, userID)
 		if err != nil {
@@ -228,6 +231,8 @@ func (s *server) pushNotification(ctx context.Context, userID string, n schedule
 // thread, else the schedule.
 func pushURL(n schedule.Notification) string {
 	switch {
+	case n.Kind == schedule.KindIdeaDue && n.IdeaID != nil:
+		return "/ideas/" + url.PathEscape(*n.IdeaID)
 	case n.Kind == schedule.KindScheduleDisabled && n.ScheduleID != nil:
 		return "/schedules/" + url.PathEscape(*n.ScheduleID)
 	case n.ThreadID != nil:

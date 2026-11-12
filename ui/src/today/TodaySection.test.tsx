@@ -11,6 +11,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import * as api from "../api";
 import { AuthExpiredError, UserFacingError } from "../api/http";
+import { makeIdea } from "../test/ideas";
 import { todayFixture, tomorrowFixture } from "../test/today";
 import { TodaySection } from "./TodaySection";
 
@@ -789,4 +790,60 @@ test("an unknown place is said so; other failures too", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Couldn't save the place. Try again.",
   );
+});
+
+const ideaActions = {
+  onStartThread: vi.fn(),
+  onOpenIdea: vi.fn(),
+  onHide: vi.fn(),
+  onDone: vi.fn(),
+};
+
+test("follow-ups sit above the schedule news: due date, reason, and what to do with each", () => {
+  const due = new Date();
+  due.setDate(due.getDate() + 7);
+  const dueOn = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
+  const idea = makeIdea({ id: "i1", dueOn, remindOn: null });
+  render(
+    <TodaySection
+      today={todayFixture({ ideas: [idea] })}
+      {...handlers}
+      ideaActions={ideaActions}
+    />,
+  );
+  const section = screen.getByRole("region", { name: /Follow-up/ });
+  expect(within(section).getByTestId("follow-up-count")).toHaveTextContent("1");
+  const card = within(section).getByRole("article");
+  expect(card).toHaveTextContent(idea.title);
+  expect(card).toHaveTextContent(idea.reason);
+  expect(card).toHaveTextContent(/due in 7 days · /);
+  // Above the news.
+  const news = screen.getByRole("region", { name: /New from your schedules/ });
+  expect(
+    section.compareDocumentPosition(news) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  fireEvent.click(
+    within(card).getByRole("button", { name: "Start a thread about it" }),
+  );
+  expect(ideaActions.onStartThread).toHaveBeenCalledWith(idea);
+  fireEvent.click(within(card).getByRole("button", { name: "Open idea" }));
+  expect(ideaActions.onOpenIdea).toHaveBeenCalledWith("i1");
+  fireEvent.click(within(card).getByRole("button", { name: "Hide" }));
+  expect(ideaActions.onHide).toHaveBeenCalledWith("i1");
+  fireEvent.click(within(card).getByRole("button", { name: "Mark as done" }));
+  expect(ideaActions.onDone).toHaveBeenCalledWith("i1");
+});
+
+test("follow-ups alone keep the section; without actions they are not shown", () => {
+  const today = { weather: null, sun: null, runs: [], ideas: [makeIdea()] };
+  const { container, unmount } = render(
+    <TodaySection
+      today={todayFixture(today)}
+      {...handlers}
+      ideaActions={ideaActions}
+    />,
+  );
+  expect(container).not.toBeEmptyDOMElement();
+  unmount();
+  expect(show(today).container).toBeEmptyDOMElement();
 });

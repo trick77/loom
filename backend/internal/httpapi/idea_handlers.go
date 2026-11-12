@@ -153,9 +153,9 @@ func (s *server) handleDraftIdea(w http.ResponseWriter, r *http.Request) {
 	}
 	excerpt := ideas.CleanText(req.Excerpt, ideas.MaxExcerptRunes)
 	reason := ideas.CleanLine(req.Reason, ideas.MaxReasonRunes)
-	title := ""
+	out := draftIdeaResponse{}
 	// One proposal per user at a time: a second request while one runs gets
-	// no title rather than another model call.
+	// nothing rather than another model call.
 	release, free := s.inflight.tryAcquire("idea-draft:" + user.ID)
 	if free {
 		defer release()
@@ -163,15 +163,43 @@ func (s *server) handleDraftIdea(w http.ResponseWriter, r *http.Request) {
 	if free && s.ideaLLM != nil && (excerpt != "" || reason != "") {
 		ctx, cancel := context.WithTimeout(r.Context(), ideaDraftTimeout)
 		defer cancel()
+		today := s.userToday(r, user)
 		inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, Purpose: "idea_draft", Round: 1}
-		drafted, err := s.ideaLLM.DraftIdeaTitle(llm.WithInferenceMetadata(ctx, inference), excerpt, reason, user.ResponseLanguageName())
+		drafted, err := s.ideaLLM.DraftIdea(llm.WithInferenceMetadata(ctx, inference), excerpt, reason, ideas.FormatDate(today), user.ResponseLanguageName())
 		if err != nil {
-			slog.Warn("draft idea title failed", "user_id", user.ID, "err", err)
+			slog.Warn("draft idea failed", "user_id", user.ID, "err", err)
 		} else {
-			title = ideas.CleanLine(drafted, ideas.MaxTitleRunes)
+			out.Title = ideas.CleanLine(drafted.Title, ideas.MaxTitleRunes)
+			// A date only from a call without the passage: outside text
+			// that names one must not set a due date (and through it a
+			// push), whatever the prompt says. The UI asks for the title
+			// with the passage and for the date with the reason alone.
+			if excerpt == "" {
+				out.DueOn = draftedDueOn(drafted.DueOn, today)
+			}
 		}
 	}
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"title": title})
+	httpx.WriteJSON(w, http.StatusOK, out)
+}
+
+type draftIdeaResponse struct {
+	Title string  `json:"title"`
+	DueOn *string `json:"dueOn"`
+}
+
+// draftedMaxAhead is the furthest a drafted due date may lie.
+const draftedMaxAhead = 3
+
+// draftedDueOn keeps a model's due date only when it is a real date, not
+// before today and within draftedMaxAhead years; the follow-up is the
+// server's to compute (ideas.DefaultRemindOn), never the model's.
+func draftedDueOn(raw string, today time.Time) *string {
+	d, err := ideas.ParseDate(raw)
+	if err != nil || d.Before(today) || d.After(today.AddDate(draftedMaxAhead, 0, 0)) {
+		return nil
+	}
+	s := ideas.FormatDate(d)
+	return &s
 }
 
 type patchIdeaRequest struct {
@@ -207,7 +235,24 @@ func (s *server) handlePatchIdea(w http.ResponseWriter, r *http.Request) {
 		writeIdeaError(w, r, err)
 		return
 	}
+	// Done, hidden or re-dated: its follow-up notice in the bell is settled
+	// (a moved follow-up sends a new one on its day).
+	settled := (req.Done != nil && *req.Done) || (req.RemindDismissed != nil && *req.RemindDismissed) || req.RemindOn.Set || req.DueOn.Set
+	if settled {
+		s.settleIdeaNotices(r.Context(), user.ID, idea.ID)
+	}
 	httpx.WriteJSON(w, http.StatusOK, idea)
+}
+
+// settleIdeaNotices marks an idea's follow-up notices read, best effort:
+// the idea is done, deleted or re-dated, the bell has nothing left to say.
+func (s *server) settleIdeaNotices(ctx context.Context, userID, ideaID string) {
+	if s.schedules == nil {
+		return
+	}
+	if err := s.schedules.MarkIdeaRead(ctx, userID, ideaID); err != nil {
+		slog.Warn("mark idea notifications read failed", "idea_id", ideaID, "err", err)
+	}
 }
 
 // handleDeleteIdea deletes softly (restorable for 30 days); a proposal is
@@ -221,6 +266,7 @@ func (s *server) handleDeleteIdea(w http.ResponseWriter, r *http.Request) {
 		writeIdeaError(w, r, err)
 		return
 	}
+	s.settleIdeaNotices(r.Context(), user.ID, r.PathValue("ideaID"))
 	w.WriteHeader(http.StatusNoContent)
 }
 

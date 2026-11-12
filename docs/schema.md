@@ -236,6 +236,7 @@ Go types:
 | `schedule_id` | TEXT | yes |  |  |
 | `thread_id` | TEXT | yes |  |  |
 | `message_id` | TEXT | yes |  |  |
+| `idea_id` | TEXT | yes |  |  |
 | `title` | TEXT | no |  |  |
 | `body` | TEXT | no | `''` |  |
 | `created_at` | TEXT | no | `datetime('now')` |  |
@@ -243,6 +244,7 @@ Go types:
 
 Foreign keys:
 
+- `idea_id` → `ideas` (`id`), on delete SET NULL
 - `message_id` → `messages` (`id`), on delete SET NULL
 - `thread_id` → `threads` (`id`), on delete SET NULL
 - `schedule_id` → `schedules` (`id`), on delete SET NULL
@@ -250,6 +252,7 @@ Foreign keys:
 
 Indexes:
 
+- `idx_notifications_idea` (`idea_id`) where `idea_id IS NOT NULL`
 - `idx_notifications_message` (`message_id`) where `message_id IS NOT NULL`
 - `idx_notifications_schedule` (`schedule_id`) where `schedule_id IS NOT NULL`
 - `idx_notifications_thread` (`thread_id`) where `thread_id IS NOT NULL`
@@ -257,7 +260,7 @@ Indexes:
 
 Checks:
 
-- `CHECK (kind IN ('schedule_run', 'schedule_disabled'))`
+- `CHECK (kind IN ('schedule_run', 'schedule_disabled', 'idea_due'))`
 
 ## project_memory
 
@@ -1174,6 +1177,7 @@ erDiagram
         TEXT schedule_id FK
         TEXT thread_id FK
         TEXT message_id FK
+        TEXT idea_id FK
         TEXT title
         TEXT body
         TEXT created_at
@@ -1428,6 +1432,7 @@ erDiagram
     ideas }o--|| users : "user_id"
     messages }o--|| threads : "user_id, thread_id"
     messages }o--|| users : "user_id"
+    notifications }o--o| ideas : "idea_id"
     notifications }o--o| messages : "message_id"
     notifications }o--o| threads : "thread_id"
     notifications }o--o| schedules : "schedule_id"

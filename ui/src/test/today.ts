@@ -199,6 +199,7 @@ export function todayFixture(overrides: Partial<Today> = {}): Today {
         createdAt: new Date().toISOString(),
       },
     ],
+    ideas: [],
     ...overrides,
   };
 }

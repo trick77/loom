@@ -78,13 +78,15 @@ type Query struct {
 //
 // Table: notifications
 type Notification struct {
-	ID         string     `json:"id"`
-	Kind       string     `json:"kind"`
-	ScheduleID *string    `json:"scheduleId"`
-	ThreadID   *string    `json:"threadId"`
-	MessageID  *string    `json:"messageId"`
-	Title      string     `json:"title"`
-	Body       string     `json:"body"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	ReadAt     *time.Time `json:"readAt"`
+	ID         string  `json:"id"`
+	Kind       string  `json:"kind"`
+	ScheduleID *string `json:"scheduleId"`
+	ThreadID   *string `json:"threadId"`
+	MessageID  *string `json:"messageId"`
+	// IdeaID is the idea an idea_due follow-up is about; nil once deleted.
+	IdeaID    *string    `json:"ideaId"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"createdAt"`
+	ReadAt    *time.Time `json:"readAt"`
 }

@@ -36,6 +36,7 @@ test("getToday sends the browser's timezone; a short answer shows nothing", asyn
     warning: null,
     tonight: null,
     runs: [],
+    ideas: [],
     refreshAt: null,
   });
   // One plain URL for every screen: no compact flag.
@@ -99,6 +100,7 @@ test("getToday keeps a full answer and survives a null one", async () => {
     warning: { kind: "rain", from: "10:00", day: "tomorrow", chance: 80 },
     tonight: { kind: "rain", from: "20:00", day: "today", chance: 90 },
     runs: [{ id: "n1", threadId: null, title: "t", body: "b", createdAt: "x" }],
+    ideas: [],
     refreshAt: "2026-11-10T00:00:00+01:00",
   };
   stubFetch(Response.json(full));
