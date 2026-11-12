@@ -89,7 +89,7 @@ func TestQueuedMessages_ConsumeMovesRowsIntoTranscriptOnce(t *testing.T) {
 	}
 	// The segment row is written after the messages were queued; the consumed
 	// rows must still come after it.
-	if _, err := f.store.AddMessageWithCitations(ctx, f.userID, f.threadID, RoleAssistant, "", MessageTokenUsage{}, nil, nil, nil, json.RawMessage(`[{"type":"trace","events":[]}]`)); err != nil {
+	if _, err := f.store.AddMessageWithCitations(ctx, f.userID, f.threadID, RoleAssistant, "", MessageTokenUsage{}, nil, nil, nil, json.RawMessage(`[{"type":"trace","events":[]}]`), false); err != nil {
 		t.Fatalf("segment insert error = %v", err)
 	}
 
@@ -169,7 +169,7 @@ func TestQueuedMessages_ThreadsWithQueuedAndCascade(t *testing.T) {
 func TestStore_AssistantRowNeedsContentOrBlocks(t *testing.T) {
 	ctx := context.Background()
 	f := newQueueFixture(t)
-	if _, err := f.store.AddMessageWithCitations(ctx, f.userID, f.threadID, RoleAssistant, "", MessageTokenUsage{}, nil, nil, nil, nil); err == nil {
+	if _, err := f.store.AddMessageWithCitations(ctx, f.userID, f.threadID, RoleAssistant, "", MessageTokenUsage{}, nil, nil, nil, nil, false); err == nil {
 		t.Fatal("empty assistant without blocks: error = nil, want validation error")
 	}
 	if _, err := f.store.AddMessage(ctx, f.userID, f.threadID, RoleUser, ""); err == nil {

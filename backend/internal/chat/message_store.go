@@ -14,9 +14,12 @@ import (
 
 // AddMessageWithCitations is the full assistant insert: artifacts, activity
 // trace, citations (the documents and web sources behind the answer) and the
-// ordered content blocks. Any of the JSON columns may be nil.
-func (s *Store) AddMessageWithCitations(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage) (Message, error) {
+// ordered content blocks. Any of the JSON columns may be nil. readOutside is
+// set when the turn read outside content (Message.ReadOutside); an assistant
+// row is flagged anyway once an earlier answer of its thread was.
+func (s *Store) AddMessageWithCitations(ctx context.Context, userID, threadID string, role Role, content string, usage MessageTokenUsage, artifacts json.RawMessage, activityTrace json.RawMessage, citations json.RawMessage, contentBlocks json.RawMessage, readOutside bool) (Message, error) {
 	return s.insertMessage(ctx, messageInsert{
+		readOutside:   readOutside,
 		userID:        userID,
 		threadID:      threadID,
 		role:          role,
@@ -61,6 +64,9 @@ type messageInsert struct {
 	contentBlocks json.RawMessage
 	// clientMessageID is the id the client gave the send; "" when none.
 	clientMessageID string
+	// readOutside flags an assistant row (Message.ReadOutside); ignored for
+	// any other role.
+	readOutside bool
 }
 
 func (s *Store) insertMessage(ctx context.Context, in messageInsert) (Message, error) {
@@ -159,9 +165,15 @@ INSERT INTO messages (
     duration_ms,
     model,
     reasoning_effort,
-    client_message_id
+    client_message_id,
+    read_outside
 )
-VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    -- Sticky per thread: a later answer can pass an earlier page's text on
+    -- from the history without calling a tool.
+    CASE WHEN ? = 'assistant' AND (? OR EXISTS (
+        SELECT 1 FROM messages p WHERE p.user_id = ? AND p.thread_id = ? AND p.read_outside = 1
+    )) THEN 1 ELSE 0 END)`,
 		messageID,
 		threadID,
 		userID,
@@ -185,6 +197,7 @@ VALUES (?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
 		usage.Model,
 		usage.ReasoningEffort,
 		in.clientMessageID,
+		role, in.readOutside, userID, threadID,
 	)
 	if err != nil {
 		return "", fmt.Errorf("insert message: %w", err)

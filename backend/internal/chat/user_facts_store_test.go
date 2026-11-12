@@ -316,6 +316,48 @@ func TestMergeUserFacts(t *testing.T) {
 	}
 }
 
+// An answer from a turn that read outside content is flagged, and so is every
+// later answer of that thread: a follow-up answers from the history without
+// tools. User messages and other threads never are. The flag reaches the fact
+// extraction's list.
+func TestAddMessage_ReadOutsideIsStickyPerThread(t *testing.T) {
+	ctx := context.Background()
+	store, _, userID := newFactStore(t)
+	thread := newThread(t, store, userID)
+	other := newThread(t, store, userID)
+	add := func(threadID string, role Role, content string, readOutside bool) Message {
+		t.Helper()
+		m, err := store.AddMessageWithCitations(ctx, userID, threadID, role, content, MessageTokenUsage{}, nil, nil, nil, nil, readOutside)
+		if err != nil {
+			t.Fatalf("add %s: %v", content, err)
+		}
+		return m
+	}
+	clean := add(thread, RoleAssistant, "before", false)
+	read := add(thread, RoleAssistant, "page summary", true)
+	user := add(thread, RoleUser, "and then?", true)
+	follow := add(thread, RoleAssistant, "follow-up", false)
+	elsewhere := add(other, RoleAssistant, "other thread", false)
+
+	got, err := store.ListUserMessagesAfter(ctx, userID, "", "", time.Now().Add(time.Hour), 50)
+	if err != nil {
+		t.Fatalf("ListUserMessagesAfter: %v", err)
+	}
+	flags := map[string]bool{}
+	for _, m := range got {
+		flags[m.ID] = m.ReadOutside
+	}
+	want := map[string]bool{clean.ID: false, read.ID: true, user.ID: false, follow.ID: true, elsewhere.ID: false}
+	for id, w := range want {
+		if flags[id] != w {
+			t.Errorf("message %s read_outside = %v, want %v", id, flags[id], w)
+		}
+	}
+	if read.ReadOutside != true || follow.ReadOutside != true {
+		t.Errorf("the inserted rows must come back flagged: %v %v", read.ReadOutside, follow.ReadOutside)
+	}
+}
+
 func TestListUserMessagesAfter_CursorAndSettleMargin(t *testing.T) {
 	ctx := context.Background()
 	store, db, userID := newFactStore(t)

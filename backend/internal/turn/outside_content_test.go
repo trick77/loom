@@ -181,3 +181,28 @@ func TestFileAndImageResultsAreNotOutsideContent(t *testing.T) {
 		}
 	}
 }
+
+// The answer of a turn that read outside content is stored flagged, so the
+// fact extraction never reads it; a turn that only used a memory tool is not.
+func TestAnswerAfterOutsideContentIsFlagged(t *testing.T) {
+	flagged := func(store *fakeThreadStore) bool {
+		t.Helper()
+		for _, m := range store.Messages {
+			if m.Role == chat.RoleAssistant {
+				return m.ReadOutside
+			}
+		}
+		t.Fatal("no answer stored")
+		return false
+	}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "t"}}
+	outsideTurn(t, store, nil, []llm.ToolCall{call("f1", "fetch__fetch", `{"url":"https://a.example"}`)})
+	if !flagged(store) {
+		t.Fatal("answer after a fetch is not flagged read_outside")
+	}
+	store = &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "t"}}
+	outsideTurn(t, store, nil, []llm.ToolCall{call("m1", UserFactsToolName, `{"action":"add","category":"work","content":"Dev"}`)})
+	if flagged(store) {
+		t.Fatal("answer after a memory tool only is flagged read_outside")
+	}
+}

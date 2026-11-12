@@ -79,7 +79,9 @@ WHERE m.user_id = ? AND t.project_id = ?`,
 // project (chronological order), capped at limit. Used for the full memory
 // rebuild; the cap keeps the rebuild bounded so it never loads the entire
 // project history.
-// Only the transcript fields are loaded (see transcriptColumns).
+// Only the transcript fields are loaded (see transcriptColumns). Answers that
+// read outside content (Message.ReadOutside) are left out: the project memory
+// rides in every prompt of the project, a page's text must not.
 func (s *Store) ListProjectMessages(ctx context.Context, userID, projectID string, limit int) ([]Message, error) {
 	if limit <= 0 {
 		limit = MemoryRebuildLimit
@@ -88,7 +90,7 @@ func (s *Store) ListProjectMessages(ctx context.Context, userID, projectID strin
 SELECT `+transcriptColumnsM+`
 FROM messages m
 JOIN threads t ON t.user_id = m.user_id AND t.id = m.thread_id
-WHERE m.user_id = ? AND t.project_id = ?
+WHERE m.user_id = ? AND t.project_id = ? AND m.read_outside = 0
 ORDER BY m.created_at DESC, m.rowid DESC
 LIMIT ?`,
 		userID, projectID, limit,

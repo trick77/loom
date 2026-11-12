@@ -531,7 +531,7 @@ func TestMessagesPersistCitations(t *testing.T) {
 	}
 
 	rawCitations := json.RawMessage(`[{"documentId":"d1","filename":"guide.pdf","snippet":"make build","score":0.8}]`)
-	message, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "Use make build.", MessageTokenUsage{}, nil, nil, rawCitations, nil)
+	message, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "Use make build.", MessageTokenUsage{}, nil, nil, rawCitations, nil, false)
 	if err != nil {
 		t.Fatalf("AddMessageWithCitations() error = %v", err)
 	}
@@ -559,7 +559,7 @@ func TestStore_AddMessageWithCitationsPersistsContentBlocks(t *testing.T) {
 	}
 
 	rawBlocks := json.RawMessage(`[{"type":"trace","events":[{"id":"call_1","type":"tool","name":"web_fetch","status":"done"}]},{"type":"text","content":"Here is the answer."}]`)
-	message, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "Here is the answer.", MessageTokenUsage{}, nil, nil, nil, rawBlocks)
+	message, err := store.AddMessageWithCitations(ctx, userID, thread.ID, RoleAssistant, "Here is the answer.", MessageTokenUsage{}, nil, nil, nil, rawBlocks, false)
 	if err != nil {
 		t.Fatalf("AddMessageWithCitations() error = %v", err)
 	}

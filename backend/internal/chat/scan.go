@@ -119,7 +119,7 @@ func scheduleUnread(table string) string {
 }
 
 // messageColumns is the full messages projection scanMessage reads.
-const messageColumns = "id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, client_message_id, created_at"
+const messageColumns = "id, thread_id, role, content, reasoning_content, tool_calls, citations, artifacts, attachments, pasted_texts, activity_trace, content_blocks, prompt_tokens, completion_tokens, total_tokens, cached_tokens, reasoning_tokens, context_tokens, cost_nano_usd, duration_ms, model, reasoning_effort, client_message_id, created_at, read_outside"
 
 // transcriptColumns is the narrow projection for callers that only render a
 // "Role: content" transcript (thread digests, memory generation). It leaves out
@@ -131,11 +131,12 @@ const transcriptColumns = "id, thread_id, role, content, created_at"
 const transcriptColumnsM = "m.id, m.thread_id, m.role, m.content, m.created_at"
 
 // scanTranscriptMessage reads a transcriptColumns row. Only ID, ThreadID, Role,
-// Content and CreatedAt are set on the result.
-func scanTranscriptMessage(row rowScanner) (Message, error) {
+// Content and CreatedAt are set on the result; extra are the destinations of
+// columns a query selects after them.
+func scanTranscriptMessage(row rowScanner, extra ...any) (Message, error) {
 	var message Message
 	var role, createdAt string
-	if err := row.Scan(&message.ID, &message.ThreadID, &role, &message.Content, &createdAt); err != nil {
+	if err := row.Scan(append([]any{&message.ID, &message.ThreadID, &role, &message.Content, &createdAt}, extra...)...); err != nil {
 		return Message{}, err
 	}
 	message.Role = Role(role)
@@ -179,6 +180,7 @@ func scanMessage(row rowScanner) (Message, error) {
 		&reasoningEffort,
 		&message.ClientMessageID,
 		&createdAt,
+		&message.ReadOutside,
 	); err != nil {
 		return Message{}, err
 	}

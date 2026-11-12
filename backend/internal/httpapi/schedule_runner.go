@@ -656,7 +656,7 @@ func (s *server) closeInterruptedRun(ctx context.Context, run schedule.Interrupt
 // persistRunNote ends a run that has no answer with a line saying why, so the
 // thread never holds a prompt without a reply.
 func (s *server) persistRunNote(ctx context.Context, userID, threadID, note string) {
-	if _, err := s.thread.AddMessageWithCitations(ctx, userID, threadID, chat.RoleAssistant, note, chat.MessageTokenUsage{}, nil, nil, nil, nil); err != nil {
+	if _, err := s.thread.AddMessageWithCitations(ctx, userID, threadID, chat.RoleAssistant, note, chat.MessageTokenUsage{}, nil, nil, nil, nil, false); err != nil {
 		slog.Warn("persist scheduled run note failed", "thread_id", threadID, "err", err)
 	}
 }

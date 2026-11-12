@@ -158,6 +158,7 @@ Go types:
 | `pasted_texts` | TEXT | no | `'[]'` |  |
 | `cost_nano_usd` | INTEGER | yes |  |  |
 | `client_message_id` | TEXT | no | `''` |  |
+| `read_outside` | INTEGER | no | `0` |  |
 
 Foreign keys:
 
@@ -166,6 +167,7 @@ Foreign keys:
 
 Indexes:
 
+- `idx_messages_read_outside` (`user_id`, `thread_id`) where `read_outside = 1`
 - `idx_messages_thread_created` (`thread_id`, `created_at`, `id`)
 - `idx_messages_user_created` (`user_id`, `created_at DESC`)
 - `idx_messages_user_thread` (`user_id`, `thread_id`)
@@ -173,6 +175,7 @@ Indexes:
 Checks:
 
 - `CHECK (role IN ('user', 'assistant', 'tool'))`
+- `CHECK (read_outside IN (0, 1))`
 
 ## notifications
 
@@ -1069,6 +1072,7 @@ erDiagram
         TEXT pasted_texts
         INTEGER cost_nano_usd
         TEXT client_message_id
+        INTEGER read_outside
     }
     notifications {
         TEXT id PK

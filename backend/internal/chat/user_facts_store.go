@@ -450,7 +450,7 @@ func (s *Store) ListUserMessagesAfter(ctx context.Context, userID, afterCreatedA
 		limit = UserFactBatchLimit
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT `+transcriptColumnsM+`
+SELECT `+transcriptColumnsM+`, m.read_outside
 FROM messages m
 WHERE m.user_id = ? AND (m.created_at, m.id) > (?, ?) AND m.created_at <= ?
 ORDER BY m.created_at, m.id
@@ -463,10 +463,12 @@ LIMIT ?`,
 	defer func() { _ = rows.Close() }()
 	messages := make([]Message, 0)
 	for rows.Next() {
-		message, err := scanTranscriptMessage(rows)
+		var readOutside bool
+		message, err := scanTranscriptMessage(rows, &readOutside)
 		if err != nil {
 			return nil, fmt.Errorf("scan user message: %w", err)
 		}
+		message.ReadOutside = readOutside
 		messages = append(messages, message)
 	}
 	if err := rows.Err(); err != nil {
