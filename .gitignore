@@ -6,6 +6,8 @@
 # directory (a tracked self-referential symlink here once broke fresh `npm` installs).
 node_modules
 *.tsbuildinfo
+# Pre-ship UI build dir (now backend/web/dist); old checkouts still carry it.
+ui/dist/
 
 # Go
 /loom

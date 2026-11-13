@@ -1219,6 +1219,30 @@ test("renders the new-chat plus icon without a new-project sidebar control", asy
   ).not.toBeInTheDocument();
 });
 
+test("the sidebar wordmark links to a new thread", async () => {
+  window.history.replaceState({}, "", "/projects");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      return Response.json([]);
+    }),
+  );
+
+  render(<App />);
+  const wordmark = await screen.findByRole("link", { name: "Loom" });
+  expect(wordmark).toHaveAttribute("href", "/new");
+  fireEvent.click(wordmark);
+
+  expect(await screen.findByText(greetingPattern("jan"))).toBeInTheDocument();
+  expect(window.location.pathname).toBe("/new");
+});
+
 test("new chat navigation does not create a thread or sidebar entry", async () => {
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, _init?: RequestInit) => {
