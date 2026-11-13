@@ -31,6 +31,10 @@ func (r Role) TranscriptLabel() string {
 // until the title-generation model produces a real title on the first message.
 const DefaultThreadTitle = "New thread"
 
+// ChatSlotStandard is the chat slot a thread starts on: the deployment's chat
+// model. The other slot key ("deep") is llm's; chat only stores it.
+const ChatSlotStandard = "standard"
+
 const (
 	// MaxProjectNameLength defines the maximum length for a project name.
 	MaxProjectNameLength = 120
@@ -137,7 +141,10 @@ type Thread struct {
 	// in this thread (e.g. "flux-2-klein-4b" or "flux-2-flex"); empty until the
 	// first image. Once set it is reused for every later image in the thread so the
 	// model never flip-flops mid-conversation.
-	ImageModel    string     `json:"imageModel"`
+	ImageModel string `json:"imageModel"`
+	// ChatSlot is the chat slot the thread's turns run on, "standard" or
+	// "deep", picked in the composer and kept for the thread.
+	ChatSlot      string     `json:"chatSlot"`
 	Starred       bool       `json:"starred"`
 	ArchivedAt    *time.Time `json:"archivedAt"`
 	CreatedAt     time.Time  `json:"createdAt"`
@@ -341,6 +348,9 @@ type CreateThreadInput struct {
 	// ScheduleID marks the thread a scheduled run starts; set by the runner
 	// only, never from a request.
 	ScheduleID *string
+	// ChatSlot is the slot the composer had picked when the thread started;
+	// empty is standard. Validated by the caller against the configured slots.
+	ChatSlot string
 }
 
 // ProjectIDUpdate encodes the semantics of updating a thread's project
@@ -363,6 +373,9 @@ type UpdateThreadInput struct {
 	// pointer leaves the stored category unchanged.
 	Category  *string
 	ProjectID ProjectIDUpdate
+	// ChatSlot, when non-nil, switches the thread's chat slot. Validated by
+	// the caller against the configured slots.
+	ChatSlot *string
 }
 
 // ListThreadsOptions specifies filters and pagination for thread listing.

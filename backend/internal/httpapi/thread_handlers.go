@@ -108,9 +108,14 @@ func (s *server) handleCreateThread(w http.ResponseWriter, r *http.Request) {
 		writeDecodeError(w, err)
 		return
 	}
+	if body.ChatSlot != "" && !s.hasChatSlot(body.ChatSlot) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown chat slot")
+		return
+	}
 	thread, err := s.thread.CreateThread(r.Context(), user.ID, chat.CreateThreadInput{
 		ProjectID: body.ProjectID,
 		Title:     body.Title,
+		ChatSlot:  body.ChatSlot,
 	})
 	if err != nil {
 		writeStoreError(w, r, err)
@@ -205,6 +210,10 @@ func (s *server) handleUpdateThread(w http.ResponseWriter, r *http.Request) {
 	var body updateThreadRequest
 	if err := decodeJSONBody(w, r, &body); err != nil {
 		writeDecodeError(w, err)
+		return
+	}
+	if body.ChatSlot != nil && !s.hasChatSlot(*body.ChatSlot) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown chat slot")
 		return
 	}
 	thread, found, err := s.thread.UpdateThread(r.Context(), user.ID, r.PathValue("threadID"), body.toInput())
@@ -402,4 +411,15 @@ func listThreadsOptionsFromRequest(r *http.Request) (chat.ListThreadsOptions, er
 	opts.Search = query.Get("search")
 	opts.Cursor = query.Get("cursor")
 	return opts, nil
+}
+
+// hasChatSlot reports whether key names a slot this deployment configured.
+// The client names a slot, never a model id, so it reaches only those.
+func (s *server) hasChatSlot(key string) bool {
+	for _, slot := range s.model.Slots {
+		if slot.Key == key {
+			return true
+		}
+	}
+	return false
 }

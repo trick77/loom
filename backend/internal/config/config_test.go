@@ -879,3 +879,61 @@ func TestLoad_rejectsWeakSessionSecrets(t *testing.T) {
 		}
 	}
 }
+
+// The deep model is optional: set with its key it is a slot, set without its
+// key it is dropped with DeepMissing named and chat stays on, "off" is unset.
+func TestLoad_deepChatModelIsOptional(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("BACKEND_AUTH_MODE", "dev")
+	t.Setenv("BACKEND_ADDR", "127.0.0.1:8080")
+	chat, chatKey := anyChatModel(t)
+	deep, deepKey := otherProviderChatModel(t, chatKey)
+	t.Setenv("BACKEND_CHAT_MODEL", chat)
+	t.Setenv(chatKey, "k1")
+	t.Setenv("BACKEND_DEEP_CHAT_MODEL", deep)
+	t.Setenv(deepKey, "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ChatEnabled || cfg.DeepMissing != deepKey || len(cfg.ChatModels.Slots()) != 1 {
+		t.Fatalf("deep key unset: chat=%v deepMissing=%q slots=%v, want chat on, %s named, one slot",
+			cfg.ChatEnabled, cfg.DeepMissing, cfg.ChatModels.Slots(), deepKey)
+	}
+
+	t.Setenv(deepKey, "k2")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slots := cfg.ChatModels.Slots(); len(slots) != 2 || slots[1].Model != deep || cfg.DeepMissing != "" {
+		t.Fatalf("deep keyed: slots=%v missing=%q, want the deep slot", slots, cfg.DeepMissing)
+	}
+
+	t.Setenv("BACKEND_DEEP_CHAT_MODEL", "off")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.ChatModels.Slots()) != 1 {
+		t.Fatalf("off: slots=%v, want standard only", cfg.ChatModels.Slots())
+	}
+}
+
+// otherProviderChatModel is a registry chat model whose key is not notKey,
+// found at run time so no test names a model.
+func otherProviderChatModel(t *testing.T, notKey string) (id, keyEnv string) {
+	t.Helper()
+	reg := llmwire.Default()
+	for _, id := range reg.ChatModels(llmwire.Needs{Tools: true, Streaming: true}) {
+		p, err := reg.Lookup(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if env := p.APIKeyEnv(); env != "" && env != notKey {
+			return id, env
+		}
+	}
+	t.Skip("llmwire's registry has no chat model on a second provider")
+	return "", ""
+}

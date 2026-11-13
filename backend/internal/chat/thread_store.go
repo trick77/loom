@@ -31,6 +31,11 @@ func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThread
 		projectID = *in.ProjectID
 	}
 
+	chatSlot := in.ChatSlot
+	if chatSlot == "" {
+		chatSlot = ChatSlotStandard
+	}
+
 	threadID := sqlutil.NewID()
 	// The insert and the project activity touch land together or not at all.
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -39,9 +44,9 @@ func (s *Store) CreateThread(ctx context.Context, userID string, in CreateThread
 	}
 	defer func() { _ = tx.Rollback() }()
 	_, err = tx.ExecContext(ctx, `
-INSERT INTO threads (id, user_id, project_id, title, schedule_id)
-VALUES (?, ?, ?, ?, ?)`,
-		threadID, userID, projectID, title, in.ScheduleID,
+INSERT INTO threads (id, user_id, project_id, title, schedule_id, chat_slot)
+VALUES (?, ?, ?, ?, ?, ?)`,
+		threadID, userID, projectID, title, in.ScheduleID, chatSlot,
 	)
 	if err != nil {
 		return Thread{}, fmt.Errorf("insert thread: %w", err)
@@ -286,6 +291,10 @@ func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in Up
 	if in.ProjectID.Set && in.ProjectID.Value != nil {
 		projectID = *in.ProjectID.Value
 	}
+	var chatSlot any
+	if in.ChatSlot != nil {
+		chatSlot = *in.ChatSlot
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -305,9 +314,10 @@ UPDATE threads
 SET title = COALESCE(?, title),
     category = COALESCE(?, category),
     project_id = CASE WHEN ? THEN ? ELSE project_id END,
+    chat_slot = COALESCE(?, chat_slot),
     updated_at = datetime('now')
 WHERE user_id = ? AND id = ?`,
-		title, category, in.ProjectID.Set, projectID, userID, threadID,
+		title, category, in.ProjectID.Set, projectID, chatSlot, userID, threadID,
 	)
 	if err != nil {
 		return Thread{}, false, fmt.Errorf("update thread: %w", err)

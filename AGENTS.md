@@ -37,6 +37,8 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
   clears the cookie, rotating the secret signs everyone out.
 - Models: `BACKEND_CHAT_MODEL` (+ `_GATE_`, `_VISION_`), `BACKEND_EMBED_MODEL` (change → vector table
   rebuilt at boot, re-embed in background); checked against llmwire. Keys `LLMWIRE_<PROVIDER>_API_KEY`.
+- `BACKEND_DEEP_CHAT_MODEL`: optional per-thread slot; client sends a slot key, never a model id. A rebuilt
+  history drops `ResponseItems` (signed thinking replayed after an edit is a 400).
 - Gates (titles, classification, image intent) ask `ReasoningMinimal`; turns and prose `ReasoningBalanced`
   (minimal may mean thinking off: wrong on prose).
 - Secrets via env only. `admin` is seeded from env on first boot only.

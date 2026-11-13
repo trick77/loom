@@ -18,8 +18,18 @@ export function useModelInfo(): ModelInfo | null {
   return info;
 }
 
-// useContextWindow returns the chat model's context window in tokens, or
-// undefined until it is known.
-export function useContextWindow(): number | undefined {
-  return useModelInfo()?.contextWindow;
+// useContextWindow returns a model's context window in tokens, or undefined
+// until it is known: the configured slot model whose id matches, else the chat
+// model's (a message from a model no longer configured, or none named).
+export function useContextWindow(model?: string): number | undefined {
+  const info = useModelInfo();
+  return contextWindowFor(info, model);
+}
+
+export function contextWindowFor(
+  info: ModelInfo | null,
+  model?: string,
+): number | undefined {
+  const slot = info?.slots?.find((s) => s.model === model);
+  return slot?.contextWindow ?? info?.contextWindow;
 }

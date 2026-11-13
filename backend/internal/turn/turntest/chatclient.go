@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 
+	"github.com/trick77/loom/internal/inference"
 	"github.com/trick77/loom/internal/llm"
 )
 
@@ -320,8 +321,10 @@ func (f ChatClient) StreamChatWithTools(ctx context.Context, history []llm.Messa
 // round, and answers Plain when called without tools. It records every round's
 // history and tools.
 type ToolChatClient struct {
-	Results        []llm.StreamResult
-	Histories      [][]llm.Message
+	Results   []llm.StreamResult
+	Histories [][]llm.Message
+	// Inference is the metadata each streamed call carried, in call order.
+	Inference      []llm.InferenceMetadata
 	Tools          [][]llm.Tool
 	Plain          string
 	PlainErr       error
@@ -364,6 +367,7 @@ func (f *ToolChatClient) StreamChatResult(context.Context, []llm.Message, func(s
 // StreamChatWithTools implements turn.ChatClient.
 func (f *ToolChatClient) StreamChatWithTools(ctx context.Context, history []llm.Message, tools []llm.Tool, onEvent func(llm.StreamEvent) error) (llm.StreamResult, error) {
 	f.Histories = append(f.Histories, append([]llm.Message(nil), history...))
+	f.Inference = append(f.Inference, inference.MetadataFromContext(ctx))
 	f.Tools = append(f.Tools, append([]llm.Tool(nil), tools...))
 	if len(tools) == 0 {
 		result, err := f.StreamChatResult(context.Background(), history, nil)

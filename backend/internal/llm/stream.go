@@ -50,7 +50,10 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// slice is re-sent on every tool round within this turn, so the choice
 	// stays stable.
 	wireMessages := toWireMessages(messages)
-	model := c.modelForMessages(wireMessages)
+	model := c.routeModel(wireMessages, meta.Deep)
+	// Deep only when the turn asked for it: the deep model may also be the
+	// chat or vision model, whose ordinary turns stay balanced.
+	deep := meta.Deep && c.deepModel != "" && model == c.deepModel
 	maxCompletionTokens := c.maxCompletionTokensForTools(tools)
 	if meta.MaxCompletionTokens > 0 {
 		maxCompletionTokens = meta.MaxCompletionTokens
@@ -69,11 +72,19 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// llmwire resolves "balanced" to the level the model's profile names. A
 	// retry of a turn that spent its budget reasoning asks for the least.
 	req.Reasoning = llmwire.ReasoningBalanced()
+	if deep {
+		// The user chose to spend more on this thread: the model's thorough
+		// level, and the cap as an answer budget, so llmwire adds the
+		// thinking allowance on top instead of thinking eating the answer.
+		req.Reasoning = llmwire.ReasoningDeep()
+		req.MaxTokens = nil
+		req.MaxAnswerTokens = &maxCompletionTokens
+	}
 	if meta.LeastReasoning {
 		req.Reasoning = llmwire.ReasoningMinimal()
 	}
 	callCtx := ctx
-	if timeout := c.timeoutForTools(tools); timeout > 0 {
+	if timeout := c.turnTimeout(tools, deep); timeout > 0 {
 		var cancel context.CancelFunc
 		callCtx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
@@ -217,6 +228,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	result.Model = model
 	result.ReasoningEffort = res.ReasoningSent
 	result.CostNanoUSD, result.CostPriced = costFromWire(res.Usage)
+	result.ResponseItems = res.ResponseItems
 	observeInference(ctx, model, result.Duration, result.Usage, result.FinishReason, progress()...)
 	RecordCost(ctx, result.CostNanoUSD, result.CostPriced)
 	return result, nil

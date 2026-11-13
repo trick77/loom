@@ -35,6 +35,7 @@ export function useIncognitoChat({
   setSendError,
   handleActionError,
   translateStreamError,
+  chatSlot,
 }: {
   runs: StreamRunControls["runs"];
   beginStreamRun: StreamRunControls["begin"];
@@ -50,6 +51,8 @@ export function useIncognitoChat({
     setError: (message: string) => void,
   ): void;
   translateStreamError(error: unknown): unknown;
+  // The slot the incognito composer has picked.
+  chatSlot?: string;
 }) {
   const { t } = useTranslation();
   const [incognito, setIncognito] = useState(false);
@@ -149,6 +152,7 @@ export function useIncognitoChat({
         history,
         turn.handlers,
         abortController.signal,
+        chatSlot,
       );
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -85,6 +86,9 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 	if len(tools) == 0 {
 		b := &blockBuilder{}
 		result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(history), inferenceWithPurpose(t.inference, "chat", 1), nil)
+		if err == nil {
+			sayDeclined(&result)
+		}
 		b.addResult(t.titles, result)
 		if persistInterruptedPartial(result, err) {
 			return b.result(result, nil, ""), nil
@@ -163,6 +167,13 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			slog.Info("forcing final answer", "reason", "scheduled_research_done", "round", round)
 			break
 		}
+		if sayDeclined(&result) {
+			// A forced final would be declined the same way: the turn ends
+			// here, keeping what earlier rounds made.
+			slog.Info("model declined the request", "round", round)
+			b.addResult(t.titles, result)
+			return b.result(result, artifacts, ""), nil
+		}
 		// Clamped before anything records the calls, so the thread shows what ran.
 		for i := range result.ToolCalls {
 			t.clampScheduledCall(&result.ToolCalls[i])
@@ -219,6 +230,9 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 			Role:      "assistant",
 			Content:   result.Content,
 			ToolCalls: result.ToolCalls,
+			// The turn as the model returned it: signed thinking goes back
+			// unchanged next round. Only appending keeps it valid.
+			ResponseItems: result.ResponseItems,
 		})
 		// Per-round, per-tool overflow: a model may batch more calls for one tool
 		// than its cap allows in a single round (e.g. a paste with a dozen links →
@@ -375,7 +389,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				artifacts = nil
 				if picked.history != nil {
 					pickups++
-					history = picked.history
+					history = withoutReplay(picked.history)
 					initialHistoryLen = len(history)
 					imageGenerated = false
 					lastRoundDeferred = false
@@ -416,7 +430,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		}
 		finalHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: directive})
 	}
-	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(finalHistory), finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
+	result, err := t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(withoutReplay(finalHistory)), finalAnswerInference(t.inference, "chat_final", maxToolRounds+1), nil)
 	b.addResult(t.titles, result)
 	if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 		return b.result(result, artifacts, ""), nil
@@ -430,7 +444,7 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 		if !ok {
 			retryHistory = append(history[:len(history):len(history)], llm.Message{Role: "system", Content: "Answer the user's question now in plain prose, using only the information already gathered above. Do not emit any tool call."})
 		}
-		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(retryHistory), finalRetryInference(t.inference, result), nil)
+		result, err = t.streamAssistantTurn(ctx, b.nextReasoningID(), t.withFinalContext(withoutReplay(retryHistory)), finalRetryInference(t.inference, result), nil)
 		b.addResult(t.titles, result)
 		if interrupted = b.keepInterrupted(&result, err, artifacts); interrupted {
 			return b.result(result, artifacts, ""), nil
@@ -811,4 +825,32 @@ func finalAnswerInference(metadata llm.InferenceMetadata, purpose string, round 
 	metadata = inferenceWithPurpose(metadata, purpose, round)
 	metadata.MaxCompletionTokens = finalAnswerMaxCompletionTokens
 	return metadata
+}
+
+// withoutReplay drops every message's ResponseItems from a history loom
+// rebuilt rather than appended to (a directive added, notes folded in, a
+// queued message's segment). A signed thinking block replayed after such an
+// edit is refused outright on a model that checks it (llmwire FINDINGS); the same
+// turns without it are accepted.
+func withoutReplay(history []llm.Message) []llm.Message {
+	out := slices.Clone(history)
+	for i := range out {
+		out[i].ResponseItems = nil
+	}
+	return out
+}
+
+// declinedMessage is what the user reads when the model declines a request.
+const declinedMessage = "The model declined to answer this request. Rephrase it, or switch the model for this thread."
+
+// sayDeclined puts declinedMessage in place of a declined round's empty
+// answer (finish_reason content_filter, nothing written, no tool call), so the
+// turn persists a reply that says why instead of failing empty. Reports
+// whether it did.
+func sayDeclined(result *llm.StreamResult) bool {
+	if len(result.ToolCalls) > 0 || result.FinishReason != "content_filter" || strings.TrimSpace(result.Content) != "" {
+		return false
+	}
+	result.Content = declinedMessage
+	return true
 }

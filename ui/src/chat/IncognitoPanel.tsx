@@ -31,6 +31,8 @@ export function IncognitoPanel({
   pastedTexts,
   onAddPastedText,
   onRemovePastedText,
+  chatSlot,
+  onChatSlotChange,
   onSend,
   onStop,
   onRetry,
@@ -46,6 +48,9 @@ export function IncognitoPanel({
   pastedTexts: PastedText[];
   onAddPastedText(text: string): void;
   onRemovePastedText(id: string): void;
+  // The thread\'s chat slot and its switch, passed to the composer.
+  chatSlot?: string;
+  onChatSlotChange?(slot: string): void;
   onSend(): void;
   onStop(): void;
   onRetry(content: string, pastedTexts?: MessagePastedText[]): void;
@@ -92,6 +97,8 @@ export function IncognitoPanel({
       pastedTexts={pastedTexts}
       onAddPastedText={onAddPastedText}
       onRemovePastedText={onRemovePastedText}
+      chatSlot={chatSlot}
+      onChatSlotChange={onChatSlotChange}
       onSend={onSend}
       onStop={onStop}
     />

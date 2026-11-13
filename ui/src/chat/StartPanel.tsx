@@ -28,6 +28,8 @@ export function StartPanel({
   pastedTexts,
   onAddPastedText,
   onRemovePastedText,
+  chatSlot,
+  onChatSlotChange,
   onSend,
   onStop,
   onAttachFiles,
@@ -54,6 +56,9 @@ export function StartPanel({
   pastedTexts: PastedText[];
   onAddPastedText(text: string): void;
   onRemovePastedText(id: string): void;
+  // The thread\'s chat slot and its switch, passed to the composer.
+  chatSlot?: string;
+  onChatSlotChange?(slot: string): void;
   onSend(): void;
   onStop(): void;
   onAttachFiles(files: File[]): void;
@@ -184,6 +189,8 @@ export function StartPanel({
             pastedTexts={pastedTexts}
             onAddPastedText={onAddPastedText}
             onRemovePastedText={onRemovePastedText}
+            chatSlot={chatSlot}
+            onChatSlotChange={onChatSlotChange}
             onSend={onSend}
             onStop={onStop}
             onAttachFiles={onAttachFiles}

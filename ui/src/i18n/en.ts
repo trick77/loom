@@ -85,6 +85,10 @@ export const en = {
     uploading: "Uploading...",
     processing: "Processing...",
     uploadFailed: "Upload failed",
+    chooseModel: "Model: {{name}}. Choose model",
+    models: "Models",
+    slotStandard: "Fast, for everyday questions",
+    slotDeep: "Thinks longer, for hard problems",
   },
   startPanel: {
     placeholder: "How can I help you today?",

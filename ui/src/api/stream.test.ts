@@ -309,3 +309,20 @@ describe("attachStream", () => {
     await expect(attachStream("t1", handlers())).resolves.toBe("finished");
   });
 });
+
+test("streamIncognitoMessage sends a non-default chat slot only", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockImplementation(
+      async () => new Response(sseBody(["event: done\ndata: {}\n\n"])),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+
+  await streamIncognitoMessage("hi", [], handlers(), undefined, "deep");
+  await streamIncognitoMessage("hi", [], handlers(), undefined, "standard");
+
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body).chatSlot).toBe("deep");
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty(
+    "chatSlot",
+  );
+});

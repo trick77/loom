@@ -125,6 +125,8 @@ export function ThreadPanel({
   pastedTexts,
   onAddPastedText,
   onRemovePastedText,
+  chatSlot,
+  onChatSlotChange,
   onSend,
   onStop,
   onRetry,
@@ -174,6 +176,9 @@ export function ThreadPanel({
   pastedTexts: PastedText[];
   onAddPastedText(text: string): void;
   onRemovePastedText(id: string): void;
+  // The thread\'s chat slot and its switch, passed to the composer.
+  chatSlot?: string;
+  onChatSlotChange?(slot: string): void;
   onSend(attachments?: ComposerAttachment[]): void;
   onStop(): void;
   onRetry(content: string, pastedTexts?: MessagePastedText[]): void;
@@ -836,6 +841,8 @@ export function ThreadPanel({
                 pastedTexts={pastedTexts}
                 onAddPastedText={onAddPastedText}
                 onRemovePastedText={onRemovePastedText}
+                chatSlot={chatSlot}
+                onChatSlotChange={onChatSlotChange}
                 onSend={handleSendRequest}
                 onStop={onStop}
                 onAttachFiles={thread === null ? undefined : handleAttachFiles}

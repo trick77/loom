@@ -560,6 +560,7 @@ Go types:
 | `category` | TEXT | no | `''` |  |
 | `image_model` | TEXT | no | `''` |  |
 | `schedule_id` | TEXT | yes |  |  |
+| `chat_slot` | TEXT | no | `'standard'` |  |
 
 Foreign keys:
 
@@ -911,6 +912,7 @@ In `internal/chat`. CreateThreadInput holds the fields for creating a new thread
 | `ProjectID` | `*string` |  |
 | `Title` | `string` |  |
 | `ScheduleID` | `*string` | ScheduleID marks the thread a scheduled run starts; set by the runner only, never from a request. |
+| `ChatSlot` | `string` | ChatSlot is the slot the composer had picked when the thread started; empty is standard. Validated by the caller against the configured slots. |
 
 ### chat.ListThreadsOptions
 
@@ -1018,6 +1020,7 @@ In `internal/chat`. UpdateThreadInput holds the optional fields for updating a t
 | `Title` | `*string` |  |
 | `Category` | `*string` | Category, when non-nil, sets the thread's prompt-classifier label. A nil pointer leaves the stored category unchanged. |
 | `ProjectID` | `ProjectIDUpdate` |  |
+| `ChatSlot` | `*string` | ChatSlot, when non-nil, switches the thread's chat slot. Validated by the caller against the configured slots. |
 
 ### ideas.Input
 
@@ -1314,6 +1317,7 @@ erDiagram
         TEXT category
         TEXT image_model
         TEXT schedule_id FK
+        TEXT chat_slot
     }
     user_directives {
         TEXT id PK

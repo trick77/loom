@@ -30,6 +30,7 @@ func toWireMessages(messages []Message) []llmwire.Message {
 			Text:             m.Content,
 			ReasoningContent: m.ReasoningContent,
 			ToolCallID:       m.ToolCallID,
+			ResponseItems:    m.ResponseItems,
 		}
 		for _, part := range m.ContentParts {
 			switch {

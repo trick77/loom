@@ -1,6 +1,9 @@
 package llm
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Tool is a tool definition for model tool use, containing a function specification.
 type Tool struct {
@@ -63,6 +66,9 @@ type StreamResult struct {
 	// unknown, not free: it stays out of every sum.
 	CostNanoUSD int64
 	CostPriced  bool
+	// ResponseItems is the assistant turn for replay (see
+	// Message.ResponseItems).
+	ResponseItems []json.RawMessage
 }
 
 // TokenUsage contains token counts for a model call (prompt, completion, cached, and reasoning tokens).

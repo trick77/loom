@@ -58,6 +58,10 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 		httpx.WriteError(w, http.StatusBadRequest, "conversation is too long")
 		return
 	}
+	if body.ChatSlot != "" && !s.hasChatSlot(body.ChatSlot) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown chat slot")
+		return
+	}
 
 	// Incognito reads no saved memory or context (matching "not added to memory" on
 	// the read side too) and uses a tool-free system prompt so a tool-eager model
@@ -86,7 +90,8 @@ func (s *server) handleIncognitoStreamMessage(w http.ResponseWriter, r *http.Req
 	defer recoverToStream(stream, r)
 	stream.Heartbeat(streamHeartbeatInterval)
 
-	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true}
+	inference := llm.InferenceMetadata{UserID: user.ID, Username: user.Username, ThreadID: incognitoThreadID, Incognito: true,
+		Deep: body.ChatSlot == llm.SlotDeep}
 	titles := turn.NewReasoningTitleTracker(streamCtx, s.llm, stream, inference, user.ResponseLanguageName())
 	defer titles.Wait()
 

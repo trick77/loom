@@ -13,7 +13,7 @@ func TestChatModelInfo_EmptyWhenChatIsOff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := chatModelInfo(config.Config{ChatModels: resolved, ChatEnabled: false}); got != (llm.ModelInfo{}) {
+	if got := chatModelInfo(config.Config{ChatModels: resolved, ChatEnabled: false}); got.ID != "" || len(got.Slots) != 0 {
 		t.Fatalf("chat off: %+v, want nothing", got)
 	}
 	if got := chatModelInfo(config.Config{ChatModels: resolved, ChatEnabled: true}); got.ID != llmwiretest.ChatModel {

@@ -22,7 +22,18 @@ type Roles struct {
 	// Needs image input and tool calling (image turns carry the tools).
 	// Defaults to Chat.
 	Vision string
+	// Deep is the optional model a user picks for a turn that should think
+	// longer (the "deep" slot). Empty: no choice is offered. Needs what Chat
+	// needs; never defaulted.
+	Deep string
 }
+
+// The slot keys the UI sends. A client names a slot, never a model id, so a
+// user can only reach the models the deployment configured.
+const (
+	SlotStandard = "standard"
+	SlotDeep     = "deep"
+)
 
 // withDefaults fills Gate and Vision from Chat.
 func (r Roles) withDefaults() Roles {
@@ -39,7 +50,7 @@ func (r Roles) withDefaults() Roles {
 // that serves them all.
 func (r Roles) ids() []string {
 	var out []string
-	for _, id := range []string{r.Chat, r.Gate, r.Vision} {
+	for _, id := range []string{r.Chat, r.Gate, r.Vision, r.Deep} {
 		if id != "" && !slices.Contains(out, id) {
 			out = append(out, id)
 		}
@@ -53,6 +64,7 @@ type Resolved struct {
 	chat   *llmwire.Profile
 	gate   *llmwire.Profile
 	vision *llmwire.Profile
+	deep   *llmwire.Profile
 }
 
 // ResolveRoles checks every role's model against what the role needs and
@@ -79,6 +91,11 @@ func ResolveRoles(reg *llmwire.Registry, roles Roles) (Resolved, error) {
 	if out.vision, err = require(reg, "vision", roles.Vision, llmwire.Needs{Vision: true, Tools: true, Streaming: true}); err != nil {
 		return Resolved{}, err
 	}
+	if roles.Deep != "" {
+		if out.deep, err = require(reg, "deep", roles.Deep, chatNeeds); err != nil {
+			return Resolved{}, err
+		}
+	}
 	return out, nil
 }
 
@@ -97,7 +114,9 @@ func require(reg *llmwire.Registry, role, id string, needs llmwire.Needs) (*llmw
 	return nil, fmt.Errorf("llm: %s model: %w", role, err)
 }
 
-// KeyEnvs lists the key variables the roles' providers read, each once.
+// KeyEnvs lists the key variables the required roles' providers read, each
+// once. The deep model's key is optional (DeepKeyEnv): without it the slot is
+// dropped, chat stays on.
 func (r Resolved) KeyEnvs() []string {
 	var out []string
 	for _, p := range []*llmwire.Profile{r.chat, r.gate, r.vision} {
@@ -116,6 +135,9 @@ type ModelInfo struct {
 	ID            string `json:"model"`
 	DisplayName   string `json:"displayName"`
 	ContextWindow int64  `json:"contextWindow"`
+	// Slots are the choices the composer offers, standard first; one entry
+	// when no deep model is configured.
+	Slots []SlotInfo `json:"slots,omitempty"`
 }
 
 // Info describes the chat model from its profile.
@@ -123,5 +145,46 @@ func (r Resolved) Info() ModelInfo {
 	if r.chat == nil {
 		return ModelInfo{}
 	}
-	return ModelInfo{ID: r.chat.ID, DisplayName: r.chat.DisplayName, ContextWindow: r.chat.Limits.Context}
+	return ModelInfo{ID: r.chat.ID, DisplayName: r.chat.DisplayName, ContextWindow: r.chat.Limits.Context, Slots: r.Slots()}
+}
+
+// DeepKeyEnv is the key variable the deep model's provider reads, or "" when
+// no deep model is configured or its provider needs none.
+func (r Resolved) DeepKeyEnv() string {
+	if r.deep == nil {
+		return ""
+	}
+	return r.deep.APIKeyEnv()
+}
+
+// WithoutDeep drops the deep slot: its key is missing, so no turn may reach it.
+func (r Resolved) WithoutDeep() Resolved {
+	r.Roles.Deep = ""
+	r.deep = nil
+	return r
+}
+
+// SlotInfo is one choice the composer offers: the slot key the client sends
+// and the model behind it, from its profile.
+type SlotInfo struct {
+	Key           string `json:"key"`
+	Model         string `json:"model"`
+	DisplayName   string `json:"displayName"`
+	ContextWindow int64  `json:"contextWindow"`
+}
+
+// Slots lists the configured choices, standard first.
+func (r Resolved) Slots() []SlotInfo {
+	if r.chat == nil {
+		return nil
+	}
+	out := []SlotInfo{slotInfo(SlotStandard, r.chat)}
+	if r.deep != nil {
+		out = append(out, slotInfo(SlotDeep, r.deep))
+	}
+	return out
+}
+
+func slotInfo(key string, p *llmwire.Profile) SlotInfo {
+	return SlotInfo{Key: key, Model: p.ID, DisplayName: p.DisplayName, ContextWindow: p.Limits.Context}
 }
