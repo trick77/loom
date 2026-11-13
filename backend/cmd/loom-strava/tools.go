@@ -166,6 +166,8 @@ func toolServer(svc *service, version string) mcpserver.Server {
 					"refresh":    refreshArg,
 					"pool_m": map[string]any{"type": "integer", "enum": []int{poolShort, poolLong}, "description": "A pool swim's " +
 						"pool length in m, when the user says it; without it the laps tell, or 25 m is assumed."},
+					"grade_profile": map[string]any{"type": "boolean", "description": "For a run: also the user's own pace per " +
+						"grade from their recent runs, and this run adjusted by it. Only when asked about hills or grade."},
 				}, "id"),
 				Run: t.activityAnalysis,
 			},

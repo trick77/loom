@@ -107,6 +107,18 @@ budget-cut call replaced it. Every analysed run files its efforts too (its detai
 Strava leaves the file, so the threshold follows without `run_bests` being asked. Like an LTHR, the current threshold
 weighs the whole 120 days.
 
+### Recovery, critical power, swim speed, grade
+
+`activity_analysis` adds, from what it reads anyway (no stored key per activity):
+- heart-rate recovery: the drop in the minute after the hardest 5 min and after each hard effort (a 5 s mean at either
+  end; none across a pause, the heart rate after a stopped watch is not the minute after);
+- for a ride with power, critical power and W′ fitted to the stored 2, 5, 10 and 20 min bests of the ride and its window
+  (work = CP × t + W′; W′ outside 2–60 kJ means the bests were not all-out, no fit), W′ balance over the ride (Skiba)
+  in `strava_<id>_wbal.csv`, chart `wbal` on request;
+- for a pool swim, the critical swim speed from the best 400 m and 200 m laps of the kept swims of the last 90 days;
+- with `grade_profile`, the runner's own median pace per 1 % grade from the window's kept streams (no read; only when
+  asked, it decodes up to 40 of them) and the run adjusted by it, next to Strava's model GAP; chart `grade_pace`.
+
 ### Aerobic efficiency
 
 `efficiency_trend` answers "am I getting fitter?" without a race or a test: more speed or power for the same heart rate.

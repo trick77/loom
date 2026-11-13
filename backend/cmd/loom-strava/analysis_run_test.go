@@ -8,6 +8,30 @@ import (
 	"testing"
 )
 
+// On request a run gets the runner's own pace per grade from the window's
+// kept streams, no Strava read for it.
+func TestAnalysis_gradeProfile(t *testing.T) {
+	f, svc, _ := runFixture(t)
+	h := newServer(config{token: testToken}, svc, "test")
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":2001}`); strings.Contains(r.Text, "own grade profile") {
+		t.Errorf("a grade profile unasked:\n%s", r.Text)
+	}
+	before := len(f.seen)
+	r := callTool(t, h, userA, "activity_analysis", `{"id":2001,"grade_profile":true}`)
+	for _, want := range []string{"own grade profile (median pace per grade, 3 outdoor runs'", "this run adjusted by it",
+		`loomcharts.grade_pace("in/strava_2001_grade_pace.csv", "out/grade_pace_2001.png", lang=L)`} {
+		if !strings.Contains(r.Text, want) {
+			t.Errorf("lacks %q:\n%s", want, r.Text)
+		}
+	}
+	if first, _, _ := strings.Cut(r.file("strava_2001_grade_pace.csv"), "\n"); first != hdrGradePace {
+		t.Errorf("grade file header %q", first)
+	}
+	if n := len(f.seen) - before; n != 0 {
+		t.Errorf("the grade profile read Strava %d times: %v", n, f.seen[before:])
+	}
+}
+
 // One tool call's stream reads share maxColdFetches: a second reader (the
 // threshold after the baseline) starts where the first stopped.
 func TestReadStreams_perCallLimit(t *testing.T) {
@@ -168,6 +192,9 @@ func TestAnalysis_swim(t *testing.T) {
 	if r := callTool(t, h, userA, "activity_analysis", `{"id":3002}`); r.IsError || !strings.Contains(r.Text, "open water (a GPS track)") ||
 		!strings.Contains(r.Text, "laps (2):") {
 		t.Errorf("open water:\n%s", r.Text)
+	}
+	if !strings.Contains(r.Text, "critical swim speed: needs a 400 and a 200 lap (m or yd)") {
+		t.Errorf("CSS without a 400:\n%s", r.Text)
 	}
 	if r := callTool(t, h, userA, "activity_analysis", `{"id":3001,"pool_m":33}`); !r.IsError {
 		t.Error("pool_m 33 accepted")

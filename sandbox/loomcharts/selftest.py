@@ -404,6 +404,12 @@ def variants(p, d):
          {"sport": "cycling", "lang": "de"}, full),
         ("efficiency_one", loomcharts.efficiency_trend, (j("efficiency_one.csv"), j("efficiency_one.png")), {}, 15_000),
         ("efficiency_gap", loomcharts.efficiency_trend, (j("efficiency_gap.csv"), j("efficiency_gap.png")), {}, full),
+        ("wbal", loomcharts.wbal, (j("wbal.csv"), j("wbal.png")), {"cp": 255, "w_prime": 18500}, full),
+        ("wbal_de", loomcharts.wbal, (j("wbal.csv"), j("wbal_de.png")), {"cp": 255, "w_prime": 18500, "lang": "de"}, full),
+        ("wbal_empty", loomcharts.wbal, (j("wbal_empty.csv"), j("wbal_empty.png")), {}, note),
+        ("grade_pace", loomcharts.grade_pace, (j("grade_pace.csv"), j("grade_pace.png")), {}, full),
+        ("grade_pace_de", loomcharts.grade_pace, (j("grade_pace.csv"), j("grade_pace_de.png")), {"lang": "de"}, full),
+        ("grade_pace_empty", loomcharts.grade_pace, (j("grade_pace_empty.csv"), j("grade_pace_empty.png")), {}, note),
         ("efficiency_short", loomcharts.efficiency_trend, (j("efficiency_short.csv"), j("efficiency_short.png")), {}, 15_000),
         ("efficiency_empty", loomcharts.efficiency_trend, (j("efficiency_empty.csv"), j("efficiency_empty.png")), {}, note),
     ]
@@ -416,6 +422,21 @@ def variants(p, d):
     eff.to_csv(j("efficiency.csv"), index=False)
     eff.head(1).to_csv(j("efficiency_one.csv"), index=False)
     eff.head(0).to_csv(j("efficiency_empty.csv"), index=False)
+    ride = pd.read_csv(p["streams"])
+    bal, wb = [], 18500.0
+    for w in ride.watts.fillna(0):
+        for _ in range(5):  # 5 s rows
+            wb = wb - (w - 255) if w > 255 else wb + (255 - w) * (18500 - wb) / 18500
+        bal.append(round(wb / 1000, 2))
+    pd.DataFrame({"elapsed_s": ride.elapsed_s, "distance_km": ride.distance_km, "watts": ride.watts, "wbal_kj": bal}) \
+        .to_csv(j("wbal.csv"), index=False)
+    pd.DataFrame(columns=["elapsed_s", "distance_km", "watts", "wbal_kj"]).to_csv(j("wbal_empty.csv"), index=False)
+    grades = list(range(-12, 13))
+    pd.DataFrame({"grade_pct": grades, "rel_speed": [1 - 0.035 * g if g > 0 else 1 - 0.012 * g - 0.002 * g * g for g in grades],
+                  "seconds": [max(60, 3000 - 220 * abs(g)) for g in grades]}) \
+        .assign(pace_s_km=lambda f: (380 / f.rel_speed).round(0)) \
+        .to_csv(j("grade_pace.csv"), index=False)
+    pd.DataFrame(columns=["grade_pct", "rel_speed", "pace_s_km", "seconds"]).to_csv(j("grade_pace_empty.csv"), index=False)
     eff[eff.easy == 1].head(2).assign(date=["2026-11-03", "2026-11-04"]).to_csv(j("efficiency_short.csv"), index=False)
     gap = eff[(pd.to_datetime(eff.date) < "2026-02-01") | (pd.to_datetime(eff.date) >= "2026-06-01")]
     gap.to_csv(j("efficiency_gap.csv"), index=False)

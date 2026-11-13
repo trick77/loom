@@ -632,6 +632,9 @@ type analysisArgs struct {
 	ToKm      *float64        `json:"to_km"`
 	Refresh   bool            `json:"refresh"`
 	PoolM     int             `json:"pool_m"`
+	// GradeProfile asks for the runner's own pace per grade: it decodes
+	// every kept stream of the window, so only when asked.
+	GradeProfile bool `json:"grade_profile"`
 }
 
 // zonePick is what pickZones settled for one activity's streams.
@@ -954,6 +957,13 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	}
 
 	writeIntervals(&b, d, s, ia, ib, ftp, u, section)
+	var ex *extras
+	if !section {
+		ex = t.analysisExtras(ctx, user, a, d, s, whole, cmp, args.GradeProfile, u)
+		if ex.text.Len() > 0 {
+			b.WriteString("\n" + ex.text.String())
+		}
+	}
 
 	if cmpErr != nil {
 		b.WriteString("\ncomparison with earlier activities unavailable: " + failure(cmpErr).Text + "\n")
@@ -1003,10 +1013,17 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		}
 	}
 
-	files := analysisFiles(d, s, whole, this, cl, cmp, lc, lr, pE, hE)
+	var extraFiles []mcpserver.File
+	if ex != nil {
+		extraFiles = ex.files
+	}
+	files := analysisFiles(d, s, whole, this, cl, cmp, lc, lr, extraFiles, pE, hE)
 	b.WriteString(fileNames(files))
 	if !section {
 		b.WriteString(chartCalls(d.ID, d.SportType, files, s, args.Weeks))
+		if len(ex.onRequest) > 0 {
+			b.WriteString("charts on request only (offer them, draw when asked, same L): " + strings.Join(ex.onRequest, "; ") + "\n")
+		}
 	}
 	return mcpserver.Result{Text: b.String(), Sources: sources, Files: files}
 }
@@ -1324,7 +1341,7 @@ func lastFinite(v []float64) float64 {
 // The load file goes in before the streams are sized: past the 3 MiB
 // mcpserver drops a file the chart code still names.
 func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedMetrics, cl []climb, c *comparison, lc loadCtx,
-	lr loadReport, pE, hE []float64) []mcpserver.File {
+	lr loadReport, extra []mcpserver.File, pE, hE []float64) []mcpserver.File {
 	var files []mcpserver.File
 	if len(cl) > 0 {
 		t := newCSV(hdrClimbs)
@@ -1366,6 +1383,7 @@ func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedM
 	if len(lr.days) > 0 {
 		files = append(files, loadCSV(d.ID, lr))
 	}
+	files = append(files, extra...)
 	if s.n > 0 {
 		if f, ok := streamsCSV(d.ID, s, pE, hE, maxFilesBytes-filesSize(files)); ok {
 			files = append([]mcpserver.File{f}, files...)

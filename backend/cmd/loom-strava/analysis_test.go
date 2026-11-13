@@ -66,6 +66,9 @@ func TestAnalysis_comparison(t *testing.T) {
 		"[2] 2026-10-28 · Albis loop", "[3] 2026-10-10 · Albis loop",
 		"ahead at the finish",
 		"load: this week (Mon–Sun, up to this activity) TSS",
+		"critical power (two-parameter fit", "W′ balance lowest",
+		"heart-rate recovery (drop in the minute after", "after the hardest 5 min (km",
+		`charts on request only (offer them, draw when asked, same L): loomcharts.wbal("in/strava_1001_wbal.csv", "out/wbal_1001.png", cp=`,
 		"weeks: W38",
 		"per km (km | time | speed | W | bpm | rpm | alt | grade), time recorded only",
 		"attached for run_python: strava_1001_streams.csv",
@@ -92,6 +95,7 @@ func TestAnalysis_comparison(t *testing.T) {
 		"strava_1001_same_route.csv":  "distance_km,gap_s_2026-10-28,gap_s_2026-10-10",
 		"strava_weeks.csv":            hdrWeeks,
 		"strava_1001_load.csv":        hdrLoad,
+		"strava_1001_wbal.csv":        hdrWBal,
 	}
 	if len(r.Files) != len(heads) || r.Files[0].URI != "file:///strava_1001_streams.csv" {
 		t.Errorf("files = %d, the streams first: %v", len(r.Files), r.Files[0].URI)
