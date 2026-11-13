@@ -60,8 +60,9 @@ type baseEntry struct {
 	sameRoute bool
 }
 
-// val reads one metric of an entry; NaN when unknown.
-func (e baseEntry) val(key string, ftp float64) float64 {
+// val reads one metric of an entry; NaN when unknown. IF uses the FTP of the
+// entry's sport (none but rides); tss is the entry's load (load.go).
+func (e baseEntry) val(key string, lc loadCtx) float64 {
 	x := e.act
 	sv := func(k string) float64 {
 		if !e.known {
@@ -92,12 +93,10 @@ func (e baseEntry) val(key string, ftp float64) float64 {
 	case "kj":
 		return positive(x.Kilojoules)
 	case "if":
-		return intensity(sv("np"), ftp)
+		return intensity(sv("np"), ftpFor(x.SportType, lc.ftp))
 	case "tss":
-		if !e.known {
-			return nan
-		}
-		return tss(e.sm.MovingS, sv("np"), ftp)
+		v, _ := lc.load(x, e.sm, e.known)
+		return v
 	}
 	return sv(key)
 }
@@ -130,7 +129,7 @@ func metricRows(u units, sport string) []metricRow {
 		{"avg_hr", "Avg HR", kindNeutral, bpm},
 		{"np", "Normalized power", kindPerf, w},
 		{"if", "Intensity factor", kindVolume, func(v float64) string { return num(v, 2) }},
-		{"tss", "TSS", kindVolume, func(v float64) string { return num(v, 0) }},
+		{"tss", "Load (TSS)", kindVolume, func(v float64) string { return num(v, 0) }},
 		{"ef", "Efficiency factor", kindPerf, func(v float64) string { return num(v, 2) }},
 		{"decoupling", "HR drift (decoupling)", kindLower, func(v float64) string { return num(v, 1) + " %" }},
 		{"mm_5", "Best 5 s", kindPerf, w},
@@ -219,6 +218,13 @@ type comparison struct {
 	same        []baseEntry
 	gaps        [][]float64 // per same-route ride, at gapStepM steps
 	table       *weekTable
+	// all is every activity of the window (any sport), added the stream
+	// metrics read for this call: buildTable's input.
+	all   []summaryActivity
+	added map[string]storedMetrics
+	// fetched is how many streams the baseline read: one call's reads share
+	// maxColdFetches.
+	fetched int
 }
 
 // storeMetrics merges add into the user's metric file, and gives the stored
@@ -351,14 +357,7 @@ func recalcHRZones(m *metricFile, touched map[string]bool, asked []string, withH
 // loadHRZones is the user's stored heart-rate zones for athleteID, fresh
 // (freshHRZones).
 func (t *tools) loadHRZones(user string, athleteID int64) map[string]storedHRZones {
-	sl := t.svc.slot(user)
-	sl.dataMu.Lock()
-	m, _ := t.svc.store.loadMetrics(user)
-	sl.dataMu.Unlock()
-	if m.Athlete != 0 && m.Athlete != athleteID {
-		return nil
-	}
-	return t.freshHRZones(user, athleteID, m.HRZones)
+	return t.freshHRZones(user, athleteID, t.metricFileOf(user, athleteID).HRZones)
 }
 
 // freshHRZones recalculates zones older than hrZonesMaxAge first: with no
@@ -435,8 +434,9 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 			todo = append(todo, e.act)
 		}
 	}
-	read := t.readStreams(ctx, user, todo)
+	read := t.readStreams(ctx, user, todo, 0)
 	c.stoppedBy = read.stoppedBy
+	c.fetched = len(read.got) + len(read.failed)
 	for i := range c.entries {
 		e := &c.entries[i]
 		if sm, ok := read.got[e.act.ID]; ok {
@@ -472,26 +472,7 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 		}
 	}
 
-	// Weeks: every sport of the window, so a load chart can stack them.
-	c.table = newWeekTable(c.from, local, nil)
-	for _, x := range all {
-		sm, ok := stored[strconv.FormatInt(x.ID, 10)]
-		if s, ok2 := added[strconv.FormatInt(x.ID, 10)]; ok2 {
-			sm, ok = s, true
-		}
-		ef := nan
-		if ok {
-			if v, has := sm.Vals["ef"]; has {
-				ef = v
-			}
-		}
-		c.table.add(x, activityTSS(x, sm, ok, a.FTP), ef)
-	}
-	thisEF := nan
-	if v, ok := this.Vals["ef"]; ok {
-		thisEF = v
-	}
-	c.table.add(d.summaryActivity, activityTSS(d.summaryActivity, this, true, a.FTP), thisEF)
+	c.all, c.added = all, added
 	for _, e := range c.entries {
 		if !slices.Contains(c.sports, e.act.SportType) {
 			c.sports = append(c.sports, e.act.SportType)
@@ -501,6 +482,33 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 		c.sports = append([]string{d.SportType}, c.sports...)
 	}
 	return c, nil
+}
+
+// buildTable fills the weeks: every sport of the window, so a load chart can
+// stack them. Apart from compare, because the loads need the thresholds the
+// analysis may only calculate after the baseline's reads.
+func (c *comparison) buildTable(d detailedActivity, this storedMetrics, lc loadCtx) {
+	c.table = newWeekTable(c.from, d.localStart(), nil)
+	for _, x := range c.all {
+		sm, ok := lc.stored[strconv.FormatInt(x.ID, 10)]
+		if s, ok2 := c.added[strconv.FormatInt(x.ID, 10)]; ok2 {
+			sm, ok = s, true
+		}
+		ef := nan
+		if ok {
+			if v, has := sm.Vals["ef"]; has {
+				ef = v
+			}
+		}
+		v, _ := lc.load(x, sm, ok)
+		c.table.add(x, v, ef)
+	}
+	thisEF := nan
+	if v, ok := this.Vals["ef"]; ok {
+		thisEF = v
+	}
+	v, _ := lc.load(d.summaryActivity, this, true)
+	c.table.add(d.summaryActivity, v, thisEF)
 }
 
 // streamsRead is what readStreams got: the stream metrics by activity id,
@@ -513,11 +521,12 @@ type streamsRead struct {
 }
 
 // readStreams reads the streams of acts in order, within the rate and time
-// budget, and stores nothing.
-func (t *tools) readStreams(ctx context.Context, user string, acts []summaryActivity) streamsRead {
+// budget, and stores nothing. done is what this call read before: the
+// per-call limit counts every read of one tool call.
+func (t *tools) readStreams(ctx context.Context, user string, acts []summaryActivity, done int) streamsRead {
 	r := streamsRead{got: map[int64]storedMetrics{}, failed: map[int64]bool{}}
 	for i, x := range acts {
-		if reason := t.budgetLeft(ctx, i); reason != "" {
+		if reason := t.budgetLeft(ctx, done+i); reason != "" {
 			r.stoppedBy = reason
 			return r
 		}
@@ -622,6 +631,7 @@ type analysisArgs struct {
 	FromKm    *float64        `json:"from_km"`
 	ToKm      *float64        `json:"to_km"`
 	Refresh   bool            `json:"refresh"`
+	PoolM     int             `json:"pool_m"`
 }
 
 // zonePick is what pickZones settled for one activity's streams.
@@ -645,7 +655,12 @@ func (t *tools) pickZones(ctx context.Context, user string, a athlete, d detaile
 	if p.zerr != nil {
 		p.z = athleteZones{}
 	}
-	p.pE, p.hE = powerEdges(p.z, a.FTP), hrEdges(p.z)
+	// Power zones are cycling's (Strava's, or Coggan's from the cycling
+	// FTP): a run's power has none.
+	if rideSport(d.SportType) {
+		p.pE = powerEdges(p.z, a.FTP)
+	}
+	p.hE = hrEdges(p.z)
 	p.whole = computeMetrics(s, 0, s.n, p.pE, p.hE)
 	// The stored entry is zone-free, and stored first: a new best moves the
 	// user's zones before they bucket this very activity.
@@ -658,21 +673,35 @@ func (t *tools) pickZones(ctx context.Context, user string, a athlete, d detaile
 	// sport, count instead. Custom zones always win, and without Strava's
 	// answer they may exist: then Strava's own fallback stays.
 	if p.zerr == nil && (p.z.HeartRate == nil || !p.z.HeartRate.CustomZones) {
-		if f, ok := familyOf(d.SportType); ok {
+		if _, ok := familyOf(d.SportType); ok {
 			if zones == nil {
 				zones = t.loadHRZones(user, a.ID)
 			} else {
 				zones = t.freshHRZones(user, a.ID, zones)
 			}
-			if oz, ok := zones[f.key]; ok && oz.edges() != nil {
-				p.own, p.ownFam, p.hE = &oz, f.key, oz.edges()
-				if s.hr != nil {
-					p.whole.HasHRZones, p.whole.HRZoneS = true, hrZoneTimes(s, 0, s.n, p.hE)
-				}
-			}
+			p.useOwn(zones, d, s)
 		}
 	}
 	return p
+}
+
+// useOwn buckets the activity by the user's own zones of its sport, when
+// Strava's are its defaults and the user has them: only the HR edges and
+// zone times change, nothing else is computed again.
+func (p *zonePick) useOwn(zones map[string]storedHRZones, d detailedActivity, s series) {
+	if p.zerr != nil || (p.z.HeartRate != nil && p.z.HeartRate.CustomZones) {
+		return
+	}
+	f, ok := familyOf(d.SportType)
+	if !ok {
+		return
+	}
+	if oz, ok := zones[f.key]; ok && oz.edges() != nil {
+		p.own, p.ownFam, p.hE = &oz, f.key, oz.edges()
+		if s.hr != nil {
+			p.whole.HasHRZones, p.whole.HRZoneS = true, hrZoneTimes(s, 0, s.n, p.hE)
+		}
+	}
 }
 
 func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpserver.Result {
@@ -689,6 +718,9 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	}
 	if args.Weeks < 1 || args.Weeks > maxWeeks {
 		return mcpserver.ErrorResult(fmt.Sprintf("weeks must be 1 to %d", maxWeeks))
+	}
+	if args.PoolM != 0 && args.PoolM != poolShort && args.PoolM != poolLong {
+		return mcpserver.ErrorResult("pool_m must be 25 or 50")
 	}
 	section := args.FromKm != nil || args.ToKm != nil
 	fromM, toM := 0.0, math.Inf(1)
@@ -721,8 +753,6 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		t.svc.markRefreshed(user, id)
 	}
 	u := unitsOf(a)
-	zp := t.pickZones(ctx, user, a, d, s)
-	z, pE, hE, whole, this, stored, own, ownFam := zp.z, zp.pE, zp.hE, zp.whole, zp.this, zp.stored, zp.own, zp.ownFam
 	ia, ib := 0, s.n
 	if section {
 		if s.dist == nil {
@@ -732,6 +762,25 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		if ib-ia < 2 {
 			return mcpserver.ErrorResult(fmt.Sprintf("The activity is %s long: no data between km %.1f and %.1f.", u.dist(d.Distance), fromM/1000, math.Min(toM, 1e9)/1000))
 		}
+	}
+	zp := t.pickZones(ctx, user, a, d, s)
+	cmp, cmpErr := t.compare(ctx, user, a, d, args.Weeks, args.MixIndoor, zp.this, zp.stored)
+	// After the baseline: its reads go first, a missing threshold heart rate
+	// gets what is left of the budget.
+	known, fetched := zp.stored, 0
+	if cmpErr == nil {
+		known, fetched = maps.Clone(zp.stored), cmp.fetched
+		maps.Copy(known, cmp.added)
+	}
+	lr, lc, loadNote, calculated := t.loadFor(ctx, user, a, d, known, fetched)
+	// Zones made just now for this activity's sport bucket it too: one answer,
+	// one set of zones.
+	if f, ok := familyOf(d.SportType); ok && slices.Contains(calculated, f.key) {
+		zp.useOwn(t.loadHRZones(user, a.ID), d, s)
+	}
+	z, pE, hE, whole, this, own, ownFam := zp.z, zp.pE, zp.hE, zp.whole, zp.this, zp.own, zp.ownFam
+	if cmpErr == nil {
+		cmp.buildTable(d, this, lc)
 	}
 	m := whole
 	if section {
@@ -759,7 +808,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		}
 	}
 
-	cmp, cmpErr := t.compare(ctx, user, a, d, args.Weeks, args.MixIndoor, this, stored)
+	ftp := ftpFor(d.SportType, a.FTP)
 
 	var b strings.Builder
 	sources := []mcpserver.Source{activitySource(d.summaryActivity)}
@@ -787,17 +836,25 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if s.n == 0 {
 		b.WriteString("no streams recorded (a manual entry, or a device that sent none): summary metrics only\n")
 	}
+	if !section && runSport(d.SportType) {
+		writeRunSummary(&b, computeRunFigures(d, s, whole, a.Weight), u, a.Weight)
+	}
+	if sf, ok := computeSwim(d, s, args.PoolM); ok && !section {
+		writeSwimSummary(&b, sf, d, u)
+	}
 	if m.HasWatts {
 		line := fmt.Sprintf("power: avg %s · NP %s · VI %s", watts(m.AvgW), watts(m.NP), num(m.NP/m.AvgW, 2))
-		if a.FTP > 0 {
-			line += fmt.Sprintf(" · IF %s · TSS %s", num(intensity(m.NP, a.FTP), 2), num(tss(m.MovingS, m.NP, a.FTP), 0))
+		if ftp > 0 {
+			line += fmt.Sprintf(" · IF %s · TSS %s", num(intensity(m.NP, ftp), 2), num(tss(m.MovingS, m.NP, ftp), 0))
 		}
 		line += fmt.Sprintf(" · %s kJ · max %s", thousands(m.KJ), watts(m.MaxW))
 		switch {
-		case a.FTP > 0 && a.Weight > 0:
-			line += fmt.Sprintf(" (FTP %.0f W, %.0f kg)", a.FTP, a.Weight)
-		case a.FTP > 0:
-			line += fmt.Sprintf(" (FTP %.0f W)", a.FTP)
+		case !rideSport(d.SportType):
+			line += " (no IF, TSS or power zones for this sport: Strava keeps only a cycling FTP)"
+		case ftp > 0 && a.Weight > 0:
+			line += fmt.Sprintf(" (FTP %.0f W, %.0f kg)", ftp, a.Weight)
+		case ftp > 0:
+			line += fmt.Sprintf(" (FTP %.0f W)", ftp)
 		default:
 			line += " (no FTP set on Strava: no IF or TSS)"
 		}
@@ -813,7 +870,10 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 			parts = append(parts, "decoupling "+num(m.Decoupling, 1)+" %")
 		}
 	}
-	if finite(m.AvgCad) {
+	switch {
+	case finite(m.AvgCad) && footSport(d.SportType):
+		parts = append(parts, fmt.Sprintf("cadence avg %.0f · max %.0f steps/min", m.AvgCad*2, m.MaxCad*2))
+	case finite(m.AvgCad):
 		parts = append(parts, fmt.Sprintf("cadence avg %.0f · max %.0f", m.AvgCad, m.MaxCad))
 	}
 	if finite(m.AvgTemp) {
@@ -892,12 +952,18 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		}
 	}
 
-	writeIntervals(&b, d, s, ia, ib, a.FTP, u, section)
+	writeIntervals(&b, d, s, ia, ib, ftp, u, section)
 
 	if cmpErr != nil {
 		b.WriteString("\ncomparison with earlier activities unavailable: " + failure(cmpErr).Text + "\n")
 	} else {
-		sources = t.writeComparison(ctx, &b, user, cmp, d, whole, a, u, sources, s)
+		sources = t.writeComparison(ctx, &b, user, cmp, d, whole, lc, u, sources, s)
+	}
+	if txt := loadText(lr); txt != "" {
+		b.WriteString("\n" + txt)
+	}
+	if loadNote != "" {
+		b.WriteString("  " + loadNote + "\n")
 	}
 
 	rows, width := kmRows(s, ia, ib, u.splitM())
@@ -910,7 +976,14 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		if paceSport(d.SportType) {
 			speedHead = "pace"
 		}
-		fmt.Fprintf(&b, "\nper %s (%s | time | %s | W | bpm | rpm | alt | grade), time recorded only; a row with a gap says so:\n", unit, u.splitName(), speedHead)
+		// A run's cadence per leg reads half its steps: the rows give steps/min
+		// like the summary.
+		cadHead, cadScale := "rpm", 1.0
+		if footSport(d.SportType) {
+			cadHead, cadScale = "spm", 2
+		}
+		fmt.Fprintf(&b, "\nper %s (%s | time | %s | W | bpm | %s | alt | grade), time recorded only; a row with a gap says so:\n",
+			unit, u.splitName(), speedHead, cadHead)
 		for i, r := range rows {
 			gapNote := ""
 			if r.UntimedS > 0 {
@@ -920,7 +993,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 				}
 			}
 			line := fmt.Sprintf("%s | %s | %s | %s | %s | %s | %s | %s%s\n", u.distNum(r.ToM), clock(r.Secs), tempoShort(r.SpeedMS, d.SportType, u),
-				num(r.W, 0), num(r.HR, 0), num(r.Cad, 0), elevShort(r.AltM, u), num(r.GradePct, 1), gapNote)
+				num(r.W, 0), num(r.HR, 0), num(r.Cad*cadScale, 0), elevShort(r.AltM, u), num(r.GradePct, 1), gapNote)
 			if b.Len()+len(line) > textBudget {
 				fmt.Fprintf(&b, "… %d more rows in the streams file\n", len(rows)-i)
 				break
@@ -929,8 +1002,11 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		}
 	}
 
-	files := analysisFiles(d, s, whole, this, cl, cmp, a, pE, hE)
+	files := analysisFiles(d, s, whole, this, cl, cmp, lc, lr, pE, hE)
 	b.WriteString(fileNames(files))
+	if !section {
+		b.WriteString(chartCalls(d.ID, d.SportType, files, s, args.Weeks))
+	}
 	return mcpserver.Result{Text: b.String(), Sources: sources, Files: files}
 }
 
@@ -1012,6 +1088,9 @@ func zoneText(z [5]int) string {
 
 // writeIntervals lists the laps the device wrote, or else the hard efforts.
 func writeIntervals(b *strings.Builder, d detailedActivity, s series, ia, ib int, ftp float64, u units, section bool) {
+	if d.SportType == "Swim" && s.lat == nil && !section {
+		return // a pool swim's summary lists its intervals; open water keeps its laps
+	}
 	if len(d.Laps) > 1 && !section {
 		writeLaps(b, d.Laps, d.SportType, u, ftp, false)
 		return
@@ -1041,7 +1120,7 @@ func writeIntervals(b *strings.Builder, d detailedActivity, s series, ia, ib int
 // writeComparison writes the window block and returns the sources with the
 // same-route rides appended.
 func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user string, c *comparison, d detailedActivity, whole rideMetrics,
-	a athlete, u units, sources []mcpserver.Source, s series) []mcpserver.Source {
+	lc loadCtx, u units, sources []mcpserver.Source, s series) []mcpserver.Source {
 	noun := sportNoun(d.SportType)
 	thisEntry := baseEntry{act: d.summaryActivity, sm: storedFrom(whole, d.localStart()), known: true}
 	end := d.localStart().AddDate(0, 0, -1)
@@ -1062,19 +1141,20 @@ func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user st
 		if reason == "" {
 			reason = "Strava errors"
 		}
-		fmt.Fprintf(b, "  partial: stream metrics (NP, IF, TSS, EF, decoupling, power bests) from %d of %d %s, stopped by %s; the next call reads the rest\n",
+		fmt.Fprintf(b, "  partial: stream metrics (NP, IF, EF, decoupling, power bests) from %d of %d %s, stopped by %s; the next call reads the rest "+
+			"(their TSS comes from Strava's weighted power until then)\n",
 			c.known, c.known+c.missing, noun, reason)
 	}
 	if len(c.entries) > 0 {
 		b.WriteString("  metric | this | median | Δ | rank\n")
 		for _, r := range metricRows(u, d.SportType) {
-			v := thisEntry.val(r.key, a.FTP)
+			v := thisEntry.val(r.key, lc)
 			if !finite(v) {
 				continue
 			}
 			vals := make([]float64, 0, len(c.entries))
 			for _, e := range c.entries {
-				vals = append(vals, e.val(r.key, a.FTP))
+				vals = append(vals, e.val(r.key, lc))
 			}
 			med := median(vals)
 			if !finite(med) {
@@ -1095,10 +1175,10 @@ func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user st
 			var bests []string
 			for _, dur := range curveDurations {
 				k := "mm_" + strconv.Itoa(dur)
-				v := thisEntry.val(k, a.FTP)
+				v := thisEntry.val(k, lc)
 				best := nan
 				for _, e := range c.entries {
-					if x := e.val(k, a.FTP); finite(x) && (!finite(best) || x > best) {
+					if x := e.val(k, lc); finite(x) && (!finite(best) || x > best) {
 						best = x
 					}
 				}
@@ -1125,7 +1205,7 @@ func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user st
 			line := fmt.Sprintf("  %s %s · %s · moving %s · elapsed %s · avg %s", marker(n), x.localStart().Format("2006-01-02"), x.Name,
 				clock(float64(x.MovingTime)), clock(float64(x.ElapsedTime)), u.tempo(x.AverageSpeed, x.SportType))
 			for _, k := range []struct{ key, name string }{{"np", "NP"}, {"ef", "EF"}, {"decoupling", "decoupling"}, {"mm_1200", "best 20 min"}} {
-				if v := e.val(k.key, a.FTP); finite(v) {
+				if v := e.val(k.key, lc); finite(v) {
 					switch k.key {
 					case "np", "mm_1200":
 						line += " · " + k.name + " " + watts(v)
@@ -1162,8 +1242,10 @@ func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user st
 	}
 
 	// Load: this ISO week so far against the weekly average of the weeks
-	// before it, by TSS, or by moving time without power.
-	byTSS := whole.HasWatts && a.FTP > 0
+	// before it, by load (TSS) when this activity has one, else by moving
+	// time.
+	thisLoad, _ := lc.load(d.summaryActivity, thisEntry.sm, true)
+	byTSS := finite(thisLoad)
 	weeks := c.table.weeks()
 	sums := make([]float64, len(weeks))
 	counts := make([]int, len(weeks))
@@ -1216,7 +1298,9 @@ func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user st
 		}
 		b.WriteString("\n")
 		if byTSS {
-			b.WriteString("  (TSS from stream NP where stored, else from Strava's weighted power)\n")
+			b.WriteString("  (TSS: rides with power against FTP, from stream NP where stored, else Strava's weighted power; " +
+				"other cycling and running activities hrTSS against the sport's threshold heart rate; an activity without a " +
+				"load counts 0 here: the fitness block below names what was left out)\n")
 		}
 	}
 	return sources
@@ -1235,7 +1319,10 @@ func lastFinite(v []float64) float64 {
 // 3 MiB of one result allow.
 // this is the activity's own stored entry (zonePick.this): built once, so
 // its baseline row is the entry that was stored.
-func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedMetrics, cl []climb, c *comparison, a athlete, pE, hE []float64) []mcpserver.File {
+// The load file goes in before the streams are sized: past the 3 MiB
+// mcpserver drops a file the chart code still names.
+func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedMetrics, cl []climb, c *comparison, lc loadCtx,
+	lr loadReport, pE, hE []float64) []mcpserver.File {
 	var files []mcpserver.File
 	if len(cl) > 0 {
 		t := newCSV(hdrClimbs)
@@ -1252,7 +1339,7 @@ func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedM
 				k := "mm_" + strconv.Itoa(dur)
 				vals := []float64{}
 				for _, e := range c.entries {
-					vals = append(vals, e.val(k, a.FTP))
+					vals = append(vals, e.val(k, lc))
 				}
 				t.row(intCell(dur), cell(whole.MeanMax[i], 0), cell(maxOf(knownOnly(vals)), 0), cell(median(vals), 0))
 			}
@@ -1264,9 +1351,9 @@ func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedM
 			x := e.act
 			t.row(strconv.FormatInt(x.ID, 10), x.localStart().Format("2006-01-02"), x.Name, x.SportType, boolCell(i == 0), boolCell(e.sameRoute),
 				cell(x.Distance/1000, 2), intCell(x.MovingTime), cell(x.AverageSpeed*3.6, 1), cell(x.TotalElevationGain, 0),
-				cell(e.val("np", a.FTP), 0), cell(e.val("tss", a.FTP), 0), cell(e.val("ef", a.FTP), 2), cell(e.val("decoupling", a.FTP), 1),
-				cell(e.val("mm_1200", a.FTP), 0), cell(e.val("avg_hr", a.FTP), 0),
-				intCell(x.ElapsedTime), cell(e.val("not_recorded_s", a.FTP), 0))
+				cell(e.val("np", lc), 0), cell(e.val("tss", lc), 0), cell(e.val("ef", lc), 2), cell(e.val("decoupling", lc), 1),
+				cell(e.val("mm_1200", lc), 0), cell(e.val("avg_hr", lc), 0),
+				intCell(x.ElapsedTime), cell(e.val("not_recorded_s", lc), 0), cell(deviceWatts(x), 0))
 		}
 		files = append(files, t.file(fmt.Sprintf("strava_%d_baseline.csv", d.ID)))
 		if f, ok := sameRouteCSV(d.ID, c); ok {
@@ -1274,12 +1361,24 @@ func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedM
 		}
 		files = append(files, c.table.file())
 	}
+	if len(lr.days) > 0 {
+		files = append(files, loadCSV(d.ID, lr))
+	}
 	if s.n > 0 {
 		if f, ok := streamsCSV(d.ID, s, pE, hE, maxFilesBytes-filesSize(files)); ok {
 			files = append([]mcpserver.File{f}, files...)
 		}
 	}
 	return files
+}
+
+// deviceWatts is x's average power from a power meter (a watch's running
+// power too); NaN for none or Strava's own estimate.
+func deviceWatts(x summaryActivity) float64 {
+	if x.DeviceWatts && x.AverageWatts > 0 {
+		return x.AverageWatts
+	}
+	return nan
 }
 
 func knownOnly(v []float64) []float64 {
@@ -1381,6 +1480,7 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 		listed = append(listed, e.act)
 	}
 	t.storeMetrics(user, a.ID, added, stored, listed)
+	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(t.loadHRZones(user, a.ID)), stored: stored}
 
 	var b strings.Builder
 	sources := make([]mcpserver.Source, 0, len(entries))
@@ -1398,7 +1498,7 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 		cells := []string{r.label}
 		known := false
 		for _, e := range entries {
-			v := e.val(r.key, a.FTP)
+			v := e.val(r.key, lc)
 			if finite(v) {
 				known = true
 				cells = append(cells, r.format(v))

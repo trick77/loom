@@ -91,6 +91,7 @@ func TestAnalysis_comparison(t *testing.T) {
 		"strava_1001_baseline.csv":    hdrBaseline,
 		"strava_1001_same_route.csv":  "distance_km,gap_s_2026-10-28,gap_s_2026-10-10",
 		"strava_weeks.csv":            hdrWeeks,
+		"strava_1001_load.csv":        hdrLoad,
 	}
 	if len(r.Files) != len(heads) || r.Files[0].URI != "file:///strava_1001_streams.csv" {
 		t.Errorf("files = %d, the streams first: %v", len(r.Files), r.Files[0].URI)
@@ -104,7 +105,8 @@ func TestAnalysis_comparison(t *testing.T) {
 	if hdrStreams != "elapsed_s,distance_km,lat,lng,altitude_m,speed_kmh,hr,cadence,watts,grade_pct,temp_c,moving,power_zone,hr_zone" ||
 		hdrClimbs != "n,from_km,to_km,len_km,gain_m,grade_pct,secs,vam,avg_w,wkg,avg_hr" ||
 		hdrPowerCurve != "duration_s,this_w,window_best_w,window_median_w" ||
-		hdrBaseline != "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_time_s,not_recorded_s" ||
+		hdrBaseline != "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_time_s,not_recorded_s,avg_w" ||
+		hdrLoad != "date,load,ctl,atl,form,acwr,ramp,monotony,strain,ctl_before,atl_before" ||
 		hdrWeeks != "week_start,iso_week,sport_type,count,distance_km,moving_s,gain_m,tss" ||
 		hdrActivities != "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score,elapsed_time_s" {
 		t.Error("a CSV header drifted from the chart module's contract")
@@ -324,16 +326,17 @@ func TestAnalysis_partialBaseline(t *testing.T) {
 	f, svc, _ := analysisFixture(t)
 	h := newServer(config{token: testToken}, svc, "test")
 	f.mu.Lock()
-	f.rateLimit15 = 14 // the six calls before the baseline spend 6 of 14
+	f.rateLimit15 = 14 // the five calls before the baseline spend 5 of 14
 	f.mu.Unlock()
 	r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`)
 	if r.IsError {
 		t.Fatal(r.Text)
 	}
-	if !strings.Contains(r.Text, "partial: stream metrics (NP, IF, TSS, EF, decoupling, power bests) from 1 of 3 rides, stopped by the Strava rate budget") {
+	if !strings.Contains(r.Text, "partial: stream metrics (NP, IF, EF, decoupling, power bests) from 2 of 3 rides, stopped by the Strava rate budget") {
 		t.Errorf("partial:\n%s", r.Text)
 	}
-	if base := r.file("strava_1001_baseline.csv"); !strings.Contains(base, "1003,2026-10-20,Greifensee,Ride,0,0,10.00,1500,21.6,120,,,,,,140") {
+	// The load comes from Strava's weighted power without the streams.
+	if base := r.file("strava_1001_baseline.csv"); !strings.Contains(base, "1008,2026-10-10,Albis loop,Ride,0,1,10.00,1500,24.5,120,,35,,,,140") {
 		t.Errorf("unknown stream metrics must be empty cells:\n%s", base)
 	}
 	f.advance(16 * time.Minute)
@@ -583,7 +586,7 @@ func TestAnalysis_paused(t *testing.T) {
 	// The files carry it too, and say what their time columns mean: a model
 	// summed elapsed_s per zone, then took it for milliseconds.
 	base := strings.Split(strings.TrimSpace(r.file("strava_1001_baseline.csv")), "\n")
-	if len(base) < 2 || !strings.HasSuffix(base[1], ",1600,300") {
+	if len(base) < 2 || !strings.HasSuffix(base[1], ",1600,300,220") {
 		t.Errorf("baseline row lacks elapsed_time_s 1600, not_recorded_s 300: %v", base)
 	}
 	for _, want := range []string{"strava_1001_streams.csv: one row per 5 s of recording; elapsed_s is seconds since the start",

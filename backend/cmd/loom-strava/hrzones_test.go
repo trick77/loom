@@ -284,16 +284,30 @@ func TestHRZones_noneBeforeAsked(t *testing.T) {
 	if z := loadZones(t, svc); len(z) != 0 {
 		t.Errorf("zones made without hr_zones: %+v", z)
 	}
-	// A run is stored by its analysis; asking for cycling makes no running
-	// zones out of it.
-	if r := callTool(t, h, userA, "activity_analysis", `{"id":3005}`); r.IsError {
-		t.Fatal(r.Text)
+	// A run's load needs the running threshold: its analysis calculates the
+	// running zones (the rides before it have power, so no cycling ones).
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":3005}`); r.IsError ||
+		!strings.Contains(r.Text, "threshold heart rate calculated now from the user's streams for running") {
+		t.Fatalf("run analysis:\n%s", r.Text)
+	}
+	if z := loadZones(t, svc); len(z) != 1 || z["running"].LTHR == 0 {
+		t.Errorf("zones after a run's analysis: %+v", z)
 	}
 	if r := callTool(t, h, userA, "hr_zones", `{"sport":"cycling"}`); r.IsError {
 		t.Fatal(r.Text)
 	}
-	if z := loadZones(t, svc); len(z["cycling"].Zones) != 5 || len(z) != 1 {
+	if z := loadZones(t, svc); len(z["cycling"].Zones) != 5 || len(z) != 2 {
 		t.Errorf("zones after a cycling-only call: %+v", z)
+	}
+
+	// hr_zones for one sport never makes the other's.
+	_, svc2, _ := hrFixture(t)
+	h2 := newServer(config{token: testToken}, svc2, "test")
+	if r := callTool(t, h2, userA, "hr_zones", `{"sport":"cycling"}`); r.IsError {
+		t.Fatal(r.Text)
+	}
+	if z := loadZones(t, svc2); len(z) != 1 || len(z["cycling"].Zones) != 5 {
+		t.Errorf("a cycling-only call: %+v", z)
 	}
 }
 

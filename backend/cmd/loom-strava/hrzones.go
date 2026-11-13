@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -275,69 +276,11 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 	}
 	now := t.svc.now()
 	from := now.AddDate(0, 0, -hrWindowDays)
-	// The index, synced back to the window's start (padded: the window is
-	// compared in wall-clock time below); more says it does not reach back
-	// that far yet.
-	all, more, err := t.svc.listActivities(ctx, user, from.Unix()-dayPadS, 0, maxBackfillPages)
+	zr, err := t.calcZones(ctx, user, a, fams, false, 0)
 	if err != nil {
 		return failure(err)
 	}
-	// One comparison for the window everywhere: wall-clock strings, as
-	// stored entries and calcHRZones have them.
-	fromS := from.Format("2006-01-02T15:04:05")
-	inWindow := func(x summaryActivity) bool { return x.localStart().Format("2006-01-02T15:04:05") >= fromS }
-	var list []summaryActivity
-	for _, x := range all {
-		if inWindow(x) {
-			list = append(list, x)
-		}
-	}
-	stored := t.loadMetrics(user, a.ID)
-	known := func(x summaryActivity) bool {
-		sm, ok := stored[strconv.FormatInt(x.ID, 10)]
-		return ok && sm.Rev >= entryRev
-	}
-
-	// Per family: its activities with heart rate, and the hardest of those
-	// not read yet first. An entry stored before the HR keys existed is
-	// read again: its other values come back the same.
-	acts := make([][]summaryActivity, len(fams))
-	queues := make([][]summaryActivity, len(fams))
-	withHR := map[string]int{}
-	for i, f := range fams {
-		var need []summaryActivity
-		for _, x := range list {
-			if fx, ok := familyOf(x.SportType); !ok || fx.key != f.key || !x.HasHeartrate || x.Manual {
-				continue
-			}
-			acts[i] = append(acts[i], x)
-			if !known(x) {
-				need = append(need, x)
-			}
-		}
-		queues[i] = hardestFirst(need)
-		withHR[f.key] = len(acts[i])
-	}
-	read := t.readStreams(ctx, user, interleave(queues))
-	added := map[string]storedMetrics{}
-	for id, sm := range read.got {
-		added[strconv.FormatInt(id, 10)] = sm
-	}
-	// Sport and name of the listed entries are set under the file's lock,
-	// on the entry as it is then: never from the snapshot above.
-	asked := make([]string, 0, len(fams))
-	for _, f := range fams {
-		asked = append(asked, f.key)
-	}
-	u := metricsUpdate{add: added, listed: list, withHR: withHR, recalc: asked}
-	zones, saved := t.updateMetrics(user, a.ID, u)
-	if zones == nil {
-		// Disconnected or another athlete meanwhile: the same update on the
-		// snapshot, unsaved, so this answer still gets its zones.
-		m := metricFile{Activities: stored}
-		applyUpdate(&m, u, now)
-		zones = m.HRZones
-	}
+	acts, read, known, zones, saved, more := zr.acts, zr.read, zr.known, zr.zones, zr.saved, zr.more
 	keep := "calculated %s and stored: profile and activity_analysis use them while Strava's zones are its defaults, " +
 		"and an analysed activity that moves them recalculates them."
 	if !saved {
@@ -431,6 +374,109 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 			"zones above instead where a sport has them. Custom zones set in Strava replace both.\n", zoneList(z.HeartRate.Zones, " bpm"))
 	}
 	return mcpserver.Result{Text: b.String(), Sources: sources}
+}
+
+// zoneRun is one calculation of families' zones: their activities with heart
+// rate in the window, what was read for it, and the zones after.
+type zoneRun struct {
+	acts  [][]summaryActivity // per family, as fams
+	read  streamsRead
+	known func(summaryActivity) bool
+	zones map[string]storedHRZones
+	saved bool
+	// more: the list does not reach back to the window's start yet.
+	more bool
+	// ran: something was read or calculated (lazy may skip it all).
+	ran bool
+}
+
+// calcZones calculates fams' zones the way hr_zones does: the streams of
+// the hardest activities not read yet, within the budget, then the zones
+// from every stored entry. lazy (activity_analysis wanting a missing
+// threshold) skips it when there is nothing to read and every family has
+// its zones already: a repeat call then writes nothing. done is the streams
+// the call read before (the per-call limit is the whole call's).
+func (t *tools) calcZones(ctx context.Context, user string, a athlete, fams []hrFamily, lazy bool, done int) (zoneRun, error) {
+	now := t.svc.now()
+	from := now.AddDate(0, 0, -hrWindowDays)
+	// The index, synced back to the window's start (padded: the window is
+	// compared in wall-clock time below); more says it does not reach back
+	// that far yet.
+	all, more, err := t.svc.listActivities(ctx, user, from.Unix()-dayPadS, 0, maxBackfillPages)
+	if err != nil {
+		return zoneRun{}, err
+	}
+	// One comparison for the window everywhere: wall-clock strings, as
+	// stored entries and calcHRZones have them.
+	fromS := from.Format("2006-01-02T15:04:05")
+	inWindow := func(x summaryActivity) bool { return x.localStart().Format("2006-01-02T15:04:05") >= fromS }
+	var list []summaryActivity
+	for _, x := range all {
+		if inWindow(x) {
+			list = append(list, x)
+		}
+	}
+	m := t.metricFileOf(user, a.ID)
+	stored := m.Activities
+	known := func(x summaryActivity) bool {
+		sm, ok := stored[strconv.FormatInt(x.ID, 10)]
+		return ok && sm.Rev >= entryRev
+	}
+	zr := zoneRun{acts: make([][]summaryActivity, len(fams)), known: known, more: more, zones: m.HRZones}
+
+	// Per family: its activities with heart rate, and the hardest of those
+	// not read yet first. An entry stored before the HR keys existed is
+	// read again: its other values come back the same.
+	queues := make([][]summaryActivity, len(fams))
+	withHR := map[string]int{}
+	pending := 0
+	for i, f := range fams {
+		var need []summaryActivity
+		for _, x := range list {
+			if fx, ok := familyOf(x.SportType); !ok || fx.key != f.key || !x.HasHeartrate || x.Manual {
+				continue
+			}
+			zr.acts[i] = append(zr.acts[i], x)
+			if !known(x) {
+				need = append(need, x)
+			}
+		}
+		queues[i] = hardestFirst(need)
+		withHR[f.key] = len(zr.acts[i])
+		pending += len(need)
+		// A family with heart rate but no zones yet gets them made, even from
+		// stored entries alone; one without heart rate never has any.
+		if _, has := m.HRZones[f.key]; !has && len(zr.acts[i]) > 0 {
+			pending++
+		}
+	}
+	if lazy && pending == 0 {
+		return zr, nil
+	}
+	zr.ran = true
+	zr.read = t.readStreams(ctx, user, interleave(queues), done)
+	added := map[string]storedMetrics{}
+	for id, sm := range zr.read.got {
+		added[strconv.FormatInt(id, 10)] = sm
+	}
+	// Sport and name of the listed entries are set under the file's lock,
+	// on the entry as it is then: never from the snapshot above.
+	asked := make([]string, 0, len(fams))
+	for _, f := range fams {
+		asked = append(asked, f.key)
+	}
+	u := metricsUpdate{add: added, listed: list, withHR: withHR, recalc: asked}
+	zr.zones, zr.saved = t.updateMetrics(user, a.ID, u)
+	if zr.zones == nil {
+		// Disconnected or another athlete meanwhile: the same update on the
+		// snapshot, unsaved, so this answer still gets its zones.
+		// The other families' zones stay: dropping them would take their
+		// thresholds out of this answer's load.
+		mf := metricFile{Activities: stored, HRZones: maps.Clone(m.HRZones)}
+		applyUpdate(&mf, u, now)
+		zr.zones = mf.HRZones
+	}
+	return zr, nil
 }
 
 // ownZonesLine is the profile's line for one family's stored zones.

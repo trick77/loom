@@ -165,6 +165,8 @@ type split struct {
 	ElevationDifference float64 `json:"elevation_difference"`
 	AverageSpeed        float64 `json:"average_speed"`
 	AverageHeartrate    float64 `json:"average_heartrate"`
+	// AverageGradeAdjustedSpeed is Strava's grade-adjusted pace (runs only).
+	AverageGradeAdjustedSpeed float64 `json:"average_grade_adjusted_speed"`
 }
 
 type bestEffort struct {

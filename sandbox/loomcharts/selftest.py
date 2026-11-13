@@ -193,7 +193,9 @@ def build(d):
     bdf["not_recorded_s"] = (bdf["activity_id"] % 3) * 120
     bdf["elapsed_time_s"] = bdf["moving_s"] + bdf["not_recorded_s"] + 60
     bdf = bdf[[c for c in bdf.columns if c not in ("elapsed_time_s", "not_recorded_s")] + ["elapsed_time_s", "not_recorded_s"]]
+    bdf["avg_w"] = (bdf["np_w"] * 0.94).round(0)
     bdf.to_csv(p["baseline"], index=False)
+    p.update(activity_files(d))
 
     this_mm = mean_max(ride.watts.values)
     pd.DataFrame({"duration_s": DURS, "this_w": [this_mm[d] for d in DURS],
@@ -236,6 +238,50 @@ def build(d):
     return p
 
 
+RUN_HR_EDGES = (132, 146, 154, 162)
+
+
+def activity_files(d):
+    """A run's streams (7.5 km, steady with a surge), the load series of an analysis and of a list."""
+    rng = np.random.default_rng(3)
+    rows, t, km, hr = [], 0, 0.0, 120.0
+    while km < 7.55:
+        v = 2.55 if km < 3.75 else 2.48
+        if 4.0 <= km < 4.6:
+            v = 3.1
+        v += rng.normal(0, 0.05)
+        hr += (min(172, 128 + 9 * v + (8 if 4.0 <= km < 4.9 else 0) + t / 400) - hr) / 30
+        w = 88 * v + rng.normal(0, 8)
+        rows.append({"elapsed_s": t, "distance_km": round(km, 3), "lat": "", "lng": "", "altitude_m": 412.0,
+                     "speed_kmh": round(v * 3.6, 1), "hr": round(hr), "cadence": round(81 + rng.normal(0, 1.5)),
+                     "watts": round(w), "grade_pct": 0.0, "temp_c": "", "moving": 1, "power_zone": "",
+                     "hr_zone": int(np.digitize(hr, RUN_HR_EDGES) + 1)})
+        km += v * 5 / 1000
+        t += 5
+    run = os.path.join(d, "strava_2_streams.csv")
+    pd.DataFrame(rows).to_csv(run, index=False)
+
+    days = pd.date_range("2026-07-05", "2026-11-01", freq="D")
+    load = np.where(rng.random(len(days)) < 0.55, rng.normal(70, 25, len(days)).clip(20, 160), 0.0)
+    load[-6:] = [90, 0, 120, 60, 0, 140]
+    ctl = atl = 0.0
+    out = []
+    for day, x in zip(days, load):
+        ctl += (x - ctl) / 42
+        atl += (x - atl) / 7
+        out.append({"date": day.strftime("%Y-%m-%d"), "load": round(x), "ctl": round(ctl, 1), "atl": round(atl, 1),
+                    "form": round(ctl - atl, 1), "acwr": round(atl / ctl, 2) if ctl >= 10 else "", "ramp": "",
+                    "monotony": "", "strain": "", "ctl_before": "", "atl_before": ""})
+    out[-1]["ctl_before"] = round(out[-2]["ctl"] + (0 - out[-2]["ctl"]) / 42, 1)
+    out[-1]["atl_before"] = round(out[-2]["atl"] + (0 - out[-2]["atl"]) / 7, 1)
+    p = {"run_streams": run, "load": os.path.join(d, "strava_2_load.csv"), "load_list": os.path.join(d, "strava_load.csv")}
+    pd.DataFrame(out).to_csv(p["load"], index=False)
+    lst = pd.DataFrame(out)
+    lst["ctl_before"], lst["atl_before"] = "", ""
+    lst.to_csv(p["load_list"], index=False)
+    return p
+
+
 def _blank(src, dst, cols):
     df = pd.read_csv(src)
     for c in cols:
@@ -258,7 +304,10 @@ def variants(p, d):
     curve_nothis = _blank(p["curve"], j("curve_nothis.csv"), ["this_w"])
     curve_empty = _blank(p["curve"], j("curve_empty.csv"), ["this_w", "window_best_w", "window_median_w"])
     base_nopower = _blank(p["baseline"], j("baseline_nopower.csv"), ["np_w", "tss", "ef", "decoupling_pct",
-                                                                     "best_20m_w"])
+                                                                     "best_20m_w", "avg_w"])
+    run_nozones = _blank(p["run_streams"], j("run_nozones.csv"), ["hr_zone"])
+    run_nopower = _blank(p["run_streams"], j("run_nopower.csv"), ["watts"])
+    run_nohr = _blank(p["run_streams"], j("run_nohr.csv"), ["hr", "hr_zone"])
     b = pd.read_csv(p["baseline"])
     b[b.is_this == 0].to_csv(j("baseline_nothis.csv"), index=False)
     pd.concat([b[b.is_this == 0].head(1), b[b.is_this == 1]]).to_csv(j("baseline_one.csv"), index=False)
@@ -283,7 +332,7 @@ def variants(p, d):
     full = 40_000
     note = 3_000
     heads = {}
-    for k in ("streams", "curve", "baseline", "same_route", "weeks", "activities"):
+    for k in ("streams", "curve", "baseline", "same_route", "weeks", "activities", "load"):
         heads[k] = j(f"head_{k}.csv")
         pd.read_csv(p[k]).head(0).to_csv(heads[k], index=False)
     header_only = [
@@ -295,6 +344,35 @@ def variants(p, d):
         ("head_weekly_load", loomcharts.weekly_load, (heads["weeks"], j("head_weekly_load.png")), {}, note),
         ("head_activities", loomcharts.activities_summary, (heads["activities"], j("head_activities.png")), {},
          note),
+        ("head_load_profile", loomcharts.load_profile, (heads["baseline"], j("head_load_profile.png")), {}, note),
+        ("head_fitness", loomcharts.fitness_fatigue, (heads["load"], j("head_fitness.png")), {}, note),
+        ("head_hr_profile", loomcharts.hr_profile, (heads["streams"], j("head_hr_profile.png")), {}, note),
+        ("head_splits", loomcharts.split_variation, (heads["streams"], j("head_splits.png")), {}, note),
+    ]
+    activity = [
+        ("load_profile", loomcharts.load_profile, (p["baseline"], j("load_profile.png")), {"weeks": 6}, full),
+        ("load_profile_de", loomcharts.load_profile, (p["baseline"], j("load_profile_de.png")),
+         {"weeks": 6, "lang": "de"}, full),
+        ("load_profile_nopower", loomcharts.load_profile, (base_nopower, j("load_profile_nopower.png")), {}, full),
+        ("load_profile_one", loomcharts.load_profile, (j("baseline_one.csv"), j("load_profile_one.png")), {}, 20_000),
+        ("load_profile_nothis", loomcharts.load_profile, (j("baseline_nothis.csv"), j("load_profile_nothis.png")),
+         {}, note),
+        ("fitness_fatigue", loomcharts.fitness_fatigue, (p["load"], j("fitness_fatigue.png")), {}, full),
+        ("fitness_fatigue_de", loomcharts.fitness_fatigue, (p["load"], j("fitness_fatigue_de.png")), {"lang": "de"},
+         full),
+        ("fitness_fatigue_list", loomcharts.fitness_fatigue, (p["load_list"], j("fitness_fatigue_list.png")), {},
+         full),
+        ("hr_profile", loomcharts.hr_profile, (p["run_streams"], j("hr_profile.png")), {}, full),
+        ("hr_profile_de", loomcharts.hr_profile, (p["run_streams"], j("hr_profile_de.png")), {"lang": "de"}, full),
+        ("hr_profile_ride", loomcharts.hr_profile, (p["streams"], j("hr_profile_ride.png")), {}, full),
+        ("hr_profile_nozones", loomcharts.hr_profile, (run_nozones, j("hr_profile_nozones.png")), {}, 20_000),
+        ("hr_profile_nohr", loomcharts.hr_profile, (run_nohr, j("hr_profile_nohr.png")), {}, note),
+        ("splits", loomcharts.split_variation, (p["run_streams"], j("splits.png")), {"sport": "Run"}, full),
+        ("splits_de", loomcharts.split_variation, (p["run_streams"], j("splits_de.png")),
+         {"sport": "Run", "lang": "de"}, full),
+        ("splits_hr", loomcharts.split_variation, (run_nopower, j("splits_hr.png")), {"sport": "Run"}, full),
+        ("splits_ride", loomcharts.split_variation, (p["streams"], j("splits_ride.png")), {"sport": "Ride"}, full),
+        ("splits_nothing", loomcharts.split_variation, (nothing, j("splits_nothing.png")), {}, note),
     ]
     # A job's inputs sit in in/; the tools name them bare, and a bare name must be found there.
     os.makedirs(j("in"), exist_ok=True)
@@ -306,7 +384,7 @@ def variants(p, d):
                 return fn(*args, **kwargs)
         return call
 
-    return header_only + outdoor_variants(d, full, note) + [
+    return header_only + activity + outdoor_variants(d, full, note) + [
         # Absolute out: the call runs inside d, and --out may give a relative d.
         ("profile_bare_name", in_job_dir(loomcharts.ride_profile),
          ("bare_streams.csv", os.path.join(os.path.abspath(d), "profile_bare.png")), {}, full),
