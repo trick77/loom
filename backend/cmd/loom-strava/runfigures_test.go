@@ -43,7 +43,7 @@ func synthRun(v1, v2 float64) streamSet {
 	_ = burst
 	return streamSet{Time: &struct{ Data floats }{tm}, Distance: &struct{ Data floats }{dist}, Velocity: &struct{ Data floats }{vel},
 		Watts: &struct{ Data floats }{w}, HR: &struct{ Data floats }{hr}, Cadence: &struct{ Data floats }{cad},
-		Altitude: &struct{ Data floats }{alt}, Moving: &struct{ Data []bool }{moving}}
+		Altitude: &struct{ Data floats }{alt}, Moving: &struct{ Data []bool }{moving}, Grade: &struct{ Data floats }{make(floats, len(tm))}}
 }
 
 func TestRunFigures(t *testing.T) {

@@ -458,19 +458,36 @@ func (s *service) streams(ctx context.Context, user string, id int64, refresh bo
 	c := s.cache(user).streams
 	sr, err := storedRead(ctx, s, user, id, kindStreams, c, refresh,
 		fmt.Sprintf("/activities/%d/streams", id), url.Values{"keys": {streamKeys}, "key_by_type": {"true"}},
-		func(b []byte) (series, error) {
-			var set streamSet
-			if err := json.Unmarshal(b, &set); err != nil {
-				return series{}, err
-			}
-			return buildSeries(set), nil
-		}, nil)
+		decodeStreams, nil)
 	if notFound(err) {
 		sr = buildSeries(streamSet{})
 		c.put(kindStreams+"/"+strconv.FormatInt(id, 10), sr, s.now())
 		return sr, nil
 	}
 	return sr, err
+}
+
+// decodeStreams is a streams answer as a series.
+func decodeStreams(b []byte) (series, error) {
+	var set streamSet
+	if err := json.Unmarshal(b, &set); err != nil {
+		return series{}, err
+	}
+	return buildSeries(set), nil
+}
+
+// streamsFromDisk decodes id's kept streams past both caches: a sweep over
+// many activities (the grade profile) must neither push the ones in use out
+// of memory nor mark itself read in the disk index (its least-recently-read
+// eviction would then drop the streams the user does read). ok false when
+// none are kept.
+func (s *service) streamsFromDisk(user string, id int64) (series, bool) {
+	b, ok := s.store.readBody(user, id, kindStreams)
+	if !ok {
+		return series{}, false
+	}
+	sr, err := decodeStreams(b)
+	return sr, err == nil
 }
 
 // activitiesPerPage is Strava's maximum.
