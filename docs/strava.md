@@ -24,9 +24,9 @@ comment text, segment explore or leaderboards, and no write scope.
 |---|---|
 | `profile` | athlete, FTP, weight, bikes and shoes, HR and power zones |
 | `totals` | recent, year-to-date and all-time totals (Strava counts only Everyone-visible activities here) |
-| `list_activities` | activities by date range and sport, with totals per sport and week; attaches `strava_activities.csv` |
+| `list_activities` | activities by date range and sport, with totals per sport and week, and fitness and fatigue at the window's end; attaches `strava_activities.csv`, `strava_weeks.csv`, `strava_load.csv` |
 | `get_activity` | one activity in full: laps, splits, best efforts, segment efforts, gear, device; `refresh` reads it from Strava again; an activity from the last 14 days attaches `strava_<id>_streams.csv` |
-| `activity_analysis` | metrics from the streams (NP, IF, TSS, power curve, zones, decoupling, climbs, intervals, per-km rows), always compared with the user's same-sport activities of the last `weeks` (default 6); attaches the CSVs below |
+| `activity_analysis` | metrics from the streams (NP, IF, TSS, power curve, zones, decoupling, climbs, intervals, per-km rows), always compared with the user's same-sport activities of the last `weeks` (default 6), fitness and fatigue around it, summary tables for a run or a swim; attaches the CSVs below and the chart code |
 | `compare_activities` | 2-5 activities side by side |
 | `hr_zones` | max HR, threshold HR (LTHR) and Friel zones per sport (cycling, running) from the user's own streams of the last 365 days, next to Strava's zones |
 | `gear`, `routes`, `segments` | gear details, own routes, starred segments and own efforts (efforts need a Strava subscription) |
@@ -36,10 +36,24 @@ Each activity named comes with a link to it on Strava (citation and attribution)
 ### Charts
 
 `activity_analysis` and `list_activities` attach CSV files (`strava_<id>_streams.csv`, `_climbs`, `_power_curve`,
-`_baseline`, `_same_route`, `strava_weeks.csv`, `strava_activities.csv`; columns in `sandbox/loomcharts/__init__.py`).
-loom keeps them for the running turn only and hands them to `run_python` by name; they are never stored, shown or put
-into the prompt. `loomcharts` in the sandbox image draws them in loom's style. A follow-up turn asks the tool again:
-the sidecar answers from its store.
+`_baseline`, `_same_route`, `_load`, `strava_weeks.csv`, `strava_activities.csv`, `strava_load.csv`; columns in
+`sandbox/loomcharts/__init__.py`). loom keeps them for the running turn only and hands them to `run_python` by name;
+they are never stored, shown or put into the prompt. `loomcharts` in the sandbox image draws them in loom's style. A
+follow-up turn asks the tool again: the sidecar answers from its store.
+
+Every analysis draws four charts unasked (the user wants them each time): `load_profile` (spider against the window's
+average), `fitness_fatigue`, `hr_profile` (load focus and heart-rate distribution) and `split_variation`. The sidecar
+writes the exact `run_python` code, naming only the files it attached: loomcharts reads a file at once, and one missing
+name fails the whole job. Images are `out/<chart>_<id>.png`, so two analyses in one thread never overwrite each other.
+The labels follow the answer's language (`lang`, de or en): loom stores no user language, the model sets it. A pain
+or injury answer draws only `fitness_fatigue`; a section (`from_km`) draws none.
+
+A run's tables: speed, pace (grade-adjusted from Strava's splits), power, running dynamics. Strava's run cadence is
+per leg (163 steps a minute read 81.5): steps per minute are twice it. Vertical oscillation, ground contact time and
+flight time are not in Strava's API. A swim's: Strava keeps no stroke count, pool length or lengths, only laps (swim
+intervals, 0 m laps for the rests) with an average stroke rate, so strokes are rate × time, SWOLF from that (on a real
+swim against the phone app: 962 strokes for 988, SWOLF 44 for 42). A pool is 25 or 50 m: a lap not a multiple of 50 m
+says 25; with every lap a multiple of 50 it is 25 assumed, `pool_m` corrects it.
 
 `get_activity` attaches the streams file unasked for an activity started in the last 14 days: a question about a
 recent ride often turns into a closer look, and the raw data is then already there. Cost: one streams read the first
@@ -57,6 +71,21 @@ A gap still covers ground: on resume the next point is where the walk ended, so 
 Strava's splits and a climb read across one look like a fast, steep run (a 20 % ramp walked with the watch paused read as
 "the hardest km, +42 m"). So `get_activity` and `activity_analysis` list every gap (where, how long, distance and climb
 covered), climbs give their untimed part and a VAM of the recorded part only, and per-km rows flag a gap in them.
+
+### Training load
+
+One load per activity: a ride with power its TSS against FTP (stream NP where stored, else Strava's weighted power);
+any other cycling or running activity hrTSS, an hour at the family's threshold heart rate (`hr_zones`) being 100. Strava
+has one FTP, the cycling FTP: a run with running power divided by it read as a threshold effort, so IF, TSS and power
+zones are rides only. Swims, walks, hikes and other sports add no load (the user's choice: no threshold to hold them
+against); the text says what was left out and why. Fitness (CTL) and fatigue (ATL) are the 42- and 7-day weighted daily
+loads over the stored index, 120 days back (three CTL time constants), form = CTL − ATL, all recomputed per call from
+the index and the stored metrics: no stored key, no stream read. The index is read back that far by an analysis and a
+dated `list_activities` (a pain question names a window); an undated list uses what the index holds and says when it
+falls short. Activities sit on their local date: an undated list ends on the later of the server's today and the newest
+activity's day (a user ahead of the server). ACWR (ATL/CTL) only from CTL 10: a ratio of two small numbers
+says nothing. A family without a threshold heart rate gets it calculated by the analysis (hr_zones' reads, after the
+baseline's, within the half budget); until then its activities count no load.
 
 ## Limits and storage
 
@@ -108,7 +137,7 @@ list at hand (older entries lack them, a sport can be corrected); an activity de
 its entry, and the zones of its sport are recalculated right there. Zones untouched for 7 days are recalculated when
 read, so an effort that left the window stops counting. The FTP check of the best 20 min only judges a ride from the
 last 90 days (today's FTP says little about older ones). A `hr_zones` call for one sport never creates the
-other's zones. While Strava's zones are its defaults, `activity_analysis` buckets time
+other's zones; `activity_analysis` creates a family's when the load of its 120 days needs that family's threshold. While Strava's zones are its defaults, `activity_analysis` buckets time
 in zones (and the streams CSV) with the stored zones of the activity's sport and says so; custom Strava zones always
 win, a sport without stored zones keeps Strava's, labelled as defaults. `profile` shows them with their date.
 

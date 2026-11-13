@@ -212,15 +212,41 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 
 	acts := newCSV(hdrActivities)
 	weeks := newWeekTable(first, last, nil)
+	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(t.loadHRZones(user, a.ID)), stored: stored}
 	for _, x := range rows {
 		acts.row(strconv.FormatInt(x.ID, 10), x.localStart().Format("2006-01-02"), x.Name, x.SportType, boolCell(x.indoor()),
 			cell(x.Distance/1000, 2), intCell(x.MovingTime), cell(x.TotalElevationGain, 0), cell(x.AverageSpeed*3.6, 1),
 			optCell(x.AverageHeartrate), optCell(x.AverageWatts), optCell(x.WeightedAverageWatts),
 			optCell(x.Kilojoules), optCell(x.SufferScore), intCell(x.ElapsedTime))
-		sm, ok := stored[strconv.FormatInt(x.ID, 10)]
-		weeks.add(x, activityTSS(x, sm, ok, a.FTP), nan)
+		v, _ := lc.of(x)
+		weeks.add(x, v, nan)
 	}
 	files := []mcpserver.File{acts.file("strava_activities.csv"), weeks.file()}
+
+	// Fitness and fatigue at the window's end, over every sport (a filter
+	// does not change what the body carried): a pain question reads this
+	// tool first. Activities sit on their local date and the server's may
+	// be a day behind the user's: without a before, the window ends on the
+	// later of today and the newest activity's day. The history is read
+	// back only for a dated window (the pain question names one); otherwise
+	// the load is what the index holds, said partial when it is short.
+	end := dayOf(t.svc.now())
+	if !before.IsZero() {
+		end = before.AddDate(0, 0, -1)
+	} else if newest := dayOf(rows[0].localStart()); newest.After(end) {
+		end = newest
+	}
+	from := end.AddDate(0, 0, -(loadHistoryDays - 1))
+	loadPages := 0
+	if !after.IsZero() || !before.IsZero() {
+		loadPages = maxBackfillPages
+	}
+	if all, more, err := t.svc.listActivities(ctx, user, from.Unix()-dayPadS, 0, loadPages); err == nil {
+		lr := buildLoad(all, lc, from, end, nil)
+		lr.partial = more
+		b.WriteString(loadText(lr))
+		files = append(files, loadCSV(0, lr))
+	}
 	b.WriteString(fileNames(files))
 	return mcpserver.Result{Text: b.String(), Sources: sources, Files: files}
 }
@@ -325,14 +351,21 @@ func activityTSS(x summaryActivity, sm storedMetrics, ok bool, ftp float64) floa
 // loadMetrics is the user's metric store for athleteID; empty when
 // unreadable or kept for another athlete.
 func (t *tools) loadMetrics(user string, athleteID int64) map[string]storedMetrics {
+	return t.metricFileOf(user, athleteID).Activities
+}
+
+// metricFileOf is the user's metric file for athleteID, under the user's
+// lock; empty (no entries, no zones) when unreadable or kept for another
+// athlete. The one place that rule lives.
+func (t *tools) metricFileOf(user string, athleteID int64) metricFile {
 	sl := t.svc.slot(user)
 	sl.dataMu.Lock()
-	defer sl.dataMu.Unlock()
 	m, _ := t.svc.store.loadMetrics(user)
+	sl.dataMu.Unlock()
 	if m.Athlete != 0 && m.Athlete != athleteID {
-		return map[string]storedMetrics{}
+		return metricFile{V: metricsVersion, Activities: map[string]storedMetrics{}}
 	}
-	return m.Activities
+	return m
 }
 
 var frameTypes = map[int]string{1: "mountain bike", 2: "cross", 3: "road", 4: "time trial", 5: "gravel"}

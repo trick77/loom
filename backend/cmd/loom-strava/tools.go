@@ -36,12 +36,14 @@ const instructions = "The user's own Strava data: profile, totals, activities, l
 	"starred segments. Read the numbers with these tools instead of estimating or guessing. Cite every activity " +
 	"you mention with its [n]. For one ride or run use activity_analysis: it compares the activity with the " +
 	"user's recent ones of the same sport. For heart-rate zones, max or threshold heart rate use hr_zones; " +
-	"a tested value the user stated beats its estimate. Give numbers with their units, as returned. When a chart would read " +
-	"better (ride profile, power curve, weekly load, same-route gap), offer one and draw it with run_python from " +
-	"the attached CSV files. When the user ties a pain, injury or other symptom to their sport, read their " +
+	"a tested value the user stated beats its estimate. Give numbers with their units, as returned. activity_analysis " +
+	"ends with the chart code to run before answering (load profile, fitness and fatigue, heart-rate profile, split " +
+	"variation) and, for a run or a swim, summary rows to show as tables. When another chart would read better (ride " +
+	"profile, power curve, weekly load, same-route gap), offer one and draw it with run_python from the attached CSV " +
+	"files. When the user ties a pain, injury or other symptom to their sport, read their " +
 	"activities before answering: list_activities over the four weeks before it started (the last four weeks " +
 	"when they say no date), looking for a jump in weekly distance, time or climbing, a long or hard session " +
-	"just before it, or a new sport. Analyse only the one or two sessions that stand out: Strava's rate budget " +
+	"just before it, a new sport, or its fitness and fatigue figures (ACWR, ramp, monotony). Analyse only the one or two sessions that stand out: Strava's rate budget " +
 	"is shared by every user. Name them with their [n] as possible contributors, never as the cause: no " +
 	"diagnosis. Chest pain, fainting, dizziness, numbness or a sudden severe pain: lead with seeing a doctor " +
 	"now, the activities after."
@@ -105,7 +107,8 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Name: "list_activities", Title: "List my Strava activities", ReadOnly: true, OpenWorld: true,
 				Description: "The user's activities, newest first, one compact row each (date, name, sport, distance, " +
 					"time, elevation, speed or pace, heart rate, power, kJ, relative effort, gear), with totals per sport " +
-					"and per week or month. Attaches strava_activities.csv and strava_weeks.csv for run_python.",
+					"and per week or month, and fitness and fatigue at the window's end (CTL, ATL, form, ACWR, ramp, " +
+					"monotony, strain). Attaches strava_activities.csv, strava_weeks.csv and strava_load.csv for run_python.",
 				Schema: mcpserver.ObjectSchema(map[string]any{
 					"after":        dateArg("Only activities on or after this day"),
 					"before":       dateArg("Only activities before this day"),
@@ -128,7 +131,9 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Description: "Analyse one activity from its streams: power (NP, IF, TSS, VI, mean-max curve, zones), " +
 					"heart rate (zones, EF, decoupling), climbs, intervals, per-km rows, always compared with the user's " +
 					"activities of the same sport in the weeks before (median, rank, best/worst in window, same route, " +
-					"weekly load). Attaches CSV files for charts in run_python.",
+					"weekly load), with fitness and fatigue (CTL, ATL, form) around it; for a run its speed, pace, power " +
+					"and running dynamics, for a swim its strokes and SWOLF (estimated) and intervals. Attaches CSV files " +
+					"and the chart code for run_python.",
 				Schema: mcpserver.ObjectSchema(map[string]any{
 					"id":         idArg("The activity id, from list_activities."),
 					"weeks":      map[string]any{"type": "integer", "minimum": 1, "maximum": maxWeeks, "default": defaultWeeks, "description": "How many weeks before the activity to compare with."},
@@ -136,6 +141,8 @@ func toolServer(svc *service, version string) mcpserver.Server {
 					"from_km":    map[string]any{"type": "number", "minimum": 0, "description": "Analyse only the section from this distance (km)."},
 					"to_km":      map[string]any{"type": "number", "minimum": 0, "description": "Analyse only the section up to this distance (km)."},
 					"refresh":    refreshArg,
+					"pool_m": map[string]any{"type": "integer", "enum": []int{poolShort, poolLong}, "description": "A pool swim's " +
+						"pool length in m, when the user says it; without it the laps tell, or 25 m is assumed."},
 				}, "id"),
 				Run: t.activityAnalysis,
 			},

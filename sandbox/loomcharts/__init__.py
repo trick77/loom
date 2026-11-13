@@ -31,6 +31,19 @@ Charts
     weeks= is the comparison window in weeks (it appears in labels: "6-week best");
     leave it out when the window is not known.
 
+Every activity (activity_analysis prints the exact call; lang="de" or "en" labels them)
+    load_profile(baseline, out, title=None, weeks=None, lang="en")
+        spider: speed or pace, power, heart rate, gain, distance, duration of this
+        activity against its window's average (the dashed ring)
+    fitness_fatigue(load, out, title=None, lang="en")
+        fitness (CTL) and fatigue (ATL) before and after, form, the last 120 days
+    hr_profile(streams, out, title=None, lang="en")
+        load focus (low aerobic, high aerobic, anaerobic) and the heart-rate
+        distribution by zone, median, peak, steady or varied
+    split_variation(streams, out, metric="watts", sport=None, title=None, lang="en")
+        each split against the median split (1/5/10 km, 100 m for a swim), power
+        or heart rate per split as a line
+
 Going out (the outdoor_windows tool's files; a bare name is looked up in in/)
     outdoor_day(hours, out, windows=None, limits=None, date=None, title=None)
         a day hour by hour: temperature and sun, rain, wind and gusts against the
@@ -53,14 +66,21 @@ CSV contract (5 s resample in streams; empty cell = no value)
                                 cadence, watts, grade_pct, temp_c, moving (0/1),
                                 power_zone, hr_zone (1-5); elapsed_s = seconds since the
                                 start (a pause is a jump, no rows), time in a zone =
-                                rows x the step
+                                rows x the step; a run's cadence is per leg (steps/min =
+                                2 x), a swim's is strokes/min; no power_zone but for rides
     strava_<id>_climbs.csv      n, from_km, to_km, len_km, gain_m, grade_pct, secs, vam,
                                 avg_w, wkg, avg_hr (secs and vam: recorded part only)
     strava_<id>_power_curve.csv duration_s, this_w, window_best_w, window_median_w
     strava_<id>_baseline.csv    activity_id, date, name, sport_type, is_this (1 = analysed),
                                 same_route, distance_km, moving_s, avg_kmh, gain_m, np_w,
-                                tss, ef, decoupling_pct, best_20m_w, avg_hr, elapsed_time_s,
-                                not_recorded_s (clock the recording skipped)
+                                tss (the load: TSS or hrTSS), ef, decoupling_pct, best_20m_w,
+                                avg_hr, elapsed_time_s, not_recorded_s (clock the recording
+                                skipped), avg_w (a power meter's average, a watch's running
+                                power too)
+    strava_<id>_load.csv        date, load, ctl, atl, form, acwr, ramp, monotony, strain,
+    strava_load.csv             ctl_before, atl_before (only on the analysed activity's day:
+                                that day without it); one row per day, 120 days; strava_load
+                                is list_activities' (to its window's end, no before)
     strava_<id>_same_route.csv  distance_km, gap_s_<YYYY-MM-DD> per earlier ride
                                 (seconds behind; negative = ahead)
     strava_weeks.csv            week_start, iso_week, sport_type, count, distance_km,
@@ -83,13 +103,15 @@ CSV contract (5 s resample in streams; empty cell = no value)
 """
 
 from ._style import BEST, BG, CONTEXT, INK, INK2, MEDIAN, MUTED, SERIES, THIS, ZONES, apply_style
+from .activity import fitness_fatigue, hr_profile, load_profile, split_variation
 from .compare import power_curve, rank_strip, same_route_gap
 from .outdoor import outdoor_compare, outdoor_day, outdoor_week
 from .ride import ride_profile, route_track
 from .volume import activities_summary, weekly_load
 
 __all__ = [
-    "activities_summary", "apply_style", "outdoor_compare", "outdoor_day", "outdoor_week", "power_curve",
-    "rank_strip", "ride_profile", "route_track", "same_route_gap", "weekly_load", "BEST", "BG", "CONTEXT", "INK",
-    "INK2", "MEDIAN", "MUTED", "SERIES", "THIS", "ZONES",
+    "activities_summary", "apply_style", "fitness_fatigue", "hr_profile", "load_profile", "outdoor_compare",
+    "outdoor_day", "outdoor_week", "power_curve", "rank_strip", "ride_profile", "route_track", "same_route_gap",
+    "split_variation", "weekly_load", "BEST", "BG", "CONTEXT", "INK", "INK2", "MEDIAN", "MUTED", "SERIES", "THIS",
+    "ZONES",
 ]
