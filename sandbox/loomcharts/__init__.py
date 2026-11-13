@@ -48,6 +48,10 @@ Running bests (run_bests prints the exact call)
     run_bests(bests, out, predictions=None, unit="km", title=None, lang="en")
         best pace per month and distance (faster up), the race prediction below
 
+Aerobic efficiency (efficiency_trend prints the exact call)
+    efficiency_trend(eff, out, sport="running", title=None, lang="en")
+        EF of every activity as a dot (easy coloured), the easy ones' monthly median
+
 Going out (the outdoor_windows tool's files; a bare name is looked up in in/)
     outdoor_day(hours, out, windows=None, limits=None, date=None, title=None)
         a day hour by hour: temperature and sun, rain, wind and gusts against the
@@ -90,6 +94,8 @@ CSV contract (5 s resample in streams; empty cell = no value)
     strava_run_bests.csv        month (YYYY-MM), effort (Strava's name: 1K, 5K, Half-Marathon …),
                                 distance_m, secs, activity_id, date: each distance's best per month
     strava_run_predictions.csv  race, distance_m, vdot_s, riegel_s, vdot, threshold_s_km
+    strava_efficiency.csv       date, activity_id, sport_type, ef (running m/min per bpm,
+                                cycling W per bpm), avg_hr, temp_c, easy (0/1)
     strava_weeks.csv            week_start, iso_week, sport_type, count, distance_km,
                                 moving_s, gain_m, tss (one row per week and sport)
     strava_activities.csv       activity_id, date, name, sport_type, trainer, distance_km,
@@ -115,10 +121,11 @@ from .compare import power_curve, rank_strip, same_route_gap
 from .outdoor import outdoor_compare, outdoor_day, outdoor_week
 from .ride import ride_profile, route_track
 from .runs import run_bests
+from .trend import efficiency_trend
 from .volume import activities_summary, weekly_load
 
 __all__ = [
-    "activities_summary", "apply_style", "fitness_fatigue", "hr_profile", "load_profile", "outdoor_compare",
+    "activities_summary", "apply_style", "efficiency_trend", "fitness_fatigue", "hr_profile", "load_profile", "outdoor_compare",
     "outdoor_day", "outdoor_week", "power_curve", "rank_strip", "ride_profile", "route_track", "run_bests", "same_route_gap",
     "split_variation", "weekly_load", "BEST", "BG", "CONTEXT", "INK", "INK2", "MEDIAN", "MUTED", "SERIES", "THIS",
     "ZONES",

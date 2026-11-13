@@ -109,6 +109,17 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Run: t.runBests,
 			},
 			{
+				Name: "efficiency_trend", Title: "My aerobic efficiency", ReadOnly: true, OpenWorld: true,
+				Description: "Whether the user gets fitter: aerobic efficiency (speed or power per heart beat) of their easy " +
+					"runs or rides over the last months, monthly medians and the last 3 months against the 3 before. From " +
+					"the activity list alone. Attaches strava_efficiency.csv and the chart code.",
+				Schema: mcpserver.ObjectSchema(map[string]any{
+					"sport":  map[string]any{"type": "string", "enum": []string{"running", "cycling"}, "description": "Which sport."},
+					"months": map[string]any{"type": "integer", "minimum": 1, "maximum": maxEffMonths, "default": defaultEffMonths, "description": "How many months back."},
+				}, "sport"),
+				Run: t.efficiencyTrend,
+			},
+			{
 				Name: "totals", Title: "My Strava totals", ReadOnly: true, OpenWorld: true,
 				Description: "Ride, run and swim totals: the last 4 weeks, this year and all time (count, distance, time, " +
 					"elevation), plus the longest ride and biggest climb. Strava counts only activities visible to Everyone here.",
