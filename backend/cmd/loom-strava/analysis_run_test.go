@@ -111,7 +111,7 @@ func TestAnalysis_run(t *testing.T) {
 		t.Errorf("run streams row: power_zone %q hr_zone %q", row[12], row[13])
 	}
 	base := r.file("strava_2001_baseline.csv")
-	if !strings.Contains(base, "2001,2026-11-01,Morning run,Run,1,") || !strings.Contains(base, ",221\n") {
+	if !strings.Contains(base, "2001,2026-11-01,Morning run,Run,1,") || !strings.Contains(base, ",221,\n") {
 		t.Errorf("baseline:\n%s", base)
 	}
 	load := strings.Split(strings.TrimSpace(r.file("strava_2001_load.csv")), "\n")

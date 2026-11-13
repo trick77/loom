@@ -187,6 +187,7 @@ type weather struct {
 	reverse   *nominatim
 	towns     *cache[[]Place]
 	townNames *cache[town]
+	history   *cache[History]
 	now       func() time.Time
 }
 
@@ -202,7 +203,8 @@ func newServerAt(cfg config, client *http.Client, version string, now func() tim
 	w := &weather{
 		provider: openMeteo{http: client, forecastURL: strings.TrimRight(cfg.forecastURL, "/"),
 			geocodingURL: strings.TrimRight(cfg.geocodingURL, "/"), airQualityURL: strings.TrimRight(cfg.airQualityURL, "/"),
-			userAgent: agent},
+			archiveURL: strings.TrimRight(cfg.archiveURL, "/"), userAgent: agent},
+		history:   newCache[History](now, cacheLimit),
 		hourly:    newCache[forecastPart](now, cacheLimit),
 		daily:     newCache[forecastPart](now, cacheLimit),
 		air:       newCache[airPart](now, cacheLimit),
@@ -221,6 +223,7 @@ func newServerAt(cfg config, client *http.Client, version string, now func() tim
 
 func (w *weather) mcpServer(version string) mcpserver.Server {
 	s := w.baseServer(version)
+	s.Tools = append(s.Tools, historyToolSpec(w))
 	if w.reverse != nil {
 		s.Tools = append(s.Tools, mcpserver.Tool{
 			Name:  reverseGeocodeTool,

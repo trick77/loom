@@ -13,6 +13,7 @@ const (
 	defaultForecastURL   = "https://api.open-meteo.com"
 	defaultGeocodingURL  = "https://geocoding-api.open-meteo.com"
 	defaultAirQualityURL = "https://air-quality-api.open-meteo.com"
+	defaultArchiveURL    = "https://archive-api.open-meteo.com"
 	defaultReverseURL    = "https://nominatim.openstreetmap.org"
 )
 
@@ -22,6 +23,7 @@ type config struct {
 	forecastURL   string
 	geocodingURL  string
 	airQualityURL string
+	archiveURL    string
 	// reverseURL is the map provider naming a point's town; "" (off) drops
 	// the reverse lookup.
 	reverseURL string
@@ -36,10 +38,11 @@ func loadConfig(getenv func(string) string) (config, error) {
 		forecastURL:   r.String("WEATHER_FORECAST_URL", defaultForecastURL),
 		geocodingURL:  r.String("WEATHER_GEOCODING_URL", defaultGeocodingURL),
 		airQualityURL: r.String("WEATHER_AIR_QUALITY_URL", defaultAirQualityURL),
+		archiveURL:    r.String("WEATHER_ARCHIVE_URL", defaultArchiveURL),
 		reverseURL:    r.String("WEATHER_REVERSE_URL", defaultReverseURL),
 	}
 	urls := map[string]string{"WEATHER_FORECAST_URL": cfg.forecastURL, "WEATHER_GEOCODING_URL": cfg.geocodingURL,
-		"WEATHER_AIR_QUALITY_URL": cfg.airQualityURL}
+		"WEATHER_AIR_QUALITY_URL": cfg.airQualityURL, "WEATHER_ARCHIVE_URL": cfg.archiveURL}
 	if strings.EqualFold(cfg.reverseURL, "off") {
 		cfg.reverseURL = ""
 	} else {

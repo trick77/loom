@@ -26,8 +26,10 @@ type extras struct {
 }
 
 // analysisExtras: heart-rate recovery, critical power and W′ balance for a
-// ride with power, critical swim speed for a pool swim, and on request the
-// runner's own pace per grade. Only kept data: no Strava read.
+// ride with power, critical swim speed for a pool swim, on request the
+// runner's own pace per grade, and the heat effect. Strava reads: the index
+// and the athlete's zones (both cached); the heat asks the weather sidecar
+// within its own budget (maxWeatherLookups, weatherBudget).
 func (t *tools) analysisExtras(ctx context.Context, user string, a athlete, d detailedActivity, s series, whole rideMetrics,
 	c *comparison, gradeProfile bool, u units) *extras {
 	x := &extras{}
@@ -41,7 +43,104 @@ func (t *tools) analysisExtras(ctx context.Context, user string, a athlete, d de
 	if gradeProfile && runSport(d.SportType) {
 		t.writeGradeProfile(x, user, d, s, c, u)
 	}
+	t.writeHeat(ctx, x, user, a, d, c)
 	return x
+}
+
+// heatDays is how far back the heat fit reads: a year holds a summer and a
+// winter.
+const heatDays = 365
+
+// writeHeat: the user's own efficiency against temperature over a year of
+// their outdoor activities of this family, and what this one's temperature
+// means in heart rate. Temperatures for the baseline's rows first, then
+// the year's, within the lookup budget; kept, so the fit fills over calls.
+func (t *tools) writeHeat(ctx context.Context, x *extras, user string, a athlete, d detailedActivity, c *comparison) {
+	f, ok := familyOf(d.SportType)
+	if !ok {
+		return
+	}
+	if d.indoor() {
+		x.text.WriteString("heat: indoor, no air temperature to read it by\n")
+		return
+	}
+	tc := t.tempsOf(user, a.ID, maxWeatherLookups)
+	defer tc.save()
+	thisT, from := tc.of(ctx, d.summaryActivity)
+	if c != nil {
+		c.temps = map[int64]float64{d.ID: thisT}
+		for _, e := range c.entries {
+			if v, _ := tc.of(ctx, e.act); finite(v) {
+				c.temps[e.act.ID] = v
+			}
+		}
+	}
+	since := d.localStart().AddDate(0, 0, -heatDays)
+	list, more, err := t.svc.listActivities(ctx, user, since.Unix()-dayPadS, d.utcStart().Unix()+1, 0)
+	if err != nil {
+		return
+	}
+	// The easy ones only, like efficiency_trend: a race or an interval
+	// session moves efficiency more than the weather does.
+	below, _ := t.easyBelow(ctx, user, a, f.key)
+	var ts, efs []float64
+	seen := map[int64]bool{}
+	for _, y := range append(list, d.summaryActivity) {
+		fy, ok := familyOf(y.SportType)
+		if !ok || fy.key != f.key || y.indoor() || y.Manual || seen[y.ID] || !startedSince(y, since) || y.localStart().After(d.localStart()) {
+			continue
+		}
+		seen[y.ID] = true
+		ef := efficiencyOf(y)
+		if !finite(ef) || (finite(below) && y.AverageHeartrate >= below) {
+			continue
+		}
+		if v, _ := tc.of(ctx, y); finite(v) {
+			ts, efs = append(ts, v), append(efs, ef)
+		}
+	}
+	noun := sportNoun(d.SportType)
+	if !finite(thisT) {
+		if t.svc.weather == nil {
+			x.text.WriteString("heat: no temperature (the device records none and the weather service is not configured for the sidecar)\n")
+		} else {
+			x.text.WriteString("heat: no temperature for this activity (no GPS start, or the weather lookup failed or ran out of time)\n")
+		}
+		return
+	}
+	src := "the device's"
+	if from == "weather" {
+		src = "the weather at its start, its hours"
+	}
+	fit := fitHeat(ts, efs)
+	var notes []string
+	if n := len(tc.skipped); n > 0 {
+		notes = append(notes, fmt.Sprintf("%d more temperatures looked up on later calls", n))
+	}
+	if more {
+		notes = append(notes, "the activity list does not reach back a year yet")
+	}
+	tail := ""
+	if len(notes) > 0 {
+		tail = "; " + strings.Join(notes, "; ")
+	}
+	switch {
+	case fit.tooFew:
+		fmt.Fprintf(&x.text, "heat: this one at %.0f °C (%s); %d easy outdoor %s with a temperature in the year so far, %d needed for a fit%s\n",
+			thisT, src, fit.n, noun, minHeatN, tail)
+	case fit.tooNarrow:
+		fmt.Fprintf(&x.text, "heat: this one at %.0f °C (%s); the %d easy outdoor %s span only %.0f–%.0f °C, %g °C needed for a fit%s\n",
+			thisT, src, fit.n, noun, fit.lo, fit.hi, minHeatSpanC, tail)
+	default:
+		per10 := fit.slope * 10 / fit.efRef * 100
+		effect := "no heart rate recorded to read it in"
+		if d.HasHeartrate && d.AverageHeartrate > 0 {
+			effect = "about " + signedNum(fit.bpmAt(thisT, d.AverageHeartrate), 0) + fmt.Sprintf(" bpm against %.0f °C for the same output", fit.ref)
+		}
+		fmt.Fprintf(&x.text, "heat (efficiency against temperature, %d easy outdoor %s of the year, %.0f–%.0f °C, one source for all): "+
+			"%s %% efficiency per 10 °C; this one at %.0f °C (%s): %s%s\n",
+			fit.n, noun, fit.lo, fit.hi, signedNum(per10, 1), thisT, src, effect, tail)
+	}
 }
 
 // dropText is a recovery's drop as the model reads it: a fall of 27 is

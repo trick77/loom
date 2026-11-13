@@ -234,13 +234,10 @@ func (t *tools) efficiencyTrend(ctx context.Context, raw json.RawMessage) mcpser
 	b.WriteString("  heat, hills and a hard day before all raise heart rate: one point says little, the monthly median more\n")
 
 	csv := newCSV(hdrEfficiency)
+	// The kept weather temperature, else the device's; no lookup here.
+	tc := t.tempsOf(user, a.ID, 0)
 	for _, p := range window {
-		// Strava's summary cannot tell 0 °C from no sensor (the index keeps
-		// the zero either way): 0 stays empty, a rare true 0 °C is lost.
-		temp := nan
-		if p.x.AverageTemp != 0 {
-			temp = p.x.AverageTemp
-		}
+		temp := tc.shown(p.x)
 		csv.row(p.x.localStart().Format("2006-01-02"), strconv.FormatInt(p.x.ID, 10), p.x.SportType, cell(p.ef, 3),
 			cell(p.x.AverageHeartrate, 0), cell(temp, 0), boolCell(p.easy))
 	}

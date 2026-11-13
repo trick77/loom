@@ -109,7 +109,7 @@ func TestAnalysis_comparison(t *testing.T) {
 	if hdrStreams != "elapsed_s,distance_km,lat,lng,altitude_m,speed_kmh,hr,cadence,watts,grade_pct,temp_c,moving,power_zone,hr_zone" ||
 		hdrClimbs != "n,from_km,to_km,len_km,gain_m,grade_pct,secs,vam,avg_w,wkg,avg_hr" ||
 		hdrPowerCurve != "duration_s,this_w,window_best_w,window_median_w" ||
-		hdrBaseline != "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_time_s,not_recorded_s,avg_w" ||
+		hdrBaseline != "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_time_s,not_recorded_s,avg_w,temp_c" ||
 		hdrLoad != "date,load,ctl,atl,form,acwr,ramp,monotony,strain,ctl_before,atl_before" ||
 		hdrWeeks != "week_start,iso_week,sport_type,count,distance_km,moving_s,gain_m,tss" ||
 		hdrActivities != "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score,elapsed_time_s" {
@@ -590,7 +590,7 @@ func TestAnalysis_paused(t *testing.T) {
 	// The files carry it too, and say what their time columns mean: a model
 	// summed elapsed_s per zone, then took it for milliseconds.
 	base := strings.Split(strings.TrimSpace(r.file("strava_1001_baseline.csv")), "\n")
-	if len(base) < 2 || !strings.HasSuffix(base[1], ",1600,300,220") {
+	if len(base) < 2 || !strings.HasSuffix(base[1], ",1600,300,220,") {
 		t.Errorf("baseline row lacks elapsed_time_s 1600, not_recorded_s 300: %v", base)
 	}
 	for _, want := range []string{"strava_1001_streams.csv: one row per 5 s of recording; elapsed_s is seconds since the start",

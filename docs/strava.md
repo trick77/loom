@@ -119,6 +119,23 @@ weighs the whole 120 days.
 - with `grade_profile`, the runner's own median pace per 1 % grade from the window's kept streams (no read; only when
   asked, it decodes up to 40 of them) and the run adjusted by it, next to Strava's model GAP; chart `grade_pace`.
 
+### Heat
+
+How much warmer days lift the user's heart rate for the same output, from their own year of easy outdoor activities of
+the sport: efficiency (as `efficiency_trend`) against temperature, a linear fit once 8 activities span 8 °C, and what
+this activity's temperature means in bpm against 15 °C. Most watches record no temperature (Strava's 0 cannot be told
+from none), so with the weather configured every activity takes the weather of its start point over its hours from the
+`weather` server's `history` tool (docs/weather.md); a device's reading is used only without it, never mixed (a wrist
+or a bike unit in the sun reads degrees above the air, a fit across both slopes on the jump). Indoor ones have none
+(Zwift's start point is an island). Reached over MCP with `WEATHER_URL` + `WEATHER_TOKEN` (compose: the weather sidecar,
+`BACKEND_WEATHER_TOKEN`, `BACKEND_STRAVA_WEATHER_URL`; an `mcp.json` replacement of `weather` is loom's, this call stays
+on the sidecar). Kept per activity in `/data/metrics/<loom id>.temps.json` (the past does not change); a day from the
+forecast model's past hours (the last 80 days) is read again once the archive has it, so the fit holds one model. The
+heat comes unasked with every analysis, so its lookups are bounded: 12 and 12 s per call, the baseline's first, none
+after a failure or near the deadline; the fit fills over calls. The effect is read against 15 °C, or the nearest end of
+the user's own temperatures when they never ran at 15 °C (an extrapolation far out flipped its sign).
+The baseline CSV and `strava_efficiency.csv` carry the same `temp_c`.
+
 ### Aerobic efficiency
 
 `efficiency_trend` answers "am I getting fitter?" without a race or a test: more speed or power for the same heart rate.

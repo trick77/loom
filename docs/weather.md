@@ -81,6 +81,21 @@ defined on). Pollen kinds: `alder`, `birch`, `grass`, `mugwort`, `olive`, `ragwe
 
 loom classes the pollen itself (MeteoSwiss load classes; olive has none and is not shown).
 
+`history` (`weather__history`, optional: loom-strava's heat analysis needs it, a turn may answer "how warm was it") takes
+`latitude`, `longitude` and `date` (YYYY-MM-DD, 1940 to tomorrow by UTC: the place's today east of UTC) and answers
+that local day's hours at the point:
+
+```json
+{"latitude": 47.38, "longitude": 8.54, "timezone": "Europe/Zurich", "date": "2026-07-14",
+ "hourly": [{"time": "2026-07-14T07:00", "temperature": 18.4, "apparentTemperature": 17.9, "humidity": 71}],
+ "attribution": {"text": "Weather data by Open-Meteo.com", "url": "https://open-meteo.com/"}}
+```
+
+The sidecar reads the last 80 days from the forecast model's past hours, older ones from Open-Meteo's archive
+(`WEATHER_ARCHIVE_URL`, reanalysis from 1940; it trails today by days). The point is rounded to two decimals: nearby
+activities share one request. An archived day is kept a year in memory (the past does not change), a recent one six
+hours.
+
 ## Outdoor windows
 
 "When can I go for a run / a ride (today, tomorrow, in Luzern)?" is loom's own tool `outdoor_windows`

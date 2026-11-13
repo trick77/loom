@@ -14,6 +14,9 @@ const (
 	// WeatherReverseGeocodeTool is optional: without it the start page asks
 	// for the place by name only.
 	WeatherReverseGeocodeTool = "reverse_geocode"
+	// WeatherHistoryTool is optional: loom-strava's heat analysis reads an
+	// activity's temperature from it.
+	WeatherHistoryTool = "history"
 )
 
 // WeatherServerConfig is the loom-weather sidecar's endpoint. Best-effort like

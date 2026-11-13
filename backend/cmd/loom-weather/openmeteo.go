@@ -21,6 +21,7 @@ type openMeteo struct {
 	forecastURL   string
 	geocodingURL  string
 	airQualityURL string
+	archiveURL    string
 	userAgent     string
 }
 

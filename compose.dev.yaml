@@ -355,6 +355,9 @@ services:
       STRAVA_TOKEN: dev-strava-token-please-change-0123456789
       STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID:-}"
       STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET:-}"
+      # The weather sidecar's history tool (docs/strava.md, Heat).
+      WEATHER_URL: http://weather:8100
+      WEATHER_TOKEN: dev-weather-token-please-change-012345678
     volumes:
       - strava-dev-data:/data
     ports:
