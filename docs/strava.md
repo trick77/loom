@@ -29,6 +29,7 @@ comment text, segment explore or leaderboards, and no write scope.
 | `activity_analysis` | metrics from the streams (NP, IF, TSS, power curve, zones, decoupling, climbs, intervals, per-km rows), always compared with the user's same-sport activities of the last `weeks` (default 6), fitness and fatigue around it, summary tables for a run or a swim; attaches the CSVs below and the chart code |
 | `compare_activities` | 2-5 activities side by side |
 | `run_bests` | best running efforts per distance over the last `months` (default 12), monthly progress, race prediction (Daniels VDOT, Riegel) and threshold pace; attaches `strava_run_bests.csv`, `strava_run_predictions.csv` and the chart code |
+| `efficiency_trend` | aerobic efficiency (speed or power per heart beat) of the easy runs or rides over the last `months`, monthly medians, the last 3 months against the 3 before; attaches `strava_efficiency.csv` and the chart code |
 | `hr_zones` | max HR, threshold HR (LTHR) and Friel zones per sport (cycling, running) from the user's own streams of the last 365 days, next to Strava's zones |
 | `gear`, `routes`, `segments` | gear details, own routes, starred segments and own efforts (efforts need a Strava subscription) |
 
@@ -105,6 +106,18 @@ rTSS), never stored as a value: a stored one went stale unless the model happene
 budget-cut call replaced it. Every analysed run files its efforts too (its detail is read anyway), and a run deleted on
 Strava leaves the file, so the threshold follows without `run_bests` being asked. Like an LTHR, the current threshold
 weighs the whole 120 days.
+
+### Aerobic efficiency
+
+`efficiency_trend` answers "am I getting fitter?" without a race or a test: more speed or power for the same heart rate.
+From the activity list alone, no stream or detail read: runs as speed per bpm (m/min, each metre of climb as 10 m flat,
+like rTSS, so not the climb-free EF of `activity_analysis`), rides as Strava's weighted power per bpm (no power meter,
+no EF). One method for every activity: stream EF for the analysed rides and summary EF for the rest showed the gap
+between the two as a trend. Only the easy ones make the trend (average heart rate below where Z3 starts, in the zones
+the analysis buckets by: custom Strava zones, else the user's own, else Strava's defaults; Strava's unreadable, the
+user's own, said): a hard session's efficiency says more about the day than the fitness. Indoor ones are left out (a trainer runs hotter, a treadmill's distance is a foot
+pod's: a winter of them read as a seasonal fitness swing). Monthly medians, not single points; the last 3 months
+against the 3 before are always read in full, whatever `months` says, and need 3 easy activities each, else no trend.
 
 ## Limits and storage
 

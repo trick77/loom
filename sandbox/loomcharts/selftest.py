@@ -399,8 +399,26 @@ def variants(p, d):
         ("run_bests_gap", loomcharts.run_bests, (j("bests_gap.csv"), j("run_bests_gap.png")),
          {"lang": "de", "predictions": p["predictions"]}, full),
         ("run_bests_mi", loomcharts.run_bests, (p["bests"], j("run_bests_mi.png")), {"unit": "mi"}, full),
+        ("efficiency", loomcharts.efficiency_trend, (j("efficiency.csv"), j("efficiency.png")), {}, full),
+        ("efficiency_de", loomcharts.efficiency_trend, (j("efficiency.csv"), j("efficiency_de.png")),
+         {"sport": "cycling", "lang": "de"}, full),
+        ("efficiency_one", loomcharts.efficiency_trend, (j("efficiency_one.csv"), j("efficiency_one.png")), {}, 15_000),
+        ("efficiency_gap", loomcharts.efficiency_trend, (j("efficiency_gap.csv"), j("efficiency_gap.png")), {}, full),
+        ("efficiency_short", loomcharts.efficiency_trend, (j("efficiency_short.csv"), j("efficiency_short.png")), {}, 15_000),
+        ("efficiency_empty", loomcharts.efficiency_trend, (j("efficiency_empty.csv"), j("efficiency_empty.png")), {}, note),
     ]
     pd.read_csv(p["bests"]).head(0).to_csv(j("bests_empty.csv"), index=False)
+    rng = np.random.default_rng(9)
+    eff = pd.DataFrame([{"date": (pd.Timestamp("2025-11-05") + pd.Timedelta(days=4 * i)).strftime("%Y-%m-%d"),
+                         "activity_id": i, "sport_type": "Run", "ef": round(1.30 + 0.0004 * i + rng.normal(0, 0.04), 3),
+                         "avg_hr": 140, "temp_c": "", "easy": int(i % 4 != 0)} for i in range(90)])
+    eff.loc[eff.easy == 0, "ef"] += 0.12
+    eff.to_csv(j("efficiency.csv"), index=False)
+    eff.head(1).to_csv(j("efficiency_one.csv"), index=False)
+    eff.head(0).to_csv(j("efficiency_empty.csv"), index=False)
+    eff[eff.easy == 1].head(2).assign(date=["2026-11-03", "2026-11-04"]).to_csv(j("efficiency_short.csv"), index=False)
+    gap = eff[(pd.to_datetime(eff.date) < "2026-02-01") | (pd.to_datetime(eff.date) >= "2026-06-01")]
+    gap.to_csv(j("efficiency_gap.csv"), index=False)
     # A six-month break, and 1K and 1 mile at near the same pace.
     pd.DataFrame([{"month": m, "effort": e, "distance_m": dm, "secs": s, "activity_id": 1, "date": f"{m}-10"}
                   for m in ("2025-12", "2026-01", "2026-07", "2026-08")
