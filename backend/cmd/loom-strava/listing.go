@@ -212,7 +212,7 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 
 	acts := newCSV(hdrActivities)
 	weeks := newWeekTable(first, last, nil)
-	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(t.loadHRZones(user, a.ID)), stored: stored}
+	lc := t.loadCtxOf(user, a, stored)
 	for _, x := range rows {
 		acts.row(strconv.FormatInt(x.ID, 10), x.localStart().Format("2006-01-02"), x.Name, x.SportType, boolCell(x.indoor()),
 			cell(x.Distance/1000, 2), intCell(x.MovingTime), cell(x.TotalElevationGain, 0), cell(x.AverageSpeed*3.6, 1),

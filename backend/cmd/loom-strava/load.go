@@ -64,12 +64,27 @@ func hrTSS(movingS int, avgHR, lthr float64) float64 {
 	return float64(movingS) / 3600 * r * r * 100
 }
 
-// loadCtx is what one activity's load needs: FTP, each family's LTHR and
-// the stored stream metrics (their NP beats Strava's weighted power).
+// loadCtx is what one activity's load needs: FTP, each family's LTHR, the
+// run threshold speed (run_bests) and the stored stream metrics (their NP
+// beats Strava's weighted power).
 type loadCtx struct {
 	ftp    float64
 	lthr   map[string]float64
+	runMS  float64
 	stored map[string]storedMetrics
+}
+
+// loadCtxOf is the user's load context: FTP, the stored thresholds (zones
+// recalculated when stale), the threshold pace from the kept best efforts
+// of the last predictDays (derived each call, never a value that only a
+// tool call keeps alive), and stored as the call knows the entries.
+func (t *tools) loadCtxOf(user string, a athlete, stored map[string]storedMetrics) loadCtx {
+	mf := t.metricFileOf(user, a.ID)
+	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(t.freshHRZones(user, a.ID, mf.HRZones)), stored: stored}
+	if top, ok := runThresholdOf(t.loadBests(user, a.ID), t.svc.now()); ok {
+		lc.runMS = thresholdSpeed(top.vdot)
+	}
+	return lc
 }
 
 // lthrOf is each family's threshold heart rate from the stored zones.
@@ -100,15 +115,27 @@ func (c loadCtx) load(x summaryActivity, sm storedMetrics, ok bool) (float64, st
 	if !ok {
 		return nan, whySport
 	}
-	if !x.HasHeartrate || x.AverageHeartrate <= 0 {
-		return nan, whyNoHR
+	why := whyNoHR
+	if x.HasHeartrate && x.AverageHeartrate > 0 {
+		if l := c.lthr[f.key]; l > 0 {
+			return hrTSS(x.MovingTime, x.AverageHeartrate, l), ""
+		}
+		why = whyLTHR + f.key
 	}
-	l := c.lthr[f.key]
-	if l <= 0 {
-		return nan, whyLTHR + f.key
+	// A run hrTSS cannot weigh (no strap, no threshold heart rate yet): its
+	// pace against the threshold pace run_bests stored, the climb counted
+	// as distance (1 m up as 10 m flat, the Swiss "Leistungskilometer"):
+	// flat pace made a 2-hour trail run with 1,200 m up a third of its
+	// effort.
+	if f.key == "running" && c.runMS > 0 && x.Distance > 0 && x.MovingTime > 0 {
+		r := (x.Distance + climbFlatM*max(0, x.TotalElevationGain)) / float64(x.MovingTime) / c.runMS
+		return float64(x.MovingTime) / 3600 * r * r * 100, ""
 	}
-	return hrTSS(x.MovingTime, x.AverageHeartrate, l), ""
+	return nan, why
 }
+
+// climbFlatM is the flat distance one metre of climb counts as in rTSS.
+const climbFlatM = 10.0
 
 // loadDay is one day of the series; NaN where a value says nothing.
 type loadDay struct {
@@ -270,7 +297,8 @@ func loadText(r loadReport) string {
 	last := r.days[len(r.days)-1]
 	var b strings.Builder
 	fmt.Fprintf(&b, "fitness and fatigue on %s (CTL = %d-day and ATL = %d-day weighted daily load, form = CTL − ATL; every cycling "+
-		"and running activity since %s: rides with power TSS against FTP, the rest hrTSS against the sport's threshold heart rate): ",
+		"and running activity since %s: rides with power TSS against FTP, the rest hrTSS against the sport's threshold heart rate, "+
+		"a run without that rTSS against the threshold pace from run_bests): ",
 		last.Day.Format("2006-01-02"), ctlDays, atlDays, r.from.Format("2006-01-02"))
 	if r.hasThis {
 		fmt.Fprintf(&b, "CTL %s → %s · ATL %s → %s · form %s → %s", num(r.before.CTL, 0), num(last.CTL, 0), num(r.before.ATL, 0),
@@ -329,7 +357,7 @@ func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedA
 	done int) (r loadReport, lc loadCtx, note string, calculated []string) {
 	local := d.localStart()
 	from := dayOf(local).AddDate(0, 0, -(loadHistoryDays - 1))
-	lc = loadCtx{ftp: a.FTP, lthr: lthrOf(t.loadHRZones(user, a.ID)), stored: stored}
+	lc = t.loadCtxOf(user, a, stored)
 	list, more, err := t.svc.listActivities(ctx, user, from.Unix()-dayPadS, 0, maxBackfillPages)
 	if err != nil {
 		return loadReport{}, lc, "", nil
@@ -343,9 +371,13 @@ func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedA
 		if ls.Before(from) || ls.After(local) {
 			continue
 		}
-		if _, why := lc.of(x); strings.HasPrefix(why, whyLTHR) {
+		// hrTSS first: asked without the rTSS fallback, a run that would
+		// fall back still asks for its threshold heart rate.
+		noRun := lc
+		noRun.runMS = 0
+		if _, why := noRun.of(x); strings.HasPrefix(why, whyLTHR) {
 			key := strings.TrimPrefix(why, whyLTHR)
-			if !slices.ContainsFunc(need, func(f hrFamily) bool { return f.key == key }) {
+			if !slices.ContainsFunc(need, func(n hrFamily) bool { return n.key == key }) {
 				f, _ := familyOf(x.SportType)
 				need = append(need, f)
 			}

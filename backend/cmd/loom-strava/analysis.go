@@ -745,6 +745,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if !ok {
 		return res
 	}
+	t.keepEfforts(user, a, d)
 	s, err := t.svc.streams(ctx, user, id, fresh)
 	if err != nil {
 		return failure(err)
@@ -1299,7 +1300,8 @@ func (t *tools) writeComparison(ctx context.Context, b *strings.Builder, user st
 		b.WriteString("\n")
 		if byTSS {
 			b.WriteString("  (TSS: rides with power against FTP, from stream NP where stored, else Strava's weighted power; " +
-				"other cycling and running activities hrTSS against the sport's threshold heart rate; an activity without a " +
+				"other cycling and running activities hrTSS against the sport's threshold heart rate, a run without that rTSS " +
+				"against the threshold pace; an activity without a " +
 				"load counts 0 here: the fitness block below names what was left out)\n")
 		}
 	}
@@ -1480,7 +1482,7 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 		listed = append(listed, e.act)
 	}
 	t.storeMetrics(user, a.ID, added, stored, listed)
-	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(t.loadHRZones(user, a.ID)), stored: stored}
+	lc := t.loadCtxOf(user, a, stored)
 
 	var b strings.Builder
 	sources := make([]mcpserver.Source, 0, len(entries))
