@@ -120,9 +120,18 @@ export const Sidebar = memo(function Sidebar({
           className={`flex h-11 items-center px-3 ${railCollapsed ? "justify-center" : "justify-between"}`}
         >
           {!railCollapsed && (
-            <div className="ui-wordmark font-serif font-medium text-[#f4f0e8]">
+            <a
+              href="/new"
+              onClick={(event) => {
+                // Modified clicks keep the browser's own handling (new tab).
+                if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                event.preventDefault();
+                onNewThread();
+              }}
+              className="ui-wordmark font-serif font-medium text-[#f4f0e8]"
+            >
               Loom
-            </div>
+            </a>
           )}
           <div className="flex items-center gap-3 text-[#aaa79e]">
             {!railCollapsed && (
