@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -68,6 +69,12 @@ type Message struct {
 	ReasoningContent string
 	ToolCalls        []ToolCall
 	ToolCallID       string
+	// ResponseItems is an assistant turn exactly as the model returned it
+	// (signed thinking, encrypted reasoning), opaque to loom. A tool loop
+	// sets it from StreamResult.ResponseItems so the next round replays the
+	// turn unchanged; a history loom rebuilds leaves it empty, because a
+	// replayed block after an edit is refused.
+	ResponseItems []json.RawMessage
 }
 
 // MessageContentPart is a single content part in a chat message (text or image).
@@ -88,10 +95,14 @@ type Client struct {
 	// request to its model's provider. One, not one per call: when it presents
 	// as opencode (LLMWIRE_EMULATE_OPENCODE), that identity carries a session
 	// id llmwire mints and rotates itself.
-	wire                *llmwire.Client
-	model               string
-	visionModel         string
-	gateModel           string
+	wire        *llmwire.Client
+	model       string
+	visionModel string
+	gateModel   string
+	// deepModel is the model a Deep turn runs on, "" when none is
+	// configured; deepVision says whether it takes images.
+	deepModel           string
+	deepVision          bool
 	maxCompletionTokens int
 	timeout             time.Duration
 }
@@ -153,6 +164,8 @@ func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 		model:               roles.Chat,
 		visionModel:         roles.Vision,
 		gateModel:           roles.Gate,
+		deepModel:           roles.Deep,
+		deepVision:          resolved.deep != nil && resolved.deep.Vision,
 		maxCompletionTokens: maxCompletionTokens,
 		timeout:             cfg.Timeout,
 	}, nil
@@ -164,12 +177,28 @@ func NewClient(cfg Config, httpClient *http.Client) (*Client, error) {
 // request body and into StreamResult.Model so the persisted/observed model
 // reflects what actually ran.
 func (c *Client) modelForMessages(messages []llmwire.Message) string {
+	return c.routeModel(messages, false)
+}
+
+// routeModel is modelForMessages with the user's deep choice: a deep turn
+// runs on the deep model, unless it carries an image the deep model cannot
+// see, which goes to the vision model as any image turn does.
+func (c *Client) routeModel(messages []llmwire.Message, deep bool) string {
+	hasImage := false
 	for _, m := range messages {
 		if m.HasImage() {
-			return c.visionModel
+			hasImage = true
+			break
 		}
 	}
-	return c.model
+	switch {
+	case deep && c.deepModel != "" && (!hasImage || c.deepVision):
+		return c.deepModel
+	case hasImage:
+		return c.visionModel
+	default:
+		return c.model
+	}
 }
 
 // utilityMaxCompletionTokens caps the answer of secondary helper calls
@@ -269,6 +298,20 @@ func (c *Client) timeoutForTools(tools []Tool) time.Duration {
 	}
 	return documentToolTimeout
 }
+
+// turnTimeout is timeoutForTools, widened for a deep turn: a thorough think
+// on a hard prompt can run for minutes, and the idle bound still catches a
+// stall in seconds.
+func (c *Client) turnTimeout(tools []Tool, deep bool) time.Duration {
+	timeout := c.timeoutForTools(tools)
+	if deep && timeout > 0 && timeout < deepTurnTimeout {
+		return deepTurnTimeout
+	}
+	return timeout
+}
+
+// deepTurnTimeout is the whole-call cap of a deep turn.
+const deepTurnTimeout = 10 * time.Minute
 
 // toolCallIdleTimeout is the idle window to apply once a tool call is underway in
 // a turn that offers a long-running tool (see Tool.LongRunning). An endpoint that

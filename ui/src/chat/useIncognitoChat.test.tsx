@@ -123,6 +123,8 @@ test("a send replays the prior transcript and appends both turns", async () => {
     ],
     expect.anything(),
     expect.any(AbortSignal),
+    // No slot picked: the request carries none.
+    undefined,
   );
   const messages = hook.result.current.chat.incognitoMessages;
   expect(messages.map((message) => [message.role, message.content])).toEqual([

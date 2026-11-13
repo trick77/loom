@@ -22,7 +22,8 @@ export function MessageMetrics({
   // The thread's cost through this message, for the Σ segment.
   threadCostNanoUsd?: number;
 }) {
-  const contextWindow = useContextWindow();
+  // The window of the model that wrote this message: a thread can switch.
+  const contextWindow = useContextWindow(message.model);
   const line = buildMetricsString(message, threadCostNanoUsd, contextWindow);
   const pill =
     category !== undefined && category !== "" ? (

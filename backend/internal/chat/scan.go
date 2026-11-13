@@ -65,7 +65,7 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 	var archivedAt, lastMessageAt sql.NullString
 	var scheduleID sql.NullString
 	var createdAt, updatedAt string
-	dest := []any{&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt,
+	dest := []any{&thread.ID, &thread.UserID, &projectID, &thread.Title, &thread.Category, &thread.ImageModel, &thread.ChatSlot, &thread.Starred, &archivedAt, &createdAt, &updatedAt, &lastMessageAt,
 		&scheduleID, &thread.ScheduleReplied, &thread.ScheduleUnread}
 	dest = append(dest, extra...)
 	if err := row.Scan(dest...); err != nil {
@@ -100,8 +100,8 @@ func scanThreadRow(row rowScanner, extra ...any) (Thread, error) {
 // threadColumns is the threads projection scanThreadRow reads; threadColumnsT
 // is the same for a query that aliases threads as t.
 var (
-	threadColumns  = "id, user_id, project_id, title, category, image_model, starred, archived_at, created_at, updated_at, last_message_at, schedule_id, " + scheduleReplied("threads") + ", " + scheduleUnread("threads")
-	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.schedule_id, " + scheduleReplied("t") + ", " + scheduleUnread("t")
+	threadColumns  = "id, user_id, project_id, title, category, image_model, chat_slot, starred, archived_at, created_at, updated_at, last_message_at, schedule_id, " + scheduleReplied("threads") + ", " + scheduleUnread("threads")
+	threadColumnsT = "t.id, t.user_id, t.project_id, t.title, t.category, t.image_model, t.chat_slot, t.starred, t.archived_at, t.created_at, t.updated_at, t.last_message_at, t.schedule_id, " + scheduleReplied("t") + ", " + scheduleUnread("t")
 )
 
 // scheduleReplied computes Thread.ScheduleReplied for the threads row named

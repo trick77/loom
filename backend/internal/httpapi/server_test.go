@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -40,7 +41,10 @@ func TestHealth_returnsOK(t *testing.T) {
 // /api/model is public: shared pages render the context-% segment too, and
 // their viewers are not signed in.
 func TestModel_returnsChatModelFactsWithoutAuth(t *testing.T) {
-	info := llm.ModelInfo{ID: "some-model", DisplayName: "Some Model", ContextWindow: 128000}
+	info := llm.ModelInfo{ID: "some-model", DisplayName: "Some Model", ContextWindow: 128000, Slots: []llm.SlotInfo{
+		{Key: llm.SlotStandard, Model: "some-model", DisplayName: "Some Model", ContextWindow: 128000},
+		{Key: llm.SlotDeep, Model: "deep-model", DisplayName: "Deep Model", ContextWindow: 1000000},
+	}}
 	srv := New(Deps{Model: info})
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/model", nil))
@@ -52,7 +56,7 @@ func TestModel_returnsChatModelFactsWithoutAuth(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if body != info {
+	if !reflect.DeepEqual(body, info) {
 		t.Errorf("body = %+v, want %+v", body, info)
 	}
 }

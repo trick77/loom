@@ -173,6 +173,9 @@ func (s *Engine) Prepare(c RunConfig, in PrepareInput) *Run {
 			UserID:   c.User.ID,
 			Username: c.User.Username,
 			ThreadID: c.Thread.ID,
+			// The thread's slot, picked in the composer. A deployment without
+			// a deep model routes it to the chat model (llm.Client).
+			Deep: c.Thread.ChatSlot == llm.SlotDeep,
 		},
 		user:        c.User,
 		thread:      c.Thread,

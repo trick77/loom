@@ -37,6 +37,11 @@ type Metadata struct {
 	// forced-final answer sets a larger budget than the default chat cap so a
 	// synthesis over many gathered sources has room to complete.
 	MaxCompletionTokens int
+	// Deep runs the turn on the deployment's deep model at its thorough
+	// reasoning level, when one is configured: the user picked "think
+	// longer" for the thread. Only the turn's own rounds read it; the short
+	// gates a turn waits on stay on their model.
+	Deep bool
 	// Incognito marks an ephemeral turn whose content must never be written to
 	// disk. It suppresses the dev-only response-body log (see
 	// llm.wrapResponseLogger) so an incognito transcript leaves no trace even when

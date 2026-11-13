@@ -19,6 +19,8 @@ import {
 import { formatFileSize } from "./artifacts";
 import { Icon } from "./Icon";
 import { useModelInfo } from "../useContextWindow";
+import { STANDARD_SLOT } from "../api/model";
+import { ModelPicker } from "./ModelPicker";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";
 import { PastedTextCard } from "./PastedTextCard";
 import {
@@ -52,6 +54,8 @@ export function Composer({
   pastedTexts = [],
   onAddPastedText,
   onRemovePastedText,
+  chatSlot,
+  onChatSlotChange,
 }: {
   variant: "start" | "thread";
   draft: string;
@@ -84,6 +88,10 @@ export function Composer({
   pastedTexts?: PastedText[];
   onAddPastedText?(text: string): void;
   onRemovePastedText?(id: string): void;
+  // The thread's chat slot and its switch. Without onChatSlotChange the model
+  // label stays a plain name.
+  chatSlot?: string;
+  onChatSlotChange?(slot: string): void;
 }) {
   const { t } = useTranslation();
   const modelInfo = useModelInfo();
@@ -372,12 +380,15 @@ export function Composer({
             }}
           />
           <div className="ui-meta-text flex items-center text-[#d8d4ca]">
-            {/* Static label of the configured chat model (its display name from
-              /api/model) — a name, not a picker. Hidden on the narrowest widths
-              so the send button always fits. */}
-            <span className="mr-2 hidden select-none text-[13px] leading-none text-[#aaa79e] sm:inline">
-              {modelInfo?.displayName}
-            </span>
+            {/* The model label (display names from /api/model): a picker when
+              the deployment offers a second slot, else a plain name. Hidden on
+              the narrowest widths so the send button always fits. */}
+            <ModelPicker
+              slots={modelInfo?.slots ?? []}
+              value={chatSlot ?? STANDARD_SLOT}
+              fallbackName={modelInfo?.displayName}
+              onChange={onChatSlotChange}
+            />
             {queueing && (
               <button
                 className="ml-2 grid h-7 w-7 place-items-center rounded-md bg-[#3a3a37] text-[#eeeae2] transition-colors hover:bg-[#4b4a46]"

@@ -45,6 +45,9 @@ func logStartupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime sta
 	if !cfg.ChatEnabled && cfg.AuthMode != config.AuthModeDev {
 		slog.Warn("chat disabled: " + cfg.ChatMissing + " is unset, every turn will fail")
 	}
+	if cfg.DeepMissing != "" {
+		slog.Warn("deep chat model off: " + cfg.DeepMissing + " is unset, the composer offers the chat model only")
+	}
 }
 
 func startupCapabilities(cfg config.Config, mcpConfig mcp.Config, runtime startupRuntime) []startupCapability {
@@ -79,8 +82,11 @@ func chatCapability(cfg config.Config) startupCapability {
 		return startupCapability{Name: "chat", Status: "disabled", Detail: "set " + cfg.ChatMissing}
 	}
 	roles := cfg.ChatModels.Roles
-	return startupCapability{Name: "chat", Status: "enabled",
-		Detail: "model=" + roles.Chat + " gate=" + roles.Gate + " vision=" + roles.Vision}
+	detail := "model=" + roles.Chat + " gate=" + roles.Gate + " vision=" + roles.Vision
+	if roles.Deep != "" {
+		detail += " deep=" + roles.Deep
+	}
+	return startupCapability{Name: "chat", Status: "enabled", Detail: detail}
 }
 
 func embeddingsCapability(cfg config.Config) startupCapability {

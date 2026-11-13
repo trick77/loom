@@ -99,7 +99,7 @@ export async function searchThreadContent(params: {
 export const DEFAULT_THREAD_TITLE = "New thread";
 
 export async function createThread(
-  input: { projectId?: string | null; title?: string } = {},
+  input: { projectId?: string | null; title?: string; chatSlot?: string } = {},
 ): Promise<Thread> {
   return requestJSON("/api/threads", "failed to create thread", {
     method: "POST",
@@ -125,7 +125,7 @@ export async function setThreadStarred(
 
 export async function updateThread(
   threadId: string,
-  input: { title?: string; projectId?: string | null },
+  input: { title?: string; projectId?: string | null; chatSlot?: string },
 ): Promise<Thread> {
   return requestJSON(threadUrl(threadId), "failed to update thread", {
     method: "PATCH",

@@ -1,3 +1,4 @@
+import { STANDARD_SLOT } from "./model";
 import { AuthExpiredError, UserFacingError } from "./http";
 import { browserTimezone } from "./schedules";
 import type {
@@ -178,14 +179,20 @@ export async function streamIncognitoMessage(
   history: { role: "user" | "assistant"; content: string }[],
   handlers: StreamHandlers,
   signal?: AbortSignal,
+  chatSlot?: string,
 ): Promise<void> {
   const requestBody: {
     content: string;
     history: typeof history;
+    chatSlot?: string;
   } = {
     content,
     history,
   };
+  // Only a non-default pick is sent: an older backend 400s an unknown field.
+  if (chatSlot !== undefined && chatSlot !== STANDARD_SLOT) {
+    requestBody.chatSlot = chatSlot;
+  }
   const response = await fetch(`/api/incognito/messages:stream`, {
     method: "POST",
     // The prompt's date reads in the user's zone.

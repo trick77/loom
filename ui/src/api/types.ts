@@ -78,6 +78,8 @@ export type Thread = {
   title: string;
   /** Prompt-classifier category chosen on the first message; "" until classified. */
   category?: string;
+  /** The chat slot the thread's turns run on ("standard" or "deep"). */
+  chatSlot?: string;
   starred: boolean;
   /** True when an active public share link exists; set on list payloads to badge shared threads. */
   shared?: boolean;

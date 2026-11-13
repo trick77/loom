@@ -87,9 +87,13 @@ type Config struct {
 	// llmwire reads the key from LLMWIRE_<PROVIDER>_API_KEY. Chat is on when a
 	// chat model is set and every key its roles need is set; ChatMissing names
 	// what is not. The keys themselves never pass through this struct.
-	ChatModels              llm.Resolved
-	ChatEnabled             bool
-	ChatMissing             string
+	ChatModels  llm.Resolved
+	ChatEnabled bool
+	ChatMissing string
+	// DeepMissing names the unset key of a configured BACKEND_DEEP_CHAT_MODEL.
+	// The deep slot is optional: without its key it is dropped from
+	// ChatModels and chat stays on.
+	DeepMissing             string
 	ChatMaxCompletionTokens int
 	ChatTimeout             time.Duration
 	ChatIdleTimeout         time.Duration
@@ -227,6 +231,10 @@ func loadChatModels(r *env.Reader, cfg *Config) error {
 		Chat:   strings.TrimSpace(r.String("BACKEND_CHAT_MODEL", "")),
 		Gate:   strings.TrimSpace(r.String("BACKEND_GATE_MODEL", "")),
 		Vision: strings.TrimSpace(r.String("BACKEND_VISION_MODEL", "")),
+		Deep:   strings.TrimSpace(r.String("BACKEND_DEEP_CHAT_MODEL", "")),
+	}
+	if strings.EqualFold(roles.Deep, "off") {
+		roles.Deep = ""
 	}
 	if roles.Chat == "" {
 		// Outside dev auth a deployment without a chat model cannot answer a
@@ -250,6 +258,10 @@ func loadChatModels(r *env.Reader, cfg *Config) error {
 	}
 	cfg.ChatMissing = strings.Join(missing, ", ")
 	cfg.ChatEnabled = len(missing) == 0
+	if key := resolved.DeepKeyEnv(); key != "" && strings.TrimSpace(r.String(key, "")) == "" {
+		cfg.DeepMissing = key
+		cfg.ChatModels = resolved.WithoutDeep()
+	}
 	return nil
 }
 

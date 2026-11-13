@@ -37,6 +37,7 @@ type ThreadStore struct {
 	// RunThreads is what both run-thread listings return, with RunThreadsErr.
 	RunThreads                []chat.ThreadRef
 	RunThreadsErr             error
+	CreateThreadInput         chat.CreateThreadInput
 	UpdateThreadInput         chat.UpdateThreadInput
 	UpdateThreadErr           error
 	ProjectMemory             chat.ProjectMemory
@@ -155,7 +156,8 @@ func (f *ThreadStore) CreateThread(_ context.Context, userID string, in chat.Cre
 	if title == "" {
 		title = chat.DefaultThreadTitle
 	}
-	f.Thread = chat.Thread{ID: "thr_1", UserID: userID, ProjectID: in.ProjectID, Title: title}
+	f.CreateThreadInput = in
+	f.Thread = chat.Thread{ID: "thr_1", UserID: userID, ProjectID: in.ProjectID, Title: title, ChatSlot: in.ChatSlot}
 	return f.Thread, nil
 }
 
@@ -195,6 +197,9 @@ func (f *ThreadStore) UpdateThread(_ context.Context, userID, threadID string, i
 	}
 	if f.Thread.ID == "" {
 		f.Thread = chat.Thread{ID: threadID, UserID: userID, Title: chat.DefaultThreadTitle}
+	}
+	if in.ChatSlot != nil {
+		f.Thread.ChatSlot = *in.ChatSlot
 	}
 	if in.Title != nil {
 		title := chat.NormalizeThreadTitle(*in.Title)

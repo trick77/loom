@@ -14,6 +14,7 @@ import {
   DEFAULT_THREAD_TITLE,
   DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   createThread,
+  updateThread,
   type AppNotification,
   deleteQueuedMessage,
   announce,
@@ -68,6 +69,7 @@ import {
   type RunKey,
 } from "./streamRuns";
 import { useStreamRuns } from "./useStreamRuns";
+import { STANDARD_SLOT } from "../api/model";
 import { useIncognitoChat } from "./useIncognitoChat";
 import { useShellChrome } from "./useShellChrome";
 import {
@@ -353,6 +355,10 @@ export function ThreadShell({
     [onSessionExpired],
   );
 
+  // The model slot the start screen and incognito composer have picked. A new
+  // thread is created on it; every new start begins on the standard slot.
+  const [newChatSlot, setNewChatSlot] = useState(STANDARD_SLOT);
+
   // Incognito mode: a standalone, ephemeral chat reachable only from /new. Its
   // turn is just another run, under a reserved key (see useIncognitoChat.ts).
   const {
@@ -373,6 +379,7 @@ export function ThreadShell({
     setSendError,
     handleActionError,
     translateStreamError,
+    chatSlot: newChatSlot,
   });
 
   const {
@@ -409,6 +416,32 @@ export function ThreadShell({
     ),
     onQueuedMessages: replaceQueued,
   });
+
+  // Switching an open thread's slot: shown at once, saved through PATCH, put
+  // back if the save fails. The next turn runs on the saved slot.
+  const handleThreadChatSlot = useCallback(
+    (slot: string) => {
+      const thread = activeThread;
+      if (thread === null) return;
+      const previous = thread.chatSlot ?? STANDARD_SLOT;
+      // Put back only while this switch is still the one shown: a later
+      // switch owns the label then.
+      const apply = (value: string, onlyFrom?: string) =>
+        setActiveThread((current) =>
+          current !== null &&
+          current.id === thread.id &&
+          (onlyFrom === undefined || current.chatSlot === onlyFrom)
+            ? { ...current, chatSlot: value }
+            : current,
+        );
+      apply(slot);
+      updateThread(thread.id, { chatSlot: slot }).catch((error: unknown) => {
+        apply(previous, slot);
+        handleActionError(error, t("thread.updateFailed"), setSendError);
+      });
+    },
+    [activeThread, handleActionError, setActiveThread, setSendError, t],
+  );
 
   // The project a chat sent from the start screen lands in. A pick that was
   // archived or deleted since no longer counts.
@@ -1278,14 +1311,25 @@ export function ThreadShell({
                 (item) => item.id === unsent.threadID,
               ) ?? null)
             : null;
+        // Only a non-default pick is sent: the slot rides on the thread.
+        const newSlot =
+          newChatSlot === STANDARD_SLOT ? {} : { chatSlot: newChatSlot };
+        // A reused thread keeps the slot it was made with; the pick wins.
+        const reused =
+          reusable !== null &&
+          (reusable.chatSlot ?? STANDARD_SLOT) !== newChatSlot
+            ? await updateThread(reusable.id, { chatSlot: newChatSlot })
+            : reusable;
         targetThread =
-          reusable ??
+          reused ??
           (projectIDForNewThread === null
-            ? await createThread({ title: content })
+            ? await createThread({ title: content, ...newSlot })
             : await createThread({
                 projectId: projectIDForNewThread,
                 title: content,
+                ...newSlot,
               }));
+        setNewChatSlot(STANDARD_SLOT);
         // Put the thread in the sidebar the moment it exists. Otherwise Recents
         // stays empty until the first thread event, and that event now arrives
         // only once the answer has finished — the title is generated from the
@@ -1817,7 +1861,12 @@ export function ThreadShell({
             onStop={() => handleStopResponse("incognito")}
             onRetry={handleIncognitoRetry}
             focusSignal={composerFocusTick}
-            onExit={exitIncognito}
+            onExit={() => {
+              setNewChatSlot(STANDARD_SLOT);
+              exitIncognito();
+            }}
+            chatSlot={newChatSlot}
+            onChatSlotChange={setNewChatSlot}
           />
         </main>
         {slashCommand !== null && (
@@ -2016,7 +2065,12 @@ export function ThreadShell({
             onAttachFiles={handleAttachPendingFiles}
             onAttachError={setPendingAttachNote}
             onRemoveAttachment={handleRemovePendingAttachment}
-            onEnterIncognito={enterIncognito}
+            onEnterIncognito={() => {
+              setNewChatSlot(STANDARD_SLOT);
+              enterIncognito();
+            }}
+            chatSlot={newChatSlot}
+            onChatSlotChange={setNewChatSlot}
             onOpenThread={(threadID) => void selectThread(threadID)}
             onOpenIdea={navigateToIdea}
             onStartIdeaThread={handleStartThreadFromIdea}
@@ -2033,6 +2087,8 @@ export function ThreadShell({
         ) : (
           <ThreadPanel
             thread={activeThread}
+            chatSlot={activeThread?.chatSlot}
+            onChatSlotChange={handleThreadChatSlot}
             openAtAnswer={openAtAnswer}
             openAtMessageID={
               route.view === "thread" &&

@@ -28,22 +28,27 @@ func (r updateProjectRequest) toInput() chat.UpdateProjectInput {
 type createThreadRequest struct {
 	ProjectID *string `json:"projectId"`
 	Title     string  `json:"title"`
+	// ChatSlot is the slot the composer had picked; empty is standard.
+	ChatSlot string `json:"chatSlot"`
 }
 
 type updateThreadRequest struct {
 	Title             *string
 	ProjectID         *string
 	ProjectIDProvided bool
+	ChatSlot          *string
 }
 
 func (r *updateThreadRequest) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Title *string `json:"title"`
+		Title    *string `json:"title"`
+		ChatSlot *string `json:"chatSlot"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	r.Title = raw.Title
+	r.ChatSlot = raw.ChatSlot
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
@@ -67,7 +72,8 @@ func (r *updateThreadRequest) UnmarshalJSON(data []byte) error {
 
 func (r updateThreadRequest) toInput() chat.UpdateThreadInput {
 	return chat.UpdateThreadInput{
-		Title: r.Title,
+		Title:    r.Title,
+		ChatSlot: r.ChatSlot,
 		ProjectID: chat.ProjectIDUpdate{
 			Set:   r.ProjectIDProvided,
 			Value: r.ProjectID,
@@ -155,6 +161,8 @@ type incognitoStreamRequest struct {
 	// send from a browser tab still running the previous bundle until the user
 	// hard-reloads. Kept as a sink for one release, then removable.
 	ReasoningEffort string `json:"reasoningEffort"`
+	// ChatSlot is the slot the composer has picked; empty is standard.
+	ChatSlot string `json:"chatSlot"`
 }
 
 type incognitoHistoryEntry struct {

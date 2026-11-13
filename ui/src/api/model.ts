@@ -4,7 +4,20 @@ export interface ModelInfo {
   model: string;
   displayName: string;
   contextWindow: number;
+  // The choices the composer offers, standard first. One entry (or none, from
+  // an older backend) means there is nothing to pick.
+  slots?: ChatSlot[];
 }
+
+// One composer choice: the key the client sends, the model behind it.
+export interface ChatSlot {
+  key: string;
+  model: string;
+  displayName: string;
+  contextWindow: number;
+}
+
+export const STANDARD_SLOT = "standard";
 
 let pending: Promise<ModelInfo | null> | null = null;
 

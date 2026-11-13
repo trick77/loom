@@ -88,6 +88,10 @@ export const de = {
     uploading: "Wird hochgeladen...",
     processing: "Wird verarbeitet...",
     uploadFailed: "Upload fehlgeschlagen",
+    chooseModel: "Modell: {{name}}. Modell wählen",
+    models: "Modelle",
+    slotStandard: "Schnell, für Alltagsfragen",
+    slotDeep: "Denkt länger, für knifflige Fragen",
   },
   startPanel: {
     placeholder: "Wie kann ich dir heute helfen?",
