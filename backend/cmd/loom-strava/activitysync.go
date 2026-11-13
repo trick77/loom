@@ -213,7 +213,7 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 	var m metricFile
 	var mErr error
 	loaded := false
-	var drop []string
+	var drop, removed []string
 	for _, id := range ids {
 		key := strconv.FormatInt(id, 10)
 		uc.detail.remove(kindDetail + "/" + key)
@@ -229,6 +229,7 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 		delete(x.Streams, key)
 		delete(x.Seen, key)
 		sl.indexDirty = true
+		removed = append(removed, key)
 		if !loaded {
 			m, mErr = s.store.loadMetrics(user)
 			loaded = true
@@ -243,11 +244,31 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 			slog.Error("strava: saving metrics failed", "err", err)
 		}
 	}
-	// A deleted run may have set the threshold pace.
-	if len(drop) > 0 {
+	// A deleted run may have set the threshold pace (whether the metrics
+	// file read or not).
+	s.dropSideLocked(user, removed, true)
+}
+
+// forgetTemp drops id's kept temperature after a refresh: its start may
+// have been corrected.
+func (s *service) forgetTemp(user string, id int64) {
+	sl := s.slot(user)
+	sl.dataMu.Lock()
+	defer sl.dataMu.Unlock()
+	s.dropSideLocked(user, []string{strconv.FormatInt(id, 10)}, false)
+}
+
+// dropSideLocked removes keys from the side files: their temperatures (a
+// corrected start place or time needs a new lookup) and, with bests, their
+// best efforts. Caller holds dataMu.
+func (s *service) dropSideLocked(user string, keys []string, bests bool) {
+	if len(keys) == 0 {
+		return
+	}
+	if bests {
 		bf := s.store.loadBests(user)
 		gone := false
-		for _, k := range drop {
+		for _, k := range keys {
 			if _, ok := bf.Runs[k]; ok {
 				delete(bf.Runs, k)
 				gone = true
@@ -257,6 +278,20 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 			if err := s.store.saveBests(user, bf); err != nil {
 				slog.Error("strava: saving best efforts failed", "err", err)
 			}
+		}
+	}
+	tf := s.store.loadTemps(user)
+	gone := false
+	for _, k := range keys {
+		if _, ok := tf.Temps[k]; ok {
+			delete(tf.Temps, k)
+			delete(tf.Recent, k)
+			gone = true
+		}
+	}
+	if gone {
+		if err := s.store.saveTemps(user, tf); err != nil {
+			slog.Error("strava: saving temperatures failed", "err", err)
 		}
 	}
 }
@@ -330,6 +365,9 @@ func (s *service) forget(user string, id int64) {
 			slog.Error("strava: saving metrics failed", "err", err)
 		}
 	}
+	// Its start may have been corrected: the weather is looked up again.
+	// Its best efforts stay until the next analysis files them anew.
+	s.dropSideLocked(user, []string{key}, false)
 }
 
 // mayRefresh says whether a refresh of id goes to Strava: not within

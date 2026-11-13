@@ -126,7 +126,10 @@ func TestGradeProfile(t *testing.T) {
 		}
 		runs = append(runs, s)
 	}
-	gp := gradeProfileOf(runs)
+	gp := &gradeProfile{}
+	for _, s := range runs {
+		gp.add(s)
+	}
 	if !within(gp.rel(5), 0.8, 1e-9) || !within(gp.rel(-5), 1.1, 1e-9) || !within(gp.rel(0), 1, 1e-9) {
 		t.Errorf("rel +5 %v, −5 %v, 0 %v", gp.rel(5), gp.rel(-5), gp.rel(0))
 	}

@@ -68,7 +68,9 @@ def run_bests(bests, out, predictions=None, unit="km", title=None, lang="en"):
         return empty_chart(out, title, tx["empty"])
     df["secs_n"], df["dist_n"] = num(df, "secs"), num(df, "distance_m")
     df = df[(df.secs_n > 0) & (df.dist_n > 0)]
-    names = [n for n in SHOWN if n in set(df.effort)]
+    # Strava names them "5k", "10k": matched in any case.
+    have = {str(e).lower(): e for e in df.effort.unique()}
+    names = [have[n.lower()] for n in SHOWN if n.lower() in have]
     if not names:
         names = list(df.groupby("effort").dist_n.first().sort_values().index[:4])
     if not names:

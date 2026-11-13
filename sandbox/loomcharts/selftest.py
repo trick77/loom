@@ -278,8 +278,9 @@ def activity_files(d):
          "bests": os.path.join(d, "strava_run_bests.csv"), "predictions": os.path.join(d, "strava_run_predictions.csv")}
     bests = []
     for i, month in enumerate(pd.period_range("2025-12", "2026-10", freq="M").astype(str)):
-        for name, dist, base in (("1K", 1000, 290), ("5K", 5000, 1560), ("10K", 10000, 3260)):
-            if name == "10K" and i % 3:
+        # Strava's names: lower-case k.
+        for name, dist, base in (("1k", 1000, 290), ("5k", 5000, 1560), ("10k", 10000, 3260)):
+            if name == "10k" and i % 3:
                 continue
             secs = base * (1 - 0.006 * i) + rng.normal(0, base * 0.01)
             bests.append({"month": month, "effort": name, "distance_m": dist, "secs": round(secs), "activity_id": 100 + i,

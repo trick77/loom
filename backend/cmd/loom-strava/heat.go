@@ -158,7 +158,7 @@ type temps struct {
 	user     string
 	athlete  int64
 	file     tempsFile
-	added    bool
+	added    map[string]bool // keys looked up this call: only these are saved
 	budget   int
 	deadline time.Time      // no lookup past it
 	failed   bool           // a lookup failed: none more this call
@@ -170,11 +170,11 @@ func (t *tools) tempsOf(user string, athleteID int64, budget int) *temps {
 	sl.dataMu.Lock()
 	f := t.svc.store.loadTemps(user)
 	sl.dataMu.Unlock()
-	if f.Athlete != 0 && f.Athlete != athleteID {
+	if otherAthlete(f.Athlete, athleteID) {
 		f = tempsFile{Temps: map[string]*float64{}, Recent: map[string]bool{}}
 	}
 	return &temps{t: t, user: user, athlete: athleteID, file: f, budget: budget, deadline: time.Now().Add(weatherBudget),
-		skipped: map[int64]bool{}}
+		skipped: map[int64]bool{}, added: map[string]bool{}}
 }
 
 // kept is x's kept weather temperature: ok false when none is kept or a
@@ -243,13 +243,18 @@ func (c *temps) of(ctx context.Context, x summaryActivity) (float64, string) {
 		c.skipped[x.ID] = true
 		return nan, ""
 	}
-	c.budget--
 	// The mean of the activity's hours, from its start hour to its end's;
-	// past local midnight the next day's too.
+	// past local midnight the next day's too. The budget counts calls, not
+	// activities: an overnight one costs two.
 	start := x.localStart()
 	end := start.Add(time.Duration(max(x.ElapsedTime, 1)) * time.Second)
 	hours := map[string]float64{}
 	for day := dayOf(start); !day.After(end); day = day.AddDate(0, 0, 1) {
+		if c.budget <= 0 || time.Now().After(c.deadline) {
+			c.skipped[x.ID] = true
+			return nan, ""
+		}
+		c.budget--
 		got, err := w.history(ctx, x.StartLatLng[0], x.StartLatLng[1], day.Format("2006-01-02"))
 		if err != nil {
 			// Not kept: a later call asks again.
@@ -269,7 +274,7 @@ func (c *temps) of(ctx context.Context, x summaryActivity) (float64, string) {
 		}
 	}
 	key := strconv.FormatInt(x.ID, 10)
-	c.added = true
+	c.added[key] = true
 	c.file.Recent[key] = !start.Before(c.t.svc.now().AddDate(0, 0, -weatherRecentDays))
 	if n == 0 {
 		c.file.Temps[key] = nil
@@ -280,25 +285,26 @@ func (c *temps) of(ctx context.Context, x summaryActivity) (float64, string) {
 	return v, "weather"
 }
 
-// save writes the lookups, unless the user disconnected or reconnected to
-// another athlete meanwhile.
+// save writes this call's lookups, unless the user disconnected or
+// reconnected to another athlete meanwhile. Only these: the rest of the
+// call's snapshot may be older than what a parallel call saved.
 func (c *temps) save() {
-	if !c.added {
+	if len(c.added) == 0 {
 		return
 	}
 	sl := c.t.svc.slot(c.user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
-	if conn, ok := c.t.svc.conn(c.user); !ok || (conn.AthleteID != 0 && conn.AthleteID != c.athlete) {
+	if !c.t.svc.stillConnected(c.user, c.athlete) {
 		return
 	}
 	f := c.t.svc.store.loadTemps(c.user)
-	if f.Athlete != 0 && f.Athlete != c.athlete {
+	if otherAthlete(f.Athlete, c.athlete) {
 		f = tempsFile{Temps: map[string]*float64{}, Recent: map[string]bool{}}
 	}
 	f.Athlete = c.athlete
-	for k, v := range c.file.Temps {
-		f.Temps[k] = v
+	for k := range c.added {
+		f.Temps[k] = c.file.Temps[k]
 		f.Recent[k] = c.file.Recent[k]
 		if !f.Recent[k] {
 			delete(f.Recent, k)

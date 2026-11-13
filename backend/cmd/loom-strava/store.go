@@ -249,6 +249,19 @@ func (s fileStore) saveBests(user string, f bestsFile) error {
 	return s.saveSide(user, bestsSuffix, f)
 }
 
+// otherAthlete says a file kept for athlete kept is not athleteID's: a
+// reconnect to another Strava account must not inherit it (0: unknown).
+// Every per-user file (metrics, side files) is read and merged by this rule.
+func otherAthlete(kept, athleteID int64) bool { return kept != 0 && kept != athleteID }
+
+// stillConnected says the user is still connected to athleteID: a write
+// after a disconnect or a reconnect to another athlete mid-call writes
+// nothing. Caller holds dataMu.
+func (s *service) stillConnected(user string, athleteID int64) bool {
+	c, ok := s.conn(user)
+	return ok && !otherAthlete(c.AthleteID, athleteID)
+}
+
 // sideSuffixes are every side file: deleteMetrics removes them all, a new
 // one goes here or it outlives a disconnect.
 var sideSuffixes = []string{bestsSuffix, tempsSuffix}

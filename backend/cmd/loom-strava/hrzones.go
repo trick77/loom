@@ -408,11 +408,9 @@ func (t *tools) calcZones(ctx context.Context, user string, a athlete, fams []hr
 	}
 	// One comparison for the window everywhere: wall-clock strings, as
 	// stored entries and calcHRZones have them.
-	fromS := from.Format("2006-01-02T15:04:05")
-	inWindow := func(x summaryActivity) bool { return x.localStart().Format("2006-01-02T15:04:05") >= fromS }
 	var list []summaryActivity
 	for _, x := range all {
-		if inWindow(x) {
+		if startedSince(x, from) {
 			list = append(list, x)
 		}
 	}

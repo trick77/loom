@@ -55,8 +55,8 @@ func hardest5(s series) int {
 	if v == nil {
 		return -1
 	}
-	_, at := bestWindow(v, 300)
-	if math.IsNaN(meanMax(v, 300)) {
+	best, at := bestWindow(v, 300)
+	if math.IsNaN(best) {
 		return -1
 	}
 	return at + 300 - 1
@@ -155,14 +155,13 @@ const (
 // poolLaps says every swim lap is whole lengths of a 25 m or 25 yd pool:
 // open water's GPS laps are not, and a short GPS 400 made a too-fast CSS.
 func poolLaps(laps []lap) bool {
-	whole := func(d, length float64) bool { return math.Abs(d-length*math.Round(d/length)) <= 1 }
 	n := 0
 	for _, l := range laps {
 		if l.Distance < 10 {
 			continue
 		}
 		n++
-		if !whole(l.Distance, 25) && !whole(l.Distance, 25*yard) {
+		if !wholeLengths(l.Distance, poolShort) && !wholeLengths(l.Distance, poolShort*yard) {
 			return false
 		}
 	}
@@ -182,16 +181,7 @@ const (
 	minBinS = 60
 )
 
-// gradeProfileOf collects every moving, recorded second of runs.
-func gradeProfileOf(runs []series) *gradeProfile {
-	gp := &gradeProfile{}
-	for _, s := range runs {
-		gp.add(s)
-	}
-	return gp
-}
-
-// add folds one run's seconds in: a sweep keeps no series alive.
+// add folds one run's moving, recorded seconds in: a sweep keeps no series alive.
 func (gp *gradeProfile) add(s series) {
 	if s.speed == nil || s.grade == nil {
 		return

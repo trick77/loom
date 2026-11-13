@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,12 +13,53 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/toolkit/mcpserver"
 )
 
 // The tool name is the weather contract's, which loom-weather is held to.
 func TestWeatherHistoryContract(t *testing.T) {
 	if weatherHistoryTool != mcp.WeatherHistoryTool {
 		t.Errorf("history tool %q, contract %q", weatherHistoryTool, mcp.WeatherHistoryTool)
+	}
+}
+
+// The client against the real MCP handler loom-weather serves (stateless,
+// no initialize): a call the handler stops taking fails here, not as a
+// quiet "no temperature" in production.
+func TestWeatherClient_mcpserver(t *testing.T) {
+	var got struct {
+		Latitude, Longitude float64
+		Date                string
+	}
+	srv := httptest.NewServer(mcpserver.New(mcpserver.Server{Name: "weather", Version: "test", Tools: []mcpserver.Tool{{
+		Name: mcp.WeatherHistoryTool,
+		Schema: mcpserver.ObjectSchema(map[string]any{
+			"latitude": map[string]any{"type": "number"}, "longitude": map[string]any{"type": "number"}, "date": map[string]any{"type": "string"},
+		}),
+		Run: func(_ context.Context, raw json.RawMessage) mcpserver.Result {
+			if err := json.Unmarshal(raw, &got); err != nil {
+				return mcpserver.ErrorResult(err.Error())
+			}
+			if got.Date == "1900-01-01" {
+				return mcpserver.ErrorResult("history needs date as YYYY-MM-DD")
+			}
+			// loom-weather's History, attribution as a source like it.
+			return mcpserver.Result{Text: `{"latitude":47.38,"longitude":8.54,"timezone":"Europe/Zurich","date":"` + got.Date +
+				`","hourly":[{"time":"` + got.Date + `T07:00","temperature":14.5,"humidity":80},{"time":"` + got.Date +
+				`T08:00","temperature":16}]}`, Sources: []mcpserver.Source{{URL: "https://open-meteo.com/", Title: "Open-Meteo"}}}
+		},
+	}}}))
+	t.Cleanup(srv.Close)
+	w := &weatherClient{url: srv.URL, token: "t", http: srv.Client()}
+	hours, err := w.history(t.Context(), 47.3812, 8.5412, "2026-03-01")
+	if err != nil || len(hours) != 2 || hours["2026-03-01T08:00"] != 16 {
+		t.Fatalf("history: %v %v", hours, err)
+	}
+	if got.Latitude != 47.3812 || got.Longitude != 8.5412 || got.Date != "2026-03-01" {
+		t.Errorf("arguments sent: %+v", got)
+	}
+	if _, err := w.history(t.Context(), 47, 8, "1900-01-01"); err == nil || !strings.Contains(err.Error(), "YYYY-MM-DD") {
+		t.Errorf("tool error: %v", err)
 	}
 }
 
@@ -46,6 +88,31 @@ func TestFitHeat(t *testing.T) {
 	}
 	if !fitHeat(ts[:5], efs[:5]).tooFew || !fitHeat([]float64{10, 11, 12, 13, 14, 15, 16, 17}, efs[:8]).tooNarrow {
 		t.Error("guards")
+	}
+}
+
+// Two calls at once: each saves only what it looked up, never its older
+// snapshot over the other's newer value.
+func TestTempsSave_parallel(t *testing.T) {
+	f := newFakeStrava(t)
+	f.addAthlete(1, "Anna", "code-a", 250)
+	svc, h, _ := newTestService(t, f)
+	connect(t, h, userA, "code-a")
+	tl := &tools{svc: svc}
+	set := func(c *temps, key string, v float64) {
+		c.file.Temps[key], c.added[key] = &v, true
+	}
+	first := tl.tempsOf(userA, 1, 0)
+	set(first, "1", 5)
+	first.save()
+	a, b := tl.tempsOf(userA, 1, 0), tl.tempsOf(userA, 1, 0)
+	set(b, "1", 10)
+	b.save()
+	set(a, "2", 20)
+	a.save()
+	got := svc.store.loadTemps(userA)
+	if got.Temps["1"] == nil || *got.Temps["1"] != 10 || got.Temps["2"] == nil || *got.Temps["2"] != 20 {
+		t.Errorf("temps after two calls: %v %v", got.Temps["1"], got.Temps["2"])
 	}
 }
 
@@ -138,6 +205,23 @@ func TestAnalysis_heat(t *testing.T) {
 	f.addActivity(1, 7300, "Zwift run", "VirtualRun", local(2026, 11, 1, 7), nil, map[string]any{"start_latlng": []float64{-11.6, 166.9}})
 	if r := callTool(t, h, userA, "activity_analysis", `{"id":7300}`); !strings.Contains(r.Text, "heat: indoor, no air temperature") || calls.Load() != n {
 		t.Errorf("indoor:\n%s", r.Text)
+	}
+
+	// A refresh (a corrected start, say) looks its temperature up again.
+	n = calls.Load()
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":7100,"refresh":true}`); r.IsError || calls.Load() == n {
+		t.Errorf("refresh kept the old temperature (%d weather calls): %.300s", calls.Load()-n, r.Text)
+	}
+
+	// No GPS start: no temperature for this one, so no lookup for the
+	// others either (7250's would be new).
+	f.addActivity(1, 7250, "Run with GPS", "Run", local(2026, 10, 31, 7), nil, map[string]any{"average_heartrate": 140.0})
+	f.addActivity(1, 7260, "No GPS", "Run", local(2026, 11, 1, 9), nil, map[string]any{"start_latlng": []float64{}, "average_heartrate": 140.0})
+	f.advance(10 * time.Minute)
+	n = calls.Load()
+	if r := callTool(t, h, userA, "activity_analysis", `{"id":7260}`); !strings.Contains(r.Text, "heat: no temperature for this activity") ||
+		calls.Load() != n {
+		t.Errorf("no GPS start (%d weather calls):\n%s", calls.Load()-n, r.Text)
 	}
 
 	// Without the weather: said, no fit.

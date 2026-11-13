@@ -215,9 +215,12 @@ type comparison struct {
 	// listPartial: the activity list is not read back to the window's start
 	// yet (the backfill stopped at the rate budget).
 	listPartial bool
-	same        []baseEntry
-	gaps        [][]float64 // per same-route ride, at gapStepM steps
-	table       *weekTable
+	// zones: the user's HR zones after the baseline's write (nil: it wrote
+	// nothing); new streams can move a family's LTHR.
+	zones map[string]storedHRZones
+	same  []baseEntry
+	gaps  [][]float64 // per same-route ride, at gapStepM steps
+	table *weekTable
 	// all is every activity of the window (any sport), added the stream
 	// metrics read for this call: buildTable's input.
 	all   []summaryActivity
@@ -281,13 +284,12 @@ func (t *tools) updateMetrics(user string, athleteID int64, u metricsUpdate) (ma
 	defer sl.dataMu.Unlock()
 	// Another athlete than the one the metrics were read for (a reconnect
 	// to a different Strava account meanwhile) must not inherit them.
-	c, ok := t.svc.conn(user)
-	if !ok || (c.AthleteID != 0 && c.AthleteID != athleteID) {
+	if !t.svc.stillConnected(user, athleteID) {
 		return nil, false
 	}
 	m, _ := t.svc.store.loadMetrics(user)
 	// The connection's athlete unknown: the file's own says whose it is.
-	if m.Athlete != 0 && m.Athlete != athleteID {
+	if otherAthlete(m.Athlete, athleteID) {
 		return nil, false
 	}
 	if !applyUpdate(&m, u, t.svc.now()) {
@@ -446,7 +448,7 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 			added[strconv.FormatInt(e.act.ID, 10)] = sm
 		}
 	}
-	t.storeMetrics(user, a.ID, added, stored, all)
+	c.zones = t.storeMetrics(user, a.ID, added, stored, all)
 	for _, e := range c.entries {
 		switch {
 		case e.known:
@@ -647,6 +649,7 @@ type zonePick struct {
 	whole  rideMetrics
 	this   storedMetrics            // the activity's own entry, zone-free
 	stored map[string]storedMetrics // the user's entries, this one included
+	zones  map[string]storedHRZones // the user's stored HR zones, fresh
 	own    *storedHRZones           // the user's own HR zones in use, nil for Strava's
 	ownFam string
 }
@@ -669,23 +672,21 @@ func (t *tools) pickZones(ctx context.Context, user string, a athlete, d detaile
 	p.whole = computeMetrics(s, 0, s.n, p.pE, p.hE)
 	// The stored entry is zone-free, and stored first: a new best moves the
 	// user's zones before they bucket this very activity.
-	p.stored = t.loadMetrics(user, a.ID)
+	mf := t.metricFileOf(user, a.ID)
+	p.stored = mf.Activities
 	p.this = entryOf(p.whole, d.summaryActivity)
 	thisKey := strconv.FormatInt(d.ID, 10)
-	zones := t.storeMetrics(user, a.ID, map[string]storedMetrics{thisKey: p.this}, p.stored, nil)
+	p.zones = mf.HRZones
+	if z := t.storeMetrics(user, a.ID, map[string]storedMetrics{thisKey: p.this}, p.stored, nil); z != nil {
+		p.zones = z
+	}
 	p.stored[thisKey] = p.this
+	p.zones = t.freshHRZones(user, a.ID, p.zones)
 	// Strava's default zones are age-based: the user's own, stored for this
 	// sport, count instead. Custom zones always win, and without Strava's
 	// answer they may exist: then Strava's own fallback stays.
-	if p.zerr == nil && (p.z.HeartRate == nil || !p.z.HeartRate.CustomZones) {
-		if _, ok := familyOf(d.SportType); ok {
-			if zones == nil {
-				zones = t.loadHRZones(user, a.ID)
-			} else {
-				zones = t.freshHRZones(user, a.ID, zones)
-			}
-			p.useOwn(zones, d, s)
-		}
+	if _, ok := familyOf(d.SportType); ok {
+		p.useOwn(p.zones, d, s)
 	}
 	return p
 }
@@ -757,6 +758,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	}
 	if fresh {
 		t.svc.markRefreshed(user, id)
+		t.svc.forgetTemp(user, id)
 	}
 	u := unitsOf(a)
 	ia, ib := 0, s.n
@@ -777,12 +779,21 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	if cmpErr == nil {
 		known, fetched = maps.Clone(zp.stored), cmp.fetched
 		maps.Copy(known, cmp.added)
+		// The baseline's streams may have moved the zones: the load and
+		// the buckets use the ones now on disk.
+		if cmp.zones != nil {
+			zp.zones = cmp.zones
+			zp.useOwn(zp.zones, d, s)
+		}
 	}
-	lr, lc, loadNote, calculated := t.loadFor(ctx, user, a, d, known, fetched)
+	lr, lc, loadNote, calculated, newZones := t.loadFor(ctx, user, a, d, zp.zones, known, fetched)
+	if newZones != nil {
+		zp.zones = newZones
+	}
 	// Zones made just now for this activity's sport bucket it too: one answer,
-	// one set of zones.
+	// one set of zones (the ones the load used, saved or not).
 	if f, ok := familyOf(d.SportType); ok && slices.Contains(calculated, f.key) {
-		zp.useOwn(t.loadHRZones(user, a.ID), d, s)
+		zp.useOwn(newZones, d, s)
 	}
 	z, pE, hE, whole, this, own, ownFam := zp.z, zp.pE, zp.hE, zp.whole, zp.this, zp.own, zp.ownFam
 	if cmpErr == nil {
@@ -961,7 +972,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 	writeIntervals(&b, d, s, ia, ib, ftp, u, section)
 	var ex *extras
 	if !section {
-		ex = t.analysisExtras(ctx, user, a, d, s, whole, cmp, args.GradeProfile, u)
+		ex = t.analysisExtras(ctx, user, a, d, s, whole, cmp, zp.zones, args.GradeProfile, u)
 		if ex.text.Len() > 0 {
 			b.WriteString("\n" + ex.text.String())
 		}
@@ -1485,7 +1496,8 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 	}
 	defer t.svc.flushIndex(user)
 	u := unitsOf(a)
-	stored := t.loadMetrics(user, a.ID)
+	mf := t.metricFileOf(user, a.ID)
+	stored := mf.Activities
 	added := map[string]storedMetrics{}
 	entries := make([]baseEntry, 0, len(ids))
 	for _, id := range ids {
@@ -1509,8 +1521,11 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 	for _, e := range entries {
 		listed = append(listed, e.act)
 	}
-	t.storeMetrics(user, a.ID, added, stored, listed)
-	lc := t.loadCtxOf(user, a, stored)
+	zones := mf.HRZones
+	if z := t.storeMetrics(user, a.ID, added, stored, listed); z != nil {
+		zones = z
+	}
+	lc := t.loadCtxOf(user, a, zones, stored)
 
 	var b strings.Builder
 	sources := make([]mcpserver.Source, 0, len(entries))
