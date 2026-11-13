@@ -192,16 +192,19 @@ func (s fileStore) deleteMetrics(user string) error {
 	if err != nil {
 		return err
 	}
-	for _, f := range []string{p, bestsPathOf(p)} {
+	files := []string{p}
+	for _, suffix := range sideSuffixes {
+		if sp, err := s.sidePath(user, suffix); err == nil {
+			files = append(files, sp)
+		}
+	}
+	for _, f := range files {
 		if err := os.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 	}
 	return nil
 }
-
-// bestsPathOf is the best-efforts file next to a user's metric file.
-func bestsPathOf(metrics string) string { return strings.TrimSuffix(metrics, ".json") + ".bests.json" }
 
 // bestsFile is each run's best efforts, read once from its detail: a call
 // over two years of runs would otherwise decode hundreds of details (every
@@ -223,31 +226,17 @@ type effortRec struct {
 	Secs  int     `json:"secs"`
 }
 
+const bestsSuffix = ".bests.json"
+
 func (s fileStore) loadBests(user string) bestsFile {
-	empty := bestsFile{Runs: map[string]runEfforts{}}
-	p, err := s.metricsPath(user)
-	if err != nil {
-		return empty
-	}
-	b, err := os.ReadFile(bestsPathOf(p)) //nolint:gosec // built from a validated user id
-	if err != nil {
-		return empty
-	}
 	var f bestsFile
-	if json.Unmarshal(b, &f) != nil || f.Runs == nil {
-		return empty
+	if !s.loadSide(user, bestsSuffix, &f) || f.Runs == nil {
+		return bestsFile{Runs: map[string]runEfforts{}}
 	}
 	return f
 }
 
 func (s fileStore) saveBests(user string, f bestsFile) error {
-	p, err := s.metricsPath(user)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return err
-	}
 	for len(f.Runs) > maxStoredActivities {
 		oldest := ""
 		for id, r := range f.Runs {
@@ -257,11 +246,47 @@ func (s fileStore) saveBests(user string, f bestsFile) error {
 		}
 		delete(f.Runs, oldest)
 	}
-	b, err := json.Marshal(f)
+	return s.saveSide(user, bestsSuffix, f)
+}
+
+// sideSuffixes are every side file: deleteMetrics removes them all, a new
+// one goes here or it outlives a disconnect.
+var sideSuffixes = []string{bestsSuffix, tempsSuffix}
+
+// sidePath is a file kept next to the user's metrics (suffix
+// ".bests.json"): per user, removed with them on disconnect.
+func (s fileStore) sidePath(user, suffix string) (string, error) {
+	p, err := s.metricsPath(user)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(p, ".json") + suffix, nil
+}
+
+// loadSide reads a side file into into; false when missing or unreadable.
+func (s fileStore) loadSide(user, suffix string, into any) bool {
+	p, err := s.sidePath(user, suffix)
+	if err != nil {
+		return false
+	}
+	b, err := os.ReadFile(p) //nolint:gosec // built from a validated user id
+	return err == nil && json.Unmarshal(b, into) == nil
+}
+
+// saveSide writes a side file atomically, 0600, the directory made first.
+func (s fileStore) saveSide(user, suffix string, v any) error {
+	p, err := s.sidePath(user, suffix)
 	if err != nil {
 		return err
 	}
-	return fsx.WriteFileAtomic(bestsPathOf(p), b, 0o600)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return fsx.WriteFileAtomic(p, b, 0o600)
 }
 
 // pruneMetrics drops the oldest entries past max.

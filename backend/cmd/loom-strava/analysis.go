@@ -225,6 +225,8 @@ type comparison struct {
 	// fetched is how many streams the baseline read: one call's reads share
 	// maxColdFetches.
 	fetched int
+	// temps are the baseline's temperatures (writeHeat), NaN unknown.
+	temps map[int64]float64
 }
 
 // storeMetrics merges add into the user's metric file, and gives the stored
@@ -1372,7 +1374,7 @@ func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedM
 				cell(x.Distance/1000, 2), intCell(x.MovingTime), cell(x.AverageSpeed*3.6, 1), cell(x.TotalElevationGain, 0),
 				cell(e.val("np", lc), 0), cell(e.val("tss", lc), 0), cell(e.val("ef", lc), 2), cell(e.val("decoupling", lc), 1),
 				cell(e.val("mm_1200", lc), 0), cell(e.val("avg_hr", lc), 0),
-				intCell(x.ElapsedTime), cell(e.val("not_recorded_s", lc), 0), cell(deviceWatts(x), 0))
+				intCell(x.ElapsedTime), cell(e.val("not_recorded_s", lc), 0), cell(deviceWatts(x), 0), tempCell(c.temps, x.ID))
 		}
 		files = append(files, t.file(fmt.Sprintf("strava_%d_baseline.csv", d.ID)))
 		if f, ok := sameRouteCSV(d.ID, c); ok {
@@ -1390,6 +1392,14 @@ func analysisFiles(d detailedActivity, s series, whole rideMetrics, this storedM
 		}
 	}
 	return files
+}
+
+// tempCell is an activity's temperature for the baseline; empty unknown.
+func tempCell(temps map[int64]float64, id int64) string {
+	if v, ok := temps[id]; ok {
+		return cell(v, 1)
+	}
+	return ""
 }
 
 // deviceWatts is x's average power from a power meter (a watch's running

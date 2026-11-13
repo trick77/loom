@@ -319,6 +319,10 @@ services:
       STRAVA_TOKEN: "${BACKEND_STRAVA_TOKEN:-}"
       STRAVA_CLIENT_ID: "${STRAVA_CLIENT_ID:-}"
       STRAVA_CLIENT_SECRET: "${STRAVA_CLIENT_SECRET:-}"
+      # The weather sidecar's history tool, for an activity's temperature when
+      # the watch records none (docs/strava.md, Heat); unset token: no heat.
+      WEATHER_URL: "${BACKEND_STRAVA_WEATHER_URL:-http://weather:8100}"
+      WEATHER_TOKEN: "${BACKEND_WEATHER_TOKEN:-}"
     # Host dir for backups, outside ./data (loom must never read these tokens);
     # owned by 65532 or the sidecar refuses to start: docs/strava.md, Setup.
     volumes:

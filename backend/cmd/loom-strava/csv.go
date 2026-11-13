@@ -20,7 +20,7 @@ const (
 	hdrPowerCurve = "duration_s,this_w,window_best_w,window_median_w"
 	// elapsed_time_s, not elapsed_s: the streams' elapsed_s is a clock
 	// reading per row, this a total; one name for both was misread.
-	hdrBaseline   = "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_time_s,not_recorded_s,avg_w"
+	hdrBaseline   = "activity_id,date,name,sport_type,is_this,same_route,distance_km,moving_s,avg_kmh,gain_m,np_w,tss,ef,decoupling_pct,best_20m_w,avg_hr,elapsed_time_s,not_recorded_s,avg_w,temp_c"
 	hdrWeeks      = "week_start,iso_week,sport_type,count,distance_km,moving_s,gain_m,tss"
 	hdrActivities = "activity_id,date,name,sport_type,trainer,distance_km,moving_s,gain_m,avg_kmh,avg_hr,avg_w,weighted_w,kj,suffer_score,elapsed_time_s"
 	// hdrSameRoutePrefix is followed by one gap_s_<YYYY-MM-DD> column per

@@ -128,6 +128,8 @@ type service struct {
 	savedGen uint64
 	// beforeSave, when set (tests), runs under saveMu before each write.
 	beforeSave func()
+	// weather is loom-weather's history tool; nil when not configured.
+	weather *weatherClient
 }
 
 // snapshotLocked copies the state for a save outside s.mu. Caller holds
@@ -175,11 +177,16 @@ func newService(cfg config, client *http.Client, store fileStore) (*service, err
 	if err != nil {
 		return nil, fmt.Errorf("load state: %w", err)
 	}
-	return &service{
+	s := &service{
 		clientID: cfg.clientID, clientSecret: cfg.clientSecret, base: cfg.base,
 		http: client, store: store, now: time.Now, rate: newRateBook(),
 		st: st, slots: map[string]*slot{},
-	}, nil
+	}
+	if cfg.weatherURL != "" && cfg.weatherToken != "" {
+		s.weather = &weatherClient{url: cfg.weatherURL + "/mcp", token: cfg.weatherToken,
+			http: &http.Client{Timeout: weatherTimeout}}
+	}
+	return s, nil
 }
 
 func (s *service) connections() int {
