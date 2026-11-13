@@ -179,6 +179,11 @@ func runThresholdOf(f bestsFile, now time.Time) (bestEffortOf, bool) {
 	return *top, true
 }
 
+// bestsRun says x's best efforts count: a recorded outdoor run. A treadmill's
+// distance is a foot pod's: one reading long gives runs that confirm each
+// other's too-fast VDOT (as efficiency, heat and grade leave indoor out).
+func bestsRun(x summaryActivity) bool { return runSport(x.SportType) && !x.Manual && !x.indoor() }
+
 // effortsOf is a run's best efforts from its detail.
 func effortsOf(d detailedActivity) runEfforts {
 	re := runEfforts{Start: d.StartDateLocal}
@@ -190,14 +195,22 @@ func effortsOf(d detailedActivity) runEfforts {
 	return re
 }
 
-// loadBests is the user's best-efforts file for athleteID, under the lock.
+// loadBests is the user's best-efforts file for athleteID, under the lock,
+// without runs the index now has as something else: one re-tagged as a ride
+// or a treadmill run on Strava would keep setting the threshold pace.
 func (t *tools) loadBests(user string, athleteID int64) bestsFile {
 	sl := t.svc.slot(user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
 	f := t.svc.store.loadBests(user)
-	if f.Athlete != 0 && f.Athlete != athleteID {
+	if otherAthlete(f.Athlete, athleteID) {
 		return bestsFile{Runs: map[string]runEfforts{}}
+	}
+	x := t.svc.indexLocked(user, sl)
+	for k := range f.Runs {
+		if a, ok := x.Activities[k]; ok && !bestsRun(a) {
+			delete(f.Runs, k)
+		}
 	}
 	return f
 }
@@ -211,11 +224,11 @@ func (t *tools) addBests(user string, athleteID int64, add map[string]runEfforts
 	sl := t.svc.slot(user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
-	if c, ok := t.svc.conn(user); !ok || (c.AthleteID != 0 && c.AthleteID != athleteID) {
+	if !t.svc.stillConnected(user, athleteID) {
 		return
 	}
 	f := t.svc.store.loadBests(user)
-	if f.Athlete != 0 && f.Athlete != athleteID {
+	if otherAthlete(f.Athlete, athleteID) {
 		f = bestsFile{Runs: map[string]runEfforts{}}
 	}
 	changed := f.Athlete != athleteID
@@ -238,7 +251,7 @@ func (t *tools) addBests(user string, athleteID int64, add map[string]runEfforts
 // anyway), so the threshold pace keeps up without run_bests being asked.
 // Settled runs only: Strava matches best efforts after the upload.
 func (t *tools) keepEfforts(user string, a athlete, d detailedActivity) {
-	if runSport(d.SportType) && !d.Manual && t.svc.settled(user, d.summaryActivity) {
+	if bestsRun(d.summaryActivity) && t.svc.settled(user, d.summaryActivity) {
 		t.addBests(user, a.ID, map[string]runEfforts{strconv.FormatInt(d.ID, 10): effortsOf(d)})
 	}
 }
@@ -274,7 +287,7 @@ func (t *tools) runBests(ctx context.Context, raw json.RawMessage) mcpserver.Res
 	}
 	var runs []summaryActivity
 	for _, x := range all {
-		if runSport(x.SportType) && !x.Manual && startedSince(x, listFrom) {
+		if bestsRun(x) && startedSince(x, listFrom) {
 			runs = append(runs, x)
 		}
 	}
@@ -409,13 +422,14 @@ func (t *tools) runBests(ctx context.Context, raw json.RawMessage) mcpserver.Res
 		}
 		files = append(files, csvBests.file("strava_run_bests.csv"))
 		lines := 0
-		for _, n := range []string{"5K", "10K", "Half-Marathon", "1K"} {
+		// Strava names them "5k", "10k"; matched in any case.
+		for _, n := range []string{"5k", "10k", "Half-Marathon", "1k"} {
 			if lines == 2 {
 				break
 			}
 			var parts []string
 			for _, k := range keys {
-				if k.name == n {
+				if strings.EqualFold(k.name, n) {
 					parts = append(parts, k.month+" "+clock(float64(monthly[k].secs)))
 				}
 			}
@@ -450,10 +464,18 @@ func (t *tools) runBests(ctx context.Context, raw json.RawMessage) mcpserver.Res
 		fmt.Fprintf(&b, "prediction (Daniels VDOT %.1f from the %s of %s in %s, the last %d days, %s; Riegel %.2f from the same effort): %s\n",
 			top.vdot, top.name, clock(float64(top.secs)), cite(top.act), predictDays, basis, riegelExp, strings.Join(parts, " · "))
 		b.WriteString("  from best efforts within runs, not races: a race usually comes out faster\n")
+		// The load reads the kept (settled) runs only: say what it uses.
+		lt, ltOK := runThresholdOf(t.loadBests(user, a.ID), now)
 		use := "a run without heart rate gets its load (rTSS) from it while this effort is in the last " + strconv.Itoa(predictDays) + " days"
 		switch {
+		case ltOK && (!confirmed || lt.act.ID != top.act.ID || lt.secs != top.secs || lt.distM != top.distM):
+			use = fmt.Sprintf("the load uses %s instead (VDOT %.1f from the %s in %s): it reads settled runs only, "+
+				"a run settles an hour after its end", u.pace(thresholdSpeed(lt.vdot), false), lt.vdot, lt.name,
+				lt.act.localStart().Format("2006-01-02"))
 		case !confirmed:
 			use = "not used for load: no second run confirms it"
+		case !ltOK:
+			use = "not used for load yet: it reads settled runs only, a run settles an hour after its end"
 		case more || winUnread > 0:
 			use += "; reads still missing may move it"
 		}

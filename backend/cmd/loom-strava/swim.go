@@ -29,6 +29,7 @@ type swimFigures struct {
 	Pool        int
 	PoolAssumed bool
 	PoolGiven   bool // pool_m: the user said
+	Yards       bool // a 25 yd pool (Strava keeps its laps in metres)
 	Open        bool // open water: no lengths, no SWOLF
 	Laps        []swimLap
 	Dist        float64
@@ -38,13 +39,30 @@ type swimFigures struct {
 	Strokes, SPL, DPS, SWOLF float64
 }
 
-// multipleOf50 says d is a whole number of 50 m lengths.
-func multipleOf50(d float64) bool { return math.Abs(d-poolLong*math.Round(d/poolLong)) <= 1 }
+// wholeLengths says d (m) is a whole number of lengths (m), within 1 m.
+func wholeLengths(d, length float64) bool { return math.Abs(d-length*math.Round(d/length)) <= 1 }
+
+// poolM is the pool's length in metres.
+func (f swimFigures) poolM() float64 {
+	if f.Yards {
+		return float64(f.Pool) * yard
+	}
+	return float64(f.Pool)
+}
+
+// poolUnit is the pool length's unit.
+func (f swimFigures) poolUnit() string {
+	if f.Yards {
+		return "yd"
+	}
+	return "m"
+}
 
 // computeSwim reads d's laps; pool is the user's pool length (25, 50) or 0
-// to find it: a lap not a multiple of 50 m was swum in a 25 m pool; with
-// every lap a multiple of 50 it is 25 m, assumed. A GPS track is open
-// water. ok false: not a swim.
+// to find it: laps that are whole 25 yd lengths but not 25 m ones were swum
+// in a 25 yd pool; a lap not a multiple of 50 m in a 25 m pool; with every
+// lap a multiple of 50 it is 25 m, assumed. A GPS track is open water.
+// ok false: not a swim.
 func computeSwim(d detailedActivity, s series, pool int) (swimFigures, bool) {
 	if d.SportType != "Swim" {
 		return swimFigures{}, false
@@ -67,15 +85,23 @@ func computeSwim(d detailedActivity, s series, pool int) (swimFigures, bool) {
 		f.Pool, f.PoolGiven = pool, true
 	default:
 		f.Pool, f.PoolAssumed = poolShort, true
+		allYd, someNotM := true, false
 		for _, l := range laps {
-			if l.Distance > 0 && !multipleOf50(l.Distance) {
-				f.PoolAssumed = false
+			if l.Distance < poolShort/2 {
+				continue
 			}
+			f.PoolAssumed = f.PoolAssumed && wholeLengths(l.Distance, poolLong)
+			someNotM = someNotM || !wholeLengths(l.Distance, poolShort)
+			allYd = allYd && wholeLengths(l.Distance, poolShort*yard)
+		}
+		if allYd && someNotM {
+			f.Yards, f.PoolAssumed = true, false
 		}
 	}
+	poolM := f.poolM()
 	var strokes, lengthsC, movingC, distC float64
 	for _, l := range laps {
-		if l.Distance < float64(f.Pool)/2 {
+		if l.Distance < poolM/2 {
 			// A rest lap: its time belongs to the interval before it.
 			if n := len(f.Laps); n > 0 {
 				f.Laps[n-1].RestAfter += l.ElapsedTime
@@ -84,7 +110,7 @@ func computeSwim(d detailedActivity, s series, pool int) (swimFigures, bool) {
 			continue
 		}
 		sl := swimLap{Dist: l.Distance, Moving: l.MovingTime, Rate: nan, Strokes: nan, SPL: nan, SWOLF: nan}
-		sl.Lengths = max(1, int(math.Round(l.Distance/float64(f.Pool))))
+		sl.Lengths = max(1, int(math.Round(l.Distance/poolM)))
 		f.Lengths += sl.Lengths
 		if l.AverageCadence > 0 && l.MovingTime > 0 {
 			sl.Rate = l.AverageCadence
@@ -139,7 +165,7 @@ func writeSwimSummary(b *strings.Builder, f swimFigures, d detailedActivity, u u
 	}
 	swim := []string{swimDist(f.Dist, u)}
 	if !f.Open {
-		swim = append(swim, fmt.Sprintf("%d lengths of %d m", f.Lengths, f.Pool))
+		swim = append(swim, fmt.Sprintf("%d lengths of %d %s", f.Lengths, f.Pool, f.poolUnit()))
 	}
 	swim = append(swim, "moving "+clock(float64(d.MovingTime)), "pace "+u.pace(d.AverageSpeed, true),
 		fmt.Sprintf("speed %.2f m/s", d.AverageSpeed))
@@ -152,6 +178,8 @@ func writeSwimSummary(b *strings.Builder, f swimFigures, d detailedActivity, u u
 		b.WriteString("  open water (a GPS track): no lengths, so no SWOLF\n")
 	case f.PoolGiven:
 		fmt.Fprintf(b, "  pool %d m (as the user said)\n", f.Pool)
+	case f.Yards:
+		fmt.Fprintf(b, "  pool %d yd: every lap is whole 25 yd lengths, not 25 m ones\n", f.Pool)
 	case f.PoolAssumed:
 		fmt.Fprintf(b, "  pool %d m assumed: every lap is a multiple of 50 m, so the laps cannot tell; for a 50 m pool ask again with pool_m 50 (SWOLF about doubles)\n", f.Pool)
 	default:

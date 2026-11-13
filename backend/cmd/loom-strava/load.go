@@ -77,10 +77,10 @@ type loadCtx struct {
 // loadCtxOf is the user's load context: FTP, the stored thresholds (zones
 // recalculated when stale), the threshold pace from the kept best efforts
 // of the last predictDays (derived each call, never a value that only a
-// tool call keeps alive), and stored as the call knows the entries.
-func (t *tools) loadCtxOf(user string, a athlete, stored map[string]storedMetrics) loadCtx {
-	mf := t.metricFileOf(user, a.ID)
-	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(t.freshHRZones(user, a.ID, mf.HRZones)), stored: stored}
+// tool call keeps alive), and zones and stored as the call already holds
+// them (the metric file is not decoded again for them).
+func (t *tools) loadCtxOf(user string, a athlete, zones map[string]storedHRZones, stored map[string]storedMetrics) loadCtx {
+	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(t.freshHRZones(user, a.ID, zones)), stored: stored}
 	if top, ok := runThresholdOf(t.loadBests(user, a.ID), t.svc.now()); ok {
 		lc.runMS = thresholdSpeed(top.vdot)
 	}
@@ -352,15 +352,17 @@ func loadText(r loadReport) string {
 // within what the budget left; partial, those activities count once a later
 // call completes it. stored is the user's metrics as the call knows them,
 // done the streams it read already. note says what was calculated ("" when
-// nothing was needed); calculated lists the families that got a threshold.
-func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedActivity, stored map[string]storedMetrics,
-	done int) (r loadReport, lc loadCtx, note string, calculated []string) {
+// nothing was needed); calculated lists the families that got a threshold,
+// zones the zones that came with it (saved or not: a disconnect mid-call
+// saves none, the answer still uses one set).
+func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedActivity, have map[string]storedHRZones,
+	stored map[string]storedMetrics, done int) (r loadReport, lc loadCtx, note string, calculated []string, zones map[string]storedHRZones) {
 	local := d.localStart()
 	from := dayOf(local).AddDate(0, 0, -(loadHistoryDays - 1))
-	lc = t.loadCtxOf(user, a, stored)
+	lc = t.loadCtxOf(user, a, have, stored)
 	list, more, err := t.svc.listActivities(ctx, user, from.Unix()-dayPadS, 0, maxBackfillPages)
 	if err != nil {
-		return loadReport{}, lc, "", nil
+		return loadReport{}, lc, "", nil, nil
 	}
 	if !slices.ContainsFunc(list, func(x summaryActivity) bool { return x.ID == d.ID }) {
 		list = append(list, d.summaryActivity)
@@ -386,8 +388,16 @@ func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedA
 	if len(need) > 0 {
 		zr, err := t.calcZones(ctx, user, a, need, true, done)
 		if err == nil && zr.ran {
-			lc.lthr = lthrOf(zr.zones)
-			lc.stored = t.loadMetrics(user, a.ID)
+			lc.lthr, zones = lthrOf(zr.zones), zr.zones
+			// The zone reads stored metrics; the call's own unsaved ones
+			// (the baseline's) stay.
+			fresh := t.loadMetrics(user, a.ID)
+			for k, v := range stored {
+				if _, ok := fresh[k]; !ok {
+					fresh[k] = v
+				}
+			}
+			lc.stored = fresh
 			var missing []string
 			for _, f := range need {
 				if lc.lthr[f.key] > 0 {
@@ -413,7 +423,7 @@ func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedA
 	}
 	r = buildLoad(list, lc, from, local, &d.summaryActivity)
 	r.partial = more
-	return r, lc, note, calculated
+	return r, lc, note, calculated, zones
 }
 
 // hdrLoad is the load file's contract with loomcharts.fitness_fatigue.

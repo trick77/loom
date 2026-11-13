@@ -61,9 +61,9 @@ func efficiencyOf(x summaryActivity) float64 {
 // under: where Z3 starts, in the zones the analysis buckets by (the same
 // edges() and hrEdges()): Strava's custom ones win, the user's own replace
 // Strava's age-based defaults. Strava's unavailable, the user's own still
-// count, said. NaN without any.
-func (t *tools) easyBelow(ctx context.Context, user string, a athlete, family string) (float64, string) {
-	own := t.loadHRZones(user, a.ID)[family].edges()
+// count, said. NaN without any. zones are the user's stored ones, fresh.
+func (t *tools) easyBelow(ctx context.Context, user string, zones map[string]storedHRZones, family string) (float64, string) {
+	own := zones[family].edges()
 	z, err := t.svc.zones(ctx, user)
 	if err != nil {
 		if own != nil {
@@ -123,7 +123,7 @@ func (t *tools) efficiencyTrend(ctx context.Context, raw json.RawMessage) mcpser
 	if err != nil {
 		return failure(err)
 	}
-	below, zonesFrom := t.easyBelow(ctx, user, a, args.Sport)
+	below, zonesFrom := t.easyBelow(ctx, user, t.loadHRZones(user, a.ID), args.Sport)
 	// Indoor ones out: a trainer runs hotter, a treadmill's distance is a
 	// foot pod's, and a winter of them made a seasonal swing look like
 	// fitness.

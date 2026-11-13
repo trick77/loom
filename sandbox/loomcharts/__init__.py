@@ -97,7 +97,7 @@ CSV contract (5 s resample in streams; empty cell = no value)
                                 is list_activities' (to its window's end, no before)
     strava_<id>_same_route.csv  distance_km, gap_s_<YYYY-MM-DD> per earlier ride
                                 (seconds behind; negative = ahead)
-    strava_run_bests.csv        month (YYYY-MM), effort (Strava's name: 1K, 5K, Half-Marathon …),
+    strava_run_bests.csv        month (YYYY-MM), effort (Strava's name: 1k, 5k, Half-Marathon …),
                                 distance_m, secs, activity_id, date: each distance's best per month
     strava_run_predictions.csv  race, distance_m, vdot_s, riegel_s, vdot, threshold_s_km
     strava_<id>_wbal.csv        elapsed_s, distance_km, watts, wbal_kj (W′ left, 5 s rows)

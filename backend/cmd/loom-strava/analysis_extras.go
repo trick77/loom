@@ -31,7 +31,7 @@ type extras struct {
 // and the athlete's zones (both cached); the heat asks the weather sidecar
 // within its own budget (maxWeatherLookups, weatherBudget).
 func (t *tools) analysisExtras(ctx context.Context, user string, a athlete, d detailedActivity, s series, whole rideMetrics,
-	c *comparison, gradeProfile bool, u units) *extras {
+	c *comparison, zones map[string]storedHRZones, gradeProfile bool, u units) *extras {
 	x := &extras{}
 	t.writeRecovery(x, s, ftpFor(d.SportType, a.FTP), u)
 	if whole.HasWatts && rideSport(d.SportType) {
@@ -43,7 +43,7 @@ func (t *tools) analysisExtras(ctx context.Context, user string, a athlete, d de
 	if gradeProfile && runSport(d.SportType) {
 		t.writeGradeProfile(x, user, d, s, c, u)
 	}
-	t.writeHeat(ctx, x, user, a, d, c)
+	t.writeHeat(ctx, x, user, a, d, c, zones)
 	return x
 }
 
@@ -55,7 +55,8 @@ const heatDays = 365
 // their outdoor activities of this family, and what this one's temperature
 // means in heart rate. Temperatures for the baseline's rows first, then
 // the year's, within the lookup budget; kept, so the fit fills over calls.
-func (t *tools) writeHeat(ctx context.Context, x *extras, user string, a athlete, d detailedActivity, c *comparison) {
+func (t *tools) writeHeat(ctx context.Context, x *extras, user string, a athlete, d detailedActivity, c *comparison,
+	zones map[string]storedHRZones) {
 	f, ok := familyOf(d.SportType)
 	if !ok {
 		return
@@ -67,6 +68,23 @@ func (t *tools) writeHeat(ctx context.Context, x *extras, user string, a athlete
 	tc := t.tempsOf(user, a.ID, maxWeatherLookups)
 	defer tc.save()
 	thisT, from := tc.of(ctx, d.summaryActivity)
+	if !finite(thisT) {
+		// No fit for this one: the baseline gets what is kept, no lookup.
+		if c != nil {
+			c.temps = map[int64]float64{}
+			for _, e := range c.entries {
+				if v := tc.shown(e.act); finite(v) {
+					c.temps[e.act.ID] = v
+				}
+			}
+		}
+		if t.svc.weather == nil {
+			x.text.WriteString("heat: no temperature (the device records none and the weather service is not configured for the sidecar)\n")
+		} else {
+			x.text.WriteString("heat: no temperature for this activity (no GPS start, or the weather lookup failed or ran out of time)\n")
+		}
+		return
+	}
 	if c != nil {
 		c.temps = map[int64]float64{d.ID: thisT}
 		for _, e := range c.entries {
@@ -82,7 +100,7 @@ func (t *tools) writeHeat(ctx context.Context, x *extras, user string, a athlete
 	}
 	// The easy ones only, like efficiency_trend: a race or an interval
 	// session moves efficiency more than the weather does.
-	below, _ := t.easyBelow(ctx, user, a, f.key)
+	below, _ := t.easyBelow(ctx, user, zones, f.key)
 	var ts, efs []float64
 	seen := map[int64]bool{}
 	for _, y := range append(list, d.summaryActivity) {
@@ -100,14 +118,6 @@ func (t *tools) writeHeat(ctx context.Context, x *extras, user string, a athlete
 		}
 	}
 	noun := sportNoun(d.SportType)
-	if !finite(thisT) {
-		if t.svc.weather == nil {
-			x.text.WriteString("heat: no temperature (the device records none and the weather service is not configured for the sidecar)\n")
-		} else {
-			x.text.WriteString("heat: no temperature for this activity (no GPS start, or the weather lookup failed or ran out of time)\n")
-		}
-		return
-	}
 	src := "the device's"
 	if from == "weather" {
 		src = "the weather at its start, its hours"
@@ -320,16 +330,19 @@ func (t *tools) writeGradeProfile(x *extras, user string, d detailedActivity, s 
 		runs++
 	}
 	if c != nil {
+		decoded := 0
 		for _, y := range c.all {
-			if runs > maxGradeRuns {
+			if decoded >= maxGradeRuns {
 				break
 			}
 			if !runSport(y.SportType) || y.indoor() || y.ID == d.ID {
 				continue
 			}
+			// Counted when kept: a run without stored streams costs no decode.
 			if es, ok := t.svc.streamsFromDisk(user, y.ID); ok {
 				gp.add(es)
 				runs++
+				decoded++
 			}
 		}
 	}

@@ -55,7 +55,8 @@ per leg (163 steps a minute read 81.5): steps per minute are twice it. Vertical 
 flight time are not in Strava's API. A swim's: Strava keeps no stroke count, pool length or lengths, only laps (swim
 intervals, 0 m laps for the rests) with an average stroke rate, so strokes are rate × time, SWOLF from that (on a real
 swim against the phone app: 962 strokes for 988, SWOLF 44 for 42). A pool is 25 or 50 m: a lap not a multiple of 50 m
-says 25; with every lap a multiple of 50 it is 25 assumed, `pool_m` corrects it.
+says 25; with every lap a multiple of 50 it is 25 assumed, `pool_m` corrects it. Laps that are whole 25 yd lengths
+(Strava keeps them in metres: 182.88 for 200 yd) but not 25 m ones are a 25 yd pool.
 
 `get_activity` attaches the streams file unasked for an activity started in the last 14 days: a question about a
 recent ride often turns into a closer look, and the raw data is then already there. Cost: one streams read the first
@@ -97,13 +98,15 @@ a third of its effort). hrTSS stays first, so the analysis still asks for the ru
 Strava's best efforts (400 m … marathon) are only in an activity's detail, not in the list: `run_bests` reads the runs'
 details, kept ones first (free), the others newest first under the half budget and the per-call limit. Each run's
 efforts then go into `/data/metrics/<loom id>.bests.json` (settled runs only, like details): a two-year look decoded
-hundreds of details, every segment effort in them, on each call. The prediction is Daniels' VDOT of the best recent
+hundreds of details, every segment effort in them, on each call. Outdoor runs only: a treadmill's distance is a foot
+pod's, and runs from one pod reading long confirm each other's too-fast VDOT. The prediction is Daniels' VDOT of the best recent
 effort (last 90 days, read whatever `months` says; 3 km or longer: a 400 m or 1 km best effort is GPS-noisy), the best
 one another run comes within 3 of: one GPS jump made a 24-minute 5K runner a 14-minute one. Riegel's 1.06 from the same
 effort beside it; threshold pace is Daniels' T, 88 % of VO2max. Efforts within runs, not races: a lower bound. The
 load's threshold pace is derived on every call from that file (the confirmed best of the last 90 days; unconfirmed, no
 rTSS), never stored as a value: a stored one went stale unless the model happened to call `run_bests`, and a narrow or
-budget-cut call replaced it. Every analysed run files its efforts too (its detail is read anyway), and a run deleted on
+budget-cut call replaced it. `run_bests` predicts from unsettled runs too, so it names the threshold the load
+actually uses when the file's differs. Every analysed run files its efforts too (its detail is read anyway), and a run deleted on
 Strava leaves the file, so the threshold follows without `run_bests` being asked. Like an LTHR, the current threshold
 weighs the whole 120 days.
 
@@ -129,10 +132,11 @@ from none), so with the weather configured every activity takes the weather of i
 or a bike unit in the sun reads degrees above the air, a fit across both slopes on the jump). Indoor ones have none
 (Zwift's start point is an island). Reached over MCP with `WEATHER_URL` + `WEATHER_TOKEN` (compose: the weather sidecar,
 `BACKEND_WEATHER_TOKEN`, `BACKEND_STRAVA_WEATHER_URL`; an `mcp.json` replacement of `weather` is loom's, this call stays
-on the sidecar). Kept per activity in `/data/metrics/<loom id>.temps.json` (the past does not change); a day from the
-forecast model's past hours (the last 80 days) is read again once the archive has it, so the fit holds one model. The
-heat comes unasked with every analysis, so its lookups are bounded: 12 and 12 s per call, the baseline's first, none
-after a failure or near the deadline; the fit fills over calls. The effect is read against 15 °C, or the nearest end of
+on the sidecar). Kept per activity in `/data/metrics/<loom id>.temps.json` (the past does not change; a refresh or a
+deletion drops it: a corrected start needs a new lookup); a day from the forecast model's past hours (the last 80 days)
+is read again once the archive has it, so the fit holds one model. The heat comes unasked with every analysis, so its
+lookups are bounded: 12 calls (an activity past midnight costs two) and 12 s per call, the baseline's first, none after
+a failure, near the deadline or without this activity's own temperature; the fit fills over calls. The effect is read against 15 °C, or the nearest end of
 the user's own temperatures when they never ran at 15 °C (an extrapolation far out flipped its sign).
 The baseline CSV and `strava_efficiency.csv` carry the same `temp_c`.
 

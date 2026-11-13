@@ -120,7 +120,8 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 	for _, g := range append(slices.Clone(a.Bikes), a.Shoes...) {
 		gearNames[g.ID] = g.Name
 	}
-	stored := t.loadMetrics(user, a.ID)
+	mf := t.metricFileOf(user, a.ID)
+	stored := mf.Activities
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Strava activities%s, newest first: %d", windowText(args.After, args.Before, args.SportType, args.TrainerOnly), len(rows))
@@ -212,7 +213,7 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 
 	acts := newCSV(hdrActivities)
 	weeks := newWeekTable(first, last, nil)
-	lc := t.loadCtxOf(user, a, stored)
+	lc := t.loadCtxOf(user, a, mf.HRZones, stored)
 	for _, x := range rows {
 		acts.row(strconv.FormatInt(x.ID, 10), x.localStart().Format("2006-01-02"), x.Name, x.SportType, boolCell(x.indoor()),
 			cell(x.Distance/1000, 2), intCell(x.MovingTime), cell(x.TotalElevationGain, 0), cell(x.AverageSpeed*3.6, 1),
@@ -362,7 +363,7 @@ func (t *tools) metricFileOf(user string, athleteID int64) metricFile {
 	sl.dataMu.Lock()
 	m, _ := t.svc.store.loadMetrics(user)
 	sl.dataMu.Unlock()
-	if m.Athlete != 0 && m.Athlete != athleteID {
+	if otherAthlete(m.Athlete, athleteID) {
 		return metricFile{V: metricsVersion, Activities: map[string]storedMetrics{}}
 	}
 	return m

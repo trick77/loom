@@ -50,6 +50,14 @@ func TestSwimFigures(t *testing.T) {
 		t.Errorf("pool_m 50: pool %d assumed %v lengths %d", f.Pool, f.PoolAssumed, f.Lengths)
 	}
 
+	// A 25 yd pool: Strava keeps its laps in metres (200, 100, 25 yd).
+	ydSwim := poolSwim()
+	ydSwim.Laps = []lap{{Distance: 182.88, MovingTime: 200, AverageCadence: 30}, {Distance: 0, ElapsedTime: 30},
+		{Distance: 91.44, MovingTime: 90, AverageCadence: 30}, {Distance: 22.86, MovingTime: 20, AverageCadence: 30}}
+	if f, _ := computeSwim(ydSwim, series{}, 0); !f.Yards || f.PoolAssumed || f.Lengths != 13 || f.RestS != 30 {
+		t.Errorf("25 yd: yards %v assumed %v lengths %d rest %d", f.Yards, f.PoolAssumed, f.Lengths, f.RestS)
+	}
+
 	// No stroke rate: lengths and pace stay, nothing stroke-made.
 	for i := range d.Laps {
 		d.Laps[i].AverageCadence = 0
