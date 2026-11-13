@@ -28,6 +28,7 @@ comment text, segment explore or leaderboards, and no write scope.
 | `get_activity` | one activity in full: laps, splits, best efforts, segment efforts, gear, device; `refresh` reads it from Strava again; an activity from the last 14 days attaches `strava_<id>_streams.csv` |
 | `activity_analysis` | metrics from the streams (NP, IF, TSS, power curve, zones, decoupling, climbs, intervals, per-km rows), always compared with the user's same-sport activities of the last `weeks` (default 6), fitness and fatigue around it, summary tables for a run or a swim; attaches the CSVs below and the chart code |
 | `compare_activities` | 2-5 activities side by side |
+| `run_bests` | best running efforts per distance over the last `months` (default 12), monthly progress, race prediction (Daniels VDOT, Riegel) and threshold pace; attaches `strava_run_bests.csv`, `strava_run_predictions.csv` and the chart code |
 | `hr_zones` | max HR, threshold HR (LTHR) and Friel zones per sport (cycling, running) from the user's own streams of the last 365 days, next to Strava's zones |
 | `gear`, `routes`, `segments` | gear details, own routes, starred segments and own efforts (efforts need a Strava subscription) |
 
@@ -85,7 +86,25 @@ dated `list_activities` (a pain question names a window); an undated list uses w
 falls short. Activities sit on their local date: an undated list ends on the later of the server's today and the newest
 activity's day (a user ahead of the server). ACWR (ATL/CTL) only from CTL 10: a ratio of two small numbers
 says nothing. A family without a threshold heart rate gets it calculated by the analysis (hr_zones' reads, after the
-baseline's, within the half budget); until then its activities count no load.
+baseline's, within the half budget); until then its activities count no load. A run hrTSS cannot weigh (no strap, no
+threshold heart rate yet) gets rTSS from the threshold pace `run_bests` stored: moving h × (speed / threshold speed)² ×
+100, the speed counting each metre of climb as 10 m flat (the Swiss Leistungskilometer; flat pace made a hilly trail run
+a third of its effort). hrTSS stays first, so the analysis still asks for the running threshold heart rate.
+
+### Running bests
+
+Strava's best efforts (400 m … marathon) are only in an activity's detail, not in the list: `run_bests` reads the runs'
+details, kept ones first (free), the others newest first under the half budget and the per-call limit. Each run's
+efforts then go into `/data/metrics/<loom id>.bests.json` (settled runs only, like details): a two-year look decoded
+hundreds of details, every segment effort in them, on each call. The prediction is Daniels' VDOT of the best recent
+effort (last 90 days, read whatever `months` says; 3 km or longer: a 400 m or 1 km best effort is GPS-noisy), the best
+one another run comes within 3 of: one GPS jump made a 24-minute 5K runner a 14-minute one. Riegel's 1.06 from the same
+effort beside it; threshold pace is Daniels' T, 88 % of VO2max. Efforts within runs, not races: a lower bound. The
+load's threshold pace is derived on every call from that file (the confirmed best of the last 90 days; unconfirmed, no
+rTSS), never stored as a value: a stored one went stale unless the model happened to call `run_bests`, and a narrow or
+budget-cut call replaced it. Every analysed run files its efforts too (its detail is read anyway), and a run deleted on
+Strava leaves the file, so the threshold follows without `run_bests` being asked. Like an LTHR, the current threshold
+weighs the whole 120 days.
 
 ## Limits and storage
 

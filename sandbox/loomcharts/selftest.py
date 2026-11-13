@@ -274,7 +274,23 @@ def activity_files(d):
                     "monotony": "", "strain": "", "ctl_before": "", "atl_before": ""})
     out[-1]["ctl_before"] = round(out[-2]["ctl"] + (0 - out[-2]["ctl"]) / 42, 1)
     out[-1]["atl_before"] = round(out[-2]["atl"] + (0 - out[-2]["atl"]) / 7, 1)
-    p = {"run_streams": run, "load": os.path.join(d, "strava_2_load.csv"), "load_list": os.path.join(d, "strava_load.csv")}
+    p = {"run_streams": run, "load": os.path.join(d, "strava_2_load.csv"), "load_list": os.path.join(d, "strava_load.csv"),
+         "bests": os.path.join(d, "strava_run_bests.csv"), "predictions": os.path.join(d, "strava_run_predictions.csv")}
+    bests = []
+    for i, month in enumerate(pd.period_range("2025-12", "2026-10", freq="M").astype(str)):
+        for name, dist, base in (("1K", 1000, 290), ("5K", 5000, 1560), ("10K", 10000, 3260)):
+            if name == "10K" and i % 3:
+                continue
+            secs = base * (1 - 0.006 * i) + rng.normal(0, base * 0.01)
+            bests.append({"month": month, "effort": name, "distance_m": dist, "secs": round(secs), "activity_id": 100 + i,
+                          "date": f"{month}-15"})
+    pd.DataFrame(bests).to_csv(p["bests"], index=False)
+    pd.DataFrame([{"race": "5K", "distance_m": 5000, "vdot_s": 1452, "riegel_s": 1460, "vdot": 41.2, "threshold_s_km": 303},
+                  {"race": "10K", "distance_m": 10000, "vdot_s": 3015, "riegel_s": 3050, "vdot": 41.2, "threshold_s_km": 303},
+                  {"race": "half marathon", "distance_m": 21097.5, "vdot_s": 6660, "riegel_s": 6780, "vdot": 41.2,
+                   "threshold_s_km": 303},
+                  {"race": "marathon", "distance_m": 42195, "vdot_s": 13870, "riegel_s": 14140, "vdot": 41.2,
+                   "threshold_s_km": 303}]).to_csv(p["predictions"], index=False)
     pd.DataFrame(out).to_csv(p["load"], index=False)
     lst = pd.DataFrame(out)
     lst["ctl_before"], lst["atl_before"] = "", ""
@@ -373,7 +389,23 @@ def variants(p, d):
         ("splits_hr", loomcharts.split_variation, (run_nopower, j("splits_hr.png")), {"sport": "Run"}, full),
         ("splits_ride", loomcharts.split_variation, (p["streams"], j("splits_ride.png")), {"sport": "Ride"}, full),
         ("splits_nothing", loomcharts.split_variation, (nothing, j("splits_nothing.png")), {}, note),
+        ("run_bests", loomcharts.run_bests, (p["bests"], j("run_bests.png")), {"predictions": p["predictions"]}, full),
+        ("run_bests_de", loomcharts.run_bests, (p["bests"], j("run_bests_de.png")),
+         {"predictions": p["predictions"], "lang": "de"}, full),
+        ("run_bests_nopred", loomcharts.run_bests, (p["bests"], j("run_bests_nopred.png")), {}, full),
+        ("run_bests_badpred", loomcharts.run_bests, (p["bests"], j("run_bests_badpred.png")),
+         {"predictions": j("does_not_exist.csv")}, full),
+        ("run_bests_empty", loomcharts.run_bests, (j("bests_empty.csv"), j("run_bests_empty.png")), {}, note),
+        ("run_bests_gap", loomcharts.run_bests, (j("bests_gap.csv"), j("run_bests_gap.png")),
+         {"lang": "de", "predictions": p["predictions"]}, full),
+        ("run_bests_mi", loomcharts.run_bests, (p["bests"], j("run_bests_mi.png")), {"unit": "mi"}, full),
     ]
+    pd.read_csv(p["bests"]).head(0).to_csv(j("bests_empty.csv"), index=False)
+    # A six-month break, and 1K and 1 mile at near the same pace.
+    pd.DataFrame([{"month": m, "effort": e, "distance_m": dm, "secs": s, "activity_id": 1, "date": f"{m}-10"}
+                  for m in ("2025-12", "2026-01", "2026-07", "2026-08")
+                  for e, dm, s in (("1K", 1000, 290), ("1 mile", 1609, 470), ("Half-Marathon", 21097, 6900))]) \
+        .to_csv(j("bests_gap.csv"), index=False)
     # A job's inputs sit in in/; the tools name them bare, and a bare name must be found there.
     os.makedirs(j("in"), exist_ok=True)
     pd.read_csv(p["streams"]).to_csv(os.path.join(d, "in", "bare_streams.csv"), index=False)

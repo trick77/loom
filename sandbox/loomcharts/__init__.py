@@ -44,6 +44,10 @@ Every activity (activity_analysis prints the exact call; lang="de" or "en" label
         each split against the median split (1/5/10 km, 100 m for a swim), power
         or heart rate per split as a line
 
+Running bests (run_bests prints the exact call)
+    run_bests(bests, out, predictions=None, unit="km", title=None, lang="en")
+        best pace per month and distance (faster up), the race prediction below
+
 Going out (the outdoor_windows tool's files; a bare name is looked up in in/)
     outdoor_day(hours, out, windows=None, limits=None, date=None, title=None)
         a day hour by hour: temperature and sun, rain, wind and gusts against the
@@ -73,7 +77,7 @@ CSV contract (5 s resample in streams; empty cell = no value)
     strava_<id>_power_curve.csv duration_s, this_w, window_best_w, window_median_w
     strava_<id>_baseline.csv    activity_id, date, name, sport_type, is_this (1 = analysed),
                                 same_route, distance_km, moving_s, avg_kmh, gain_m, np_w,
-                                tss (the load: TSS or hrTSS), ef, decoupling_pct, best_20m_w,
+                                tss (the load: TSS, hrTSS or rTSS), ef, decoupling_pct, best_20m_w,
                                 avg_hr, elapsed_time_s, not_recorded_s (clock the recording
                                 skipped), avg_w (a power meter's average, a watch's running
                                 power too)
@@ -83,6 +87,9 @@ CSV contract (5 s resample in streams; empty cell = no value)
                                 is list_activities' (to its window's end, no before)
     strava_<id>_same_route.csv  distance_km, gap_s_<YYYY-MM-DD> per earlier ride
                                 (seconds behind; negative = ahead)
+    strava_run_bests.csv        month (YYYY-MM), effort (Strava's name: 1K, 5K, Half-Marathon …),
+                                distance_m, secs, activity_id, date: each distance's best per month
+    strava_run_predictions.csv  race, distance_m, vdot_s, riegel_s, vdot, threshold_s_km
     strava_weeks.csv            week_start, iso_week, sport_type, count, distance_km,
                                 moving_s, gain_m, tss (one row per week and sport)
     strava_activities.csv       activity_id, date, name, sport_type, trainer, distance_km,
@@ -107,11 +114,12 @@ from .activity import fitness_fatigue, hr_profile, load_profile, split_variation
 from .compare import power_curve, rank_strip, same_route_gap
 from .outdoor import outdoor_compare, outdoor_day, outdoor_week
 from .ride import ride_profile, route_track
+from .runs import run_bests
 from .volume import activities_summary, weekly_load
 
 __all__ = [
     "activities_summary", "apply_style", "fitness_fatigue", "hr_profile", "load_profile", "outdoor_compare",
-    "outdoor_day", "outdoor_week", "power_curve", "rank_strip", "ride_profile", "route_track", "same_route_gap",
+    "outdoor_day", "outdoor_week", "power_curve", "rank_strip", "ride_profile", "route_track", "run_bests", "same_route_gap",
     "split_variation", "weekly_load", "BEST", "BG", "CONTEXT", "INK", "INK2", "MEDIAN", "MUTED", "SERIES", "THIS",
     "ZONES",
 ]

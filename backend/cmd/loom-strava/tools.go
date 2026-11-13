@@ -97,6 +97,18 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Run: t.hrZones,
 			},
 			{
+				Name: "run_bests", Title: "My running bests", ReadOnly: true, OpenWorld: true,
+				Description: "The user's best running efforts (400 m to marathon, from Strava's best efforts inside each run) " +
+					"over the last months: the best per distance, monthly progress, a race prediction for 5K, 10K, half " +
+					"and marathon (Daniels VDOT and Riegel from the best recent effort) and the threshold pace. Reads the " +
+					"runs' details not stored yet within the rate budget; a later call reads more. Attaches CSVs and the chart code.",
+				Schema: mcpserver.ObjectSchema(map[string]any{
+					"months": map[string]any{"type": "integer", "minimum": 1, "maximum": maxBestsMonths, "default": defaultBestsMonths,
+						"description": "How many months back."},
+				}),
+				Run: t.runBests,
+			},
+			{
 				Name: "totals", Title: "My Strava totals", ReadOnly: true, OpenWorld: true,
 				Description: "Ride, run and swim totals: the last 4 weeks, this year and all time (count, distance, time, " +
 					"elevation), plus the longest ride and biggest climb. Strava counts only activities visible to Everyone here.",

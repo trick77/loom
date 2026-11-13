@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/trick77/ship/kit/fsx"
@@ -191,10 +192,76 @@ func (s fileStore) deleteMetrics(user string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+	for _, f := range []string{p, bestsPathOf(p)} {
+		if err := os.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
 	return nil
+}
+
+// bestsPathOf is the best-efforts file next to a user's metric file.
+func bestsPathOf(metrics string) string { return strings.TrimSuffix(metrics, ".json") + ".bests.json" }
+
+// bestsFile is each run's best efforts, read once from its detail: a call
+// over two years of runs would otherwise decode hundreds of details (every
+// segment effort in them) each time. Kept like the metrics: per user, gone
+// on disconnect, another athlete's never read.
+type bestsFile struct {
+	Athlete int64                 `json:"athlete,omitempty"`
+	Runs    map[string]runEfforts `json:"runs"`
+}
+
+type runEfforts struct {
+	Start   string      `json:"start"` // start_date_local, for pruning
+	Efforts []effortRec `json:"efforts,omitempty"`
+}
+
+type effortRec struct {
+	Name  string  `json:"name"`
+	DistM float64 `json:"dist_m"`
+	Secs  int     `json:"secs"`
+}
+
+func (s fileStore) loadBests(user string) bestsFile {
+	empty := bestsFile{Runs: map[string]runEfforts{}}
+	p, err := s.metricsPath(user)
+	if err != nil {
+		return empty
+	}
+	b, err := os.ReadFile(bestsPathOf(p)) //nolint:gosec // built from a validated user id
+	if err != nil {
+		return empty
+	}
+	var f bestsFile
+	if json.Unmarshal(b, &f) != nil || f.Runs == nil {
+		return empty
+	}
+	return f
+}
+
+func (s fileStore) saveBests(user string, f bestsFile) error {
+	p, err := s.metricsPath(user)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	for len(f.Runs) > maxStoredActivities {
+		oldest := ""
+		for id, r := range f.Runs {
+			if oldest == "" || r.Start < f.Runs[oldest].Start {
+				oldest = id
+			}
+		}
+		delete(f.Runs, oldest)
+	}
+	b, err := json.Marshal(f)
+	if err != nil {
+		return err
+	}
+	return fsx.WriteFileAtomic(bestsPathOf(p), b, 0o600)
 }
 
 // pruneMetrics drops the oldest entries past max.

@@ -243,15 +243,41 @@ func (s *service) dropLocked(user string, sl *slot, ids []int64) {
 			slog.Error("strava: saving metrics failed", "err", err)
 		}
 	}
+	// A deleted run may have set the threshold pace.
+	if len(drop) > 0 {
+		bf := s.store.loadBests(user)
+		gone := false
+		for _, k := range drop {
+			if _, ok := bf.Runs[k]; ok {
+				delete(bf.Runs, k)
+				gone = true
+			}
+		}
+		if gone {
+			if err := s.store.saveBests(user, bf); err != nil {
+				slog.Error("strava: saving best efforts failed", "err", err)
+			}
+		}
+	}
 }
 
 // streamsKept says whether id's streams answer without a Strava read: in
 // memory (a 404 included) or on disk.
 func (s *service) streamsKept(user string, id int64) bool {
-	if _, ok := s.cache(user).streams.get(kindStreams+"/"+strconv.FormatInt(id, 10), s.now()); ok {
+	return s.kept(user, id, kindStreams, s.cache(user).streams)
+}
+
+// detailKept says the same of id's detail.
+func (s *service) detailKept(user string, id int64) bool {
+	return s.kept(user, id, kindDetail, s.cache(user).detail)
+}
+
+// kept says whether id's answer of kind is in memory c or on disk.
+func (s *service) kept(user string, id int64, kind string, c *lru) bool {
+	if _, ok := c.get(kind+"/"+strconv.FormatInt(id, 10), s.now()); ok {
 		return true
 	}
-	p, err := s.store.bodyPath(user, id, kindStreams)
+	p, err := s.store.bodyPath(user, id, kind)
 	if err != nil {
 		return false
 	}
