@@ -34,7 +34,8 @@ Charts
 Every activity (activity_analysis prints the exact call; lang="de" or "en" labels them)
     load_profile(baseline, out, title=None, weeks=None, lang="en")
         spider: speed or pace, power, heart rate, gain, distance, duration of this
-        activity against its window's average (the dashed ring)
+        activity and its window's average (dashed), each axis from the lowest to the
+        highest of them
     fitness_fatigue(load, out, title=None, lang="en")
         fitness (CTL) and fatigue (ATL) before and after, form, the last 120 days
     hr_profile(streams, out, title=None, lang="en")
@@ -71,8 +72,9 @@ Going out (the outdoor_windows tool's files; a bare name is looked up in in/)
 Own charts
     Plain matplotlib (pyplot) code already draws in the same dark style: it is the
     image's matplotlibrc. Series take the colour cycle (loomcharts.SERIES) in order;
-    the named colours are THIS, BEST, MEDIAN, ZONES (Z1..Z5+), CONTEXT, INK, INK2, MUTED.
-    apply_style() restores the style after code changed rcParams; colormap loom_ramp.
+    the named colours are THIS, BEST, MEDIAN, ZONES (Z1..Z5+, green to red), CONTEXT, INK,
+    INK2, MUTED. apply_style() restores the style after code changed rcParams; colormap
+    loom_ramp (blues, for a value).
     The chart functions above do not change global matplotlib settings.
 
 CSV contract (5 s resample in streams; empty cell = no value)

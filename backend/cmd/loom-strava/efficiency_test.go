@@ -58,7 +58,7 @@ func TestEfficiencyTrend(t *testing.T) {
 	for _, want := range []string{
 		"aerobic efficiency of the user's outdoor runs", "24 with heart rate, 12 easy (average heart rate below 153 bpm, where Z3 starts",
 		"their custom Strava zones", "monthly median, easy only:", "1 indoor in the window left out",
-		`loomcharts.efficiency_trend("in/strava_efficiency.csv", "out/efficiency_trend.png", sport="running", lang=L)`,
+		`loomcharts.efficiency_trend("in/strava_efficiency.csv", "out/efficiency_trend_running_12m.png", sport="running", lang=L)`,
 	} {
 		if !strings.Contains(r.Text, want) {
 			t.Errorf("lacks %q:\n%s", want, r.Text)

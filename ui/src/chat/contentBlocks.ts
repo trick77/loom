@@ -103,6 +103,24 @@ export function messageBlocks(message: Message): ContentBlock[] {
   return blocksFromLegacyMessage(message);
 }
 
+// trailsAnswer: a tool's file (a run_python chart, a document), not a picture
+// the image model made (it names its model): a generated image stays where it
+// arrived, its caption written around it.
+export function trailsAnswer(block: ContentBlock): boolean {
+  return block.type === "artifact" && !block.artifact.model;
+}
+
+// artifactsLast moves a message's tool files below everything else, in their
+// own order. A chart is drawn before the answer that reads it (the tool loop
+// ends at a text-only round, so "answer first, draw last" lost the charts or
+// wrote the answer twice), and in arrival order it led the answer: the user
+// asked for "charts are after".
+export function artifactsLast(blocks: ContentBlock[]): ContentBlock[] {
+  const rest = blocks.filter((block) => !trailsAnswer(block));
+  if (rest.length === blocks.length) return blocks;
+  return [...rest, ...blocks.filter(trailsAnswer)];
+}
+
 // The streaming reducer rebuilds the same ordered block list the backend persists
 // from the live SSE event stream. Each helper extends the trailing block of the
 // matching kind, or pushes a fresh block when the trailing block is a different

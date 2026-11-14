@@ -10,6 +10,7 @@ import pandas as pd
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
+from matplotlib.patches import FancyBboxPatch
 
 # loom's dark surface and ink (ui/src/index.css), plus the validated chart slots.
 BG = "#1f1f1e"
@@ -21,11 +22,18 @@ AXIS = "#383835"
 THIS = "#d95926"  # this activity
 BEST = "#3987e5"  # window best
 MEDIAN = "#199e70"  # window median
-ZONES = ("#184f95", "#2a78d6", "#5598e7", "#86b6ef", "#cde2fb")  # Z1..Z5+, ordinal
+# Z1..Z5+, green to red like a sports watch's zones. Lightness arcs up to Z3 and
+# down again: at one lightness green, ochre and orange merge for a red-green
+# deficient reader (worst adjacent pair ΔE 11.6 under protan, 16 for normal
+# vision). Z1 and Z5 sit under 3:1 against BG: every zone chart labels them.
+ZONES = ("#00774b", "#779e4b", "#dcba5c", "#c97847", "#9c433f")
 CONTEXT = "#55544f"  # de-emphasised context marks, not a series
 PLAIN = "#383835"  # profile fill without zones
 
-RAMP = LinearSegmentedColormap.from_list("loom_ramp", ZONES)
+# The sequential ramp (a value, not a zone: route by speed, heatmaps): one hue,
+# dark navy to pale blue.
+BLUES = ("#184f95", "#2a78d6", "#5598e7", "#86b6ef", "#cde2fb")
+RAMP = LinearSegmentedColormap.from_list("loom_ramp", BLUES)
 if "loom_ramp" not in mpl.colormaps:  # cmap="loom_ramp" works once loomcharts is imported
     mpl.colormaps.register(RAMP)
 
@@ -84,7 +92,7 @@ WIDTH = 8.6  # inches; 1,720 px at dpi 200
 
 # Where the image's matplotlibrc differs from STYLE: loom_ramp exists only once
 # this module registered it, after the rc file is read, so plain heatmaps get
-# the nearest built-in (dark navy to pale blue, like ZONES).
+# the nearest built-in (dark navy to pale blue, like BLUES).
 RC_OVERRIDES = {"image.cmap": "Blues_r"}
 
 
@@ -274,6 +282,38 @@ def sport_noun(sport_types):
     if len(kinds) == 1 and "activity" not in kinds:
         return SPORT_NOUNS[kinds.pop()]
     return ("activity", "activities")
+
+
+def data_aspect(ax):
+    """Data units per pixel along y over those along x, for limits and position as set now."""
+    bb = ax.get_window_extent()
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    return (abs(y1 - y0) / bb.height) / (abs(x1 - x0) / bb.width)
+
+
+def round_rect(ax, x0, y0, w, h, color, **kw):
+    """A w × h rectangle at (x0, y0) in data units with fully rounded ends, round on screen.
+
+    Call after the axes' limits and position are final: the corners are sized from them. The
+    radius is half the shorter side, so a bar shorter than it is wide turns into a pill.
+    """
+    if not (math.isfinite(w) and math.isfinite(h)) or w <= 0 or h <= 0:
+        return None
+    a = data_aspect(ax)
+    pad = min(w, h / a) / 2
+    patch = FancyBboxPatch((x0 + pad, y0 + pad * a), w - 2 * pad, h - 2 * pad * a,
+                           boxstyle=f"round,pad={pad},rounding_size={pad}", mutation_aspect=a, lw=0,
+                           facecolor=color, **kw)
+    ax.add_patch(patch)
+    return patch
+
+
+def round_bar(ax, x, base, height, width, color, **kw):
+    """A vertical bar from base by height (up or down) of width, rounded at both ends."""
+    if not math.isfinite(height) or height == 0:
+        return None
+    y0 = base if height > 0 else base + height
+    return round_rect(ax, x - width / 2, y0, width, abs(height), color, **kw)
 
 
 def renderer(fig):

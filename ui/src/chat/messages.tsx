@@ -42,7 +42,7 @@ import {
   pendingFencedArtifact,
   type DownloadableResponse,
 } from "./artifacts";
-import { messageBlocks } from "./contentBlocks";
+import { artifactsLast, messageBlocks } from "./contentBlocks";
 import { compactURL } from "./compactURL";
 import { PastedTextCard } from "./PastedTextCard";
 import { stripPastedBlocks } from "./pastedText";
@@ -201,11 +201,14 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   // Render the assistant message as a single ordered list of content blocks
-  // (text / trace / artifact) so prose, tool-activity panels and images appear in
-  // the exact chronological order they arrived. The copy/retry/TTS + metrics
+  // (text / trace / artifact): prose and tool-activity panels in the order they
+  // arrived, artifact cards after them (artifactsLast). The copy/retry/TTS + metrics
   // footer renders ONCE at the bottom; past trace panels render collapsed and
   // inactive.
-  const blocks = useMemo(() => messageBlocks(message), [message]);
+  const blocks = useMemo(
+    () => artifactsLast(messageBlocks(message)),
+    [message],
+  );
   const proseText = useMemo(
     () =>
       blocks

@@ -329,6 +329,10 @@ def variants(p, d):
     b[b.is_this == 0].to_csv(j("baseline_nothis.csv"), index=False)
     pd.concat([b[b.is_this == 0].head(1), b[b.is_this == 1]]).to_csv(j("baseline_one.csv"), index=False)
     b.head(0).to_csv(j("baseline_empty.csv"), index=False)
+    alike_csv(j("baseline_alike.csv"))
+    rs = pd.read_csv(p["run_streams"])
+    d0 = rs["distance_km"].min()
+    rs[rs["distance_km"] <= d0 + 3.2].to_csv(j("run_short.csv"), index=False)
     sr = pd.read_csv(p["same_route"])
     sr[["distance_km", sr.columns[1]]].to_csv(j("same_route_one.csv"), index=False)
     many = sr.copy()
@@ -371,6 +375,8 @@ def variants(p, d):
         ("load_profile_de", loomcharts.load_profile, (p["baseline"], j("load_profile_de.png")),
          {"weeks": 6, "lang": "de"}, full),
         ("load_profile_nopower", loomcharts.load_profile, (base_nopower, j("load_profile_nopower.png")), {}, full),
+        ("load_profile_alike", loomcharts.load_profile, (j("baseline_alike.csv"), j("load_profile_alike.png")),
+         {"weeks": 6}, full),
         ("load_profile_one", loomcharts.load_profile, (j("baseline_one.csv"), j("load_profile_one.png")), {}, 20_000),
         ("load_profile_nothis", loomcharts.load_profile, (j("baseline_nothis.csv"), j("load_profile_nothis.png")),
          {}, note),
@@ -388,6 +394,8 @@ def variants(p, d):
         ("splits_de", loomcharts.split_variation, (p["run_streams"], j("splits_de.png")),
          {"sport": "Run", "lang": "de"}, full),
         ("splits_hr", loomcharts.split_variation, (run_nopower, j("splits_hr.png")), {"sport": "Run"}, full),
+        ("splits_short", loomcharts.split_variation, (j("run_short.csv"), j("splits_short.png")), {"sport": "Run"},
+         20_000),
         ("splits_ride", loomcharts.split_variation, (p["streams"], j("splits_ride.png")), {"sport": "Ride"}, full),
         ("splits_nothing", loomcharts.split_variation, (nothing, j("splits_nothing.png")), {}, note),
         ("run_bests", loomcharts.run_bests, (p["bests"], j("run_bests.png")), {"predictions": p["predictions"]}, full),
@@ -644,6 +652,66 @@ def run(d):
         print("FAIL apply_style did not set the dark style")
     mpl.rcParams.update(before)
     failures += check_input_path(d)
+    failures += check_spider_scale()
+    failures += check_zone_gradient()
+    return failures
+
+
+def alike_csv(path):
+    """Seven runs within a few percent of each other, this one a bit faster and longer: the
+    load profile once drew it as a perfect hexagon on the average's ring."""
+    rows = []
+    for k, f in enumerate((0.97, 1.02, 0.99, 1.04, 0.96, 1.01, 1.0)):
+        day = (pd.Timestamp("2026-10-01") + pd.Timedelta(days=4 * k)).strftime("%Y-%m-%d")
+        rows.append({"activity_id": 300 + k, "date": day, "name": "Run", "sport_type": "Run",
+                     "is_this": 0, "same_route": 0, "distance_km": 7.4 * f, "moving_s": 2990 * f,
+                     "avg_kmh": 8.95 / f ** 0.5, "gain_m": 72 * f, "avg_w": 219 * f ** 0.3, "avg_hr": 146 * f ** 0.2})
+    rows.append({"activity_id": 400, "date": "2026-11-12", "name": "Run", "sport_type": "Run", "is_this": 1,
+                 "same_route": 0, "distance_km": 7.55, "moving_s": 3011, "avg_kmh": 9.03, "gain_m": 79, "avg_w": 222,
+                 "avg_hr": 147})
+    pd.DataFrame(rows).to_csv(path, index=False)
+
+
+def check_zone_gradient():
+    """A hard effort all in Z4-5 is drawn in their colours from its lowest beat, not faded in from Z1."""
+    from matplotlib.colors import to_rgb
+
+    from loomcharts._style import ZONES
+    from loomcharts.activity import _zone_gradient
+
+    xs = np.linspace(160, 190, 31)
+    cols = _zone_gradient(xs, [160, 163, 163, 163, 180, 191], {4, 5})
+    if not np.allclose(cols[0], to_rgb(ZONES[3])) or not np.allclose(cols[-1], to_rgb(ZONES[4])):
+        print(f"FAIL zone gradient: starts {cols[0]}, ends {cols[-1]}")
+        return ["zone_gradient"]
+    print("ok   zone_gradient")
+    return []
+
+
+def check_spider_scale():
+    """The load profile's axis scale: spread, not the ratio to the average."""
+    from loomcharts.activity import SPIDER_IN, SPIDER_OUT, _spider_scale
+
+    window = [7.2, 7.4, 7.5, 7.6, 7.7]
+    low = _spider_scale(window, 6.0)
+    flat = _spider_scale([100.0, 100.0], 105.0)
+    cases = [
+        ("window maximum on the outer ring", low(7.7), SPIDER_OUT),
+        ("lowest on the inner ring", low(6.0), SPIDER_IN),
+        # 5 % above the average is a quarter of the minimum span (20 %) out from the middle.
+        ("5 % off a flat window", flat(105.0) - flat(100.0), (SPIDER_OUT - SPIDER_IN) * 0.25),
+    ]
+    failures = []
+    for name, got, want in cases:
+        if not math.isclose(got, want, abs_tol=1e-9):
+            failures.append("spider_scale")
+            print(f"FAIL spider scale, {name}: {got}, want {want}")
+    avg = float(np.mean(window))
+    if math.isclose(_spider_scale(window, 7.9)(avg), 0.6, abs_tol=0.02):
+        failures.append("spider_scale")
+        print("FAIL spider scale: the average sits on a fixed ring")
+    if not failures:
+        print("ok   spider_scale")
     return failures
 
 

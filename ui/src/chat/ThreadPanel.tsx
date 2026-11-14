@@ -21,6 +21,7 @@ import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ShareDialog } from "../share/ShareDialog";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import { Composer } from "./Composer";
+import { trailsAnswer } from "./contentBlocks";
 import { ErrorText } from "./ErrorText";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
@@ -722,6 +723,9 @@ export function ThreadPanel({
                 dots are the only cue. */}
             {(() => {
               const elements: React.ReactNode[] = [];
+              // Tool files go below the prose, as in the settled message
+              // (artifactsLast): the answer streams in above a chart drawn first.
+              const artifacts: React.ReactNode[] = [];
               streamingBlocks.forEach((block, index) => {
                 if (block.type === "text") {
                   if (block.content === "") return;
@@ -738,7 +742,7 @@ export function ThreadPanel({
                   return;
                 }
                 if (block.type === "artifact") {
-                  elements.push(
+                  (trailsAnswer(block) ? artifacts : elements).push(
                     <GeneratedArtifactCard
                       key={`stream-artifact-${block.artifact.id}`}
                       artifact={block.artifact}
@@ -804,7 +808,7 @@ export function ThreadPanel({
                   />,
                 );
               }
-              return elements;
+              return [...elements, ...artifacts];
             })()}
             {/* No Sources row while streaming: the favicon pile appearing before
                 there is an answer to attribute reads as clutter, and it shifts under

@@ -1,4 +1,4 @@
-"""Charts every activity analysis draws: load profile, fitness and fatigue, heart-rate profile, split variation.
+"""Charts of one activity's analysis: load profile, heart-rate profile, split variation, and fitness and fatigue.
 
 Each takes lang= ("de", "en"; anything else draws English): the labels follow the answer's language.
 German labels are Swiss: ss, never the sharp s.
@@ -8,13 +8,17 @@ import math
 
 import numpy as np
 import pandas as pd
+from matplotlib.collections import LineCollection
+from matplotlib.colors import to_rgb
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
+from matplotlib.patches import Patch, Polygon
 
-from ._style import (AXIS, BEST, BG, CONTEXT, GRID, INK, INK2, MEDIAN, MUTED, THIS, ZONES, empty_chart, fmt_day,
-                     fmt_range, fmt_secs, frame, header, new_figure, num, save, sport_noun, styled)
+from ._style import (AXIS, BEST, BG, CONTEXT, GRID, INK, INK2, MEDIAN, MUTED, THIS, WIDTH, ZONES, empty_chart, fmt_day,
+                     fmt_range, fmt_secs, frame, header, new_figure, num, round_bar, round_rect, save, sport_noun,
+                     styled)
 
-LOW, HIGH, ANAEROBIC = ZONES[3], "#c98500", "#e66767"
+# The load focus in the zones' colours: Z1-2, Z3-4, Z5.
+LOW, HIGH, ANAEROBIC = ZONES[1], ZONES[3], ZONES[4]
 SLOWER = "#c98500"
 LINE = "#9085e9"
 
@@ -25,7 +29,7 @@ TEXT = {
         "pace": "Avg pace", "speed": "Avg speed", "power": "Avg power", "hr": "Avg HR", "gain": "Elevation gain",
         "distance": "Distance", "duration": "Duration",
         "this": "This {one}", "avg_weeks": "Average, last {weeks} weeks", "avg": "Average of earlier {many}",
-        "lp_sub": "against the average of {n} earlier {many}{when}; dashed: the average",
+        "lp_sub": "against the average of {n} earlier {many}{when} · each axis from their lowest to highest",
         "lp_empty": "Not enough to compare: fewer than three measures, or no earlier {many}.",
         "ctl": "Fitness (CTL)", "atl": "Fatigue (ATL)", "form": "Form", "before": "before", "after": "after",
         "ff_sub": "42-day and 7-day weighted daily load (TSS, hrTSS, rTSS) · form = fitness − fatigue",
@@ -46,7 +50,7 @@ TEXT = {
         "pace": "Ø Tempo", "speed": "Ø Geschwindigkeit", "power": "Ø Leistung", "hr": "Ø HF", "gain": "Höhenmeter",
         "distance": "Strecke", "duration": "Dauer",
         "this": "Diese Einheit", "avg_weeks": "Ø letzte {weeks} Wochen", "avg": "Ø frühere Einheiten",
-        "lp_sub": "gegen den Durchschnitt von {n} früheren Einheiten{when}; gestrichelt: der Durchschnitt",
+        "lp_sub": "gegen den Durchschnitt von {n} früheren Einheiten{when} · jede Achse vom tiefsten zum höchsten Wert",
         "lp_empty": "Zu wenig zum Vergleichen: weniger als drei Werte oder keine früheren Einheiten.",
         "ctl": "Fitness (CTL)", "atl": "Ermüdung (ATL)", "form": "Form", "before": "vorher", "after": "nachher",
         "ff_sub": "42- und 7-Tage-gewichtete Tagesbelastung (TSS, hrTSS, rTSS) · Form = Fitness − Ermüdung",
@@ -111,13 +115,49 @@ def _tempo(kmh, kind):
     return f"{kmh:.1f} km/h"
 
 
+SPIDER_IN, SPIDER_OUT = 0.2, 0.95
+# The narrowest an axis spans, as a share of the window's average: runs a few
+# percent apart are alike, and an axis fitted to their spread alone would draw
+# 1 bpm as half the radius.
+SPIDER_MIN_SPAN = 0.2
+
+
+def _spider_scale(window, this):
+    """The radius of a value on one spider axis: the axis runs from the lowest to the highest
+    of the window's values and this activity's (SPIDER_IN to SPIDER_OUT), at least
+    SPIDER_MIN_SPAN of the window's average wide, widened around its middle."""
+    window = [float(v) for v in window if math.isfinite(v)]
+    vals = window + ([float(this)] if math.isfinite(this) else [])
+    lo, hi = min(vals), max(vals)
+    span = max(hi - lo, SPIDER_MIN_SPAN * abs(float(np.mean(window)))) if window else hi - lo
+    if span <= 0:
+        return lambda v: (SPIDER_IN + SPIDER_OUT) / 2
+    lo = (lo + hi) / 2 - span / 2
+    return lambda v: SPIDER_IN + (SPIDER_OUT - SPIDER_IN) * (v - lo) / span
+
+
+SHADE_MIN, SHADE_MAX = 0.05, 0.55
+
+
+def _mix(a, b, t):
+    """a moved a share t of the way to b, as RGB."""
+    ca, cb = np.array(to_rgb(a)), np.array(to_rgb(b))
+    return tuple(ca + (cb - ca) * t)
+
+
+def _blend(color, a):
+    """color at opacity a over the chart background, as an opaque colour."""
+    return _mix(BG, color, a)
+
+
 @styled
 def load_profile(baseline, out, title=None, weeks=None, lang="en"):
     """This activity against the average of its window, as a spider: one axis per measure.
 
     baseline: in/strava_<id>_baseline.csv. Axes: speed or pace (faster outward), power, heart
-    rate, elevation gain, distance, duration; the window's average sits on the dashed ring
-    (60 % of the radius), this activity at value / average of it. An axis without a value for
+    rate, elevation gain, distance, duration. Each axis runs from the lowest to the highest
+    value of the window and this activity (at least 20 % of the average wide), so this activity
+    and the window's average (dashed) each draw their own shape. An axis without a value for
     this activity or the window is left out; under three axes a notice is drawn instead.
     """
     tx = _t(lang)
@@ -145,7 +185,8 @@ def load_profile(baseline, out, title=None, weeks=None, lang="en"):
         avg = float(bv.mean()) if len(bv) else math.nan
         if not (math.isfinite(tv) and math.isfinite(avg)) or avg <= 0 or tv < 0:
             continue
-        rows.append((label, fmt(tv), min(1.0, 0.6 * tv / avg)))
+        r = _spider_scale(bv, tv)
+        rows.append((label, fmt(tv), r(tv), r(avg)))
     if len(rows) < 3:
         return empty_chart(out, title, tx["lp_empty"].format(many=many))
 
@@ -158,24 +199,37 @@ def load_profile(baseline, out, title=None, weeks=None, lang="en"):
     ax.set_ylim(0, 1.0)
     ax.set_yticks([])
     ax.set_xticks(ang)
-    ax.set_xticklabels([f"{label}\n{val}" for label, val, _ in rows], fontsize=9, color=INK2)
+    ax.set_xticklabels([f"{label}\n{val}" for label, val, _, _ in rows], fontsize=9, color=INK2)
     ax.tick_params(axis="x", pad=14)
     ax.grid(False)
     ax.spines["polar"].set_visible(False)
     closed = np.append(ang, ang[0])
-    for ring in (0.3, 0.6, 0.9):
-        ax.plot(closed, [ring] * (n + 1), color=GRID if ring != 0.6 else AXIS, lw=1, zorder=1)
+    for ring in (0.2, 0.4, 0.6, 0.8, 1.0):
+        ax.plot(closed, [ring] * (n + 1), color=AXIS if ring == 1.0 else GRID, lw=1, zorder=1)
     for a in ang:
         ax.plot([a, a], [0, 1.0], color=GRID, lw=1, zorder=1)
-    ax.plot(closed, [0.6] * (n + 1), color=INK2, lw=1.4, ls=(0, (4, 3)), zorder=3)
-    r = np.array([v for _, _, v in rows])
+    ra = np.array([v for _, _, _, v in rows])
+    ax.plot(closed, np.append(ra, ra[0]), color=INK2, lw=1.4, ls=(0, (4, 3)), zorder=4)
+    r = np.array([v for _, _, v, _ in rows])
     rc = np.append(r, r[0])
-    ax.fill(closed, rc, color=THIS, alpha=0.28, zorder=2)
-    ax.plot(closed, rc, color=THIS, lw=2, zorder=4)
-    ax.scatter(ang, r, s=30, color=THIS, edgecolors=BG, linewidths=1.5, zorder=5)
+    # The shading: this activity's shape shrunk step by step toward the centre, each step
+    # an opaque blend fainter than the last, so it is strongest at the edge. Opaque: stacked
+    # transparent fills would darken the middle, and a clipped mesh leaves seams.
+    steps = 48
+    for k in range(steps, 0, -1):
+        s = k / steps
+        a = SHADE_MIN + (SHADE_MAX - SHADE_MIN) * s ** 1.4
+        ax.fill(closed, rc * s, color=_blend(THIS, a), lw=0, zorder=2)
+    # The grid shows through, as through a transparent fill.
+    for ring in (0.2, 0.4, 0.6, 0.8):
+        ax.plot(closed, [ring] * (n + 1), color=INK, alpha=0.07, lw=1, zorder=3)
+    for a in ang:
+        ax.plot([a, a], [0, 1.0], color=INK, alpha=0.07, lw=1, zorder=3)
+    ax.plot(closed, rc, color=THIS, lw=2, zorder=5)
+    ax.scatter(ang, r, s=30, color=THIS, edgecolors=BG, linewidths=1.5, zorder=6)
 
     avg_label = tx["avg_weeks"].format(weeks=int(weeks)) if weeks else tx["avg"].format(many=many)
-    handles = [Patch(facecolor=THIS, alpha=0.6, edgecolor=THIS, label=tx["this"].format(one=one)),
+    handles = [Patch(facecolor=_blend(THIS, SHADE_MAX), edgecolor=THIS, label=tx["this"].format(one=one)),
                Line2D([], [], color=INK2, lw=1.4, ls=(0, (4, 3)), label=avg_label)]
     fig.legend(handles=handles, loc="lower center", ncol=2, bbox_to_anchor=(0.5, 0.0))
     dates = pd.to_datetime(base["date"], errors="coerce").dropna() if "date" in base.columns else pd.Series([])
@@ -272,6 +326,47 @@ def _zone_edges(hr, zone):
     return edges
 
 
+def _zone_gradient(xs, bounds, present):
+    """RGB per x, blending the zone colours from each zone's middle to the next's.
+
+    bounds: the low edge of zone 1, zones 2..5's lower bounds (NaN for one never reached), the
+    high edge. present: the zones (1..5) the data holds; a zone not in it adds no stop, or a
+    hard effort all in Z4-5 would fade in from Z1 green below its lowest beat."""
+    stops, rgb = [], []
+    for i in range(5):
+        if i + 1 not in present:
+            continue
+        a, b = bounds[i], bounds[i + 1]
+        j = i + 2
+        while not math.isfinite(b) and j < len(bounds):  # zone i+1 not reached: up to the next edge
+            b, j = bounds[j], j + 1
+        if not (math.isfinite(a) and math.isfinite(b)) or b <= a:
+            continue
+        stops.append((a + b) / 2)
+        rgb.append(to_rgb(ZONES[i]))
+    if not stops:
+        return np.tile(to_rgb(ZONES[2]), (len(xs), 1))
+    rgb = np.array(rgb)
+    return np.column_stack([np.interp(xs, stops, rgb[:, c]) for c in range(3)])
+
+
+def _shade_under(ax, xs, ys, cols, ymax):
+    """Fill under the curve (xs, ys) with colour cols per x, fading from the curve to the baseline."""
+    h = 240
+    yy = np.linspace(0, ymax, h)[:, None]
+    frac = np.clip(yy / np.maximum(ys[None, :], 1e-12), 0, 1)
+    alpha = 0.08 + 0.82 * frac ** 1.6
+    img = np.empty((h, len(xs), 4))
+    img[..., :3] = cols[None, :, :]
+    img[..., 3] = alpha
+    im = ax.imshow(img, extent=(xs[0], xs[-1], 0, ymax), origin="lower", aspect="auto", interpolation="bilinear",
+                   zorder=1)
+    outline = Polygon(np.column_stack([np.r_[xs[0], xs, xs[-1]], np.r_[0, ys, 0]]), closed=True,
+                      transform=ax.transData, facecolor="none", edgecolor="none")
+    ax.add_patch(outline)
+    im.set_clip_path(outline)
+
+
 @styled
 def hr_profile(streams, out, title=None, lang="en"):
     """Heart rate while moving: the load focus (time in low aerobic, high aerobic, anaerobic) and
@@ -302,16 +397,17 @@ def hr_profile(streams, out, title=None, lang="en"):
         bars.grid(False)
         for s in bars.spines.values():
             s.set_visible(False)
-        for i, (share, name, col) in enumerate(reversed(shares)):
-            bars.barh(i, 1.0, height=0.36, color=GRID)
-            bars.barh(i, share, height=0.36, color=col)
-            bars.text(-0.01, i, name, ha="right", va="center", fontsize=9, color=INK2)
-            bars.text(1.01, i, f"{share * 100:.0f} %", ha="left", va="center", fontsize=9.5, color=INK)
         bars.set_xlim(0, 1)
         bars.set_ylim(-0.6, 2.6)
         bars.set_xticks([])
         bars.set_yticks([])
         fig.subplots_adjust(left=0.17, right=0.92)
+        thick = 0.3
+        for i, (share, name, col) in enumerate(reversed(shares)):
+            round_rect(bars, 0, i - thick / 2, 1.0, thick, GRID)
+            round_rect(bars, 0, i - thick / 2, share, thick, col)
+            bars.text(-0.01, i, name, ha="right", va="center", fontsize=9, color=INK2)
+            bars.text(1.01, i, f"{share * 100:.0f} %", ha="left", va="center", fontsize=9.5, color=INK)
     else:
         ax = fig.add_subplot()
 
@@ -322,34 +418,40 @@ def hr_profile(streams, out, title=None, lang="en"):
     dens = np.convolve(counts, k / k.sum(), mode="same")
     dens = dens / dens.sum()
     edges = _zone_edges(hr, zone) if has_zones else []
+    ymax = float(dens.max()) * 1.18
+    ax.set_ylim(0, ymax)
+    ax.set_yticks([])
+    ax.set_xlim(lo, hi)
+    xs = np.linspace(lo, hi, 600)
+    ys = np.interp(xs, bins, dens)
     if has_zones:
-        bounds = [lo] + [e for e in edges] + [hi + 1]
-        for i in range(5):
-            a, b = bounds[i], bounds[i + 1]
-            if not (math.isfinite(a) and math.isfinite(b)) or b <= a:
-                continue
-            m = (bins >= a - 0.5) & (bins <= b + 0.5)
-            ax.fill_between(bins[m], dens[m], color=ZONES[i], alpha=0.9, lw=0)
-        for i, e in enumerate(edges):
-            if math.isfinite(e) and lo < e < hi:
-                ax.axvline(e, color=MUTED, lw=1, ls=(0, (2, 2)))
-                ax.annotate(f"Z{i + 2}", (e, 1), xycoords=("data", "axes fraction"), xytext=(0, 4),
-                            textcoords="offset points", ha="center", fontsize=8.5, color=MUTED)
+        present = {int(np.clip(round(v), 1, 5)) for v in zone if math.isfinite(v)}
+        cols = _zone_gradient(xs, [lo] + edges + [hi + 1], present)
     else:
-        ax.fill_between(bins, dens, color=ZONES[2], alpha=0.9, lw=0)
-    ax.plot(bins, dens, color=INK2, lw=1.2)
+        cols = np.tile(to_rgb(ZONES[2]), (len(xs), 1))
+    _shade_under(ax, xs, ys, cols, ymax)
+    pts = np.column_stack([xs, ys])
+    ax.add_collection(LineCollection(np.stack([pts[:-1], pts[1:]], axis=1), colors=cols[:-1], linewidths=1.8,
+                                     capstyle="round", zorder=3))
+    for i, e in enumerate(edges):
+        if math.isfinite(e) and lo < e < hi:
+            ax.axvline(e, color=ZONES[i + 1], lw=1, alpha=0.85, zorder=2)
+            # The zone's colour lifted toward the ink: Z1 and Z5 are under 3:1 on BG as text.
+            ax.annotate(f"Z{i + 2}", (e, 1), xycoords=("data", "axes fraction"), xytext=(0, 4),
+                        textcoords="offset points", ha="center", fontsize=8.5, color=_mix(ZONES[i + 1], INK, 0.35))
     mu, sd = float(np.mean(hr)), float(np.std(hr))
     if sd > 0:
         normal = np.exp(-0.5 * ((bins - mu) / sd) ** 2)
-        ax.plot(bins, normal / normal.sum(), color=INK, lw=1, ls=(0, (4, 3)), alpha=0.7)
+        ax.plot(bins, normal / normal.sum(), color=INK, lw=1, ls=(0, (4, 3)), alpha=0.6, zorder=4)
     med = float(np.median(hr))
     peak = float(bins[int(np.argmax(dens))])
-    ax.set_ylim(0, float(dens.max()) * 1.18)
-    ax.set_yticks([])
-    ax.set_xlim(lo, hi)
     # No axis label: median and peak hang below the ticks, where it would sit.
-    ax.annotate(tx["hr_axis"], (1, 0), xycoords="axes fraction", xytext=(0, -22), textcoords="offset points",
-                ha="right", va="top", fontsize=8.5, color=MUTED)
+    # On the side away from the median and peak labels, which hang at about the same height;
+    # with them on both halves, a line further down.
+    lo_f, hi_f = ((min(med, peak) - lo) / (hi - lo), (max(med, peak) - lo) / (hi - lo))
+    right, below = (True, 0) if hi_f < 0.55 else (False, 0) if lo_f > 0.45 else (True, -24)
+    ax.annotate(tx["hr_axis"], (1 if right else 0, 0), xycoords="axes fraction", xytext=(0, -22 + below),
+                textcoords="offset points", ha="right" if right else "left", va="top", fontsize=8.5, color=MUTED)
     ax.grid(False)
     # Median and peak a few bpm apart would print over each other: one label then.
     close = abs(med - peak) < 4
@@ -358,7 +460,7 @@ def hr_profile(streams, out, title=None, lang="en"):
     if not close:
         left = med < peak
         marks = [(med, f"{med:.0f} bpm\n{tx['median']}", INK2, "right" if left else "left"),
-                 (peak, f"{peak:.0f} bpm\n{tx['peak']}", THIS, "left" if left else "right")]
+                 (peak, f"{peak:.0f} bpm\n{tx['peak']}", INK, "left" if left else "right")]
     for v, text, col, ha in marks:
         ax.annotate(text, (v, 0), xytext=(0, -26), textcoords="offset points", ha=ha, va="top", fontsize=8.5,
                     color=col, arrowprops={"arrowstyle": "-", "color": MUTED, "lw": 0.8})
@@ -370,6 +472,13 @@ def hr_profile(streams, out, title=None, lang="en"):
         bars.annotate(tx["focus"], (0, 1), xycoords="axes fraction", xytext=(0, 4), textcoords="offset points",
                       fontsize=9, color=MUTED, va="bottom")
     return save(fig, out)
+
+
+# Split bars in inches: a bar is SV_BAR_IN wide (narrower when the splits crowd). A
+# split takes SV_SLOT_MAX, more only to keep the plot SV_PLOT_MIN wide (narrower, the
+# header and legend would not fit and the image would read tiny), less to keep it
+# within SV_PLOT_MAX.
+SV_BAR_IN, SV_SLOT_MAX, SV_PLOT_MIN, SV_PLOT_MAX = 0.2, 0.7, 3.9, 7.4
 
 
 def _split_len(total_km, kind):
@@ -421,38 +530,91 @@ def split_variation(streams, out, metric="watts", sport=None, title=None, lang="
     med = float(np.nanmedian(speeds))
     dev = (speeds - med) / med * 100
     band = 2.0
+    unit = f"{L * 1000:.0f} m" if L < 1 else f"{L:g} km"
+    best = float(np.nanmax(speeds))
+    mname = tx["watts"] if metric == "watts" else tx["bpm"]
 
-    fig = new_figure(4.4)
-    ax = fig.add_subplot()
+    # Sized in inches, not as a share of the image: 3 splits draw 3 narrow bars in a narrow
+    # plot, not 3 slabs across the page.
+    fig_h = 4.6
+    fig = new_figure(fig_h)
+    slot = min(max(SV_SLOT_MAX, SV_PLOT_MIN / (n + 0.6)), SV_PLOT_MAX / (n + 0.6))
+    plot_w = slot * (n + 0.6)
+    left = 0.45  # under the header; a narrow plot leaves the right empty, the saved image is cropped
+    top_in, bottom_in = 1.55, 0.95
+    ax = fig.add_axes((left / WIDTH, bottom_in / fig_h, plot_w / WIDTH, (fig_h - top_in - bottom_in) / fig_h))
     x = np.arange(1, n + 1)
-    cols = [BEST if v > band else SLOWER if v < -band else CONTEXT for v in dev]
-    ax.axhspan(-band, band, facecolor=GRID, edgecolor=AXIS, hatch="///", zorder=0, lw=0)
-    ax.bar(x, dev, width=0.55, color=cols, zorder=2)
-    ax.axhline(0, color=AXIS, lw=1, zorder=1)
     lim = max(6.0, float(np.nanmax(np.abs(dev))) * 1.25)
     ax.set_ylim(-lim, lim)
     ax.set_xlim(0.4, n + 0.6)
+    ax.grid(False)
+    ax.spines["bottom"].set_visible(False)
+    ax.set_yticks([])
+    span = ax.axhspan(-band, band, facecolor=GRID, edgecolor=AXIS, hatch="////", zorder=0, lw=0)
+    span.set_hatch_linewidth(0.6)
+    ax.axhline(0, color=AXIS, lw=1, zorder=1)
+    # Both band edges labelled where the band is tall enough, else one ±.
+    band_pt = (fig_h - top_in - bottom_in) * 72 * band / lim
+    marks = [(band, f"+{band:g} %"), (-band, f"−{band:g} %")] if band_pt >= 14 else [(0, f"±{band:g} %")]
+    for y, text in marks:
+        ax.annotate(text, (1, y), xycoords=("axes fraction", "data"), xytext=(4, 0), textcoords="offset points",
+                    ha="left", va="center", fontsize=7.5, color=MUTED)
+    width = min(SV_BAR_IN / slot, 0.45)
+    gap = lim * 0.015
+    pct = []
+    for xi, v in zip(x, dev):
+        # The median split itself (0 %) and a hair off it draw nothing.
+        if not math.isfinite(v) or abs(v) <= gap:
+            continue
+        col = BEST if v > band else SLOWER if v < -band else CONTEXT
+        base = gap if v > 0 else -gap
+        round_bar(ax, xi, base, v - base, width, col, zorder=2)
+        # No % axis: a split off the pace says by how much at its end. One decimal under
+        # 10: −2.3 % rounded to "−2 %" read as on pace.
+        if abs(v) > band:
+            pct.append((xi, v, (f"{v:+.1f} %" if abs(v) < 10 else f"{v:+.0f} %").replace("-", "−")))
     step = max(1, n // 15)
     ax.set_xticks(x[::step])
-    unit = f"{L * 1000:.0f} m" if L < 1 else f"{L:g} km"
+    ax.tick_params(axis="x", length=0, pad=6)
     ax.set_xlabel(f"{unit} {tx['split']}")
-    ax.set_ylabel("%")
-    if any(math.isfinite(v) for v in line):
+    vals = [v for v in line if math.isfinite(v)]
+    if vals:
+        # The metric shares the plot, not an axis: its lowest and highest split are labelled.
         ax2 = ax.twinx()
-        ax2.plot(x, line, color=LINE, lw=1.8, marker="o", ms=4, zorder=3)
+        ax2.plot(x, line, color=LINE, lw=1.6, marker="o", ms=3.2, zorder=3)
         ax2.grid(False)
-        ax2.spines["right"].set_visible(False)
-        ax2.tick_params(axis="y", colors=LINE, labelcolor=LINE)
-        vals = [v for v in line if math.isfinite(v)]
+        ax2.set_axis_off()
         pad = max(5.0, (max(vals) - min(vals)) * 0.4)
         ax2.set_ylim(min(vals) - pad, max(vals) + pad)
-    handles = [Patch(color=BEST, label=tx["faster"]), Patch(color=CONTEXT, label=tx["on_pace"].format(band=band)),
-               Patch(color=SLOWER, label=tx["slower"])]
-    ax.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, -0.36), ncol=3)
-    best = float(np.nanmax(speeds))
-    mname = tx["watts"] if metric == "watts" else tx["bpm"]
-    sub = (f"{tx['median'].capitalize()} {_tempo(med, kind)} · {tx['best']} {_tempo(best, kind)} · "
-           + tx["sv_sub"].format(unit=unit, metric=mname))
-    fig.subplots_adjust(bottom=0.24)
-    header(ax, title, sub)
+        u = "W" if metric == "watts" else "bpm"
+        hi_i, lo_i = int(np.nanargmax(line)), int(np.nanargmin(line))
+        for i, dy, va in ((hi_i, 6, "bottom"), (lo_i, -6, "top")):
+            if hi_i == lo_i and va == "top":
+                break
+            # On a background chip: the label may sit on a bar.
+            ax2.annotate(f"{line[i]:.0f} {u}", (x[i], line[i]), xytext=(0, dy), textcoords="offset points",
+                         ha="center", va=va, fontsize=7.5, color=INK2, zorder=4,
+                         bbox={"boxstyle": "round,pad=0.25", "fc": BG, "ec": "none", "alpha": 0.85})
+    # On the top axes, on a chip: the metric's twin axes draws over the bars' axes.
+    top = ax2 if vals else ax
+    for xi, v, text in pct:
+        top.annotate(text, (xi, v), xycoords=ax.transData, xytext=(0, 3 if v > 0 else -3), textcoords="offset points",
+                     ha="center", va="bottom" if v > 0 else "top", fontsize=7.5, color=INK2, zorder=5,
+                     bbox={"boxstyle": "round,pad=0.2", "fc": BG, "ec": "none", "alpha": 0.85})
+    dot = {"marker": "o", "lw": 0, "ms": 7}
+    handles = [Line2D([], [], color=BEST, label=tx["faster"], **dot),
+               Line2D([], [], color=CONTEXT, label=tx["on_pace"].format(band=band), **dot),
+               Line2D([], [], color=SLOWER, label=tx["slower"], **dot)]
+    fig.legend(handles=handles, loc="lower left", bbox_to_anchor=(left / WIDTH - 0.01, 0.02), ncol=3,
+               handletextpad=0.3, columnspacing=1.6)
+    # Header: title and what is drawn, then median and best as figures, left on the plot's edge.
+    # Placed on the figure, not by header(): the figures row sits between it and the plot.
+    fx = left / WIDTH
+    fig.text(fx, 1 - 0.32 / fig_h, title, fontsize=13, fontweight="bold", color=INK, va="baseline")
+    fig.text(fx, 1 - 0.58 / fig_h, tx["sv_sub"].format(unit=unit, metric=mname), fontsize=9.5, color=MUTED,
+             va="baseline")
+    for i, (label, v) in enumerate(((tx["median"].capitalize(), med), (tx["best"].capitalize(), best))):
+        xi = fx + i * 1.7 / WIDTH
+        fig.text(xi, 1 - 1.0 / fig_h, _tempo(v, kind), fontsize=15, fontweight="bold", color=INK, va="baseline")
+        fig.text(xi, 1 - 1.22 / fig_h, label, fontsize=8.5, color=MUTED, va="baseline")
     return save(fig, out)

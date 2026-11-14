@@ -6,6 +6,7 @@ import {
   appendReasoningDeltaBlock,
   appendTextDelta,
   applyReasoningTitleBlock,
+  artifactsLast,
   blocksFromLegacyMessage,
   graftStreamedBlocks,
   messageBlocks,
@@ -32,6 +33,38 @@ function baseMessage(overrides: Partial<Message>): Message {
     ...overrides,
   };
 }
+
+describe("artifactsLast", () => {
+  test("moves charts drawn before the answer below it, in their order", () => {
+    const second: Artifact = { ...artifact, id: "art-2" };
+    const blocks: ContentBlock[] = [
+      { type: "trace", events: [] },
+      { type: "artifact", artifact },
+      { type: "artifact", artifact: second },
+      { type: "text", content: "The answer." },
+    ];
+    expect(artifactsLast(blocks)).toEqual([
+      { type: "trace", events: [] },
+      { type: "text", content: "The answer." },
+      { type: "artifact", artifact },
+      { type: "artifact", artifact: second },
+    ]);
+  });
+
+  test("keeps a generated image where it arrived", () => {
+    const picture: Artifact = { ...artifact, id: "img", model: "m1" };
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: picture },
+      { type: "text", content: "Here it is." },
+    ];
+    expect(artifactsLast(blocks)).toBe(blocks);
+  });
+
+  test("returns the same list when nothing moves", () => {
+    const blocks: ContentBlock[] = [{ type: "text", content: "Hi." }];
+    expect(artifactsLast(blocks)).toBe(blocks);
+  });
+});
 
 describe("streaming reducer", () => {
   test("interleaves reasoning, prose, tool and artifact into chronological blocks", () => {

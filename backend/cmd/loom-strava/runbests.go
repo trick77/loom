@@ -484,13 +484,12 @@ func (t *tools) runBests(ctx context.Context, raw json.RawMessage) mcpserver.Res
 	}
 	b.WriteString(fileNames(files))
 	if len(shown) > 0 {
-		calls := `loomcharts.run_bests("in/strava_run_bests.csv", "out/run_bests.png"`
+		calls := fmt.Sprintf(`loomcharts.run_bests("in/strava_run_bests.csv", "out/run_bests_%dm_%s.png"`, args.Months, u.splitName())
 		if top != nil {
 			calls += `, predictions="in/strava_run_predictions.csv"`
 		}
 		calls += fmt.Sprintf(", unit=%q, lang=L)", u.splitName())
-		b.WriteString("chart: before you answer, draw it with run_python, this code exactly, L set to \"de\" when you answer in German, " +
-			"else left \"en\": import loomcharts; L = \"en\"; " + calls + "\nThen answer; the chart is shown to the user: refer to it, never link or embed it.\n")
+		b.WriteString(chartFirst + calls + "\n" + chartFirstEnd)
 	}
 	return mcpserver.Result{Text: b.String(), Sources: sources, Files: files}
 }
