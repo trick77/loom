@@ -7,7 +7,11 @@ around the tool, never the provider:
 
 - an image turn (the intent gate) forces the tool, one image per turn, scheduled runs never get it;
 - it fills three arguments itself, hidden from the model;
-- it stores the image as an artifact and keeps the thread's model.
+- it stores the image as an artifact and keeps the thread's model;
+- a follow-up edit ("make it cyberpunk") reuses the thread's newest image only when this tool made it (marked by
+  loom at store time, `structuredContent` plays no part). A run_python chart or another tool's picture is data: an
+  edit request then has no source, and a chart on top hides an older generated image. Once a correction after a
+  Strava analysis went to the image model and came back painted into the chart.
 
 The sidecar holds the fal key and every model fact (which model renders text, the 1024 px cap for it, an edit keeping
 its source's shape). It is stateless (no volume) and best-effort: loom boots without it and offers images while it

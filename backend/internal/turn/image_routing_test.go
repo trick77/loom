@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/trick77/loom/internal/artifact"
@@ -142,21 +143,97 @@ func TestLoadEditSourceImageScopesAndValidates(t *testing.T) {
 
 func TestLatestImageArtifactIDReturnsNewestWithID(t *testing.T) {
 	messages := []chat.Message{
-		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_old","mimeType":"image/png"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_old","mimeType":"image/png","generated":true}]`)},
 		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"doc_1","mimeType":"application/pdf"}]`)},
-		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_new","mimeType":"image/jpeg"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_new","mimeType":"image/jpeg","generated":true}]`)},
 	}
 	if got := latestImageArtifactID(messages); got != "img_new" {
 		t.Fatalf("latestImageArtifactID = %q, want img_new", got)
+	}
+
+	// An image the image tool kept before the generated flag names its model.
+	legacy := []chat.Message{{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_kept","mimeType":"image/png","model":"m1"}]`)}}
+	if got := latestImageArtifactID(legacy); got != "img_kept" {
+		t.Fatalf("latestImageArtifactID = %q, want img_kept", got)
+	}
+	// Another tool's image that reports a model is no edit source today.
+	other := []chat.Message{{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"shot","mimeType":"image/png","model":"m1","generated":false}]`)}}
+	if got := latestImageArtifactID(other); got != "" {
+		t.Fatalf("latestImageArtifactID = %q, want empty", got)
 	}
 
 	// No image artifacts, or image artifacts missing an id, yield "" — there is
 	// nothing to silently re-attach as the model's vision input.
 	none := []chat.Message{
 		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"doc_1","mimeType":"text/plain"}]`)},
-		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"mimeType":"image/png"}]`)},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"mimeType":"image/png","generated":true}]`)},
 	}
 	if got := latestImageArtifactID(none); got != "" {
 		t.Fatalf("latestImageArtifactID = %q, want empty", got)
+	}
+}
+
+// A Strava analysis thread holds only run_python charts: none is an edit
+// source, so a correction of the answer never reaches the image model with a
+// chart. Charts after a generated image hide it too: an edit then means the
+// chart in view, never a picture from many turns back.
+func TestLatestImageArtifactIDSkipsToolCharts(t *testing.T) {
+	charts := []chat.Message{
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"chart_1","mimeType":"image/png","displayFilename":"load_profile_1.png"},` +
+			`{"id":"chart_2","mimeType":"image/png","displayFilename":"split_variation_1.png"}]`)},
+		{Role: chat.RoleUser},
+		{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"chart_3","mimeType":"image/png"}]`)},
+	}
+	if got := latestImageArtifactID(charts); got != "" {
+		t.Fatalf("latestImageArtifactID over charts = %q, want empty", got)
+	}
+
+	generated := chat.Message{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_fox","mimeType":"image/png","generated":true}]`)}
+	if got := latestImageArtifactID(append([]chat.Message{generated}, charts...)); got != "" {
+		t.Fatalf("latestImageArtifactID = %q, want empty (charts on top of the fox)", got)
+	}
+	if got := latestImageArtifactID(append(slices.Clone(charts), generated)); got != "img_fox" {
+		t.Fatalf("latestImageArtifactID = %q, want img_fox (generated after the charts)", got)
+	}
+}
+
+// flagRecordingChatClient answers the image gate with intent and keeps the
+// thread-has-image flag it was given.
+type flagRecordingChatClient struct {
+	fakeChatClient
+	intent         llm.ImageIntent
+	threadHasImage bool
+}
+
+func (f *flagRecordingChatClient) ClassifyImageIntent(_ context.Context, _ string, _, threadHasImage bool) (llm.ImageIntent, error) {
+	f.threadHasImage = threadHasImage
+	return f.intent, nil
+}
+
+// The gate hears of an image only when the newest one is the image tool's,
+// and the edit reuses exactly that one.
+func TestClassifyImageTurnSourceFromGeneratedImage(t *testing.T) {
+	charts := []chat.Message{{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"chart_1","mimeType":"image/png"}]`)}}
+	fox := []chat.Message{{Role: chat.RoleAssistant, Artifacts: json.RawMessage(`[{"id":"img_fox","mimeType":"image/png","generated":true}]`)}}
+	llmClient := &flagRecordingChatClient{intent: llm.ImageIntent{Action: llm.ImageIntentEdit}}
+	e := &Engine{
+		artifacts: fakeArtifactStore{},
+		usersDir:  t.TempDir(),
+		mcp:       turntest.ImageService(t, fakeImageProvider{}, "", ""),
+		llm:       llmClient,
+	}
+	inf := llm.InferenceMetadata{UserID: "user_1", Username: "jan", ThreadID: "thr_1"}
+
+	if got := e.classifyImageTurn(context.Background(), inf, "you got it wrong, it was after lunch", false, charts); got.generate || got.sourceID != "" {
+		t.Fatalf("over charts: %+v, want no image route", got)
+	}
+	if llmClient.threadHasImage {
+		t.Fatal("the gate was told a chart thread has an image")
+	}
+	if got := e.classifyImageTurn(context.Background(), inf, "make it cyberpunk", false, fox); !got.reuseSource || got.sourceID != "img_fox" {
+		t.Fatalf("over a generated image: %+v, want reuse of img_fox", got)
+	}
+	if !llmClient.threadHasImage {
+		t.Fatal("the gate was not told about the generated image")
 	}
 }

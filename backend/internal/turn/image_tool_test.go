@@ -190,6 +190,10 @@ func TestImageModelLockedAndEchoed(t *testing.T) {
 	if store.Thread.ImageModel != "pro" {
 		t.Fatalf("locked model = %q, want pro", store.Thread.ImageModel)
 	}
+	// The kept image is marked as the image tool's: the next edit's source.
+	if got := latestImageArtifactID(store.Messages); got == "" || !strings.Contains(string(store.Messages[len(store.Messages)-1].Artifacts), `"generated":true`) {
+		t.Fatalf("kept image not marked generated: %s", store.Messages[len(store.Messages)-1].Artifacts)
+	}
 	cfg.LLM = &fakeToolChatClient{Results: []llm.StreamResult{
 		{ToolCalls: []llm.ToolCall{imageCall("c2", `{"prompt":"a logo that says 'FOX'"}`)}},
 		{Content: "Done."},

@@ -403,7 +403,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// can't be loaded the turn proceeds text-only rather than failing, unlike an
 	// explicit attachment (handled above) whose failure is surfaced to the user.
 	if len(imageParts) == 0 && imageRoute.reuseSource {
-		if sourceID := latestImageArtifactID(in.PriorMessages); sourceID != "" {
+		if sourceID := imageRoute.sourceID; sourceID != "" {
 			if parts, partsErr := t.e.imageContentParts(in.ReqCtx, t.user.ID, t.userMessage.Content, []string{sourceID}); partsErr != nil {
 				slog.Warn("auto-attach of prior image failed; continuing without source image",
 					"thread_id", t.thread.ID, "artifact_id", sourceID, "err", partsErr)
