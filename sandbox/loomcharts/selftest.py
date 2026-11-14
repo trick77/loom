@@ -194,7 +194,10 @@ def build(d):
     bdf["elapsed_time_s"] = bdf["moving_s"] + bdf["not_recorded_s"] + 60
     bdf = bdf[[c for c in bdf.columns if c not in ("elapsed_time_s", "not_recorded_s")] + ["elapsed_time_s", "not_recorded_s"]]
     bdf["avg_w"] = (bdf["np_w"] * 0.94).round(0)
-    bdf.to_csv(p["baseline"], index=False)
+    # Flags as the sidecar writes them (bdf keeps its 0/1 ints); the ride's streams keep 0/1: a
+    # model's own DataFrame may hold them so, and loomcharts reads both.
+    bdf.assign(is_this=bdf["is_this"].map(flag), same_route=bdf["same_route"].map(flag)).to_csv(p["baseline"],
+                                                                                              index=False)
     p.update(activity_files(d))
 
     this_mm = mean_max(ride.watts.values)
@@ -254,7 +257,7 @@ def activity_files(d):
         w = 88 * v + rng.normal(0, 8)
         rows.append({"elapsed_s": t, "distance_km": round(km, 3), "lat": "", "lng": "", "altitude_m": 412.0,
                      "speed_kmh": round(v * 3.6, 1), "hr": round(hr), "cadence": round(81 + rng.normal(0, 1.5)),
-                     "watts": round(w), "grade_pct": 0.0, "temp_c": "", "moving": 1, "power_zone": "",
+                     "watts": round(w), "grade_pct": 0.0, "temp_c": "", "moving": "true", "power_zone": "",
                      "hr_zone": int(np.digitize(hr, RUN_HR_EDGES) + 1)})
         km += v * 5 / 1000
         t += 5
@@ -326,8 +329,8 @@ def variants(p, d):
     run_nopower = _blank(p["run_streams"], j("run_nopower.csv"), ["watts"])
     run_nohr = _blank(p["run_streams"], j("run_nohr.csv"), ["hr", "hr_zone"])
     b = pd.read_csv(p["baseline"])
-    b[b.is_this == 0].to_csv(j("baseline_nothis.csv"), index=False)
-    pd.concat([b[b.is_this == 0].head(1), b[b.is_this == 1]]).to_csv(j("baseline_one.csv"), index=False)
+    b[~b.is_this].to_csv(j("baseline_nothis.csv"), index=False)
+    pd.concat([b[~b.is_this].head(1), b[b.is_this]]).to_csv(j("baseline_one.csv"), index=False)
     b.head(0).to_csv(j("baseline_empty.csv"), index=False)
     alike_csv(j("baseline_alike.csv"))
     rs = pd.read_csv(p["run_streams"])
@@ -428,6 +431,7 @@ def variants(p, d):
                          "activity_id": i, "sport_type": "Run", "ef": round(1.30 + 0.0004 * i + rng.normal(0, 0.04), 3),
                          "avg_hr": 140, "temp_c": "", "easy": int(i % 4 != 0)} for i in range(90)])
     eff.loc[eff.easy == 0, "ef"] += 0.12
+    eff["easy"] = eff["easy"].map(flag)
     eff.to_csv(j("efficiency.csv"), index=False)
     eff.head(1).to_csv(j("efficiency_one.csv"), index=False)
     eff.head(0).to_csv(j("efficiency_empty.csv"), index=False)
@@ -446,7 +450,7 @@ def variants(p, d):
         .assign(pace_s_km=lambda f: (380 / f.rel_speed).round(0)) \
         .to_csv(j("grade_pace.csv"), index=False)
     pd.DataFrame(columns=["grade_pct", "rel_speed", "pace_s_km", "seconds"]).to_csv(j("grade_pace_empty.csv"), index=False)
-    eff[eff.easy == 1].head(2).assign(date=["2026-11-03", "2026-11-04"]).to_csv(j("efficiency_short.csv"), index=False)
+    eff[eff.easy == "true"].head(2).assign(date=["2026-11-03", "2026-11-04"]).to_csv(j("efficiency_short.csv"), index=False)
     gap = eff[(pd.to_datetime(eff.date) < "2026-02-01") | (pd.to_datetime(eff.date) >= "2026-06-01")]
     gap.to_csv(j("efficiency_gap.csv"), index=False)
     # A six-month break, and 1K and 1 mile at near the same pace.
@@ -530,7 +534,7 @@ def outdoor_files(d):
         wet = t.day == 9 and 13 <= h < 16
         windy = t.day == 10 and 11 <= h < 16
         rows.append({
-            "time": t.strftime("%Y-%m-%dT%H:%M"), "daylight": lit,
+            "time": t.strftime("%Y-%m-%dT%H:%M"), "daylight": flag(lit),
             "temp_c": round(4 + 6 * max(0.0, 1 - abs(h - 14) / 7), 1),
             "feels_c": round(1 + 6 * max(0.0, 1 - abs(h - 14) / 7), 1),
             "sun_min": (50 if lit and not wet else 0), "rain_mm": (1.2 if wet else 0.0),
@@ -654,6 +658,7 @@ def run(d):
     failures += check_input_path(d)
     failures += check_spider_scale()
     failures += check_zone_gradient()
+    failures += check_flags(os.path.join(d, "strava_1_baseline.csv"))
     return failures
 
 
@@ -713,6 +718,24 @@ def check_spider_scale():
     if not failures:
         print("ok   spider_scale")
     return failures
+
+
+def flag(v):
+    """A yes/no cell as the sidecar writes it (boolCell)."""
+    return "true" if v else "false"
+
+
+def check_flags(baseline):
+    """A model's own code filters the baseline with df[~df["is_this"]]: on 0/1 ints ~ is a bitwise
+    not, which pandas took as column names (a KeyError in a live analysis). The sidecar writes
+    true/false (its Go tests pin that); this pins that pandas reads that form as bool and that
+    the filter then works."""
+    df = pd.read_csv(baseline)
+    if df["is_this"].dtype != bool or len(df[~df["is_this"]]) != len(df) - 1:
+        print(f"FAIL flags: is_this read as {df['is_this'].dtype}")
+        return ["flags"]
+    print("ok   flags")
+    return []
 
 
 def check_input_path(d):

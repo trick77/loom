@@ -59,9 +59,9 @@ func ChartFiles(in ChartInput) []mcp.File {
 		case !ok:
 			return ""
 		case d.Polar == string(sun.PolarDay):
-			return "1"
+			return flag(true)
 		case d.Polar == string(sun.PolarNight):
-			return "0"
+			return flag(false)
 		}
 		clock := t.Format("15:04")
 		end := t.Add(time.Hour).Format("15:04")
@@ -127,9 +127,12 @@ func integer(v *int) string {
 	return strconv.Itoa(*v)
 }
 
+// flag is a yes/no cell, true/false like loom-strava's boolCell: pandas reads
+// them as bool, so a model's df[~df["daylight"]] works (on 0/1 ints ~ is a
+// bitwise not, and pandas took -1/-2 as column names: a KeyError).
 func flag(b bool) string {
 	if b {
-		return "1"
+		return "true"
 	}
-	return "0"
+	return "false"
 }

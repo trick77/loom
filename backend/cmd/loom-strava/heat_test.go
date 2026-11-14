@@ -197,7 +197,7 @@ func TestAnalysis_heat(t *testing.T) {
 
 	// efficiency_trend shows the same kept temperatures, looking none up.
 	n = calls.Load()
-	if e := callTool(t, h, userA, "efficiency_trend", `{"sport":"running"}`); !strings.Contains(e.file("strava_efficiency.csv"), ",20,1\n") ||
+	if e := callTool(t, h, userA, "efficiency_trend", `{"sport":"running"}`); !strings.Contains(e.file("strava_efficiency.csv"), ",20,true\n") ||
 		calls.Load() != n {
 		t.Errorf("efficiency temp_c (%d weather calls):\n%s", calls.Load()-n, e.file("strava_efficiency.csv"))
 	}

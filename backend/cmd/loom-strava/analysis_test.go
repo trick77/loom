@@ -116,11 +116,11 @@ func TestAnalysis_comparison(t *testing.T) {
 		t.Error("a CSV header drifted from the chart module's contract")
 	}
 	base := strings.Split(strings.TrimSpace(r.file("strava_1001_baseline.csv")), "\n")
-	if len(base) != 5 || !strings.HasPrefix(base[1], "1001,2026-11-01,Albis loop,Ride,1,0,") || !strings.HasPrefix(base[2], "1002,2026-10-28,Albis loop,Ride,0,1,") {
+	if len(base) != 5 || !strings.HasPrefix(base[1], "1001,2026-11-01,Albis loop,Ride,true,false,") || !strings.HasPrefix(base[2], "1002,2026-10-28,Albis loop,Ride,false,true,") {
 		t.Errorf("baseline rows:\n%s", strings.Join(base, "\n"))
 	}
 	streams := strings.Split(strings.TrimSpace(r.file("strava_1001_streams.csv")), "\n")
-	if row := strings.Split(streams[2], ","); len(row) != 14 || row[0] != "5" || row[11] != "1" || row[12] == "" || row[13] == "" {
+	if row := strings.Split(streams[2], ","); len(row) != 14 || row[0] != "5" || row[11] != "true" || row[12] == "" || row[13] == "" {
 		t.Errorf("streams row: %v", row)
 	}
 	curve := strings.Split(strings.TrimSpace(r.file("strava_1001_power_curve.csv")), "\n")
@@ -340,7 +340,7 @@ func TestAnalysis_partialBaseline(t *testing.T) {
 		t.Errorf("partial:\n%s", r.Text)
 	}
 	// The load comes from Strava's weighted power without the streams.
-	if base := r.file("strava_1001_baseline.csv"); !strings.Contains(base, "1008,2026-10-10,Albis loop,Ride,0,1,10.00,1500,24.5,120,,35,,,,140") {
+	if base := r.file("strava_1001_baseline.csv"); !strings.Contains(base, "1008,2026-10-10,Albis loop,Ride,false,true,10.00,1500,24.5,120,,35,,,,140") {
 		t.Errorf("unknown stream metrics must be empty cells:\n%s", base)
 	}
 	f.advance(16 * time.Minute)

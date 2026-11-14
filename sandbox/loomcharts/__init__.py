@@ -77,9 +77,10 @@ Own charts
     loom_ramp (blues, for a value).
     The chart functions above do not change global matplotlib settings.
 
-CSV contract (5 s resample in streams; empty cell = no value)
+CSV contract (5 s resample in streams; empty cell = no value; yes/no columns are true/false,
+pandas reads them as bool: df[~df["is_this"]] works)
     strava_<id>_streams.csv     elapsed_s, distance_km, lat, lng, altitude_m, speed_kmh, hr,
-                                cadence, watts, grade_pct, temp_c, moving (0/1),
+                                cadence, watts, grade_pct, temp_c, moving (true/false),
                                 power_zone, hr_zone (1-5); elapsed_s = seconds since the
                                 start (a pause is a jump, no rows), time in a zone =
                                 rows x the step; a run's cadence is per leg (steps/min =
@@ -87,8 +88,8 @@ CSV contract (5 s resample in streams; empty cell = no value)
     strava_<id>_climbs.csv      n, from_km, to_km, len_km, gain_m, grade_pct, secs, vam,
                                 avg_w, wkg, avg_hr (secs and vam: recorded part only)
     strava_<id>_power_curve.csv duration_s, this_w, window_best_w, window_median_w
-    strava_<id>_baseline.csv    activity_id, date, name, sport_type, is_this (1 = analysed),
-                                same_route, distance_km, moving_s, avg_kmh, gain_m, np_w,
+    strava_<id>_baseline.csv    activity_id, date, name, sport_type, is_this (true = analysed),
+                                same_route (true/false), distance_km, moving_s, avg_kmh, gain_m, np_w,
                                 tss (the load: TSS, hrTSS or rTSS), ef, decoupling_pct, best_20m_w,
                                 avg_hr, elapsed_time_s, not_recorded_s (clock the recording
                                 skipped), avg_w (a power meter's average, a watch's running
@@ -105,21 +106,21 @@ CSV contract (5 s resample in streams; empty cell = no value)
     strava_<id>_wbal.csv        elapsed_s, distance_km, watts, wbal_kj (W′ left, 5 s rows)
     strava_<id>_grade_pace.csv  grade_pct (-15..15), rel_speed (to flat), pace_s_km, seconds
     strava_efficiency.csv       date, activity_id, sport_type, ef (running m/min per bpm,
-                                cycling W per bpm), avg_hr, temp_c, easy (0/1)
+                                cycling W per bpm), avg_hr, temp_c, easy (true/false)
     strava_weeks.csv            week_start, iso_week, sport_type, count, distance_km,
                                 moving_s, gain_m, tss (one row per week and sport)
-    strava_activities.csv       activity_id, date, name, sport_type, trainer, distance_km,
+    strava_activities.csv       activity_id, date, name, sport_type, trainer (true/false), distance_km,
                                 moving_s, gain_m, avg_kmh, avg_hr, avg_w, weighted_w, kj,
                                 suffer_score, elapsed_time_s
-    outdoor_hours.csv           time (local, YYYY-MM-DDTHH:MM), daylight (0/1), temp_c, feels_c,
+    outdoor_hours.csv           time (local, YYYY-MM-DDTHH:MM), daylight (true/false), temp_c, feels_c,
                                 sun_min, rain_mm, rain_pct, wind_kmh, gust_kmh, wind_dir_deg
                                 (where it blows from)
-    outdoor_windows.csv         date, rank (1 = best), from, to (HH:MM), dry (0/1), wind (empty,
+    outdoor_windows.csv         date, rank (1 = best), from, to (HH:MM), dry (true/false), wind (empty,
                                 windy, strong), sun_min, rain_pct, wind_max_kmh, gust_max_kmh,
-                                wind_from (8-point compass), cold (0/1: feels below the limit)
+                                wind_from (8-point compass), cold (true: feels below the limit)
     outdoor_days.csv            date, sunrise, sunset, high_c, low_c, rain_mm, rain_pct, sun_h,
                                 wind_max_kmh, gust_max_kmh, wind_from, rain (dry, showers, wet),
-                                wind, rank, cold (0/1)
+                                wind, rank, cold (true/false)
     outdoor_limits.csv          activity (run, ride), minutes, date (the day asked), wind_kmh,
                                 wind_strong_kmh, gust_kmh, gust_strong_kmh, cold_c (feels-like
                                 below it is too cold), cold_sunny_c (the same when very sunny)
