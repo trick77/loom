@@ -15,6 +15,10 @@ type Response struct {
 	Width           int     `json:"width,omitempty"`
 	Height          int     `json:"height,omitempty"`
 	DurationMs      int64   `json:"durationMs,omitempty"`
+	// Generated marks an image the image tool made (its toolSpec, not what
+	// the server reports): the only kind a follow-up edit reuses as source.
+	// Always written: an artifact stored before it existed lacks the key.
+	Generated bool `json:"generated"`
 }
 
 // Response is the wire shape of a stored artifact.

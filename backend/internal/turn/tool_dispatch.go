@@ -294,6 +294,7 @@ func (t *Run) keepToolArtifacts(ctx context.Context, toolName string, run toolRu
 		created = append(created, response)
 		lines.WriteString("\n\n" + line)
 	}
+	generated := t.e.toolPolicy(toolName).imageGenerator
 	for _, img := range run.images {
 		name := img.Filename
 		if name == "" {
@@ -301,7 +302,7 @@ func (t *Run) keepToolArtifacts(ctx context.Context, toolName string, run toolRu
 		}
 		keep(artifactSpec{DisplayFilename: name, Extension: img.Extension, MIMEType: img.MimeType, Data: img.Data, Thumbnail: true},
 			func(response *artifact.Response) string {
-				response.Model, response.Provider = img.Model, img.Provider
+				response.Model, response.Provider, response.Generated = img.Model, img.Provider, generated
 				response.Width, response.Height, response.DurationMs = img.Width, img.Height, img.DurationMs
 				usage.Record(t.e.usage, "image_gen", func() error { return t.e.usage.IncImageGen(persistCtx, t.user.ID) })
 				return fmt.Sprintf("created image artifact %s (%d bytes)", response.DisplayFilename, response.SizeBytes)

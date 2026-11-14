@@ -53,7 +53,8 @@ func TestTurnKeepsMCPToolImagesAsArtifacts(t *testing.T) {
 	if n := strings.Count(out.body, "event: artifact"); n != 1 {
 		t.Fatalf("%d artifact events, want 1", n)
 	}
-	for _, want := range []string{`"model":"m1"`, `"provider":"p1"`, `"width":640`, `"height":480`, `"durationMs":1200`} {
+	// Not the image tool: its image is no edit source, whatever model it names.
+	for _, want := range []string{`"model":"m1"`, `"provider":"p1"`, `"width":640`, `"height":480`, `"durationMs":1200`, `"generated":false`} {
 		if !strings.Contains(out.body, want) {
 			t.Errorf("artifact event lacks %s", want)
 		}

@@ -27,6 +27,9 @@ type imageRouting struct {
 	// model's vision input for a follow-up edit ("make it cyberpunk") when the
 	// user attached nothing this turn. Was isImageEditFollowUp.
 	reuseSource bool
+	// sourceID is that image's artifact id when reuseSource is set: found once
+	// by classifyImageTurn, so the turn never scans the thread twice.
+	sourceID string
 	// typography picks the text-capable image model (FLUX.2 flex) for logo/text
 	// work. Was isTypographyImageRequest, run at dispatch on the compiled prompt.
 	typography bool
@@ -67,7 +70,8 @@ func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadat
 	if strings.TrimSpace(content) == "" {
 		return imageRouting{}
 	}
-	threadHasImage := priorConversationHasImageArtifact(priorMessages)
+	sourceID := latestImageArtifactID(priorMessages)
+	threadHasImage := sourceID != ""
 	threadID := inf.ThreadID
 	meta := gateInference(inf, "image_intent")
 	timeout := s.gateTimeout()
@@ -85,7 +89,11 @@ func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadat
 			slog.Warn("image-intent classification failed; routing as non-image", "thread_id", threadID, "err", err)
 		}
 	}
-	return imageRoutingFor(intent, hasAttachedImage, threadHasImage)
+	route := imageRoutingFor(intent, hasAttachedImage, threadHasImage)
+	if route.reuseSource {
+		route.sourceID = sourceID
+	}
+	return route
 }
 
 // imageRoutingFor maps a semantic intent plus the two image-presence flags to the
@@ -146,18 +154,19 @@ func containsAnyToken(tokens []string, set map[string]bool) bool {
 	return false
 }
 
-// priorConversationHasImageArtifact reports whether any earlier message in the
-// thread carries an image artifact — the precondition for silently reusing it as
-// an edit source.
-func priorConversationHasImageArtifact(messages []chat.Message) bool {
-	return latestImageArtifactID(messages) != ""
-}
-
-// latestImageArtifactID returns the id of the most recent image artifact across
-// the conversation, or "" when there is none. Messages arrive oldest-first
-// (ORDER BY created_at ASC), so the scan runs from the end and stops at the first
-// message that carries one: the newest, which a follow-up edit ("make it
-// cyberpunk") should silently reuse as its source.
+// latestImageArtifactID returns the id of the conversation's newest image when
+// the image tool made it, else "": the image a follow-up edit ("make it
+// cyberpunk") silently reuses as its source, and the gate's "the thread has an
+// image" flag. Messages arrive oldest-first (ORDER BY created_at ASC), so the
+// scan runs from the end and stops at the first image.
+//
+// A chart from run_python or a picture another tool returned is data, not
+// artwork: with it counted, the gate saw an image in every analysis thread,
+// read a correction of the answer ("it was two hours after lunch") as an
+// edit, and the image model painted the sentence into the newest chart.
+// Changing a chart is new run_python code. Such an image on top also hides an
+// older generated one: "make it hand-drawn" is about the chart in view, and
+// redrawing a fox from many turns back would be the wrong picture.
 func latestImageArtifactID(messages []chat.Message) string {
 	for _, message := range slices.Backward(messages) {
 		if chat.IsEmptyJSON(message.Artifacts) {
@@ -167,6 +176,10 @@ func latestImageArtifactID(messages []chat.Message) string {
 			ID            string `json:"id"`
 			MIMEType      string `json:"mimeType"`
 			SnakeMIMEType string `json:"mime_type"`
+			Generated     *bool  `json:"generated"`
+			// Model: an image kept before Generated existed (no key) counts
+			// when it names its model, as loom's image sidecar always did.
+			Model string `json:"model"`
 		}
 		if err := json.Unmarshal(message.Artifacts, &artifacts); err != nil {
 			continue
@@ -176,7 +189,10 @@ func latestImageArtifactID(messages []chat.Message) string {
 				continue
 			}
 			if strings.HasPrefix(item.MIMEType, "image/") || strings.HasPrefix(item.SnakeMIMEType, "image/") {
-				return item.ID
+				if (item.Generated != nil && *item.Generated) || (item.Generated == nil && item.Model != "") {
+					return item.ID
+				}
+				return ""
 			}
 		}
 	}

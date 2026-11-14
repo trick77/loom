@@ -60,7 +60,9 @@ This assistant is ALSO a coding and writing helper, so DO NOT read these as imag
 - changing code, CSS, or UI: "make the font bigger", "set the background color to blue", "make this div bigger", "mach die Schrift groesser".
 - converting or rendering data/text/markup: "render the JSON", "convert this to CSV", "render this template", "wandle das in CSV um".
 - figurative language: "draw a conclusion", "paint a picture of the situation".
+- charts, plots and graphs of data, new or changed: "plot my weekly mileage", "redraw that chart as bars", "zeichne die Herzfrequenz als Diagramm". They are drawn from the numbers with code, not by an image model.
 - asking to WRITE text content (a summary, email, plan, pitch, poem) — that is not an image.
+- correcting the assistant's answer or adding facts to it, even when an image is present: "you got it slightly wrong, it was two hours after lunch", "actually I ran it in the heat", "das stimmt nicht, es war nach dem Mittagessen". "edit" only when the message asks to change the picture itself.
 
 needs_text: true when the image must contain specific, legible text or lettering — a logo, wordmark, monogram, poster, sign, banner, label, menu, certificate, or any request that quotes the words to render (e.g. "a banner that says 'OPEN TODAY'", "ein Plakat mit der Aufschrift 'Sommerfest'"). Otherwise false. Only meaningful when action is "create" or "edit".
 

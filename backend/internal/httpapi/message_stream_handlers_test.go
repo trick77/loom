@@ -1112,7 +1112,7 @@ func TestStreamMessageGeneratesFromUserTextWhenImageFollowUpIsTextOnly(t *testin
 			ThreadID:  "thr_1",
 			Role:      chat.RoleAssistant,
 			Content:   "Created a logo.",
-			Artifacts: json.RawMessage(`[{"id":"art_1","displayFilename":"generated-image.png","mimeType":"image/png","downloadUrl":"/api/artifacts/art_1/download"}]`),
+			Artifacts: json.RawMessage(`[{"id":"art_1","displayFilename":"generated-image.png","mimeType":"image/png","downloadUrl":"/api/artifacts/art_1/download","generated":true}]`),
 		}},
 	}
 	capturingLLM := &fakeToolChatClient{

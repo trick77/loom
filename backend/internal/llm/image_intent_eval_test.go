@@ -54,6 +54,13 @@ func TestClassifyImageIntent_multilingualEval(t *testing.T) {
 		{msg: "wandle das in CSV um", wantAction: ImageIntentNone},
 		{msg: "write me a short summary of this article", wantAction: ImageIntentNone},
 		{msg: "schreib mir eine E-Mail an das Team", wantAction: ImageIntentNone},
+		// --- a correction of the answer, with an image in the thread: not an edit
+		// (phrasings the prompt does not quote) ---
+		{msg: "nope, that was the evening ride, not the morning one", threadHasImg: true, wantAction: ImageIntentNone},
+		{msg: "Falsch, ich hatte vorher kaum geschlafen", threadHasImg: true, wantAction: ImageIntentNone},
+		// --- a chart of data is code, not an image model's job ---
+		{msg: "show my monthly distance as a bar chart", wantAction: ImageIntentNone},
+		{msg: "mach aus dem Diagramm ein Liniendiagramm", threadHasImg: true, wantAction: ImageIntentNone},
 	}
 
 	for _, tc := range cases {
