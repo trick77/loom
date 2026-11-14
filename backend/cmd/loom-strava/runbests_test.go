@@ -108,7 +108,7 @@ func TestRunBests(t *testing.T) {
 		"5k | 25:00 | 5:00 /km | [1] 2026-10-30", "10k | 52:00", "1k | 4:40",
 		"monthly bests, 5k: ", "prediction (Daniels VDOT", "half marathon", "marathon",
 		"best efforts within runs, not races", "threshold pace (Daniels T", "gets its load (rTSS) from it",
-		`loomcharts.run_bests("in/strava_run_bests.csv", "out/run_bests.png", predictions="in/strava_run_predictions.csv", unit="km", lang=L)`,
+		`loomcharts.run_bests("in/strava_run_bests.csv", "out/run_bests_12m_km.png", predictions="in/strava_run_predictions.csv", unit="km", lang=L)`,
 	} {
 		if !strings.Contains(r.Text, want) {
 			t.Errorf("lacks %q:\n%s", want, r.Text)

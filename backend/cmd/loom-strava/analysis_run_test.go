@@ -90,8 +90,8 @@ func TestAnalysis_run(t *testing.T) {
 		// The zones made in this call bucket this run too, not Strava's defaults.
 		"the user's own zones from their streams (running, LTHR",
 		"fitness and fatigue on 2026-11-01", "this activity: load ",
-		`loomcharts.load_profile("in/strava_2001_baseline.csv", "out/load_profile_2001.png", weeks=6, lang=L)`,
-		`loomcharts.fitness_fatigue("in/strava_2001_load.csv", "out/fitness_fatigue_2001.png", lang=L)`,
+		`loomcharts.load_profile("in/strava_2001_baseline.csv", "out/load_profile_6w_2001.png", weeks=6, lang=L)`,
+		`loomcharts.fitness_fatigue("in/strava_2001_load.csv", "out/fitness_fatigue_2001.png", lang=L)  (only when asked`,
 		`loomcharts.hr_profile("in/strava_2001_streams.csv", "out/hr_profile_2001.png", lang=L)`,
 		`loomcharts.split_variation("in/strava_2001_streams.csv", "out/split_variation_2001.png", metric="watts", sport="Run", lang=L)`,
 		"In an answer about pain or an injury draw only fitness_fatigue.",

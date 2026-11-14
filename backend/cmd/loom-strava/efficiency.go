@@ -243,9 +243,7 @@ func (t *tools) efficiencyTrend(ctx context.Context, raw json.RawMessage) mcpser
 	}
 	files := []mcpserver.File{csv.file("strava_efficiency.csv")}
 	b.WriteString(fileNames(files))
-	b.WriteString("chart: before you answer, draw it with run_python, this code exactly, L set to \"de\" when you answer in German, " +
-		"else left \"en\": import loomcharts; L = \"en\"; " +
-		fmt.Sprintf(`loomcharts.efficiency_trend("in/strava_efficiency.csv", "out/efficiency_trend.png", sport=%q, lang=L)`, args.Sport) +
-		"\nThen answer; the chart is shown to the user: refer to it, never link or embed it.\n")
+	b.WriteString(chartFirst + fmt.Sprintf(`loomcharts.efficiency_trend("in/strava_efficiency.csv", "out/efficiency_trend_%s_%dm.png", sport=%q, lang=L)`,
+		args.Sport, args.Months, args.Sport) + "\n" + chartFirstEnd)
 	return mcpserver.Result{Text: b.String(), Files: files}
 }

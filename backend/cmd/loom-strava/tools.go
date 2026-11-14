@@ -37,8 +37,10 @@ const instructions = "The user's own Strava data: profile, totals, activities, l
 	"you mention with its [n]. For one ride or run use activity_analysis: it compares the activity with the " +
 	"user's recent ones of the same sport. For heart-rate zones, max or threshold heart rate use hr_zones; " +
 	"a tested value the user stated beats its estimate. Give numbers with their units, as returned. activity_analysis " +
-	"ends with the chart code to run before answering (load profile, fitness and fatigue, heart-rate profile, split " +
-	"variation) and, for a run or a swim, summary rows to show as tables. When another chart would read better (ride " +
+	"ends with chart code (load profile, heart-rate profile, split variation; fitness and fatigue when asked or " +
+	"relevant) to run before answering: only the charts the question needs that this conversation does not show yet. " +
+	"For a run or a swim it gives summary rows to show as tables. Fitness and fatigue figures (CTL, ATL, form) " +
+	"only when the user asks about them or they bear on the question. When another chart would read better (ride " +
 	"profile, power curve, weekly load, same-route gap), offer one and draw it with run_python from the attached CSV " +
 	"files. When the user ties a pain, injury or other symptom to their sport, read their " +
 	"activities before answering: list_activities over the four weeks before it started (the last four weeks " +
@@ -154,7 +156,7 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Description: "Analyse one activity from its streams: power (NP, IF, TSS, VI, mean-max curve, zones), " +
 					"heart rate (zones, EF, decoupling), climbs, intervals, per-km rows, always compared with the user's " +
 					"activities of the same sport in the weeks before (median, rank, best/worst in window, same route, " +
-					"weekly load), with fitness and fatigue (CTL, ATL, form) around it; for a run its speed, pace, power " +
+					"weekly load), with fitness and fatigue (CTL, ATL, form) around it to use when relevant; for a run its speed, pace, power " +
 					"and running dynamics, for a swim its strokes and SWOLF (estimated) and intervals. Attaches CSV files " +
 					"and the chart code for run_python.",
 				Schema: mcpserver.ObjectSchema(map[string]any{

@@ -43,12 +43,21 @@ Each activity named comes with a link to it on Strava (citation and attribution)
 they are never stored, shown or put into the prompt. `loomcharts` in the sandbox image draws them in loom's style. A
 follow-up turn asks the tool again: the sidecar answers from its store.
 
-Every analysis draws four charts unasked (the user wants them each time): `load_profile` (spider against the window's
-average), `fitness_fatigue`, `hr_profile` (load focus and heart-rate distribution) and `split_variation`. The sidecar
-writes the exact `run_python` code, naming only the files it attached: loomcharts reads a file at once, and one missing
-name fails the whole job. Images are `out/<chart>_<id>.png`, so two analyses in one thread never overwrite each other.
-The labels follow the answer's language (`lang`, de or en): loom stores no user language, the model sets it. A pain
-or injury answer draws only `fitness_fatigue`; a section (`from_km`) draws none.
+A question about a whole activity draws three charts unasked: `load_profile` (spider: each axis from the lowest to the
+highest of the window and this activity, at least 20 % of the average wide; scaled by the ratio to the average, runs
+a few percent apart drew a perfect hexagon on the average's ring), `hr_profile` (load focus and heart-rate
+distribution, zones green to red) and `split_variation`. `fitness_fatigue` only when asked or relevant (user: "not
+that interesting"); a pain or injury answer draws only it. A narrower question draws the one chart for it, and a chart
+the thread already shows is not drawn again unless asked or its numbers changed (each analysis call returns the code
+anew; the user saw a follow-up question redraw all four). The model draws, then answers; the UI shows a message's
+tool files below its text, an image model's picture stays where it came (charts
+leading the answer was the user's complaint). Not "answer, then draw": loom's tool loop ends at a round without a tool
+call, so the charts were lost, or an empty last round brought a second, forced answer. The sidecar writes the exact
+`run_python` code, naming only the files it attached: loomcharts reads a file at once, and one missing name fails the
+whole job. Images are `out/<chart>_<id>.png` (with the window, sport or unit where a call takes one), so two analyses
+in one thread never overwrite each other and the model can tell what it drew.
+The labels follow the answer's language (`lang`, de or en): loom stores no user language, the model sets it. A section
+(`from_km`) draws none.
 
 A run's tables: speed, pace (grade-adjusted from Strava's splits), power, running dynamics. Strava's run cadence is
 per leg (163 steps a minute read 81.5): steps per minute are twice it. Vertical oscillation, ground contact time and
