@@ -118,7 +118,7 @@ RANK_ROWS = (
 def rank_strip(baseline, out, title=None, weeks=None):
     """Where this activity sits among the baseline, one row per metric on its own scale.
 
-    baseline: in/strava_<id>_baseline.csv (the analysed activity has is_this=1). Right is more
+    baseline: in/strava_<id>_baseline.csv (the analysed activity has is_this true). Right is more
     (volume) or better; HR drift is flipped (right = less drift); avg HR has no rank.
     Rows without a value for this activity are left out. weeks: the window, for the title.
     """

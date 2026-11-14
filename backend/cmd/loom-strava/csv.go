@@ -77,10 +77,14 @@ func cell(v float64, prec int) string {
 func intCell(v int) string { return strconv.Itoa(v) }
 
 func boolCell(v bool) string {
+	// true/false, not 1/0: pandas reads them as bool, so the model's natural
+	// df[~df["is_this"]] works. On 0/1 ints ~ is a bitwise not (-1, -2), which
+	// pandas took as column names: a KeyError in a live analysis. loomcharts
+	// reads both (num: True → 1.0).
 	if v {
-		return "1"
+		return "true"
 	}
-	return "0"
+	return "false"
 }
 
 // streamsCSV resamples s every 5 s of elapsed time, every 10 s, 20 s … when
@@ -246,7 +250,7 @@ func fileNames(files []mcpserver.File) string {
 		case strings.HasSuffix(f.Name, "_streams.csv"):
 			step := streamsStep(f.Text)
 			notes = append(notes, fmt.Sprintf("%s: one row per %d s of recording; elapsed_s is seconds since the start, "+
-				"a jump larger than the step is a gap with the recording off (pause), no rows in it; moving is 0/1; "+
+				"a jump larger than the step is a gap with the recording off (pause), no rows in it; moving is true/false; "+
 				"time in a zone or moving ≈ its rows × %d s, never a sum of elapsed_s", f.Name, step, step))
 		case strings.HasSuffix(f.Name, "_baseline.csv"):
 			notes = append(notes, f.Name+": moving_s and elapsed_time_s are Strava's totals; not_recorded_s is the clock the recording skipped "+

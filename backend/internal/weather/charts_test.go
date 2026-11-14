@@ -4,6 +4,9 @@ import (
 	"encoding/csv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/trick77/loom/internal/sun"
 )
 
 func readCSV(t *testing.T, data []byte) [][]string {
@@ -42,7 +45,7 @@ func TestChartFiles(t *testing.T) {
 		t.Fatalf("hours = %d rows, header %v", len(hours), hours[0])
 	}
 	// 03:00 is night, 10:00 day and windy; 09:00 lacks its wind: empty, not 0.
-	if hours[4][1] != "0" || hours[11][1] != "1" || hours[11][7] != "18" || hours[11][9] != "250" {
+	if hours[4][1] != "false" || hours[11][1] != "true" || hours[11][7] != "18" || hours[11][9] != "250" {
 		t.Fatalf("hours 03:00 %v, 10:00 %v", hours[4], hours[11])
 	}
 	if hours[10][4] != "" || hours[10][7] != "" {
@@ -57,11 +60,11 @@ func TestChartFiles(t *testing.T) {
 		t.Fatalf("windows = %v", windows)
 	}
 	// A ride on a 4-10 °C grey day is cold.
-	if windows[1][11] != "1" {
+	if windows[1][11] != "true" {
 		t.Fatalf("windows cold = %v", windows[1])
 	}
 	days := byName[ChartDays]
-	if days[1][14] != "1" {
+	if days[1][14] != "true" {
 		t.Fatalf("days cold = %v", days[1])
 	}
 	if strings.Join(days[0], ",") != hdrDays || len(days) != 2 || days[1][11] != "dry" || days[1][12] != WindWindy || days[1][13] != "1" {
@@ -70,5 +73,16 @@ func TestChartFiles(t *testing.T) {
 	limits := byName[ChartLimits]
 	if strings.Join(limits[0], ",") != hdrLimits || strings.Join(limits[1], ",") != "ride,120,2026-11-10,15,39,30,45,10,7" {
 		t.Fatalf("limits = %v", limits)
+	}
+}
+
+// Polar days are wholly light or dark: true/false like every yes/no cell.
+func TestChartFiles_polar(t *testing.T) {
+	f := Forecast{Hourly: []Hour{{Time: "2026-06-21T12:00"}, {Time: "2026-12-21T12:00"}}}
+	files := ChartFiles(ChartInput{Forecast: f, Loc: time.UTC, Activity: Run, Week: []DayOutlook{
+		{Date: "2026-06-21", Polar: string(sun.PolarDay)}, {Date: "2026-12-21", Polar: string(sun.PolarNight)}}})
+	hours := readCSV(t, files[0].Data)
+	if hours[1][1] != "true" || hours[2][1] != "false" {
+		t.Errorf("polar daylight = %v", hours)
 	}
 }
