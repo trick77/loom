@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import { expect, test } from "vitest";
 
 import {
@@ -7,6 +8,11 @@ import {
   formatTokens,
   slotText,
 } from "./scheduleText";
+
+// fakeT echoes the key and the `times` option; TFunction's overloads take
+// no plain lambda, hence the cast.
+const fakeT = ((key: string, options?: { times?: string }) =>
+  `${key}${options?.times ?? ""}`) as unknown as TFunction;
 
 const words = {
   daily: "Daily",
@@ -53,12 +59,12 @@ test("describeCron leaves other shapes to the server's summary", () => {
   expect(describeCron("a b c d e", "en", words)).toBeNull();
   expect(describeCron("0 9 * *", "en", words)).toBeNull();
   expect(describeCron("0 9 */0 * *", "en", words)).toBeNull();
-  expect(slotText("0 9 1 * 1", "On cron 0 9 1 * 1", "en", (k) => k)).toBe(
+  expect(slotText("0 9 1 * 1", "On cron 0 9 1 * 1", "en", fakeT)).toBe(
     "On cron 0 9 1 * 1",
   );
-  expect(
-    slotText("0 9 * * *", "x", "en", (k, o) => `${k}${o?.times ?? ""}`),
-  ).toBe("schedules.slot.daily schedules.slot.at09:00");
+  expect(slotText("0 9 * * *", "x", "en", fakeT)).toBe(
+    "schedules.slot.daily schedules.slot.at09:00",
+  );
 });
 
 test("formatRunDate shows the time on the schedule's clock", () => {

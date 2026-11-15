@@ -1,6 +1,8 @@
 // Text helpers for schedules: the slot read back in the UI language, run
 // dates on the schedule's clock, and compact token and duration figures.
 
+import type { TFunction } from "i18next";
+
 // Fixed per-run limits, shown next to the form; the server enforces them.
 export const RUN_TOKEN_LIMIT = 1_000_000;
 export const RUN_MINUTES = 5;
@@ -136,7 +138,7 @@ export function slotText(
   cron: string,
   summary: string,
   lang: Lang,
-  t: (key: string, options?: Record<string, string>) => string,
+  t: TFunction,
 ): string {
   return (
     describeCron(cron, lang, {
