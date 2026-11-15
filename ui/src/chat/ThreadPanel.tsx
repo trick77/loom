@@ -21,7 +21,7 @@ import { ThreadActionsMenu } from "../ThreadActionsMenu";
 import { ShareDialog } from "../share/ShareDialog";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import { Composer } from "./Composer";
-import { trailsAnswer } from "./contentBlocks";
+import { arrangeBlocks } from "./contentBlocks";
 import { ErrorText } from "./ErrorText";
 import { GeneratedArtifactCard } from "./GeneratedArtifactCard";
 import { Icon } from "./Icon";
@@ -273,6 +273,10 @@ export function ThreadPanel({
         )
         .map((block) => block.content)
         .join("\n\n"),
+    [streamingBlocks],
+  );
+  const streamingArrangement = useMemo(
+    () => arrangeBlocks(streamingBlocks, true),
     [streamingBlocks],
   );
   // Only `display` is used while streaming — it numbers the inline markers. The
@@ -723,15 +727,16 @@ export function ThreadPanel({
                 dots are the only cue. */}
             {(() => {
               const elements: React.ReactNode[] = [];
-              // Tool files go below the prose, as in the settled message
-              // (artifactsLast): the answer streams in above a chart drawn first.
-              const artifacts: React.ReactNode[] = [];
-              streamingBlocks.forEach((block, index) => {
+              // Same order as the settled message (arrangeBlocks): a tool's
+              // chart where the answer places it, else below the prose, so
+              // the answer streams in above a chart drawn first. Keys hold
+              // while a placement line splits a growing text block.
+              streamingArrangement.forEach(({ block, index, key }) => {
                 if (block.type === "text") {
                   if (block.content === "") return;
                   elements.push(
                     <AssistantProse
-                      key={`stream-text-${index}`}
+                      key={`stream-text-${key}`}
                       streaming
                       sources={streamingSourceMap}
                       display={streamingNumbering.display}
@@ -742,7 +747,7 @@ export function ThreadPanel({
                   return;
                 }
                 if (block.type === "artifact") {
-                  (trailsAnswer(block) ? artifacts : elements).push(
+                  elements.push(
                     <GeneratedArtifactCard
                       key={`stream-artifact-${block.artifact.id}`}
                       artifact={block.artifact}
@@ -808,7 +813,7 @@ export function ThreadPanel({
                   />,
                 );
               }
-              return [...elements, ...artifacts];
+              return elements;
             })()}
             {/* No Sources row while streaming: the favicon pile appearing before
                 there is an answer to attribute reads as clutter, and it shifts under

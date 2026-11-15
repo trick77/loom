@@ -110,15 +110,235 @@ export function trailsAnswer(block: ContentBlock): boolean {
   return block.type === "artifact" && !block.artifact.model;
 }
 
-// artifactsLast moves a message's tool files below everything else, in their
-// own order. A chart is drawn before the answer that reads it (the tool loop
-// ends at a text-only round, so "answer first, draw last" lost the charts or
-// wrote the answer twice), and in arrival order it led the answer: the user
-// asked for "charts are after".
-export function artifactsLast(blocks: ContentBlock[]): ContentBlock[] {
-  const rest = blocks.filter((block) => !trailsAnswer(block));
-  if (rest.length === blocks.length) return blocks;
-  return [...rest, ...blocks.filter(trailsAnswer)];
+// ArrangedBlock is a block as rendered: key survives the stream (a text block
+// split by a placed chart keeps its first part's key), index is the block's
+// position in the source list (the live trace panel is found by it).
+export interface ArrangedBlock {
+  key: string;
+  index: number;
+  block: ContentBlock;
+}
+
+// A placement line: a markdown image naming a stored file bare (the backend's
+// run_python result hands the model exactly this, `![caption](name)`). The
+// caption may hold one level of brackets ("[bpm]"), the destination CommonMark's
+// angle-bracket form and a title.
+const REF_SOURCE =
+  /!\[(?:[^[\]\n]|\[[^[\]\n]*\])*\]\(\s*(?:<([^>\n]+)>|([^)\s]+))(?:\s+"[^"\n]*")?\s*\)/
+    .source;
+const ARTIFACT_REF = new RegExp(REF_SOURCE, "g");
+const REF_AT_START = new RegExp(`^${REF_SOURCE}`);
+// A bare file name: no scheme, no path. A URL or /api/… path is a real image.
+// out/ is where the model's own code saved it: the same file.
+const BARE_NAME = /^[^\s/\\:?#]+\.[A-Za-z0-9]+$/;
+const OUT_DIR = /^(?:\.\/)?out\//;
+const FENCE = /^ {0,3}(```|~~~)/;
+// Lines markdown reads as code or a table cell: a placement there stays text.
+const VERBATIM_LINE = /^(?: {4}|\t)|^\s*\|/;
+// What may stand before a placement line's image and leave with it: a list
+// item's or a quote's marker; the chart breaks the list or quote anyway.
+const LINE_MARKUP = /^\s*(?:(?:[-*+]|\d+[.)])\s+|>\s*)*$/;
+
+// arrangeBlocks is the order a message renders in. A tool's file
+// (trailsAnswer: a run_python chart, a document) shows where the answer's
+// placement line names it; one left unplaced goes below everything else, in
+// arrival order. The user first asked for "charts are after" (drawn before
+// the answer, they led it: the tool loop ends at a text-only round, so
+// "answer first, draw last" lost them), then for each "in the answer where it
+// refers to them". A line naming no file of this message (an earlier answer's
+// chart, a renamed one) and a second line for a placed chart are dropped:
+// MarkdownImage shows nothing for a bare name anyway. Streaming, a placement
+// line still being written at the end is held back, never shown raw.
+export function arrangeBlocks(
+  blocks: ContentBlock[],
+  streaming = false,
+): ArrangedBlock[] {
+  const byName = new Map<string, Extract<ContentBlock, { type: "artifact" }>>();
+  for (const block of blocks) {
+    if (trailsAnswer(block) && block.type === "artifact") {
+      const name = block.artifact.displayFilename;
+      if (!byName.has(name)) byName.set(name, block);
+    }
+  }
+  const placed = new Set<string>();
+  const out: ArrangedBlock[] = [];
+  blocks.forEach((block, index) => {
+    if (block.type === "artifact") {
+      if (!trailsAnswer(block))
+        out.push({ key: `a:${block.artifact.id}`, index, block });
+      return;
+    }
+    if (block.type !== "text") {
+      out.push({ key: `${index}`, index, block });
+      return;
+    }
+    // The growing last block is held back and tokenized afresh per token;
+    // every other text block is tokenized once (refLines caches it).
+    const lines =
+      streaming && index === blocks.length - 1
+        ? tokenizeRefs(holdBackPartialRef(block.content))
+        : refLines(block);
+    let part = 0;
+    const pushText = (lines: string[]) => {
+      const text = lines.join("\n").replace(/^\n+|\n+$/g, "");
+      if (text.trim() === "") return;
+      out.push({
+        key: part === 0 ? `${index}` : `${index}.${part}`,
+        index,
+        block: { type: "text", content: text },
+      });
+      part += 1;
+    };
+    splitAtRefs(lines, (name) => {
+      const ref = byName.get(name);
+      if (ref === undefined || placed.has(ref.artifact.id)) return undefined;
+      placed.add(ref.artifact.id);
+      return ref;
+    }).forEach((piece) => {
+      if (Array.isArray(piece)) {
+        pushText(piece);
+        return;
+      }
+      out.push({ key: `a:${piece.artifact.id}`, index, block: piece });
+    });
+  });
+  blocks.forEach((block, index) => {
+    if (
+      block.type === "artifact" &&
+      trailsAnswer(block) &&
+      !placed.has(block.artifact.id)
+    )
+      out.push({ key: `a:${block.artifact.id}`, index, block });
+  });
+  return out;
+}
+
+// RefLine is one source line: verbatim, or its text and placement refs in
+// order (refOnly: nothing else on it but list or quote markup).
+type RefLine =
+  | { raw: string }
+  | { parts: Array<string | { name: string }>; refOnly: boolean };
+
+// A text block is immutable once a later one exists, and a settled message's
+// blocks are normalized once: its tokens are computed once, not per token
+// of the stream that follows.
+const refLineCache = new WeakMap<ContentBlock, RefLine[]>();
+
+function refLines(block: Extract<ContentBlock, { type: "text" }>): RefLine[] {
+  let lines = refLineCache.get(block);
+  if (lines === undefined) {
+    lines = tokenizeRefs(block.content);
+    refLineCache.set(block, lines);
+  }
+  return lines;
+}
+
+// tokenizeRefs finds the placement lines' images outside code (fences,
+// indented blocks, inline spans) and tables.
+function tokenizeRefs(content: string): RefLine[] {
+  const lines: RefLine[] = [];
+  let inFence = false;
+  for (const line of content.split("\n")) {
+    const fence = FENCE.test(line);
+    if (fence) inFence = !inFence;
+    if (fence || inFence || VERBATIM_LINE.test(line)) {
+      lines.push({ raw: line });
+      continue;
+    }
+    const code = codeSpans(line);
+    const parts: Array<string | { name: string }> = [];
+    let from = 0;
+    for (const match of line.matchAll(ARTIFACT_REF)) {
+      const at = match.index;
+      if (code.some(([start, end]) => at >= start && at < end)) continue;
+      const name = (match[1] ?? match[2]).replace(OUT_DIR, "");
+      if (!BARE_NAME.test(name)) continue;
+      parts.push(line.slice(from, at), { name });
+      from = at + match[0].length;
+    }
+    if (parts.length === 0) {
+      lines.push({ raw: line });
+      continue;
+    }
+    if (LINE_MARKUP.test(parts[0] as string)) parts[0] = "";
+    parts.push(line.slice(from));
+    const refOnly = parts.every(
+      (part) => typeof part !== "string" || part.trim() === "",
+    );
+    lines.push({ parts, refOnly });
+  }
+  return lines;
+}
+
+// codeSpans is where a line's inline code runs: a backtick run up to the
+// next run of the same length.
+function codeSpans(line: string): Array<[number, number]> {
+  const runs = [...line.matchAll(/`+/g)];
+  const spans: Array<[number, number]> = [];
+  for (let i = 0; i < runs.length; i += 1) {
+    const close = runs.findIndex(
+      (run, j) => j > i && run[0].length === runs[i][0].length,
+    );
+    if (close === -1) continue;
+    spans.push([runs[i].index, runs[close].index + runs[close][0].length]);
+    i = close;
+  }
+  return spans;
+}
+
+// splitAtRefs cuts the lines at their placement refs: text pieces as lines,
+// and the artifact block take() hands back for a name. A ref take() refuses
+// is dropped; a line left empty goes with one blank line around it, so the
+// paragraphs around it keep a single break.
+function splitAtRefs<T>(
+  lines: RefLine[],
+  take: (name: string) => T | undefined,
+): Array<string[] | T> {
+  const pieces: Array<string[] | T> = [];
+  let current: string[] = [];
+  let skipBlank = false;
+  for (const line of lines) {
+    if ("raw" in line) {
+      if (!(skipBlank && line.raw.trim() === "")) current.push(line.raw);
+      skipBlank = false;
+      continue;
+    }
+    skipBlank = false;
+    let kept = "";
+    for (const part of line.parts) {
+      if (typeof part === "string") {
+        kept += part;
+        continue;
+      }
+      const artifact = take(part.name);
+      if (artifact === undefined) continue;
+      if (kept.trim() !== "") current.push(kept);
+      pieces.push(current, artifact);
+      current = [];
+      kept = "";
+    }
+    if (line.refOnly) {
+      skipBlank =
+        current.length === 0 || current[current.length - 1].trim() === "";
+      continue;
+    }
+    current.push(kept);
+  }
+  pieces.push(current);
+  return pieces;
+}
+
+// holdBackPartialRef cuts a placement line still being streamed off the end
+// (outside an open code fence): from the last "![" on the last line, unless
+// a whole image starts there. A token later it is a chart, not raw text.
+function holdBackPartialRef(content: string): string {
+  const fences = content.split("\n").filter((line) => FENCE.test(line));
+  if (fences.length % 2 === 1) return content;
+  const start = content.lastIndexOf("![");
+  if (start === -1) return content;
+  const tail = content.slice(start);
+  if (tail.includes("\n") || REF_AT_START.test(tail)) return content;
+  return content.slice(0, start);
 }
 
 // The streaming reducer rebuilds the same ordered block list the backend persists

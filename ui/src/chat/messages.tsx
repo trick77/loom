@@ -42,7 +42,7 @@ import {
   pendingFencedArtifact,
   type DownloadableResponse,
 } from "./artifacts";
-import { artifactsLast, messageBlocks } from "./contentBlocks";
+import { arrangeBlocks, messageBlocks } from "./contentBlocks";
 import { compactURL } from "./compactURL";
 import { PastedTextCard } from "./PastedTextCard";
 import { stripPastedBlocks } from "./pastedText";
@@ -202,23 +202,25 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
   const { t } = useTranslation();
   // Render the assistant message as a single ordered list of content blocks
   // (text / trace / artifact): prose and tool-activity panels in the order they
-  // arrived, artifact cards after them (artifactsLast). The copy/retry/TTS + metrics
-  // footer renders ONCE at the bottom; past trace panels render collapsed and
-  // inactive.
-  const blocks = useMemo(
-    () => artifactsLast(messageBlocks(message)),
+  // arrived, a tool's chart where the answer places it, else after them
+  // (arrangeBlocks). The copy/retry/TTS + metrics footer renders ONCE at the
+  // bottom; past trace panels render collapsed and inactive.
+  const arranged = useMemo(
+    () => arrangeBlocks(messageBlocks(message)),
     [message],
   );
+  // The prose without placement lines: they are cut out of the text blocks.
   const proseText = useMemo(
     () =>
-      blocks
+      arranged
+        .map((item) => item.block)
         .filter(
           (block): block is Extract<ContentBlock, { type: "text" }> =>
             block.type === "text",
         )
         .map((block) => block.content)
         .join("\n\n"),
-    [blocks],
+    [arranged],
   );
   // Build the [n] -> web-source map once per message so inline citation markers in
   // any text block resolve to source pills. Memoized so its identity is stable
@@ -279,10 +281,10 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
     () => ({ selected: selection.numbers, hovered: hoveredSource }),
     [selection.numbers, hoveredSource],
   );
-  const prose = blocks.map((block, index) => {
+  const prose = arranged.map(({ block, key }) => {
     const rendered = (
       <AssistantBlock
-        key={`${message.id}-block-${index}`}
+        key={`${message.id}-block-${key}`}
         block={block}
         sources={sources}
         display={numbering.display}
@@ -291,10 +293,7 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
     // Text blocks are where a marked passage can become an idea (not in a
     // share: no capture there).
     return block.type === "text" && !publicView ? (
-      <div
-        key={`${message.id}-block-${index}`}
-        {...{ [PROSE_ATTR]: message.id }}
-      >
+      <div key={`${message.id}-block-${key}`} {...{ [PROSE_ATTR]: message.id }}>
         {rendered}
       </div>
     ) : (

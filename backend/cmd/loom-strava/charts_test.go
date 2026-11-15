@@ -13,7 +13,7 @@ func TestChartCalls(t *testing.T) {
 	got := chartCalls(7, "Run", files, s, 6)
 	for _, want := range []string{
 		// Drawn first: the tool loop ends at a round without a tool call.
-		"before you answer, draw the charts due with one run_python call, then answer",
+		"before you answer, draw the charts due with one run_python call.",
 		`loomcharts.load_profile("in/strava_7_baseline.csv", "out/load_profile_6w_7.png", weeks=6, lang=L)`,
 		`loomcharts.hr_profile("in/strava_7_streams.csv", "out/hr_profile_7.png", lang=L)`,
 		`loomcharts.split_variation("in/strava_7_streams.csv", "out/split_variation_7.png", metric="hr", sport="Run", lang=L)`,
@@ -42,5 +42,20 @@ func TestChartCalls(t *testing.T) {
 	}
 	if got := chartCalls(7, "Run", nil, s, 6); got != "" {
 		t.Errorf("no files: %q", got)
+	}
+}
+
+// The answer places each chart where it discusses it (the UI shows it
+// there); none of the chart prompts still forbids that or says "below".
+func TestChartPromptsTeachPlacement(t *testing.T) {
+	files := []mcpserver.File{{Name: "strava_7_streams.csv"}}
+	for name, prompt := range map[string]string{
+		"calls": chartCalls(7, "Run", files, series{hr: []float64{140}}, 6),
+		"first": chartFirstEnd,
+	} {
+		if !strings.Contains(prompt, chartPlace) || strings.Contains(prompt, "link or embed") ||
+			strings.Contains(prompt, "below your answer") {
+			t.Errorf("%s: %q", name, prompt)
+		}
 	}
 }

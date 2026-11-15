@@ -6,7 +6,7 @@ import {
   appendReasoningDeltaBlock,
   appendTextDelta,
   applyReasoningTitleBlock,
-  artifactsLast,
+  arrangeBlocks,
   blocksFromLegacyMessage,
   graftStreamedBlocks,
   messageBlocks,
@@ -34,7 +34,20 @@ function baseMessage(overrides: Partial<Message>): Message {
   };
 }
 
-describe("artifactsLast", () => {
+describe("arrangeBlocks", () => {
+  const arranged = (blocks: ContentBlock[], streaming = false) =>
+    arrangeBlocks(blocks, streaming).map((item) => item.block);
+  const hr: Artifact = {
+    ...artifact,
+    id: "art-hr",
+    displayFilename: "hr_profile_7.png",
+  };
+  const splits: Artifact = {
+    ...artifact,
+    id: "art-sp",
+    displayFilename: "split_variation_7.png",
+  };
+
   test("moves charts drawn before the answer below it, in their order", () => {
     const second: Artifact = { ...artifact, id: "art-2" };
     const blocks: ContentBlock[] = [
@@ -43,7 +56,7 @@ describe("artifactsLast", () => {
       { type: "artifact", artifact: second },
       { type: "text", content: "The answer." },
     ];
-    expect(artifactsLast(blocks)).toEqual([
+    expect(arranged(blocks)).toEqual([
       { type: "trace", events: [] },
       { type: "text", content: "The answer." },
       { type: "artifact", artifact },
@@ -57,15 +70,179 @@ describe("artifactsLast", () => {
       { type: "artifact", artifact: picture },
       { type: "text", content: "Here it is." },
     ];
-    expect(artifactsLast(blocks)).toBe(blocks);
+    expect(arranged(blocks)).toEqual(blocks);
   });
 
-  test("returns the same list when nothing moves", () => {
-    const blocks: ContentBlock[] = [{ type: "text", content: "Hi." }];
-    expect(artifactsLast(blocks)).toBe(blocks);
+  test("places each chart where the answer's line names it", () => {
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: hr },
+      { type: "artifact", artifact: splits },
+      {
+        type: "text",
+        content:
+          "As the heart rate shows:\n\n![Heart rate](hr_profile_7.png)\n\nThe splits:\n![Splits](<split_variation_7.png>)\nDone.",
+      },
+    ];
+    expect(arranged(blocks)).toEqual([
+      { type: "text", content: "As the heart rate shows:" },
+      { type: "artifact", artifact: hr },
+      { type: "text", content: "The splits:" },
+      { type: "artifact", artifact: splits },
+      { type: "text", content: "Done." },
+    ]);
+  });
+
+  test("a chart placed mid-sentence breaks the paragraph around it", () => {
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: hr },
+      { type: "text", content: "See ![HR](hr_profile_7.png) here." },
+    ];
+    expect(arranged(blocks)).toEqual([
+      { type: "text", content: "See " },
+      { type: "artifact", artifact: hr },
+      { type: "text", content: " here." },
+    ]);
+  });
+
+  test("an unplaced chart still trails the answer", () => {
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: hr },
+      { type: "artifact", artifact: splits },
+      { type: "text", content: "Heart rate:\n\n![HR](hr_profile_7.png)" },
+    ];
+    expect(arranged(blocks)).toEqual([
+      { type: "text", content: "Heart rate:" },
+      { type: "artifact", artifact: hr },
+      { type: "artifact", artifact: splits },
+    ]);
+  });
+
+  test("a second line for the same chart and an unknown name are dropped", () => {
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: hr },
+      {
+        type: "text",
+        content:
+          "A\n\n![HR](hr_profile_7.png)\n\nB\n\n![again](hr_profile_7.png)\n\n![old](load_profile_6w_3.png)\n\nC",
+      },
+    ];
+    expect(arranged(blocks)).toEqual([
+      { type: "text", content: "A" },
+      { type: "artifact", artifact: hr },
+      { type: "text", content: "B\n\nC" },
+    ]);
+  });
+
+  test("reads brackets in the caption, a title and an out/ path", () => {
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: hr },
+      { type: "artifact", artifact: splits },
+      {
+        type: "text",
+        content:
+          'A\n\n![Heart rate [bpm]](out/hr_profile_7.png "Zones")\n\nB\n\n![Splits](./out/split_variation_7.png)',
+      },
+    ];
+    expect(arranged(blocks)).toEqual([
+      { type: "text", content: "A" },
+      { type: "artifact", artifact: hr },
+      { type: "text", content: "B" },
+      { type: "artifact", artifact: splits },
+    ]);
+  });
+
+  test("a placement line in a list or quote takes its marker along", () => {
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: hr },
+      {
+        type: "text",
+        content: "- one\n- ![HR](hr_profile_7.png)\n- two\n\n> ![x](gone.png)",
+      },
+    ];
+    expect(arranged(blocks)).toEqual([
+      { type: "text", content: "- one" },
+      { type: "artifact", artifact: hr },
+      { type: "text", content: "- two" },
+    ]);
+  });
+
+  test("leaves inline code, indented code and tables alone", () => {
+    const content =
+      "Write `![alt](photo.jpg)` in your README.\n\n    ![HR](hr_profile_7.png)\n\n| a |\n| --- |\n| ![HR](hr_profile_7.png) |";
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: hr },
+      { type: "text", content },
+    ];
+    expect(arranged(blocks)).toEqual([
+      { type: "text", content },
+      { type: "artifact", artifact: hr },
+    ]);
+  });
+
+  test("leaves real images and code alone", () => {
+    const content =
+      "![web](https://example.com/a.png) and ![rel](/api/artifacts/x/download)\n\n```md\n![HR](hr_profile_7.png)\n```";
+    const blocks: ContentBlock[] = [
+      { type: "artifact", artifact: hr },
+      { type: "text", content },
+    ];
+    expect(arranged(blocks)).toEqual([
+      { type: "text", content },
+      { type: "artifact", artifact: hr },
+    ]);
+  });
+
+  test("while streaming, hides a placement line still being written", () => {
+    const text = (content: string): ContentBlock[] => [
+      { type: "artifact", artifact: hr },
+      { type: "text", content },
+    ];
+    for (const partial of [
+      "![Hea",
+      "![Heart rate [bpm]",
+      "![Heart rate](",
+      "![HR (bpm)](hr_pro",
+    ]) {
+      expect(arranged(text(`Look:\n\n${partial}`), true)).toEqual([
+        { type: "text", content: "Look:" },
+        { type: "artifact", artifact: hr },
+      ]);
+    }
+    // A sentence's own "!" is not a placement line in the making.
+    expect(arranged(text("Great!"), true)[0]).toEqual({
+      type: "text",
+      content: "Great!",
+    });
+  });
+
+  test("keys stay put when a placement line completes mid-stream", () => {
+    const before = arrangeBlocks(
+      [
+        { type: "trace", events: [] },
+        { type: "artifact", artifact: hr },
+        { type: "text", content: "Look:\n\n![HR](hr_pro" },
+      ],
+      true,
+    );
+    const after = arrangeBlocks(
+      [
+        { type: "trace", events: [] },
+        { type: "artifact", artifact: hr },
+        { type: "text", content: "Look:\n\n![HR](hr_profile_7.png)\n\nMore" },
+      ],
+      true,
+    );
+    expect(before.map((item) => item.key)).toEqual(["0", "2", "a:art-hr"]);
+    expect(after.map((item) => item.key)).toEqual([
+      "0",
+      "2",
+      "a:art-hr",
+      "2.1",
+    ]);
+    // The trace keeps its index in the stream: the live panel finds it.
+    expect(after[0].index).toBe(0);
   });
 });
-
 describe("streaming reducer", () => {
   test("interleaves reasoning, prose, tool and artifact into chronological blocks", () => {
     let blocks: ContentBlock[] = [];
