@@ -285,7 +285,9 @@ test("outlook: the days after the shown one, as columns", () => {
   // The range sits on the scale shared by all days (-1° to 12°).
   const range = within(days[0]).getByTestId("day-range-bar");
   expect(range.style.top).toBe("0%");
-  expect(range.style.bottom).toBe(`${(5 / 13) * 100}%`);
+  // jsdom 31 rounds a percentage to 6 significant digits, as browsers do.
+  expect(range.style.bottom).toMatch(/%$/);
+  expect(parseFloat(range.style.bottom)).toBeCloseTo((5 / 13) * 100, 3);
 });
 
 test("air: the index leads, its curve, the pollen by load class", () => {
@@ -440,7 +442,7 @@ test("a click on a tile turns it on, from the last on to the first", () => {
   // Once it stands, the row settles back at the start unseen.
   fireEvent.transitionEnd(row(right()));
   expect(row(right())).not.toHaveClass("transition-transform");
-  expect(row(right()).style.transform).toBe("translateX(-0%)");
+  expect(row(right()).style.transform).toBe("translateX(0%)");
   expect(first(right()).style.transform).toBe("");
   expect(cardName(right())).toHaveTextContent("Sun");
   fireEvent.click(track(right()));
@@ -466,7 +468,7 @@ test("a step back to the first card slides back; the wrap slides on", () => {
   next();
   fireEvent.click(screen.getByRole("button", { name: "Now" }));
   expect(row()).toHaveClass("transition-transform");
-  expect(row().style.transform).toBe("translateX(-0%)");
+  expect(row().style.transform).toBe("translateX(0%)");
   expect(first().style.transform).toBe("");
   // A click on the track from the last is the wrap.
   next();
