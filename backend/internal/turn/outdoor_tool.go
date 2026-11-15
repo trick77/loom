@@ -129,11 +129,11 @@ const outdoorGuide = "Times are the place's. Give the first window as the answer
 const (
 	outdoorDayChart = " Before you answer, draw the day with run_python, this code exactly: import loomcharts; " +
 		`loomcharts.outdoor_day("in/outdoor_hours.csv", "out/outdoor_day.png", windows="in/outdoor_windows.csv", ` +
-		`limits="in/outdoor_limits.csv")` + ". Then answer; the chart is shown to the user: refer to it, never " +
-		"link or embed it. Asked to compare today and tomorrow, loomcharts.outdoor_compare takes the same files."
+		`limits="in/outdoor_limits.csv")` + ". " + chartPlacePointer +
+		" Asked to compare today and tomorrow, loomcharts.outdoor_compare takes the same files."
 	outdoorWeekChart = " Before you answer, draw the week with run_python, this code exactly: import loomcharts; " +
 		`loomcharts.outdoor_week("in/outdoor_days.csv", "out/outdoor_week.png", limits="in/outdoor_limits.csv")` +
-		". Then answer; the chart is shown to the user: refer to it, never link or embed it."
+		". " + chartPlacePointer
 	// outdoorChartsOnRequest: nothing to draw unasked (no window left).
 	outdoorChartsOnRequest = " The chart files: loomcharts.outdoor_day (a day's hours, windows, wind and cold), " +
 		"outdoor_compare (today against tomorrow), outdoor_week (the week); draw one when asked."

@@ -176,7 +176,8 @@ const scheduledSandboxNote = "That step runs no tools: once you have the data, d
 // scheduledChartAnswerNote is the answer step's share of the run_python
 // guidance, which stays with the research rounds: their chart is already
 // shown, and the step must not promise one it cannot draw.
-const scheduledChartAnswerNote = "A chart drawn while researching is shown to the user automatically: refer to it, never link or embed it, show no code and don't mention the sandbox. Never promise a chart the research did not draw."
+const scheduledChartAnswerNote = "A chart drawn while researching is shown to the user automatically. " + chartPlaceRule +
+	" Show no code and don't mention the sandbox. Never promise a chart the research did not draw."
 
 // researchNote is the research-only note of a scheduled run's tool rounds;
 // sandbox is whether they offer run_python.
@@ -305,19 +306,35 @@ func (t *Run) notesBudgetTokens() int {
 // ![alt][ref].
 var markdownImage = regexp.MustCompile(`!\[([^\]]*)\](\([^)]*\)|\[[^\]]*\])`)
 
-// dropImages leaves no markdown image: a plain one keeps its alt text, and
-// any other image marker (balanced brackets in the alt, a shortcut
-// reference) loses its "!" and is left a link, which needs a click. Every
-// image starts with "![", so none is left whatever the renderer makes of the
-// rest; code blocks are not spared, as a guess at where one ends can be
-// wrong. Removing one can close up a new one (![![x](y)](z), !![), so each
-// pass repeats until none is left.
+// chartImage is a chart's placement line (chartPlaceRule): a PNG the sandbox
+// stored, named bare in loom-sandbox's safeName shape. No scheme, path or
+// query: nothing loads from it, the UI shows the stored artifact instead.
+var chartImage = regexp.MustCompile(`!\[[^\[\]\n]*\]\([A-Za-z0-9][A-Za-z0-9._-]{0,95}\.png\)`)
+
+// dropImages leaves no markdown image but a chart's placement line: a plain
+// one keeps its alt text, and any other image marker (balanced brackets in
+// the alt, a shortcut reference) loses its "!" and is left a link, which
+// needs a click. Every image starts with "![", so none is left whatever the
+// renderer makes of the rest; code blocks are not spared, as a guess at
+// where one ends can be wrong. Removing one can close up a new one
+// (![![x](y)](z), !![), so each pass repeats until none is left. Placement
+// lines sit out the passes as NUL stand-ins (a NUL of the text's own is
+// dropped first), so no pass can join them into an image with a URL.
 func dropImages(s string) string {
+	s = strings.ReplaceAll(s, "\x00", "")
+	var charts []string
+	s = chartImage.ReplaceAllStringFunc(s, func(m string) string {
+		charts = append(charts, m)
+		return "\x00"
+	})
 	for markdownImage.MatchString(s) {
 		s = markdownImage.ReplaceAllString(s, "$1")
 	}
 	for strings.Contains(s, "![") {
 		s = strings.ReplaceAll(s, "![", "[")
+	}
+	for _, chart := range charts {
+		s = strings.Replace(s, "\x00", chart, 1)
 	}
 	return s
 }

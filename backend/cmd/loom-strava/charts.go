@@ -15,8 +15,12 @@ import (
 const (
 	chartFirst = "chart: before you answer, draw it with run_python, this code exactly, L set to \"de\" when you " +
 		"answer in German, else left \"en\": import loomcharts; L = \"en\"; "
-	chartFirstEnd = "Then answer; the chart shows below your answer: refer to it, never link or embed it. " +
-		chartShown + "\n"
+	chartFirstEnd = chartPlace + " " + chartShown + "\n"
+	// chartPlace: loom shows a chart where the answer places it, with the
+	// line its run_python result gives (the only place that knows the stored
+	// name); loom's run_python guidance carries the full rule, so this only
+	// points at it.
+	chartPlace = "Then answer, placing each chart with the line run_python's result gives."
 	// chartShown: a follow-up question redrew every chart; an explicit ask or
 	// new numbers (a new run in the window) still draw it.
 	chartShown = "A chart this conversation already shows (the same out/ name) is not drawn again unless the user " +
@@ -31,8 +35,9 @@ const (
 //
 // Drawn before the answer: the tool loop ends at a round without a tool call,
 // so "answer, then draw" lost the charts or, after an empty last round, wrote
-// the answer twice; the UI shows images below the answer (artifactsLast). The
-// user, on what they saw: a follow-up question redrew all four (each call
+// the answer twice. The answer then places each chart where it reads it
+// (chartPlace); the user: "charts are after" first, then "in the answer where
+// it refers to them". The user, on what they saw: a follow-up question redrew all four (each call
 // returns the code again: which to draw is the question's); fitness and
 // fatigue every time was noise ("unless a) user asks for it b) it's relevant
 // for an ask"). L is the one thing the model sets: the chart labels follow
@@ -73,8 +78,7 @@ func chartCalls(id int64, sport string, files []mcpserver.File, s series, weeks 
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("charts: before you answer, draw the charts due with one run_python call, then answer (they show " +
-		"below your answer). The code: import loomcharts; L = \"en\" (\"de\" when you answer in German); then the " +
+	b.WriteString("charts: before you answer, draw the charts due with one run_python call. The code: import loomcharts; L = \"en\" (\"de\" when you answer in German); then the " +
 		"calls, each exactly as here:\n")
 	for _, c := range whole {
 		fmt.Fprintf(&b, "- %s  (%s)\n", c.call, c.when)
@@ -97,6 +101,6 @@ func chartCalls(id int64, sport string, files []mcpserver.File, s series, weeks 
 	} else {
 		b.WriteString(" In an answer about pain or an injury draw none.")
 	}
-	b.WriteString(" Refer to the charts, never link or embed them.\n")
+	b.WriteString(" " + chartPlace + "\n")
 	return b.String()
 }

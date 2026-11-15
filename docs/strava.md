@@ -49,9 +49,10 @@ a few percent apart drew a perfect hexagon on the average's ring), `hr_profile` 
 distribution, zones green to red) and `split_variation`. `fitness_fatigue` only when asked or relevant (user: "not
 that interesting"); a pain or injury answer draws only it. A narrower question draws the one chart for it, and a chart
 the thread already shows is not drawn again unless asked or its numbers changed (each analysis call returns the code
-anew; the user saw a follow-up question redraw all four). The model draws, then answers; the UI shows a message's
-tool files below its text, an image model's picture stays where it came (charts
-leading the answer was the user's complaint). Not "answer, then draw": loom's tool loop ends at a round without a tool
+anew; the user saw a follow-up question redraw all four). The model draws, then answers, placing each chart where it
+discusses it with the line loom's `run_python` result gives (`![caption](<stored name>)`, own line); the UI shows the
+chart there, one left unplaced below the text (charts leading the answer was the user's first complaint, all of them
+below it the second). Not "answer, then draw": loom's tool loop ends at a round without a tool
 call, so the charts were lost, or an empty last round brought a second, forced answer. The sidecar writes the exact
 `run_python` code, naming only the files it attached: loomcharts reads a file at once, and one missing name fails the
 whole job. Images are `out/<chart>_<id>.png` (with the window, sport or unit where a call takes one), so two analyses

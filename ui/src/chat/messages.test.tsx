@@ -621,3 +621,42 @@ test("a shared message shows no chip to an idea", () => {
   render(<MessageBubble message={message} retryMessage={null} publicView />);
   expect(screen.queryByRole("button", { name: /From idea/ })).toBeNull();
 });
+
+test("shows a chart where the answer places it, an unplaced one below", () => {
+  const chart = (id: string, name: string) => ({
+    id,
+    displayFilename: name,
+    mimeType: "image/png",
+    sizeBytes: 2048,
+    downloadUrl: `/api/artifacts/${id}/download`,
+    width: 1600,
+    height: 1000,
+  });
+  const message: Message = {
+    id: "m1",
+    threadId: "t1",
+    role: "assistant",
+    content: "",
+    createdAt: "2026-06-14T00:00:00Z",
+    contentBlocks: [
+      { type: "artifact", artifact: chart("a1", "hr_profile_7.png") },
+      { type: "artifact", artifact: chart("a2", "fitness_fatigue_7.png") },
+      {
+        type: "text",
+        content:
+          "Heart rate first.\n\n![Heart rate](hr_profile_7.png)\n\nThen the splits.",
+      },
+    ],
+  };
+  render(<MessageBubble message={message} retryMessage={null} publicView />);
+  const first = screen.getByText("Heart rate first.");
+  const placed = screen.getByText("hr_profile_7.png");
+  const then = screen.getByText("Then the splits.");
+  const below = screen.getByText("fitness_fatigue_7.png");
+  const follows = (a: Element, b: Element) =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  expect(follows(first, placed)).toBe(true);
+  expect(follows(placed, then)).toBe(true);
+  expect(follows(then, below)).toBe(true);
+  expect(screen.queryByText(/!\[Heart rate\]/)).toBeNull();
+});

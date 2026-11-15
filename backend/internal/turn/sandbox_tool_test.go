@@ -215,6 +215,44 @@ func TestFormatSandboxResultPutsStdoutLast(t *testing.T) {
 	}
 }
 
+// An image's result line hands the model the exact line that places it in
+// the answer, with the stored name (a collision suffix included). Other
+// files get none.
+func TestFormatSandboxResultGivesImagePlacementLine(t *testing.T) {
+	out := formatSandboxResult(sandbox.Result{}, []artifact.Response{
+		{DisplayFilename: "hr_profile_7-2.png", MIMEType: "image/png", SizeBytes: 3},
+		{DisplayFilename: "top.csv", MIMEType: "text/csv", SizeBytes: 3},
+	}, nil, time.Minute)
+	for _, want := range []string{
+		"created artifact hr_profile_7-2.png (3 bytes); place it in your answer with the line: ![<caption>](hr_profile_7-2.png)\n",
+		"created artifact top.csv (3 bytes), shown to the user\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in\n%s", want, out)
+		}
+	}
+}
+
+// Every prompt that has a chart drawn teaches the same placement and no
+// longer forbids it: the UI shows a placed chart where its line stands.
+func TestChartPromptsTeachPlacement(t *testing.T) {
+	for name, prompt := range map[string]string{
+		"sandbox":   sandboxGuidancePrompt,
+		"scheduled": scheduledChartAnswerNote,
+	} {
+		if strings.Contains(prompt, "link or embed") || !strings.Contains(prompt, chartPlaceRule) {
+			t.Fatalf("%s prompt must teach placing the chart: %q", name, prompt)
+		}
+	}
+	// A tool's chart line points at the rule the run_python guidance carries.
+	for name, prompt := range map[string]string{"day": outdoorDayChart, "week": outdoorWeekChart} {
+		if strings.Contains(prompt, "link or embed") || strings.Contains(prompt, chartPlaceRule) ||
+			!strings.Contains(prompt, chartPlacePointer) {
+			t.Fatalf("%s prompt must point at the placement rule: %q", name, prompt)
+		}
+	}
+}
+
 // A file attached this turn is named even when the stable list is full and
 // the file lies outside the scan (an older project file).
 func TestSandboxGuidanceNamesTheTurnsAttachment(t *testing.T) {
@@ -323,6 +361,11 @@ func TestRunSandboxToolPassesInputsAndPersistsOutputs(t *testing.T) {
 	// edge.png, exactly at the limit, is kept.
 	if len(created) != 3 || created[0].DisplayFilename != "chart.png" || created[1].DisplayFilename != "edge.png" || created[2].DisplayFilename != "top.csv" {
 		t.Fatalf("created %+v", created)
+	}
+	// The size reaches the card: a chart placed in the prose reserves its
+	// box before it loads, the text below does not jump.
+	if created[0].Width != 4 || created[0].Height != 4 || created[2].Width != 0 {
+		t.Fatalf("dimensions %+v", created)
 	}
 	for _, want := range []string{"exit_code: 0", "Top: A 10", "created artifact chart.png", "created artifact top.csv",
 		"fake.png: not a valid PNG", "x.svg: file type not allowed", "link.txt: not a regular file",

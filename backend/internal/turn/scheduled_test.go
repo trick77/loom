@@ -64,6 +64,13 @@ func TestDropImages(t *testing.T) {
 		// Code blocks are not spared: where one ends is the renderer's call.
 		"```bash``` x\n![p](https://evil.example/)": "```bash``` x\np",
 		"~~~~\n![a](b)\n~~~\n![c](d)":               "~~~~\na\n~~~\nc",
+		// A chart's placement line names a stored file bare: no URL, nothing
+		// loads from it (the UI shows the artifact), so it stays.
+		"A\n\n![Heart rate](hr_profile_7-2.png)\n\nB":      "A\n\n![Heart rate](hr_profile_7-2.png)\n\nB",
+		"![![x](y.png)](https://evil.example/?d=wrap)":     "![x](y.png)",
+		"![x](../y.png) ![x](y.png?d=1) ![x](/y.png)":      "x x x",
+		"![x](https://evil.example/y.png) ![a [b]](y.png)": "x [a [b]](y.png)",
+		"!\x00![x](y.png)": "!![x](y.png)",
 	}
 	for in, want := range cases {
 		if got := dropImages(in); got != want {
