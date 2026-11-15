@@ -136,34 +136,31 @@ test("desktop: the pill follows its selection when the transcript scrolls", () =
   expect(pill()).toHaveStyle({ top: "84px" });
 });
 
-test("touch: a docked bar once the selection rests and no finger is down; it survives its own tap", () => {
+test("touch: a docked bar once the selection rests; it survives its own tap", () => {
   setHover(false);
   renderThread();
-  fireEvent.touchStart(document);
   selectProse();
   fireEvent(document, new Event("selectionchange"));
-  act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
-  // A handle still held.
-  expect(pill()).toBeNull();
-  fireEvent.touchEnd(document);
   act(() => vi.advanceTimersByTime(SETTLE_MS - 50));
   expect(pill()).toBeNull();
   act(() => vi.advanceTimersByTime(100));
   const bar = pill()!;
   // Thumb-sized.
   expect(bar.className).toContain("h-11");
-  // A handle dragged again: gone at once.
-  fireEvent.touchStart(document);
-  expect(pill()).toBeNull();
-  fireEvent.touchEnd(document);
-  act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
+  // A handle dragged again: gone at once, away while it keeps moving, back
+  // once it rests.
+  for (let move = 0; move < 4; move++) {
+    fireEvent(document, new Event("selectionchange"));
+    expect(pill()).toBeNull();
+    act(() => vi.advanceTimersByTime(SETTLE_MS - 100));
+    expect(pill()).toBeNull();
+  }
+  act(() => vi.advanceTimersByTime(110));
+  expect(pill()).not.toBeNull();
   // The tap drops the selection on its way: the bar holds what it took.
-  fireEvent.touchStart(pill()!);
   fireEvent.pointerDown(pill()!);
   document.getSelection()!.removeAllRanges();
   fireEvent(document, new Event("selectionchange"));
-  // The tap's own touchend arms a settle; the open capture drops it.
-  fireEvent.touchEnd(pill()!);
   fireEvent.click(pill()!);
   expect(screen.getByTestId("open")).toHaveTextContent(
     "Vibe Kanban is a board for",
@@ -173,6 +170,23 @@ test("touch: a docked bar once the selection rests and no finger is down; it sur
   fireEvent(document, new Event("selectionchange"));
   act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
   expect(pill()).toBeNull();
+});
+
+test("touch: a handle drag whose touch never ends brings the bar back once it rests", () => {
+  setHover(false);
+  renderThread();
+  selectProse();
+  fireEvent(document, new Event("selectionchange"));
+  act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
+  expect(pill()).not.toBeNull();
+  // iOS hands the touch to its native handle drag: no touchend, no
+  // touchcancel ever reaches the page.
+  fireEvent.touchStart(document);
+  selectProse();
+  fireEvent(document, new Event("selectionchange"));
+  expect(pill()).toBeNull();
+  act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
+  expect(pill()).not.toBeNull();
 });
 
 test("touch: no bar while typing", () => {

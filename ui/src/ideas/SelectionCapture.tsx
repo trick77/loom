@@ -22,7 +22,8 @@ import { capExcerpt } from "./ideaText";
 import { selectionInAnswer, selectionTarget } from "./selectionTarget";
 
 // SETTLE_MS is how long a touch selection must rest before the bar shows:
-// it does not flicker while a handle is dragged.
+// every move of a handle restarts it, so the bar stays away while a handle
+// moves (a handle held still that long brings it, finger down or not).
 export const SETTLE_MS = 350;
 
 // The pill's height and gap above the selection, and the room it needs
@@ -119,7 +120,6 @@ export function SelectionCapture() {
   const [shown, setShown] = useState<Shown | null>(null);
   // A press on the pill or bar: the selectionchange it may cause keeps it.
   const pressing = useRef(false);
-  const touching = useRef(false);
   const settle = useRef<number | undefined>(undefined);
   // The passage Escape turned down: not offered again until the selection
   // changes (the Escape's own keyup would bring it right back).
@@ -172,12 +172,7 @@ export function SelectionCapture() {
       window.clearTimeout(settle.current);
       settle.current = window.setTimeout(() => {
         // Not over the open sheet (modal on touch), not while typing.
-        if (
-          touching.current ||
-          keyboardUp() ||
-          captureRef.current?.current() != null
-        )
-          return;
+        if (keyboardUp() || captureRef.current?.current() != null) return;
         const request = offered();
         // Taken now, while the selection is there: a tap may collapse it
         // before its handler runs.
@@ -201,7 +196,10 @@ export function SelectionCapture() {
         }
         return;
       }
-      // A handle moves: gone at once, back once it rests.
+      // A handle moves: gone at once, back once it rests. Only the
+      // selection counts, never a touch event: iOS hands a touch on a
+      // handle to its native drag and the page never sees it end (the bar
+      // stayed gone for good).
       setShown(null);
       showBar();
     };
@@ -209,16 +207,6 @@ export function SelectionCapture() {
     // clicked (dragged away).
     const onPointerDown = (event: PointerEvent) => {
       if (!ownTarget(event)) pressing.current = false;
-    };
-    const onTouchStart = (event: TouchEvent) => {
-      if (ownTarget(event)) return;
-      touching.current = true;
-      window.clearTimeout(settle.current);
-      setShown(null);
-    };
-    const onTouchEnd = () => {
-      touching.current = false;
-      if (!canHover()) showBar();
     };
     const onFocusIn = (event: FocusEvent) => {
       if (typing(event.target as Element | null)) hide();
@@ -245,9 +233,6 @@ export function SelectionCapture() {
     document.addEventListener("mouseup", showPill);
     document.addEventListener("keyup", showPill);
     document.addEventListener("selectionchange", onSelectionChange);
-    document.addEventListener("touchstart", onTouchStart, { passive: true });
-    document.addEventListener("touchend", onTouchEnd, { passive: true });
-    document.addEventListener("touchcancel", onTouchEnd, { passive: true });
     document.addEventListener("focusin", onFocusIn);
     window.addEventListener("scroll", follow, true);
     window.addEventListener("resize", follow);
@@ -259,9 +244,6 @@ export function SelectionCapture() {
       document.removeEventListener("mouseup", showPill);
       document.removeEventListener("keyup", showPill);
       document.removeEventListener("selectionchange", onSelectionChange);
-      document.removeEventListener("touchstart", onTouchStart);
-      document.removeEventListener("touchend", onTouchEnd);
-      document.removeEventListener("touchcancel", onTouchEnd);
       document.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("scroll", follow, true);
       window.removeEventListener("resize", follow);
@@ -274,8 +256,8 @@ export function SelectionCapture() {
     // A capture being saved stays until its answer; the offer stays too,
     // for a tap once it is saved.
     if (captureSaving()) return;
-    // hide also drops a settle the tap's own touchend armed: the bar must
-    // not come back over the open sheet.
+    // hide also drops a settle still pending: the bar must not come back
+    // over the open sheet.
     hide();
     capture.open(shown.request);
   };
