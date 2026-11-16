@@ -413,6 +413,36 @@ func listThreadsOptionsFromRequest(r *http.Request) (chat.ListThreadsOptions, er
 	return opts, nil
 }
 
+// checkChatSlot answers 400 for a slot this deployment did not configure; ""
+// names none and passes. False when it wrote the response.
+func (s *server) checkChatSlot(w http.ResponseWriter, slot string) bool {
+	if slot != "" && !s.hasChatSlot(slot) {
+		httpx.WriteError(w, http.StatusBadRequest, "unknown chat slot")
+		return false
+	}
+	return true
+}
+
+// saveSendChatSlot saves the slot a send names (checked by checkChatSlot)
+// onto its thread before the turn reads it. The composer's switch is saved on
+// its own too (PATCH), but a send right after it raced that save and ran on
+// the old model; carried on the send, the slot the user saw is the one that
+// answers, also over a stale pick of another tab. "" keeps the thread's slot.
+// Called only once the send is accepted, so a rejected one leaves the slot.
+func (s *server) saveSendChatSlot(ctx context.Context, userID string, thread chat.Thread, slot string) (chat.Thread, error) {
+	if slot == "" || slot == thread.ChatSlot {
+		return thread, nil
+	}
+	updated, found, err := s.thread.UpdateThread(ctx, userID, thread.ID, chat.UpdateThreadInput{ChatSlot: &slot})
+	if err != nil {
+		return thread, err
+	}
+	if !found {
+		return thread, chat.ErrThreadNotFound
+	}
+	return updated, nil
+}
+
 // hasChatSlot reports whether key names a slot this deployment configured.
 // The client names a slot, never a model id, so it reaches only those.
 func (s *server) hasChatSlot(key string) bool {

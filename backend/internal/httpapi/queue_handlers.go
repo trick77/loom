@@ -18,6 +18,11 @@ type queueMessageRequest struct {
 	Content         string                   `json:"content"`
 	PastedTexts     []chat.MessagePastedText `json:"pastedTexts"`
 	ClientMessageID string                   `json:"clientMessageId"`
+	// ChatSlot is the slot the composer showed, saved like a send's
+	// (applySendChatSlot): the follow-up turn that answers the message reads
+	// the thread fresh. A tool boundary picking it up mid-turn stays on that
+	// turn's model.
+	ChatSlot string `json:"chatSlot,omitempty"`
 }
 
 // handleQueueMessage queues a message behind the thread's running turn, which
@@ -46,13 +51,14 @@ func (s *server) handleQueueMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	threadID := r.PathValue("threadID")
-	if thread, found, err := s.thread.GetThread(r.Context(), user.ID, threadID); err != nil {
+	thread, found, err := s.thread.GetThread(r.Context(), user.ID, threadID)
+	if err != nil {
 		serverError(w, r, err, "get thread failed")
 		return
 	} else if !found {
 		writeNotFound(w)
 		return
-	} else if s.rejectWhileRunning(w, r, user.ID, thread) {
+	} else if s.rejectWhileRunning(w, r, user.ID, thread) || !s.checkChatSlot(w, body.ChatSlot) {
 		return
 	}
 	user.Timezone = s.rememberTimezone(r.Context(), user, r)
@@ -60,8 +66,17 @@ func (s *server) handleQueueMessage(w http.ResponseWriter, r *http.Request) {
 	streamCtx, cancelStream := context.WithCancelCause(liveCtx)
 	hub := newTurnHub()
 	insert := func() error {
-		_, err := s.thread.EnqueueMessage(r.Context(), user.ID, threadID, body.Content, turn.MarshalPastedTexts(body.PastedTexts), body.ClientMessageID)
-		return err
+		if _, err := s.thread.EnqueueMessage(r.Context(), user.ID, threadID, body.Content, turn.MarshalPastedTexts(body.PastedTexts), body.ClientMessageID); err != nil {
+			return err
+		}
+		// Saved once the message is queued, so a failed enqueue leaves the
+		// slot; the follow-up turn answering it reads the thread fresh. A
+		// failed save only warns: the message is queued, and failing here
+		// would hand the draft back for a second send.
+		if _, err := s.saveSendChatSlot(r.Context(), user.ID, thread, body.ChatSlot); err != nil {
+			slog.Warn("save queued message chat slot failed", "thread_id", threadID, "err", err)
+		}
+		return nil
 	}
 	entry, unregister, err := s.activeStreams.enqueue(user.ID, threadID, insert, cancelStream, hub)
 	if err != nil {

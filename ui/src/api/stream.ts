@@ -99,6 +99,10 @@ export async function streamMessage(
     pastedTexts?: MessagePastedText[];
     // The client's id for this send: stored with the message, named by a stop.
     clientMessageId?: string;
+    // The slot the composer shows. The server saves it before the turn
+    // reads the thread, so a send right after a switch does not race the
+    // switch's own save.
+    chatSlot?: string;
   } = {},
 ): Promise<void> {
   const requestBody: {
@@ -107,9 +111,13 @@ export async function streamMessage(
     imageAttachmentIds?: string[];
     pastedTexts?: MessagePastedText[];
     clientMessageId?: string;
+    chatSlot?: string;
   } = { content };
   if (opts.clientMessageId) {
     requestBody.clientMessageId = opts.clientMessageId;
+  }
+  if (opts.chatSlot) {
+    requestBody.chatSlot = opts.chatSlot;
   }
   if (opts.documentAttachmentIds && opts.documentAttachmentIds.length > 0) {
     requestBody.documentAttachmentIds = opts.documentAttachmentIds;
