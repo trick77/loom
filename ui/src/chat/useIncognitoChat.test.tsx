@@ -107,7 +107,10 @@ test("a send replays the prior transcript and appends both turns", async () => {
   const { hook, runs } = setup();
   api.streamIncognitoMessage.mockImplementation(
     async (content: string, _history: unknown, handlers: StreamHandlers) => {
-      handlers.onAssistantMessage(assistantMessage(`re: ${content}`));
+      handlers.onAssistantMessage({
+        ...assistantMessage(`re: ${content}`),
+        model: "fast",
+      });
     },
   );
   act(() => hook.result.current.chat.enterIncognito());
@@ -115,11 +118,13 @@ test("a send replays the prior transcript and appends both turns", async () => {
   await act(() => hook.result.current.chat.sendIncognitoContent("one", true));
   await act(() => hook.result.current.chat.sendIncognitoContent("two", true));
 
+  // An answer carries its model back, so a switched model is told which
+  // answers are not its own.
   expect(api.streamIncognitoMessage).toHaveBeenLastCalledWith(
     "two",
     [
       { role: "user", content: "one" },
-      { role: "assistant", content: "re: one" },
+      { role: "assistant", content: "re: one", model: "fast" },
     ],
     expect.anything(),
     expect.any(AbortSignal),

@@ -753,7 +753,7 @@ func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reaso
 			return ctx.Err()
 		}
 	}
-	return t.e.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
+	result, err := t.e.llm.StreamChatWithTools(callCtx, history, tools, func(event llm.StreamEvent) error {
 		if event.ReasoningDelta != "" {
 			if err := t.stream.SendJSON("assistant_reasoning_delta", StreamDeltaResponse{Content: event.ReasoningDelta}); err != nil {
 				return err
@@ -789,6 +789,10 @@ func (t *Run) streamAssistantTurnWithContentStreaming(ctx context.Context, reaso
 		}
 		return nil
 	})
+	if result.Model != "" {
+		t.answeredBy = result.Model
+	}
+	return result, err
 }
 
 func inferenceWithPurpose(metadata llm.InferenceMetadata, purpose string, round int) llm.InferenceMetadata {

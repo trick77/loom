@@ -111,6 +111,9 @@ export function useIncognitoChat({
       .map((message) => ({
         role: message.role as "user" | "assistant",
         content: message.content,
+        // Which model wrote an answer: a switch tells the next model which
+        // answers are not its own.
+        ...(message.model !== undefined ? { model: message.model } : {}),
       }));
     const tempID = newTempID("incognito-user");
     const optimisticMessage: MessageWithActivityTrace = {

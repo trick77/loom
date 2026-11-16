@@ -74,7 +74,12 @@ func (t *Run) persistSegment(ctx context.Context, b *blockBuilder, artifacts []a
 	t.titles.MergeIntoBlocks(b.blocks)
 	t.stampToolTitles(trace, b.blocks)
 	traceJSON, blocksJSON := MarshalTurnJSON(t.thread.ID, trace, b.blocks)
-	segment, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, b.prose(), chat.MessageTokenUsage{}, artifactsJSON, traceJSON, t.citationsJSON(sources), blocksJSON, t.readOutside || t.ideasRead)
+	// No tokens or cost, but the model that wrote it (llm.switchNote).
+	var usage chat.MessageTokenUsage
+	if t.answeredBy != "" {
+		usage.Model = strPtr(t.answeredBy)
+	}
+	segment, err := t.e.thread.AddMessageWithCitations(ctx, t.user.ID, t.thread.ID, chat.RoleAssistant, b.prose(), usage, artifactsJSON, traceJSON, t.citationsJSON(sources), blocksJSON, t.readOutside || t.ideasRead)
 	if err != nil {
 		return chat.Message{}, err
 	}

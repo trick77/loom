@@ -176,7 +176,7 @@ export async function attachStream(
 // as `history` on every turn. Shares streamMessage's SSE plumbing.
 export async function streamIncognitoMessage(
   content: string,
-  history: { role: "user" | "assistant"; content: string }[],
+  history: { role: "user" | "assistant"; content: string; model?: string }[],
   handlers: StreamHandlers,
   signal?: AbortSignal,
   chatSlot?: string,

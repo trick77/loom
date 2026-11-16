@@ -51,6 +51,7 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 	// stays stable.
 	wireMessages := toWireMessages(messages)
 	model := c.routeModel(wireMessages, meta.Deep)
+	wireMessages = withSwitchNote(wireMessages, messages, model)
 	// Deep only when the turn asked for it: the deep model may also be the
 	// chat or vision model, whose ordinary turns stay balanced.
 	deep := meta.Deep && c.deepModel != "" && model == c.deepModel
@@ -176,7 +177,10 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		consumerErr = closeErr
 	}
 	logWarnings(ctx, model, stream.Warnings())
+	// The model rides on a partial too: a stopped answer is still kept, and a
+	// later turn on another model must not take its words for its own.
 	partial := StreamResult{
+		Model:            model,
 		Content:          res.Content,
 		ReasoningContent: res.Reasoning,
 		Usage:            usageFromWire(res.Usage),
@@ -225,7 +229,6 @@ func (c *Client) StreamChatWithTools(ctx context.Context, messages []Message, to
 		}
 	}
 	result.Duration = durationOr(res.Timing.Total, start)
-	result.Model = model
 	result.ReasoningEffort = res.ReasoningSent
 	result.CostNanoUSD, result.CostPriced = costFromWire(res.Usage)
 	result.ResponseItems = res.ResponseItems

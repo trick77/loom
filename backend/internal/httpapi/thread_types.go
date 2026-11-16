@@ -168,6 +168,10 @@ type incognitoStreamRequest struct {
 type incognitoHistoryEntry struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// Model is the model that wrote an answer, as the turn reported it. Only
+	// compared, never put into a prompt: a forged one can at most mislabel
+	// the client's own transcript.
+	Model string `json:"model,omitempty"`
 }
 
 type renameArtifactRequest struct {

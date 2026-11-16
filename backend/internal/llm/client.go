@@ -75,6 +75,10 @@ type Message struct {
 	// turn unchanged; a history loom rebuilds leaves it empty, because a
 	// replayed block after an edit is refused.
 	ResponseItems []json.RawMessage
+	// Model is the model that wrote an earlier assistant answer, "" when
+	// unknown. Never sent: it only tells the routed model which answers in
+	// the history are another model's (switchNote).
+	Model string
 }
 
 // MessageContentPart is a single content part in a chat message (text or image).

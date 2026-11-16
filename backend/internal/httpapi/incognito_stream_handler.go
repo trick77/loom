@@ -178,7 +178,11 @@ func incognitoPriorMessages(history []incognitoHistoryEntry) []chat.Message {
 		if role != chat.RoleUser && role != chat.RoleAssistant {
 			continue
 		}
-		messages = append(messages, chat.Message{Role: role, Content: entry.Content})
+		message := chat.Message{Role: role, Content: entry.Content}
+		if role == chat.RoleAssistant && entry.Model != "" {
+			message.Model = &entry.Model
+		}
+		messages = append(messages, message)
 	}
 	return messages
 }

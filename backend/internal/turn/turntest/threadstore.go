@@ -330,6 +330,7 @@ func (f *ThreadStore) AddMessageWithCitations(ctx context.Context, _ string, thr
 		CachedTokens:     usage.CachedTokens,
 		ReasoningTokens:  usage.ReasoningTokens,
 		CostNanoUSD:      usage.CostNanoUSD,
+		Model:            usage.Model,
 	}
 	if role == chat.RoleAssistant {
 		f.AssistantContent = content

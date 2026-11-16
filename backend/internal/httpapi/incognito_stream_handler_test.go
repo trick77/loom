@@ -167,7 +167,7 @@ func TestIncognitoStreamRejectsEmptyContent(t *testing.T) {
 func TestIncognitoStreamUsesClientHistory(t *testing.T) {
 	history := incognitoPriorMessages([]incognitoHistoryEntry{
 		{Role: "user", Content: "earlier question"},
-		{Role: "assistant", Content: "earlier answer"},
+		{Role: "assistant", Content: "earlier answer", Model: "chat"},
 		{Role: "tool", Content: "dropped"},
 	})
 	if len(history) != 2 {
@@ -175,5 +175,9 @@ func TestIncognitoStreamUsesClientHistory(t *testing.T) {
 	}
 	if history[0].Role != chat.RoleUser || history[1].Role != chat.RoleAssistant {
 		t.Fatalf("history roles = %v/%v, want user/assistant", history[0].Role, history[1].Role)
+	}
+	// The answer keeps its model: a switch to deep in incognito is told too.
+	if history[1].Model == nil || *history[1].Model != "chat" {
+		t.Fatalf("answer model = %v, want chat", history[1].Model)
 	}
 }

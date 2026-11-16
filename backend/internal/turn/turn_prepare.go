@@ -42,6 +42,9 @@ type Run struct {
 	// offeredDocTools are the document tools the turn offered, by name: a
 	// call to one the gate left out never runs (documentGenerator).
 	offeredDocTools map[string]bool
+	// answeredBy is the model the turn's last call ran on: a segment stored
+	// mid-turn records it, so a later turn on another model can tell it apart.
+	answeredBy string
 	// acc sums every model call of the turn; start times its wall clock.
 	acc   *llm.UsageAccumulator
 	start time.Time
