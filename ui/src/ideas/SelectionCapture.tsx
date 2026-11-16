@@ -171,8 +171,15 @@ export function SelectionCapture() {
     const showBar = () => {
       window.clearTimeout(settle.current);
       settle.current = window.setTimeout(() => {
-        // Not over the open sheet (modal on touch), not while typing.
-        if (keyboardUp() || captureRef.current?.current() != null) return;
+        // Not over the open capture or any other modal surface, not while
+        // typing, not under a press on the bar (it keeps what it took).
+        if (
+          pressing.current ||
+          keyboardUp() ||
+          captureRef.current?.current() != null ||
+          document.querySelector('[aria-modal="true"]') !== null
+        )
+          return;
         const request = offered();
         // Taken now, while the selection is there: a tap may collapse it
         // before its handler runs.
@@ -208,6 +215,28 @@ export function SelectionCapture() {
     const onPointerDown = (event: PointerEvent) => {
       if (!ownTarget(event)) pressing.current = false;
     };
+    // Touch devices only. No touch gates the bar (a handle's touch never
+    // ends), but without these listeners a tap on the bar on iOS opened
+    // nothing: the bar went, no sheet (aed1ba42). The bar's own tap holds it
+    // from its first event, before iOS may drop the selection. A touch
+    // elsewhere takes the bar away; every touch event re-arms the settle
+    // while a passage is marked, so it is back once the finger rests or
+    // lifts (a handle touched gets no touchend).
+    const rearm = () => {
+      if (selectionInAnswer(document.getSelection())) showBar();
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      if (canHover()) return;
+      if (ownTarget(event)) {
+        pressing.current = true;
+        return;
+      }
+      setShown(null);
+      rearm();
+    };
+    const onTouchMoveOrEnd = (event: TouchEvent) => {
+      if (!canHover() && !ownTarget(event)) rearm();
+    };
     const onFocusIn = (event: FocusEvent) => {
       if (typing(event.target as Element | null)) hide();
     };
@@ -233,6 +262,12 @@ export function SelectionCapture() {
     document.addEventListener("mouseup", showPill);
     document.addEventListener("keyup", showPill);
     document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("touchstart", onTouchStart, { passive: true });
+    document.addEventListener("touchmove", onTouchMoveOrEnd, { passive: true });
+    document.addEventListener("touchend", onTouchMoveOrEnd, { passive: true });
+    document.addEventListener("touchcancel", onTouchMoveOrEnd, {
+      passive: true,
+    });
     document.addEventListener("focusin", onFocusIn);
     window.addEventListener("scroll", follow, true);
     window.addEventListener("resize", follow);
@@ -244,6 +279,10 @@ export function SelectionCapture() {
       document.removeEventListener("mouseup", showPill);
       document.removeEventListener("keyup", showPill);
       document.removeEventListener("selectionchange", onSelectionChange);
+      document.removeEventListener("touchstart", onTouchStart);
+      document.removeEventListener("touchmove", onTouchMoveOrEnd);
+      document.removeEventListener("touchend", onTouchMoveOrEnd);
+      document.removeEventListener("touchcancel", onTouchMoveOrEnd);
       document.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("scroll", follow, true);
       window.removeEventListener("resize", follow);

@@ -157,10 +157,16 @@ test("touch: a docked bar once the selection rests; it survives its own tap", ()
   }
   act(() => vi.advanceTimersByTime(110));
   expect(pill()).not.toBeNull();
-  // The tap drops the selection on its way: the bar holds what it took.
-  fireEvent.pointerDown(pill()!);
+  // The tap drops the selection on its way, on iOS before the bar's own
+  // pointerdown: the bar holds what it took from its touchstart on, also
+  // past a late click.
+  fireEvent.touchStart(pill()!);
   document.getSelection()!.removeAllRanges();
   fireEvent(document, new Event("selectionchange"));
+  expect(pill()).not.toBeNull();
+  fireEvent.pointerDown(pill()!);
+  fireEvent.touchEnd(pill()!);
+  act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
   fireEvent.click(pill()!);
   expect(screen.getByTestId("open")).toHaveTextContent(
     "Vibe Kanban is a board for",
@@ -172,20 +178,79 @@ test("touch: a docked bar once the selection rests; it survives its own tap", ()
   expect(pill()).toBeNull();
 });
 
-test("touch: a handle drag whose touch never ends brings the bar back once it rests", () => {
+// showBar brings up the touch bar for the selected prose.
+function showBar() {
   setHover(false);
   renderThread();
   selectProse();
   fireEvent(document, new Event("selectionchange"));
   act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
   expect(pill()).not.toBeNull();
-  // iOS hands the touch to its native handle drag: no touchend, no
-  // touchcancel ever reaches the page.
+}
+
+test("touch: a handle touched or dragged whose touch never ends brings the bar back once it rests", () => {
+  showBar();
+  // iOS hands the touch to its native handle: no touchend, no touchcancel
+  // ever reaches the page. Touched only: back after the settle.
+  fireEvent.touchStart(document);
+  expect(pill()).toBeNull();
+  act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
+  expect(pill()).not.toBeNull();
+  // Dragged: the same once the selection rests.
   fireEvent.touchStart(document);
   selectProse();
   fireEvent(document, new Event("selectionchange"));
   expect(pill()).toBeNull();
   act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
+  expect(pill()).not.toBeNull();
+});
+
+test("touch: a swipe keeps the bar away until the finger rests", () => {
+  showBar();
+  fireEvent.touchStart(document);
+  for (let move = 0; move < 4; move++) {
+    act(() => vi.advanceTimersByTime(SETTLE_MS - 100));
+    fireEvent.touchMove(document);
+    expect(pill()).toBeNull();
+  }
+  fireEvent.touchEnd(document);
+  act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
+  expect(pill()).not.toBeNull();
+});
+
+test("touch: no bar over another modal surface", () => {
+  showBar();
+  fireEvent.touchStart(document);
+  const dialog = document.createElement("div");
+  dialog.setAttribute("aria-modal", "true");
+  document.body.appendChild(dialog);
+  fireEvent.touchEnd(document);
+  act(() => vi.advanceTimersByTime(SETTLE_MS + 10));
+  expect(pill()).toBeNull();
+  dialog.remove();
+});
+
+test("touch: a touch with no passage marked arms nothing", () => {
+  setHover(false);
+  renderThread();
+  const timeout = vi.spyOn(window, "setTimeout");
+  fireEvent.touchStart(document);
+  fireEvent.touchMove(document);
+  fireEvent.touchEnd(document);
+  expect(timeout).not.toHaveBeenCalled();
+  timeout.mockRestore();
+});
+
+test("hover device: a finger touch elsewhere leaves the pill", () => {
+  setHover(true);
+  renderThread();
+  selectProse();
+  fireEvent.mouseUp(document);
+  act(() => vi.runOnlyPendingTimers());
+  expect(pill()).not.toBeNull();
+  fireEvent.touchStart(document);
+  fireEvent.touchEnd(document);
+  act(() => vi.runOnlyPendingTimers());
   expect(pill()).not.toBeNull();
 });
 
