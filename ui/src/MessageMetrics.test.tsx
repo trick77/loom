@@ -47,6 +47,47 @@ test("renders the metrics line when data is present, without the reasoning effor
   expect(screen.getByText(/^5s · ↑/)).toBeInTheDocument();
 });
 
+test("names the answering model when the thread can switch models", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        model: "fast",
+        displayName: "Fast Model",
+        contextWindow: 1000,
+        slots: [
+          {
+            key: "standard",
+            model: "fast",
+            displayName: "Fast Model",
+            contextWindow: 1000,
+          },
+          {
+            key: "deep",
+            model: "deep",
+            displayName: "Deep Model",
+            contextWindow: 2000,
+          },
+        ],
+      }),
+    }),
+  );
+  render(
+    <MessageMetrics
+      message={assistant({
+        model: "deep",
+        durationMs: 5000,
+        completionTokens: 500,
+      })}
+    />,
+  );
+  // The name shows at every width; the metrics after it stay desktop-only.
+  const name = await screen.findByText("Deep Model");
+  expect(name).not.toHaveClass("hidden");
+  expect(screen.getByText(/^· 5s · ↓/)).toHaveClass("hidden", "md:inline");
+});
+
 test("shows the context % against the window /api/model reports", async () => {
   vi.stubGlobal(
     "fetch",

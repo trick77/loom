@@ -18,7 +18,7 @@ import {
 } from "./attachmentFiles";
 import { formatFileSize } from "./artifacts";
 import { Icon } from "./Icon";
-import { useModelInfo } from "../useContextWindow";
+import { useModelInfo } from "../useModelInfo";
 import { STANDARD_SLOT } from "../api/model";
 import { ModelPicker } from "./ModelPicker";
 import { matchSlashCommand, slashSuggestions } from "./slashCommands";

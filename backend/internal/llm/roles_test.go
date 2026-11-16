@@ -70,4 +70,24 @@ func TestResolved_InfoAndKeysComeFromTheProfiles(t *testing.T) {
 	if keys := resolved.KeyEnvs(); len(keys) != 1 || keys[0] != p.APIKeyEnv() {
 		t.Fatalf("key envs = %v, want [%s] once for three roles on one provider", keys, p.APIKeyEnv())
 	}
+	// Chat is vision too here: one answering model, listed once.
+	if len(info.Answering) != 1 || info.Answering[0].Model != llmwiretest.ChatModel || info.Answering[0].DisplayName != p.DisplayName {
+		t.Fatalf("answering = %+v, want the chat model once", info.Answering)
+	}
+}
+
+// Every distinct model an answer can come from is named, so an answer's
+// recorded model always finds its name.
+func TestResolved_InfoListsTheAnsweringModels(t *testing.T) {
+	resolved, err := ResolveRoles(llmwiretest.Registry(), Roles{Chat: llmwiretest.ChatModel, Deep: llmwiretest.MessagesModel})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, m := range resolved.Info().Answering {
+		got = append(got, m.Model)
+	}
+	if len(got) != 2 || got[0] != llmwiretest.ChatModel || got[1] != llmwiretest.MessagesModel {
+		t.Fatalf("answering = %v, want chat then deep, each once", got)
+	}
 }
