@@ -138,6 +138,17 @@ type ModelInfo struct {
 	// Slots are the choices the composer offers, standard first; one entry
 	// when no deep model is configured.
 	Slots []SlotInfo `json:"slots,omitempty"`
+	// Answering are the distinct models that can write an answer: the
+	// slots' and the vision model an image turn falls back to. An answer's
+	// recorded model is looked up here for its name and window.
+	Answering []AnsweringModel `json:"answering,omitempty"`
+}
+
+// AnsweringModel is one model an answer can come from, from its profile.
+type AnsweringModel struct {
+	Model         string `json:"model"`
+	DisplayName   string `json:"displayName"`
+	ContextWindow int64  `json:"contextWindow"`
 }
 
 // Info describes the chat model from its profile.
@@ -145,7 +156,14 @@ func (r Resolved) Info() ModelInfo {
 	if r.chat == nil {
 		return ModelInfo{}
 	}
-	return ModelInfo{ID: r.chat.ID, DisplayName: r.chat.DisplayName, ContextWindow: r.chat.Limits.Context, Slots: r.Slots()}
+	var answering []AnsweringModel
+	for _, p := range []*llmwire.Profile{r.chat, r.deep, r.vision} {
+		if p == nil || slices.ContainsFunc(answering, func(m AnsweringModel) bool { return m.Model == p.ID }) {
+			continue
+		}
+		answering = append(answering, AnsweringModel{Model: p.ID, DisplayName: p.DisplayName, ContextWindow: p.Limits.Context})
+	}
+	return ModelInfo{ID: r.chat.ID, DisplayName: r.chat.DisplayName, ContextWindow: r.chat.Limits.Context, Slots: r.Slots(), Answering: answering}
 }
 
 // DeepKeyEnv is the key variable the deep model's provider reads, or "" when

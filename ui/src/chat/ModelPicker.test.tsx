@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 
-import { contextWindowFor } from "../useContextWindow";
+import { contextWindowFor } from "../api/model";
 import { ModelPicker } from "./ModelPicker";
 
 const slots = [
