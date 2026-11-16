@@ -199,7 +199,13 @@ func buildHistory(systemContent string, messages []chat.Message, newUserMessage 
 			if !answering[message.ID] {
 				content = chat.WithoutOutsideText(message)
 			}
-			history = append(history, llm.Message{Role: string(message.Role), Content: content})
+			// The answering model rides along so a turn on another model can
+			// tell these answers from its own (llm.switchNote).
+			answeredBy := ""
+			if message.Model != nil {
+				answeredBy = *message.Model
+			}
+			history = append(history, llm.Message{Role: string(message.Role), Content: content, Model: answeredBy})
 		}
 	}
 	return append(history, llm.Message{Role: "user", Content: newUserMessage.Content + earlierSourcesNote(messages)})

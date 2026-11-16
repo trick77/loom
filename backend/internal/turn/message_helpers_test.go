@@ -154,6 +154,18 @@ func TestBuildHistoryDropsToolMessages(t *testing.T) {
 	}
 }
 
+// An earlier answer keeps the model that wrote it: a turn after a model switch
+// tells the two apart.
+func TestBuildHistoryCarriesTheAnsweringModel(t *testing.T) {
+	history := buildHistory("sys", []chat.Message{
+		{Role: chat.RoleUser, Content: "q"},
+		{Role: chat.RoleAssistant, Content: "a", Model: new("chat")},
+	}, chat.Message{Content: "next"}, nil)
+	if history[2].Model != "chat" {
+		t.Fatalf("answer model = %q, want chat", history[2].Model)
+	}
+}
+
 // The links behind earlier answers ride on the new message: tool rows are
 // not replayed, so the id in a source's URL was otherwise gone.
 func TestBuildHistoryNotesEarlierSources(t *testing.T) {

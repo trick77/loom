@@ -54,8 +54,8 @@ func searchTool() fakeMCPService {
 func TestQueuedMessageIsPickedUpAfterAToolRound(t *testing.T) {
 	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Existing title"}}
 	llmClient := &fakeToolChatClient{Results: []llm.StreamResult{
-		{ReasoningContent: "look it up", ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
-		{ReasoningContent: "answer both", Content: "Both answered."},
+		{Model: "deep", ReasoningContent: "look it up", ToolCalls: []llm.ToolCall{{ID: "call_1", Function: llm.ToolCallFunction{Name: "search__web", Arguments: `{}`}}}},
+		{Model: "deep", ReasoningContent: "answer both", Content: "Both answered."},
 	}}
 	inbox := &fakeInbox{store: store, contents: []string{"And who made it?"}}
 	out := runStoredTurnWithInbox(t, Config{LLM: llmClient, MCP: searchTool()}, store, "What is Lume?", inbox)
@@ -72,6 +72,11 @@ func TestQueuedMessageIsPickedUpAfterAToolRound(t *testing.T) {
 		t.Fatalf("transcript = %q, want %q", order, want)
 	}
 	segment := store.Messages[1]
+	// The segment names its model: a later turn on another one must not take
+	// its words for its own.
+	if segment.Model == nil || *segment.Model != "deep" {
+		t.Fatalf("segment model = %v, want deep", segment.Model)
+	}
 	if !strings.Contains(string(segment.ContentBlocks), "call_1") {
 		t.Fatalf("segment blocks = %s, want the tool round", segment.ContentBlocks)
 	}
