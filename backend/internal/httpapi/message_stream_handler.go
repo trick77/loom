@@ -66,7 +66,7 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w)
 		return
 	}
-	if s.rejectWhileRunning(w, r, user.ID, thread) {
+	if s.rejectWhileRunning(w, r, user.ID, thread) || !s.checkChatSlot(w, body.ChatSlot) {
 		return
 	}
 	user.Timezone = s.rememberTimezone(r.Context(), user, r)
@@ -87,6 +87,11 @@ func (s *server) handleStreamMessage(w http.ResponseWriter, r *http.Request) {
 	imageParts, imageArtifacts, err := s.engine.ResolveImageAttachments(r.Context(), user.ID, strings.TrimSpace(body.Content), body.ImageAttachmentIDs)
 	if err != nil {
 		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// The send is accepted: its slot is saved before the turn reads the thread.
+	if thread, err = s.saveSendChatSlot(r.Context(), user.ID, thread, body.ChatSlot); err != nil {
+		writeStoreError(w, r, err)
 		return
 	}
 	// Persist the images and documents the user sent with this message so the sent

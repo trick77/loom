@@ -141,6 +141,10 @@ type streamMessageRequest struct {
 	// message. A stop names it to end only this send's turn, and a client whose
 	// connection dropped before the server confirmed the message looks for it.
 	ClientMessageID string `json:"clientMessageId"`
+	// ChatSlot is the slot the composer showed at send time, saved onto the
+	// thread before the turn reads it (applySendChatSlot). "" keeps the
+	// thread's.
+	ChatSlot string `json:"chatSlot,omitempty"`
 	// ReasoningEffort is accepted and IGNORED. Loom no longer sends a reasoning
 	// level (see llm's reasoning note), but decodeJSONBody sets
 	// DisallowUnknownFields, so dropping the field outright would 400 every

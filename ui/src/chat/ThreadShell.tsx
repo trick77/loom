@@ -417,30 +417,39 @@ export function ThreadShell({
     onQueuedMessages: replaceQueued,
   });
 
-  // Switching an open thread's slot: shown at once, saved through PATCH, put
-  // back if the save fails. The next turn runs on the saved slot.
+  // Switching an open thread's slot: shown at once and saved through PATCH
+  // for a reload or another tab. The slot shown is what answers: every send
+  // carries it and the server saves it with the message. So a failed save
+  // keeps the pick (the next send saves it) instead of putting back a slot a
+  // send may already have replaced.
   const handleThreadChatSlot = useCallback(
     (slot: string) => {
       const thread = activeThread;
       if (thread === null) return;
-      const previous = thread.chatSlot ?? STANDARD_SLOT;
-      // Put back only while this switch is still the one shown: a later
-      // switch owns the label then.
-      const apply = (value: string, onlyFrom?: string) =>
-        setActiveThread((current) =>
-          current !== null &&
-          current.id === thread.id &&
-          (onlyFrom === undefined || current.chatSlot === onlyFrom)
-            ? { ...current, chatSlot: value }
-            : current,
-        );
-      apply(slot);
+      setActiveThread((current) =>
+        current !== null && current.id === thread.id
+          ? { ...current, chatSlot: slot }
+          : current,
+      );
       updateThread(thread.id, { chatSlot: slot }).catch((error: unknown) => {
-        apply(previous, slot);
         handleActionError(error, t("thread.updateFailed"), setSendError);
       });
     },
     [activeThread, handleActionError, setActiveThread, setSendError, t],
+  );
+
+  // A thread the server sent back (a turn's thread event, a star, a rename)
+  // replaces the open one but keeps the slot the composer shows: read before
+  // a switch landed, it would flip the pick back, and the next send would
+  // save the old slot over it.
+  const adoptServerThread = useCallback(
+    (next: Thread | null) =>
+      setActiveThread((current) =>
+        next !== null && current !== null && current.id === next.id
+          ? { ...next, chatSlot: current.chatSlot }
+          : next,
+      ),
+    [setActiveThread],
   );
 
   // The project a chat sent from the start screen lands in. A pick that was
@@ -857,7 +866,7 @@ export function ThreadShell({
   } = useThreadActions({
     activeThread,
     activeThreadIDRef,
-    setActiveThread,
+    setActiveThread: adoptServerThread,
     setModalError,
     closeThreadMenu,
     setProjectThreads,
@@ -936,7 +945,7 @@ export function ThreadShell({
       try {
         const updatedThread = await setThreadStarred(thread.id, starred);
         if (activeThreadIDRef.current === updatedThread.id) {
-          setActiveThread(updatedThread);
+          adoptServerThread(updatedThread);
         }
         setThreads((current) => replaceThreadById(current, updatedThread));
         setProjectThreads((current) =>
@@ -957,7 +966,7 @@ export function ThreadShell({
       handleActionError,
       isUpdatingStar,
       reportShellError,
-      setActiveThread,
+      adoptServerThread,
       closeThreadMenu,
       setProjectThreads,
       setThreads,
@@ -1121,6 +1130,7 @@ export function ThreadShell({
         content,
         bubble.clientMessageId,
         bubble.pastedTexts,
+        activeThread?.id === threadID ? activeThread.chatSlot : undefined,
       );
     } catch (error) {
       removeQueued(threadID, bubble.clientMessageId);
@@ -1499,7 +1509,7 @@ export function ThreadShell({
           },
           onThread: (updatedThread) => {
             receivedThreadEvent = true;
-            if (isCurrentThread()) setActiveThread(updatedThread);
+            if (isCurrentThread()) adoptServerThread(updatedThread);
             setThreads((current) => upsertThreadById(current, updatedThread));
             upsertIntoOpenProjectPage(updatedThread);
           },
@@ -1553,6 +1563,12 @@ export function ThreadShell({
             imageAttachmentIds,
             pastedTexts: (options.pastedTexts ?? []).map(toPastedTextBlock),
             clientMessageId: sendId,
+            // The slot shown when the user sent. A thread made for this send
+            // was created on its slot already.
+            chatSlot:
+              activeThread?.id === threadIDForRun
+                ? activeThread.chatSlot
+                : undefined,
           },
         );
       } catch (error) {
@@ -1760,7 +1776,7 @@ export function ThreadShell({
             setMessages((current) => applyMessageCost(current, event));
         },
         onThread: (updatedThread) => {
-          if (isCurrentThread()) setActiveThread(updatedThread);
+          if (isCurrentThread()) adoptServerThread(updatedThread);
           setThreads((current) => upsertThreadById(current, updatedThread));
           // A project page listing this thread shows the new title too.
           setProjectThreads((current) =>

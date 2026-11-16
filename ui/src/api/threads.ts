@@ -190,6 +190,9 @@ export async function queueMessage(
   content: string,
   clientMessageId: string,
   pastedTexts: MessagePastedText[] = [],
+  // The slot the composer shows: saved with the message, so the follow-up
+  // turn answering it runs on it.
+  chatSlot?: string,
 ): Promise<void> {
   await request(
     `${threadUrl(threadId)}/messages:queue`,
@@ -202,6 +205,7 @@ export async function queueMessage(
         content,
         clientMessageId,
         ...(pastedTexts.length > 0 ? { pastedTexts } : {}),
+        ...(chatSlot ? { chatSlot } : {}),
       },
     },
   );
