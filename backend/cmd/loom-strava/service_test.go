@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -216,6 +218,68 @@ func TestToolList(t *testing.T) {
 	want := "profile hr_zones run_bests efficiency_trend totals list_activities get_activity activity_analysis compare_activities gear routes segments"
 	if strings.Join(names, " ") != want {
 		t.Errorf("tools = %v", names)
+	}
+}
+
+// Strava ids go 64-bit (June 2027). loom decodes a tool call's arguments into
+// float64, which rounds an integer past 2^53 to another id; a string survives.
+func TestIDArgsAreStrings(t *testing.T) {
+	f := newFakeStrava(t)
+	_, h, _ := newTestService(t, f)
+	req := httptest.NewRequest("POST", "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	type prop struct {
+		Type  any   `json:"type"`
+		Items *prop `json:"items"`
+	}
+	var r struct {
+		Result struct {
+			Tools []struct {
+				Name        string
+				InputSchema struct {
+					Properties map[string]prop `json:"properties"`
+				} `json:"inputSchema"`
+			} `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &r); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"get_activity.id": "", "activity_analysis.id": "", "compare_activities.ids": "",
+		"routes.route_id": "", "segments.segment_id": ""}
+	for _, x := range r.Result.Tools {
+		for name, p := range x.InputSchema.Properties {
+			key := x.Name + "." + name
+			if _, ok := want[key]; !ok {
+				continue
+			}
+			if p.Items != nil {
+				p = *p.Items
+			}
+			want[key] = fmt.Sprint(p.Type)
+		}
+	}
+	for key, typ := range want {
+		if typ != "string" {
+			t.Errorf("%s: type %q, want string", key, typ)
+		}
+	}
+}
+
+func TestParseID64Bit(t *testing.T) {
+	for _, raw := range []string{`"9223372036854775807"`, `9223372036854775807`, `" 18014398509481985 "`} {
+		id, ok := parseID(json.RawMessage(raw))
+		want, _ := strconv.ParseInt(strings.Trim(raw, `" `), 10, 64)
+		if !ok || id != want {
+			t.Errorf("parseID(%s) = %d %v", raw, id, ok)
+		}
+	}
+	for _, raw := range []string{`"9223372036854775808"`, `1.8014398509481984e+16`, `"0"`, `-1`} {
+		if id, ok := parseID(json.RawMessage(raw)); ok {
+			t.Errorf("parseID(%s) = %d, want refused", raw, id)
+		}
 	}
 }
 

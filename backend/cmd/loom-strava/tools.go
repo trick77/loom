@@ -70,8 +70,13 @@ func toolServer(svc *service, version string) mcpserver.Server {
 	dateArg := func(what string) map[string]any {
 		return map[string]any{"type": "string", "pattern": `^\d{4}-\d{2}-\d{2}$`, "description": what + " (YYYY-MM-DD, the athlete's local date)."}
 	}
+	// Ids are strings: loom reads a tool call's numbers as float64, which
+	// turns a 64-bit Strava id past 2^53 into another one. parseID still
+	// takes a number.
+	const idPattern = `^\d+$`
+	idType := map[string]any{"type": "string", "pattern": idPattern}
 	idArg := func(what string) map[string]any {
-		return map[string]any{"type": []string{"integer", "string"}, "description": what}
+		return map[string]any{"type": "string", "pattern": idPattern, "description": what}
 	}
 	refreshArg := map[string]any{"type": "boolean", "description": "Read the activity from Strava again instead of " +
 		"the stored copy. Only when the user says it changed on Strava (cropped, corrected, retagged): it costs Strava calls."}
@@ -178,7 +183,7 @@ func toolServer(svc *service, version string) mcpserver.Server {
 				Description: "Side-by-side table of 2 to 5 of the user's activities: distance, time, speed, elevation, " +
 					"heart rate, NP, IF, TSS, EF, decoupling, power bests. For progress on the same route or over time.",
 				Schema: mcpserver.ObjectSchema(map[string]any{
-					"ids": map[string]any{"type": "array", "minItems": 2, "maxItems": maxCompare, "items": map[string]any{"type": []string{"integer", "string"}},
+					"ids": map[string]any{"type": "array", "minItems": 2, "maxItems": maxCompare, "items": idType,
 						"description": "The activity ids, from list_activities."},
 				}, "ids"),
 				Run: t.compareActivities,
