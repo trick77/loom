@@ -30,12 +30,14 @@ const CONTENT_DEBOUNCE_MS = 250;
 //
 // `reloadToken` lets a caller force a refetch after a mutation it made
 // elsewhere (e.g. the Threads page deleting selected rows): bumping it re-runs
-// the search so stale rows drop out.
+// the search so stale rows drop out. `enabled: false` fetches nothing (the
+// Threads page shows its own list while the box is empty).
 export function useThreadSearch(
   query: string,
   options: {
     limit?: number;
     reloadToken?: number;
+    enabled?: boolean;
     // Called when a search request answers 401; the caller signs the user out.
     onSessionExpired?: () => void;
   } = {},
@@ -43,10 +45,14 @@ export function useThreadSearch(
   results: SearchResult[];
   titleLoading: boolean;
   contentLoading: boolean;
+  // A request of the current search failed (not a 401): the results are
+  // incomplete, not "no matches".
+  failed: boolean;
 } {
   const {
     limit = MAX_SEARCH_RESULTS,
     reloadToken = 0,
+    enabled = true,
     onSessionExpired,
   } = options;
   const trimmed = query.trim();
@@ -54,10 +60,25 @@ export function useThreadSearch(
   const [contentResults, setContentResults] = useState<ThreadContentHit[]>([]);
   const [titleLoading, setTitleLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- each search starts without the last one's failure
+    setFailed(false);
+    if (!enabled) {
+      // Nothing of the last search is left for the next one to show.
+      setTitleResults([]);
+      setContentResults([]);
+      setTitleLoading(true);
+      setContentLoading(false);
+      return;
+    }
     let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- back to loading before the fetch
+    const fail = (error: unknown) => {
+      if (error instanceof AuthExpiredError) onSessionExpired?.();
+      else setFailed(true);
+    };
+    // Back to loading before the fetch.
     setTitleLoading(true);
 
     const titleHandle = window.setTimeout(() => {
@@ -73,7 +94,7 @@ export function useThreadSearch(
         })
         .catch((error: unknown) => {
           if (cancelled) return;
-          if (error instanceof AuthExpiredError) onSessionExpired?.();
+          fail(error);
           setTitleResults([]);
           setTitleLoading(false);
         });
@@ -94,7 +115,7 @@ export function useThreadSearch(
           })
           .catch((error: unknown) => {
             if (cancelled) return;
-            if (error instanceof AuthExpiredError) onSessionExpired?.();
+            fail(error);
             setContentResults([]);
             setContentLoading(false);
           });
@@ -108,7 +129,7 @@ export function useThreadSearch(
     };
     // onSessionExpired is left out: a fresh callback must not restart the search.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trimmed, limit, reloadToken]);
+  }, [trimmed, limit, reloadToken, enabled]);
 
   const results = useMemo<SearchResult[]>(() => {
     const byId = new Map<string, SearchResult>();
@@ -130,5 +151,5 @@ export function useThreadSearch(
     return order.slice(0, limit).map((id) => byId.get(id)!);
   }, [titleResults, contentResults, limit]);
 
-  return { results, titleLoading, contentLoading };
+  return { results, titleLoading, contentLoading, failed };
 }

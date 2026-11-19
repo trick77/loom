@@ -28,6 +28,7 @@ function setResults(results: SearchResult[]) {
     results,
     titleLoading: false,
     contentLoading: false,
+    failed: false,
   });
 }
 

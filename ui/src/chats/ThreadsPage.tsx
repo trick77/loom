@@ -6,6 +6,7 @@ import {
   bulkDeleteThreads,
   listThreadIds,
   listThreads,
+  type Page,
   type Thread,
 } from "../api";
 import { useDebouncedValue } from "../useDebouncedValue";
@@ -23,6 +24,7 @@ const SEARCH_DEBOUNCE_MS = 250;
 // uncapped-in-practice so "Select all" can't silently miss matches beyond a small
 // cap. Bounded only to keep one render cheap; matches the backend search ceiling.
 const THREADS_SEARCH_LIMIT = 200;
+const NO_PAGE: Page<Thread> = { items: [], nextCursor: null };
 
 export function ThreadsPage({
   mutationVersion,
@@ -67,10 +69,15 @@ export function ThreadsPage({
   // Infinite scroll: load page one (and reset to it) whenever the search changes
   // or an external mutation (star/rename/single-delete from a row menu) or a bulk
   // delete bumps a token; further pages append as the sentinel scrolls into view.
+  // Only one source loads: while searching the list stays empty, so neither its
+  // request nor its error stands behind the search results.
+  const showingSearch = searchTerm !== "";
   const fetchPage = useCallback(
     (cursor: string | null) =>
-      listThreads({ search: searchTerm, limit: PAGE_SIZE, cursor }),
-    [searchTerm],
+      showingSearch
+        ? Promise.resolve(NO_PAGE)
+        : listThreads({ limit: PAGE_SIZE, cursor }),
+    [showingSearch],
   );
   const {
     items: threads,
@@ -84,14 +91,15 @@ export function ThreadsPage({
 
   // While a search is active, mirror the sidebar modal: a merged list of title +
   // full-text matches with snippets (no infinite scroll). With an empty box, fall
-  // back to the full paginated management list above. `search` runs an extra
-  // recents fetch when not searching, which is ignored. A mutation (single-row
-  // star/rename/delete via `mutationVersion`, or a bulk delete via `reloadToken`)
-  // refetches the search so deleted/changed rows drop out.
-  const showingSearch = searchTerm !== "";
+  // back to the full paginated management list above, and the search fetches
+  // nothing. A mutation (single-row star/rename/delete via `mutationVersion`, or
+  // a bulk delete via `reloadToken`) refetches the search so deleted/changed rows
+  // drop out.
   const search = useThreadSearch(searchTerm, {
     limit: THREADS_SEARCH_LIMIT,
     reloadToken: mutationVersion + reloadToken,
+    enabled: showingSearch,
+    onSessionExpired,
   });
   const rows: { thread: Thread; snippet?: string }[] = showingSearch
     ? search.results
@@ -108,9 +116,11 @@ export function ThreadsPage({
       onSessionExpired();
       return;
     }
+    // The source on screen decides: a failed search is not "no matches".
+    const failed = showingSearch ? search.failed : error !== null;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mirrors the list error into the banner
-    setLoadError(error !== null ? t("chats.loadFailed") : "");
-  }, [error, onSessionExpired, t]);
+    setLoadError(failed ? t("chats.loadFailed") : "");
+  }, [error, showingSearch, search.failed, onSessionExpired, t]);
 
   // A new search changes what "all" means, so clear any selection it carried.
   useEffect(() => {

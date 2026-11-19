@@ -167,6 +167,99 @@ test("search filters by title (debounced)", async () => {
   );
 });
 
+const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+
+test("without a search only the paginated list is fetched", async () => {
+  renderPage();
+  await screen.findByText("Apps and websites");
+  // Past the search hook's title debounce, which used to fetch recents too.
+  await settle();
+
+  expect(listThreadsMock).toHaveBeenCalledTimes(1);
+  expect(listThreadsMock).toHaveBeenCalledWith({ limit: 50, cursor: null });
+});
+
+test("a search fetches only its matches, never the paginated list", async () => {
+  renderPage();
+  await screen.findByText("Apps and websites");
+  listThreadsMock.mockClear();
+  // A paginated fetch for the term would fail and raise the page's banner.
+  listThreadsMock.mockImplementation(async (params) => {
+    if (params?.limit === 50) throw new Error("boom");
+    return { items: matching(params?.search ?? ""), nextCursor: null };
+  });
+
+  fireEvent.change(screen.getByLabelText("Search threads"), {
+    target: { value: "greet" },
+  });
+  await waitFor(() => {
+    expect(screen.queryByText("Apps and websites")).not.toBeInTheDocument();
+  });
+  await settle();
+
+  expect(listThreadsMock).toHaveBeenCalledTimes(1);
+  expect(listThreadsMock).toHaveBeenCalledWith({ search: "greet", limit: 200 });
+  expect(screen.queryByText("Threads failed to load.")).not.toBeInTheDocument();
+});
+
+test("a failed search shows the banner, the next search clears it", async () => {
+  const props = renderPage();
+  await screen.findByText("Apps and websites");
+  listThreadsMock.mockRejectedValueOnce(new Error("boom"));
+  const box = screen.getByLabelText("Search threads");
+
+  fireEvent.change(box, { target: { value: "greet" } });
+  expect(
+    await screen.findByText("Threads failed to load."),
+  ).toBeInTheDocument();
+
+  fireEvent.change(box, { target: { value: "apps" } });
+  await waitFor(() =>
+    expect(titleSpan("Apps and websites")).toBeInTheDocument(),
+  );
+  expect(screen.queryByText("Threads failed to load.")).not.toBeInTheDocument();
+  expect(props.onSessionExpired).not.toHaveBeenCalled();
+});
+
+test("a search answered 401 signs the user out", async () => {
+  const props = renderPage();
+  await screen.findByText("Apps and websites");
+  listThreadsMock.mockRejectedValue(new api.AuthExpiredError());
+
+  fireEvent.change(screen.getByLabelText("Search threads"), {
+    target: { value: "greet" },
+  });
+
+  await waitFor(() => expect(props.onSessionExpired).toHaveBeenCalled());
+});
+
+test("a new search shows none of the last one's matches", async () => {
+  searchThreadContentMock
+    .mockResolvedValueOnce([
+      { thread: thread("t4", "Deployment notes"), snippet: "…greet…" },
+    ])
+    .mockReturnValue(new Promise(() => {}));
+  renderPage();
+  await screen.findByText("Apps and websites");
+  const box = screen.getByLabelText("Search threads");
+
+  fireEvent.change(box, { target: { value: "greet" } });
+  await waitFor(() =>
+    expect(titleSpan("Deployment notes")).toBeInTheDocument(),
+  );
+  fireEvent.change(box, { target: { value: "" } });
+  await screen.findByText("Apps and websites");
+  fireEvent.change(box, { target: { value: "apps" } });
+
+  await waitFor(() =>
+    expect(titleSpan("Apps and websites")).toBeInTheDocument(),
+  );
+  await waitFor(() =>
+    expect(screen.queryByText("Greeting")).not.toBeInTheDocument(),
+  );
+  expect(screen.queryByText("Deployment notes")).not.toBeInTheDocument();
+});
+
 // Matches the title span by its full textContent, since an active search bolds
 // the matched term and splits the title across <strong> and text nodes.
 const titleSpan = (title: string) =>
