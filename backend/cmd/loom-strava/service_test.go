@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -24,15 +25,28 @@ func TestConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.addr != ":8050" || cfg.data != "/data" || cfg.base.String() != "https://www.strava.com" {
+	if cfg.addr != ":8050" || cfg.data != "/data" || cfg.base.String() != "https://www.strava.com" || cfg.weatherURL != "" {
 		t.Errorf("defaults: %+v", cfg)
 	}
+	// The weather sidecar's /mcp is added on use: a configured one is cut off.
+	for raw, want := range map[string]string{
+		"http://loom-weather:8100/mcp/": "http://loom-weather:8100",
+		"http://loom-weather:8100/":     "http://loom-weather:8100",
+		"https://w.example/base/mcp":    "https://w.example/base",
+	} {
+		withWeather := map[string]string{"WEATHER_URL": raw}
+		maps.Copy(withWeather, good)
+		if cfg, err := loadConfig(env(withWeather)); err != nil || cfg.weatherURL != want {
+			t.Errorf("WEATHER_URL %q: %q, %v", raw, cfg.weatherURL, err)
+		}
+	}
 	for name, m := range map[string]map[string]string{
-		"short token":  {"STRAVA_TOKEN": "short", "STRAVA_CLIENT_ID": "1", "STRAVA_CLIENT_SECRET": "s"},
-		"space token":  {"STRAVA_TOKEN": "test-service-token 0123456789abcdef", "STRAVA_CLIENT_ID": "1", "STRAVA_CLIENT_SECRET": "s"},
-		"no client":    {"STRAVA_TOKEN": testToken, "STRAVA_CLIENT_SECRET": "s"},
-		"no secret":    {"STRAVA_TOKEN": testToken, "STRAVA_CLIENT_ID": "1"},
-		"bad base url": {"STRAVA_TOKEN": testToken, "STRAVA_CLIENT_ID": "1", "STRAVA_CLIENT_SECRET": "s", "STRAVA_BASE_URL": "ftp://x"},
+		"bad weather url": {"STRAVA_TOKEN": testToken, "STRAVA_CLIENT_ID": "1", "STRAVA_CLIENT_SECRET": "s", "WEATHER_URL": "loom-weather:8100"},
+		"short token":     {"STRAVA_TOKEN": "short", "STRAVA_CLIENT_ID": "1", "STRAVA_CLIENT_SECRET": "s"},
+		"space token":     {"STRAVA_TOKEN": "test-service-token 0123456789abcdef", "STRAVA_CLIENT_ID": "1", "STRAVA_CLIENT_SECRET": "s"},
+		"no client":       {"STRAVA_TOKEN": testToken, "STRAVA_CLIENT_SECRET": "s"},
+		"no secret":       {"STRAVA_TOKEN": testToken, "STRAVA_CLIENT_ID": "1"},
+		"bad base url":    {"STRAVA_TOKEN": testToken, "STRAVA_CLIENT_ID": "1", "STRAVA_CLIENT_SECRET": "s", "STRAVA_BASE_URL": "ftp://x"},
 	} {
 		if _, err := loadConfig(env(m)); err == nil {
 			t.Errorf("%s: accepted", name)

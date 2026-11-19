@@ -40,7 +40,6 @@ func loadConfig(getenv func(string) string) (config, error) {
 		clientSecret: r.Required("STRAVA_CLIENT_SECRET"),
 		data:         r.String("STRAVA_DATA", defaultDataDir),
 		base:         r.URL("STRAVA_BASE_URL", defaultBaseURL),
-		weatherURL:   r.String("WEATHER_URL", ""),
 		weatherToken: r.String("WEATHER_TOKEN", ""),
 	}
 	// Required: this sidecar holds every user's Strava tokens, and nothing on
@@ -51,11 +50,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	}
 	// The weather sidecar's base URL (/mcp is added); checked at boot, not
 	// as one failed lookup per activity.
-	if cfg.weatherURL != "" {
-		cfg.weatherURL = strings.TrimSuffix(strings.TrimRight(cfg.weatherURL, "/"), "/mcp")
-		if u, err := url.Parse(cfg.weatherURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			r.Fail("WEATHER_URL must be an absolute http(s) URL")
-		}
+	if u := r.URL("WEATHER_URL", ""); u != nil {
+		u.Path = strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/mcp")
+		u.RawPath = ""
+		cfg.weatherURL = u.String()
 	}
 	if err := r.Err(); err != nil {
 		return config{}, err

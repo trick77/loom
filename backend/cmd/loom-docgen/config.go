@@ -1,8 +1,6 @@
 package main
 
 import (
-	"net/url"
-
 	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
 )
@@ -23,17 +21,16 @@ type config struct {
 func loadConfig(getenv func(string) string) (config, error) {
 	r := env.New(getenv)
 	cfg := config{
-		addr:         r.String("DOCGEN_ADDR", defaultAddr),
-		token:        r.String("DOCGEN_TOKEN", ""),
-		gotenbergURL: r.String("DOCGEN_GOTENBERG_URL", defaultGotenbergURL),
+		addr:  r.String("DOCGEN_ADDR", defaultAddr),
+		token: r.String("DOCGEN_TOKEN", ""),
 	}
 	// Required: whoever calls makes Gotenberg render and fills loom's
 	// volumes with files. loom checks its side with the same rule.
 	if msg := sidecar.TokenProblem("DOCGEN_TOKEN", cfg.token); msg != "" {
 		r.Fail("%s", msg)
 	}
-	if u, err := url.Parse(cfg.gotenbergURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		r.Fail("DOCGEN_GOTENBERG_URL must be an absolute http(s) URL")
+	if u := r.URL("DOCGEN_GOTENBERG_URL", defaultGotenbergURL); u != nil {
+		cfg.gotenbergURL = u.String()
 	}
 	if err := r.Err(); err != nil {
 		return config{}, err

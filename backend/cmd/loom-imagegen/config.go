@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net/url"
 	"strings"
 	"time"
 
@@ -43,7 +42,6 @@ func loadConfig(getenv func(string) string) (config, error) {
 		addr:            r.String("IMAGEGEN_ADDR", defaultAddr),
 		token:           r.String("IMAGEGEN_TOKEN", ""),
 		apiKey:          r.String("IMAGEGEN_API_KEY", ""),
-		baseURL:         r.String("IMAGEGEN_BASE_URL", defaultBaseURL),
 		model:           r.String("IMAGEGEN_MODEL", defaultModel),
 		typographyModel: r.String("IMAGEGEN_TYPOGRAPHY_MODEL", defaultTypographyModel),
 		pollTimeout:     r.Duration("IMAGEGEN_POLL_TIMEOUT", defaultPollTimeout),
@@ -59,8 +57,8 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if cfg.apiKey == "" {
 		r.Fail("IMAGEGEN_API_KEY is required (fal API key)")
 	}
-	if u, err := url.Parse(cfg.baseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		r.Fail("IMAGEGEN_BASE_URL must be an absolute http(s) URL")
+	if u := r.URL("IMAGEGEN_BASE_URL", defaultBaseURL); u != nil {
+		cfg.baseURL = u.String()
 	}
 	if cfg.pollTimeout <= 0 || cfg.pollTimeout > maxPollTimeout {
 		r.Fail("IMAGEGEN_POLL_TIMEOUT must be greater than 0 and at most %s (the call limit)", maxPollTimeout)

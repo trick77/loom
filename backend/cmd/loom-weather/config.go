@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net/url"
 	"strings"
 
 	"github.com/trick77/loom/internal/sidecar"
@@ -33,20 +32,8 @@ type config struct {
 func loadConfig(getenv func(string) string) (config, error) {
 	r := env.New(getenv)
 	cfg := config{
-		addr:          r.String("WEATHER_ADDR", defaultAddr),
-		token:         r.String("WEATHER_TOKEN", ""),
-		forecastURL:   r.String("WEATHER_FORECAST_URL", defaultForecastURL),
-		geocodingURL:  r.String("WEATHER_GEOCODING_URL", defaultGeocodingURL),
-		airQualityURL: r.String("WEATHER_AIR_QUALITY_URL", defaultAirQualityURL),
-		archiveURL:    r.String("WEATHER_ARCHIVE_URL", defaultArchiveURL),
-		reverseURL:    r.String("WEATHER_REVERSE_URL", defaultReverseURL),
-	}
-	urls := map[string]string{"WEATHER_FORECAST_URL": cfg.forecastURL, "WEATHER_GEOCODING_URL": cfg.geocodingURL,
-		"WEATHER_AIR_QUALITY_URL": cfg.airQualityURL, "WEATHER_ARCHIVE_URL": cfg.archiveURL}
-	if strings.EqualFold(cfg.reverseURL, "off") {
-		cfg.reverseURL = ""
-	} else {
-		urls["WEATHER_REVERSE_URL"] = cfg.reverseURL
+		addr:  r.String("WEATHER_ADDR", defaultAddr),
+		token: r.String("WEATHER_TOKEN", ""),
 	}
 	// The provider's free tier is rate-limited per IP and whoever calls spends
 	// it, so every tool route needs the token. Without one the sidecar answers
@@ -55,10 +42,17 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if msg := sidecar.TokenProblem("WEATHER_TOKEN", cfg.token); cfg.token != "" && msg != "" {
 		r.Fail("%s", msg)
 	}
-	for name, raw := range urls {
-		if u, err := url.Parse(raw); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			r.Fail("%s must be an absolute http(s) URL", name)
+	setURL := func(dst *string, name, def string) {
+		if u := r.URL(name, def); u != nil {
+			*dst = u.String()
 		}
+	}
+	setURL(&cfg.forecastURL, "WEATHER_FORECAST_URL", defaultForecastURL)
+	setURL(&cfg.geocodingURL, "WEATHER_GEOCODING_URL", defaultGeocodingURL)
+	setURL(&cfg.airQualityURL, "WEATHER_AIR_QUALITY_URL", defaultAirQualityURL)
+	setURL(&cfg.archiveURL, "WEATHER_ARCHIVE_URL", defaultArchiveURL)
+	if !strings.EqualFold(r.String("WEATHER_REVERSE_URL", ""), "off") {
+		setURL(&cfg.reverseURL, "WEATHER_REVERSE_URL", defaultReverseURL)
 	}
 	if err := r.Err(); err != nil {
 		return config{}, err

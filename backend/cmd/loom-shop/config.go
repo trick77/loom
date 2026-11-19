@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net/url"
 	"strings"
 
 	"github.com/trick77/loom/internal/sidecar"
@@ -24,9 +23,8 @@ type config struct {
 func loadConfig(getenv func(string) string) (config, error) {
 	r := env.New(getenv)
 	cfg := config{
-		addr:        r.String("SHOP_ADDR", defaultAddr),
-		token:       r.String("SHOP_TOKEN", ""),
-		upstreamURL: r.String("SHOP_UPSTREAM_URL", defaultUpstreamURL),
+		addr:  r.String("SHOP_ADDR", defaultAddr),
+		token: r.String("SHOP_TOKEN", ""),
 	}
 	// Like the weather: compose starts the sidecar on every install, so a
 	// missing token keeps it up (health probe) and refuses every call; a token
@@ -34,10 +32,10 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if msg := sidecar.TokenProblem("SHOP_TOKEN", cfg.token); cfg.token != "" && msg != "" {
 		r.Fail("%s", msg)
 	}
-	if strings.EqualFold(cfg.upstreamURL, "off") {
-		cfg.upstreamURL = ""
-	} else if u, err := url.Parse(cfg.upstreamURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		r.Fail("SHOP_UPSTREAM_URL must be an absolute http(s) URL or off")
+	if !strings.EqualFold(r.String("SHOP_UPSTREAM_URL", ""), "off") {
+		if u := r.URL("SHOP_UPSTREAM_URL", defaultUpstreamURL); u != nil {
+			cfg.upstreamURL = u.String()
+		}
 	}
 	if err := r.Err(); err != nil {
 		return config{}, err

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"net/url"
-
 	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
 )
@@ -27,15 +25,14 @@ func loadConfig(getenv func(string) string) (config, error) {
 		addr:      r.String("SEARCH_ADDR", defaultAddr),
 		token:     r.String("SEARCH_TOKEN", ""),
 		tavilyKey: r.String("SEARCH_TAVILY_API_KEY", ""),
-		tavilyURL: r.String("SEARCH_TAVILY_URL", defaultTavilyURL),
 	}
 	// Required: whoever calls spends the Tavily account's credits. loom
 	// checks its side with the same rule.
 	if msg := sidecar.TokenProblem("SEARCH_TOKEN", cfg.token); msg != "" {
 		r.Fail("%s", msg)
 	}
-	if u, err := url.Parse(cfg.tavilyURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		r.Fail("SEARCH_TAVILY_URL must be an absolute http(s) URL")
+	if u := r.URL("SEARCH_TAVILY_URL", defaultTavilyURL); u != nil {
+		cfg.tavilyURL = u.String()
 	}
 	if err := r.Err(); err != nil {
 		return config{}, err
