@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/trick77/ship/kit/fsx"
@@ -50,7 +51,12 @@ type connection struct {
 // fileStore keeps state as one JSON file and each user's metrics as one file,
 // 0600, replaced atomically (kit's fsx): a crash mid-write leaves the old
 // file, never half a token.
-type fileStore struct{ dir string }
+type fileStore struct {
+	dir string
+	// metricReads counts loadMetrics calls when set (tests): the file is up
+	// to ~1 MB of JSON, a call reads it once and passes it down.
+	metricReads *atomic.Int64
+}
 
 func (s fileStore) load() (state, error) {
 	b, err := os.ReadFile(filepath.Join(s.dir, stateFile))
@@ -143,6 +149,9 @@ func (s fileStore) metricsPath(user string) (string, error) {
 
 func (s fileStore) loadMetrics(user string) (metricFile, error) {
 	empty := metricFile{V: metricsVersion, Activities: map[string]storedMetrics{}}
+	if s.metricReads != nil {
+		s.metricReads.Add(1)
+	}
 	p, err := s.metricsPath(user)
 	if err != nil {
 		return empty, err

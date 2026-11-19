@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -255,6 +256,32 @@ func TestAnalysis_repeatCostsNothing(t *testing.T) {
 	}
 }
 
+// One analysis decodes the metric file (up to ~1 MB) once for its reads;
+// only each write reads it again, under the lock, so a concurrent call's
+// write is never lost. Cold: this ride's entry, the baseline's streams, the
+// run's threshold heart rate (three writes); warm: no write; a week later:
+// the stale zones' recalculation.
+func TestAnalysis_metricFileReads(t *testing.T) {
+	f, svc, _ := analysisFixture(t)
+	reads := &atomic.Int64{}
+	svc.store.metricReads = reads
+	h := newServer(config{token: testToken}, svc, "test")
+	for _, c := range []struct {
+		name  string
+		after time.Duration
+		want  int64
+	}{{"cold", 0, 3}, {"warm", 0, 1}, {"stale zones", 8 * 24 * time.Hour, 2}} {
+		f.advance(c.after)
+		reads.Store(0)
+		if r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`); r.IsError {
+			t.Fatalf("%s: %s", c.name, r.Text)
+		}
+		if n := reads.Load(); n != c.want {
+			t.Errorf("%s: metric file read %d times, want %d", c.name, n, c.want)
+		}
+	}
+}
+
 // A token answer without the athlete keeps the one known, and the metrics
 // with it; a connection that never learnt its athlete takes it from
 // /athlete, and another athlete's metric file goes.
@@ -285,11 +312,11 @@ func TestMetrics_athleteGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	tl := &tools{svc: svc}
-	tl.storeMetrics(userA, 1, map[string]storedMetrics{"1": {V: metricsVersion}}, nil, nil)
+	tl.viewMetrics(userA, 1).store(map[string]storedMetrics{"1": {V: metricsVersion}}, nil, nil)
 	if m, _ := svc.store.loadMetrics(userA); m.Athlete != 2 || len(m.Activities) != 1 {
 		t.Errorf("athlete 1's metrics went into athlete 2's file: %+v", m)
 	}
-	if got := tl.loadMetrics(userA, 1); len(got) != 0 {
+	if got := tl.metricFileOf(userA, 1).Activities; len(got) != 0 {
 		t.Errorf("athlete 1 read athlete 2's metrics: %v", got)
 	}
 	f.advance(2 * time.Hour) // the cached /athlete expires

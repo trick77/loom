@@ -138,7 +138,8 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 	for _, g := range append(slices.Clone(a.Bikes), a.Shoes...) {
 		gearNames[g.ID] = g.Name
 	}
-	mf := t.metricFileOf(user, a.ID)
+	mv := t.viewMetrics(user, a.ID)
+	mf := mv.file()
 	stored := mf.Activities
 
 	var b strings.Builder
@@ -231,7 +232,7 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 
 	acts := newCSV(hdrActivities)
 	weeks := newWeekTable(first, last, nil)
-	lc := t.loadCtxOf(user, a, mf.HRZones, stored)
+	lc := t.loadCtxOf(mv, a, mf.HRZones, stored)
 	for _, x := range rows {
 		acts.row(strconv.FormatInt(x.ID, 10), x.localStart().Format("2006-01-02"), x.Name, x.SportType, boolCell(x.indoor()),
 			cell(x.Distance/1000, 2), intCell(x.MovingTime), cell(x.TotalElevationGain, 0), cell(x.AverageSpeed*3.6, 1),
@@ -365,12 +366,6 @@ func activityTSS(x summaryActivity, sm storedMetrics, ok bool, ftp float64) floa
 		return tss(x.MovingTime, x.WeightedAverageWatts, ftp)
 	}
 	return nan
-}
-
-// loadMetrics is the user's metric store for athleteID; empty when
-// unreadable or kept for another athlete.
-func (t *tools) loadMetrics(user string, athleteID int64) map[string]storedMetrics {
-	return t.metricFileOf(user, athleteID).Activities
 }
 
 // metricFileOf is the user's metric file for athleteID, under the user's

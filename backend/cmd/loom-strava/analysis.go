@@ -232,17 +232,48 @@ type comparison struct {
 	temps map[int64]float64
 }
 
-// storeMetrics merges add into the user's metric file, and gives the stored
-// entries of listed their sport and name. known is what the caller loaded
-// before: when neither changes anything the file is neither read again nor
+// metricsView is one tool call's view of the user's metric file (up to
+// maxStoredActivities entries, ~1 MB of JSON): read once, then replaced by
+// the file each of the call's writes left on disk, so the call's later reads
+// see its writes without decoding the file again. Writes stay deltas
+// (metricsUpdate) applied under the lock to the file as it is then: another
+// writer's change (a concurrent call, or the call's own list sync dropping a
+// deleted activity) is never lost, this call's reads may only miss it (a
+// stream read again, no more).
+type metricsView struct {
+	t       *tools
+	user    string
+	athlete int64
+	m       metricFile
+	loaded  bool
+}
+
+func (t *tools) viewMetrics(user string, athleteID int64) *metricsView {
+	return &metricsView{t: t, user: user, athlete: athleteID}
+}
+
+// file is the call's metric file (metricFileOf on first use); its maps are
+// the caller's own to change.
+func (v *metricsView) file() metricFile {
+	if !v.loaded {
+		v.m, v.loaded = v.t.metricFileOf(v.user, v.athlete), true
+	}
+	m := v.m
+	m.Activities, m.HRZones = maps.Clone(v.m.Activities), maps.Clone(v.m.HRZones)
+	return m
+}
+
+// store merges add into the user's metric file, and gives the stored entries
+// of listed their sport and name. known is what the caller loaded before:
+// when neither changes anything the file is neither read again nor
 // rewritten.
 // It returns the zones as they stand after the write, nil when it wrote
 // nothing.
-func (t *tools) storeMetrics(user string, athleteID int64, add, known map[string]storedMetrics, listed []summaryActivity) map[string]storedHRZones {
+func (v *metricsView) store(add, known map[string]storedMetrics, listed []summaryActivity) map[string]storedHRZones {
 	if !changes(add, known) && !metaChanges(listed, known) {
 		return nil
 	}
-	z, _ := t.updateMetrics(user, athleteID, metricsUpdate{add: add, listed: listed})
+	z, _ := v.update(metricsUpdate{add: add, listed: listed})
 	return z
 }
 
@@ -274,33 +305,37 @@ func metaChanges(listed []summaryActivity, have map[string]storedMetrics) bool {
 	return false
 }
 
-// updateMetrics applies u to the user's metric file and recalculates the
-// heart-rate zones it touches, unless the user disconnected meanwhile
-// (checked under the lock disconnect holds). It returns the zones and
-// whether they were saved.
-func (t *tools) updateMetrics(user string, athleteID int64, u metricsUpdate) (map[string]storedHRZones, bool) {
-	sl := t.svc.slot(user)
+// update applies u to the user's metric file, read again under the lock, and
+// recalculates the heart-rate zones it touches, unless the user disconnected
+// meanwhile (checked under the lock disconnect holds). It returns the zones
+// and whether they were saved; the view takes the file as it is then on
+// disk.
+func (v *metricsView) update(u metricsUpdate) (map[string]storedHRZones, bool) {
+	t := v.t
+	sl := t.svc.slot(v.user)
 	sl.dataMu.Lock()
 	defer sl.dataMu.Unlock()
 	// Another athlete than the one the metrics were read for (a reconnect
 	// to a different Strava account meanwhile) must not inherit them.
-	if !t.svc.stillConnected(user, athleteID) {
+	if !t.svc.stillConnected(v.user, v.athlete) {
 		return nil, false
 	}
-	m, _ := t.svc.store.loadMetrics(user)
+	m, _ := t.svc.store.loadMetrics(v.user)
 	// The connection's athlete unknown: the file's own says whose it is.
-	if otherAthlete(m.Athlete, athleteID) {
+	if otherAthlete(m.Athlete, v.athlete) {
 		return nil, false
 	}
 	if !applyUpdate(&m, u, t.svc.now()) {
+		v.m, v.loaded = m, true
 		return m.HRZones, false
 	}
-	m.Athlete = athleteID
-	if err := t.svc.store.saveMetrics(user, m); err != nil {
+	m.Athlete = v.athlete
+	if err := t.svc.store.saveMetrics(v.user, m); err != nil {
 		// Only a cost: the streams are fetched again next time.
 		slog.Error("strava: saving metrics failed", "err", err)
 		return m.HRZones, false
 	}
+	v.m, v.loaded = m, true
 	return m.HRZones, true
 }
 
@@ -359,24 +394,25 @@ func recalcHRZones(m *metricFile, touched map[string]bool, asked []string, withH
 }
 
 // loadHRZones is the user's stored heart-rate zones for athleteID, fresh
-// (freshHRZones).
+// (freshZones).
 func (t *tools) loadHRZones(user string, athleteID int64) map[string]storedHRZones {
-	return t.freshHRZones(user, athleteID, t.metricFileOf(user, athleteID).HRZones)
+	v := t.viewMetrics(user, athleteID)
+	return v.freshZones(v.file().HRZones)
 }
 
-// freshHRZones recalculates zones older than hrZonesMaxAge first: with no
+// freshZones recalculates zones older than hrZonesMaxAge first: with no
 // write touching their sport they would keep efforts that left the window.
-func (t *tools) freshHRZones(user string, athleteID int64, zones map[string]storedHRZones) map[string]storedHRZones {
+func (v *metricsView) freshZones(zones map[string]storedHRZones) map[string]storedHRZones {
 	var stale []string
 	for k, z := range zones {
-		if t.svc.now().Sub(z.CalculatedAt) > hrZonesMaxAge {
+		if v.t.svc.now().Sub(z.CalculatedAt) > hrZonesMaxAge {
 			stale = append(stale, k)
 		}
 	}
 	if len(stale) == 0 {
 		return zones
 	}
-	if z, _ := t.updateMetrics(user, athleteID, metricsUpdate{recalc: stale}); z != nil {
+	if z, _ := v.update(metricsUpdate{recalc: stale}); z != nil {
 		return z
 	}
 	return zones
@@ -407,7 +443,7 @@ func metaDiffers(sm storedMetrics, x summaryActivity) bool {
 // compare builds the window: one list call for the summaries, streams for
 // the activities whose stream metrics are not stored yet, newest first,
 // within the rate and time budget.
-func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedActivity, weeks int, mixIndoor bool, this storedMetrics, stored map[string]storedMetrics) (*comparison, error) {
+func (t *tools) compare(ctx context.Context, user string, mv *metricsView, d detailedActivity, weeks int, mixIndoor bool, this storedMetrics, stored map[string]storedMetrics) (*comparison, error) {
 	local, utc := d.localStart(), d.utcStart()
 	c := &comparison{weeks: weeks, mixIndoor: mixIndoor, from: weekStart(local).AddDate(0, 0, -7*weeks)}
 	// The window starts on a local date; the activities there may be in any
@@ -450,7 +486,7 @@ func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedA
 			added[strconv.FormatInt(e.act.ID, 10)] = sm
 		}
 	}
-	c.zones = t.storeMetrics(user, a.ID, added, stored, all)
+	c.zones = mv.store(added, stored, all)
 	for _, e := range c.entries {
 		switch {
 		case e.known:
@@ -654,6 +690,7 @@ type zonePick struct {
 	zones  map[string]storedHRZones // the user's stored HR zones, fresh
 	own    *storedHRZones           // the user's own HR zones in use, nil for Strava's
 	ownFam string
+	mv     *metricsView // the call's metric file, for its later reads and writes
 }
 
 // pickZones stores d's metrics entry and picks the zones its streams are
@@ -673,17 +710,19 @@ func (t *tools) pickZones(ctx context.Context, user string, a athlete, d detaile
 	p.hE = hrEdges(p.z)
 	p.whole = computeMetrics(s, 0, s.n, p.pE, p.hE)
 	// The stored entry is zone-free, and stored first: a new best moves the
-	// user's zones before they bucket this very activity.
-	mf := t.metricFileOf(user, a.ID)
-	p.stored = mf.Activities
+	// user's zones before they bucket this very activity. The write's read
+	// is the call's one read of the file (metricsView).
 	p.this = entryOf(p.whole, d.summaryActivity)
 	thisKey := strconv.FormatInt(d.ID, 10)
-	p.zones = mf.HRZones
-	if z := t.storeMetrics(user, a.ID, map[string]storedMetrics{thisKey: p.this}, p.stored, nil); z != nil {
+	p.mv = t.viewMetrics(user, a.ID)
+	z, _ := p.mv.update(metricsUpdate{add: map[string]storedMetrics{thisKey: p.this}})
+	mf := p.mv.file()
+	p.stored, p.zones = mf.Activities, mf.HRZones
+	if z != nil {
 		p.zones = z
 	}
 	p.stored[thisKey] = p.this
-	p.zones = t.freshHRZones(user, a.ID, p.zones)
+	p.zones = p.mv.freshZones(p.zones)
 	// Strava's default zones are age-based: the user's own, stored for this
 	// sport, count instead. Custom zones always win, and without Strava's
 	// answer they may exist: then Strava's own fallback stays.
@@ -774,7 +813,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 		}
 	}
 	zp := t.pickZones(ctx, user, a, d, s)
-	cmp, cmpErr := t.compare(ctx, user, a, d, args.Weeks, args.MixIndoor, zp.this, zp.stored)
+	cmp, cmpErr := t.compare(ctx, user, zp.mv, d, args.Weeks, args.MixIndoor, zp.this, zp.stored)
 	// After the baseline: its reads go first, a missing threshold heart rate
 	// gets what is left of the budget.
 	known, fetched := zp.stored, 0
@@ -788,7 +827,7 @@ func (t *tools) activityAnalysis(ctx context.Context, raw json.RawMessage) mcpse
 			zp.useOwn(zp.zones, d, s)
 		}
 	}
-	lr, lc, loadNote, calculated, newZones := t.loadFor(ctx, user, a, d, zp.zones, known, fetched)
+	lr, lc, loadNote, calculated, newZones := t.loadFor(ctx, user, a, d, zp.mv, zp.zones, known, fetched)
 	if newZones != nil {
 		zp.zones = newZones
 	}
@@ -1498,7 +1537,8 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 	}
 	defer t.svc.flushIndex(user)
 	u := unitsOf(a)
-	mf := t.metricFileOf(user, a.ID)
+	mv := t.viewMetrics(user, a.ID)
+	mf := mv.file()
 	stored := mf.Activities
 	added := map[string]storedMetrics{}
 	entries := make([]baseEntry, 0, len(ids))
@@ -1524,10 +1564,10 @@ func (t *tools) compareActivities(ctx context.Context, raw json.RawMessage) mcps
 		listed = append(listed, e.act)
 	}
 	zones := mf.HRZones
-	if z := t.storeMetrics(user, a.ID, added, stored, listed); z != nil {
+	if z := mv.store(added, stored, listed); z != nil {
 		zones = z
 	}
-	lc := t.loadCtxOf(user, a, zones, stored)
+	lc := t.loadCtxOf(mv, a, zones, stored)
 
 	var b strings.Builder
 	sources := make([]mcpserver.Source, 0, len(entries))

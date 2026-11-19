@@ -121,7 +121,8 @@ func TestRunBests(t *testing.T) {
 		t.Errorf("predictions header %q", first)
 	}
 	// The threshold comes from the kept efforts, no Strava read.
-	if lc := (&tools{svc: svc}).loadCtxOf(userA, athlete{ID: 1}, nil, nil); lc.runMS <= 0 {
+	tl := &tools{svc: svc}
+	if lc := tl.loadCtxOf(tl.viewMetrics(userA, 1), athlete{ID: 1}, nil, nil); lc.runMS <= 0 {
 		t.Fatalf("no threshold from the kept efforts: %+v", lc)
 	}
 

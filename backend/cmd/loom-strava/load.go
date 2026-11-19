@@ -79,9 +79,9 @@ type loadCtx struct {
 // of the last predictDays (derived each call, never a value that only a
 // tool call keeps alive), and zones and stored as the call already holds
 // them (the metric file is not decoded again for them).
-func (t *tools) loadCtxOf(user string, a athlete, zones map[string]storedHRZones, stored map[string]storedMetrics) loadCtx {
-	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(t.freshHRZones(user, a.ID, zones)), stored: stored}
-	if top, ok := runThresholdOf(t.loadBests(user, a.ID), t.svc.now()); ok {
+func (t *tools) loadCtxOf(mv *metricsView, a athlete, zones map[string]storedHRZones, stored map[string]storedMetrics) loadCtx {
+	lc := loadCtx{ftp: a.FTP, lthr: lthrOf(mv.freshZones(zones)), stored: stored}
+	if top, ok := runThresholdOf(t.loadBests(mv.user, a.ID), t.svc.now()); ok {
 		lc.runMS = thresholdSpeed(top.vdot)
 	}
 	return lc
@@ -355,11 +355,11 @@ func loadText(r loadReport) string {
 // nothing was needed); calculated lists the families that got a threshold,
 // zones the zones that came with it (saved or not: a disconnect mid-call
 // saves none, the answer still uses one set).
-func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedActivity, have map[string]storedHRZones,
+func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedActivity, mv *metricsView, have map[string]storedHRZones,
 	stored map[string]storedMetrics, done int) (r loadReport, lc loadCtx, note string, calculated []string, zones map[string]storedHRZones) {
 	local := d.localStart()
 	from := dayOf(local).AddDate(0, 0, -(loadHistoryDays - 1))
-	lc = t.loadCtxOf(user, a, have, stored)
+	lc = t.loadCtxOf(mv, a, have, stored)
 	list, more, err := t.svc.listActivities(ctx, user, from.Unix()-dayPadS, 0, maxBackfillPages)
 	if err != nil {
 		return loadReport{}, lc, "", nil, nil
@@ -386,12 +386,12 @@ func (t *tools) loadFor(ctx context.Context, user string, a athlete, d detailedA
 		}
 	}
 	if len(need) > 0 {
-		zr, err := t.calcZones(ctx, user, a, need, true, done)
+		zr, err := t.calcZones(ctx, user, mv, need, true, done)
 		if err == nil && zr.ran {
 			lc.lthr, zones = lthrOf(zr.zones), zr.zones
-			// The zone reads stored metrics; the call's own unsaved ones
-			// (the baseline's) stay.
-			fresh := t.loadMetrics(user, a.ID)
+			// The zone reads stored metrics (the view holds the file they
+			// left); the call's own unsaved ones (the baseline's) stay.
+			fresh := mv.file().Activities
 			for k, v := range stored {
 				if _, ok := fresh[k]; !ok {
 					fresh[k] = v

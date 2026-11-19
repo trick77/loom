@@ -276,7 +276,7 @@ func (t *tools) hrZones(ctx context.Context, raw json.RawMessage) mcpserver.Resu
 	}
 	now := t.svc.now()
 	from := now.AddDate(0, 0, -hrWindowDays)
-	zr, err := t.calcZones(ctx, user, a, fams, false, 0)
+	zr, err := t.calcZones(ctx, user, t.viewMetrics(user, a.ID), fams, false, 0)
 	if err != nil {
 		return failure(err)
 	}
@@ -396,7 +396,7 @@ type zoneRun struct {
 // threshold) skips it when there is nothing to read and every family has
 // its zones already: a repeat call then writes nothing. done is the streams
 // the call read before (the per-call limit is the whole call's).
-func (t *tools) calcZones(ctx context.Context, user string, a athlete, fams []hrFamily, lazy bool, done int) (zoneRun, error) {
+func (t *tools) calcZones(ctx context.Context, user string, mv *metricsView, fams []hrFamily, lazy bool, done int) (zoneRun, error) {
 	now := t.svc.now()
 	from := now.AddDate(0, 0, -hrWindowDays)
 	// The index, synced back to the window's start (padded: the window is
@@ -414,7 +414,7 @@ func (t *tools) calcZones(ctx context.Context, user string, a athlete, fams []hr
 			list = append(list, x)
 		}
 	}
-	m := t.metricFileOf(user, a.ID)
+	m := mv.file()
 	stored := m.Activities
 	known := func(x summaryActivity) bool {
 		sm, ok := stored[strconv.FormatInt(x.ID, 10)]
@@ -464,7 +464,7 @@ func (t *tools) calcZones(ctx context.Context, user string, a athlete, fams []hr
 		asked = append(asked, f.key)
 	}
 	u := metricsUpdate{add: added, listed: list, withHR: withHR, recalc: asked}
-	zr.zones, zr.saved = t.updateMetrics(user, a.ID, u)
+	zr.zones, zr.saved = mv.update(u)
 	if zr.zones == nil {
 		// Disconnected or another athlete meanwhile: the same update on the
 		// snapshot, unsaved, so this answer still gets its zones.
