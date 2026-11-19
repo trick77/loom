@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"hash/crc32"
 	"image"
 	"image/color"
@@ -114,6 +115,29 @@ func TestUploadImageAttachmentReturnsPayloadTooLarge(t *testing.T) {
 
 	if rec.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestImageUploadErrorStatuses(t *testing.T) {
+	boom := errors.New("boom")
+	cases := []struct {
+		err  error
+		want int
+	}{
+		{artifact.ErrThreadUploadLimit, http.StatusConflict},
+		{artifact.ErrUploadTooLarge, http.StatusRequestEntityTooLarge},
+		{&artifact.UploadError{Stage: artifact.UploadStageCount, Err: boom}, http.StatusInternalServerError},
+		{&artifact.UploadError{Stage: artifact.UploadStageFile, Err: boom}, http.StatusBadRequest},
+		{&artifact.UploadError{Stage: artifact.UploadStageWrite, Err: boom}, http.StatusInternalServerError},
+		{&artifact.UploadError{Stage: artifact.UploadStageRecord, Err: boom}, http.StatusInternalServerError},
+		{boom, http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		rec := httptest.NewRecorder()
+		writeImageUploadError(rec, httptest.NewRequest(http.MethodPost, "/api/artifacts/images/upload", nil), tc.err)
+		if rec.Code != tc.want {
+			t.Errorf("%v: status = %d, want %d", tc.err, rec.Code, tc.want)
+		}
 	}
 }
 

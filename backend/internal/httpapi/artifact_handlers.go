@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -360,74 +361,55 @@ func (s *server) handleUploadImageAttachment(w http.ResponseWriter, r *http.Requ
 		httpx.WriteError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
-	threadID := strings.TrimSpace(r.FormValue("threadId"))
-	projectID := strings.TrimSpace(r.FormValue("projectId"))
-	if projectID == "" && threadID != "" {
-		items, err := s.artifacts.ListForThread(r.Context(), user.ID, threadID)
-		if err != nil {
-			serverError(w, r, err, "count image uploads failed")
-			return
-		}
-		if artifact.CountThreadUploads(items, user.ID) >= documents.MaxChatDocuments {
-			httpx.WriteError(w, http.StatusConflict, "too many attachments in this thread")
-			return
-		}
-	}
 	var projectIDPtr *string
-	if projectID != "" {
+	if projectID := strings.TrimSpace(r.FormValue("projectId")); projectID != "" {
 		projectIDPtr = &projectID
 	}
-	output, out, err := artifact.CreateUploadFile(artifact.UploadRequest{
+	stored, err := artifact.StoreUpload(r.Context(), s.artifacts, artifact.StoreUploadInput{
 		UsersDir:        s.usersDir,
 		UserID:          user.ID,
+		ThreadID:        strings.TrimSpace(r.FormValue("threadId")),
 		ProjectID:       projectIDPtr,
 		DisplayFilename: header.Filename,
 		Extension:       extension,
+		MIMEType:        mimeType,
+		Reader:          file,
+		ThreadLimit:     documents.MaxChatDocuments,
+		// Eager sidecar thumbnail so the artifacts list and composer previews
+		// are fast immediately.
+		Thumbnail: true,
 	})
 	if err != nil {
-		httpx.WriteError(w, http.StatusBadRequest, "invalid upload")
+		writeImageUploadError(w, r, err)
 		return
 	}
-	size, copyErr := io.Copy(out, io.LimitReader(file, artifact.MaxArtifactSizeBytes+1))
-	closeErr := out.Close()
-	if copyErr != nil || closeErr != nil {
-		_ = os.Remove(output.AbsPath)
-		if copyErr != nil {
-			serverError(w, r, fmt.Errorf("copy artifact: %w", copyErr), "write upload failed")
-		} else {
-			serverError(w, r, fmt.Errorf("close artifact: %w", closeErr), "write upload failed")
-		}
+	httpx.WriteJSON(w, http.StatusOK, stored.Artifact.Response())
+}
+
+func writeImageUploadError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, artifact.ErrThreadUploadLimit) {
+		httpx.WriteError(w, http.StatusConflict, "too many attachments in this thread")
 		return
 	}
-	if size > artifact.MaxArtifactSizeBytes {
-		_ = os.Remove(output.AbsPath)
+	if errors.Is(err, artifact.ErrUploadTooLarge) {
 		httpx.WriteError(w, http.StatusRequestEntityTooLarge, "upload too large")
 		return
 	}
-	// Eagerly generate the sidecar thumbnail (best-effort) so the artifacts list and
-	// composer previews are fast immediately; the bytes were just written to disk.
-	var thumbnailRelPath string
-	if src, rerr := os.ReadFile(output.AbsPath); rerr == nil {
-		thumbnailRelPath = artifact.GenerateThumbnailBestEffort(s.usersDir, user.ID, mimeType, src, output.VolumeRelPath)
-	}
-	created, err := s.artifacts.Create(r.Context(), artifact.CreateInput{
-		UserID:           user.ID,
-		ThreadID:         threadID,
-		ProjectID:        projectIDPtr,
-		DisplayFilename:  output.DisplayFilename,
-		VolumeRelPath:    output.VolumeRelPath,
-		MIMEType:         mimeType,
-		SizeBytes:        size,
-		Source:           "user_uploaded",
-		ThumbnailRelPath: thumbnailRelPath,
-	})
-	if err != nil {
-		_ = os.Remove(output.AbsPath)
-		artifact.RemoveThumbnail(s.usersDir, user.ID, output.VolumeRelPath)
+	var uploadErr *artifact.UploadError
+	if !errors.As(err, &uploadErr) {
 		serverError(w, r, err, "save upload failed")
 		return
 	}
-	httpx.WriteJSON(w, http.StatusOK, created.Response())
+	switch uploadErr.Stage {
+	case artifact.UploadStageCount:
+		serverError(w, r, err, "count image uploads failed")
+	case artifact.UploadStageFile:
+		httpx.WriteError(w, http.StatusBadRequest, "invalid upload")
+	case artifact.UploadStageWrite:
+		serverError(w, r, err, "write upload failed")
+	default:
+		serverError(w, r, err, "save upload failed")
+	}
 }
 
 func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, error) {

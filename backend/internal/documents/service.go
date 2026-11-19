@@ -136,58 +136,31 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (rag.Document, art
 		if err != nil {
 			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count thread documents: %w", err)
 		}
-		items, err := s.artifacts.ListForThread(ctx, in.UserID, in.ThreadID)
-		if err != nil {
-			return rag.Document{}, artifact.Artifact{}, fmt.Errorf("count thread uploads: %w", err)
-		}
-		if documentCount >= MaxChatDocuments || artifact.CountThreadUploads(items, in.UserID) >= MaxChatDocuments {
+		if documentCount >= MaxChatDocuments {
 			return rag.Document{}, artifact.Artifact{}, ErrThreadDocumentLimit
 		}
 	}
-	ext := strings.TrimPrefix(filepath.Ext(in.Filename), ".")
 
-	out, file, err := artifact.CreateUploadFile(artifact.UploadRequest{
+	stored, err := artifact.StoreUpload(ctx, s.artifacts, artifact.StoreUploadInput{
 		UsersDir:        s.usersDir,
-		UserID:          in.UserID,
-		ProjectID:       in.ProjectID,
-		DisplayFilename: in.Filename,
-		Extension:       ext,
-	})
-	if err != nil {
-		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("create upload file: %w", err)
-	}
-	// Enforce the size limit on file content, tolerating multipart envelope
-	// overhead the handler's MaxBytesReader lets through (mirrors the image
-	// attachment handler so both paths share one effective content limit).
-	size, copyErr := io.Copy(file, io.LimitReader(in.Reader, artifact.MaxArtifactSizeBytes+1))
-	closeErr := file.Close()
-	if copyErr != nil {
-		_ = os.Remove(out.AbsPath)
-		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("write upload: %w", copyErr)
-	}
-	if closeErr != nil {
-		_ = os.Remove(out.AbsPath)
-		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("close upload: %w", closeErr)
-	}
-	if size > artifact.MaxArtifactSizeBytes {
-		_ = os.Remove(out.AbsPath)
-		return rag.Document{}, artifact.Artifact{}, ErrTooLarge
-	}
-
-	art, err := s.artifacts.Create(ctx, artifact.CreateInput{
 		UserID:          in.UserID,
 		ThreadID:        in.ThreadID,
 		ProjectID:       in.ProjectID,
-		DisplayFilename: out.DisplayFilename,
-		VolumeRelPath:   out.VolumeRelPath,
+		DisplayFilename: in.Filename,
+		Extension:       strings.TrimPrefix(filepath.Ext(in.Filename), "."),
 		MIMEType:        mime,
-		SizeBytes:       size,
-		Source:          "user_uploaded",
+		Reader:          in.Reader,
+		ThreadLimit:     MaxChatDocuments,
 	})
-	if err != nil {
-		_ = os.Remove(out.AbsPath)
-		return rag.Document{}, artifact.Artifact{}, fmt.Errorf("record artifact: %w", err)
+	switch {
+	case errors.Is(err, artifact.ErrThreadUploadLimit):
+		return rag.Document{}, artifact.Artifact{}, ErrThreadDocumentLimit
+	case errors.Is(err, artifact.ErrUploadTooLarge):
+		return rag.Document{}, artifact.Artifact{}, ErrTooLarge
+	case err != nil:
+		return rag.Document{}, artifact.Artifact{}, err
 	}
+	art, out, size := stored.Artifact, stored.Path, stored.Size
 
 	// A composer upload in a project-less thread is private to that one thread; a
 	// project upload keeps the project scope (ThreadID is then provenance-only).
