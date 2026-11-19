@@ -540,10 +540,14 @@ func runMCPTestHelper(t *testing.T) {
 	scanner := bufio.NewScanner(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
 	initialized := false
+	toolCalls := 0
 	for scanner.Scan() {
 		var req rpcRequest
 		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
 			t.Fatalf("helper decode: %v", err)
+		}
+		if req.Method == "tools/call" {
+			toolCalls++
 		}
 		if req.Method != "initialize" && !initialized {
 			_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "error": map[string]any{"code": -32002, "message": "server not initialized"}})
@@ -568,6 +572,15 @@ func runMCPTestHelper(t *testing.T) {
 			if args, ok := req.Params.(map[string]any); ok {
 				if inner, ok := args["arguments"].(map[string]any); ok && inner["text"] == "hang" {
 					time.Sleep(10 * time.Second)
+					continue
+				}
+				if inner, ok := args["arguments"].(map[string]any); ok && inner["text"] == "slow" {
+					time.Sleep(300 * time.Millisecond)
+				}
+				if inner, ok := args["arguments"].(map[string]any); ok && inner["text"] == "count" {
+					_ = encoder.Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": map[string]any{
+						"content": []map[string]any{{"type": "text", "text": fmt.Sprintf("calls=%d", toolCalls)}},
+					}})
 					continue
 				}
 				if inner, ok := args["arguments"].(map[string]any); ok && inner["text"] == "huge" {
@@ -614,6 +627,50 @@ func TestStdioClientReinitializesAfterCancel(t *testing.T) {
 	}
 	if len(tools) != 1 || tools[0].Name != "local__echo" {
 		t.Fatalf("tools after cancel = %#v", tools)
+	}
+}
+
+// The process is shared by every user's calls. A call cancelled while it
+// still waits behind another one has sent nothing: it must neither kill the
+// process under the running call nor send its request once its turn is gone.
+func TestStdioClientCancelWhileQueuedSparesRunningCall(t *testing.T) {
+	if os.Getenv("BACKEND_MCP_TEST_HELPER") == "1" {
+		runMCPTestHelper(t)
+		return
+	}
+	client := NewStdioClient("local", ServerConfig{
+		Transport: TransportStdio,
+		Command:   os.Args[0],
+		Args:      []string{"-test.run=TestStdioClientCancelWhileQueuedSparesRunningCall"},
+		Env:       map[string]string{"BACKEND_MCP_TEST_HELPER": "1"},
+	})
+	defer client.Close()
+	if _, err := client.ListTools(context.Background()); err != nil {
+		t.Fatalf("ListTools() error: %v", err)
+	}
+
+	running := make(chan error, 1)
+	go func() {
+		_, err := client.CallTool(context.Background(), "echo", map[string]any{"text": "slow"})
+		running <- err
+	}()
+	time.Sleep(100 * time.Millisecond) // the slow call holds the process
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := client.CallTool(ctx, "echo", map[string]any{"text": "queued"}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("queued CallTool() error = %v, want deadline exceeded", err)
+	}
+	if err := <-running; err != nil {
+		t.Fatalf("running CallTool() error = %v, want it to finish: a cancelled queued call killed the process", err)
+	}
+
+	got, err := client.CallTool(context.Background(), "echo", map[string]any{"text": "count"})
+	if err != nil {
+		t.Fatalf("count CallTool() error: %v", err)
+	}
+	if got.Text != "calls=2" {
+		t.Fatalf("server saw %q, want calls=2 (slow, count): the cancelled call reached the server", got.Text)
 	}
 }
 

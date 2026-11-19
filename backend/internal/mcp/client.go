@@ -788,10 +788,40 @@ func (c *stdioClient) newScanner(stdout io.Reader) *bufio.Scanner {
 	return scanner
 }
 
+// callClaim settles a cancel against a call still queued on callMu: either
+// the call claimed the process first (it is in flight, the cancel kills that
+// process) or the cancel abandoned it first (it never sends).
+type callClaim struct {
+	mu        sync.Mutex
+	scanner   *bufio.Scanner
+	abandoned bool
+}
+
+// take is doCall's side: false when the caller has gone.
+func (c *callClaim) take(scanner *bufio.Scanner) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.abandoned {
+		return false
+	}
+	c.scanner = scanner
+	return true
+}
+
+// abandon is the cancel's side: the scanner of the process the call holds,
+// nil when it never got that far.
+func (c *callClaim) abandon() *bufio.Scanner {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.abandoned = true
+	return c.scanner
+}
+
 func (c *stdioClient) call(ctx context.Context, method string, params any, out any) error {
+	claim := &callClaim{}
 	done := make(chan error, 1)
 	go func() {
-		done <- c.doCall(method, params, out)
+		done <- c.doCall(claim, method, params, out)
 	}()
 	select {
 	case err := <-done:
@@ -800,9 +830,17 @@ func (c *stdioClient) call(ctx context.Context, method string, params any, out a
 		}
 		return err
 	case <-ctx.Done():
-		_ = c.Close()
-		// Wait for doCall to unwind after the close. Its error is mostly the
-		// closed pipe; the cancel already says why the call ended.
+		// The process is shared by every user's calls. One still queued behind
+		// another call has sent nothing: killing the process would fail that
+		// other call, and it must not send once its turn is gone.
+		scanner := claim.abandon()
+		if scanner == nil {
+			return ctx.Err()
+		}
+		// In flight: only killing the process ends the read of its reply.
+		_ = c.closeIf(scanner)
+		// Wait for doCall to unwind after the close (it may still write out).
+		// Its error is mostly the closed pipe; the cancel already says why.
 		if err := <-done; err != nil {
 			slog.Debug("mcp stdio call unwound after cancel", "server", c.serverName, "err", err)
 		}
@@ -825,7 +863,7 @@ func (c *stdioClient) shrinkScanner(scanner *bufio.Scanner) {
 	}
 }
 
-func (c *stdioClient) doCall(method string, params any, out any) error {
+func (c *stdioClient) doCall(claim *callClaim, method string, params any, out any) error {
 	c.callMu.Lock()
 	defer c.callMu.Unlock()
 	c.mu.Lock()
@@ -834,6 +872,9 @@ func (c *stdioClient) doCall(method string, params any, out any) error {
 	c.mu.Unlock()
 	if stdin == nil || scanner == nil {
 		return io.ErrClosedPipe
+	}
+	if !claim.take(scanner) {
+		return context.Canceled
 	}
 	id := c.nextID.Add(1)
 	payload, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params})
