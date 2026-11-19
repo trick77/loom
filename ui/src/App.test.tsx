@@ -6454,6 +6454,31 @@ test("a failed admin user list is shown as an error, not as a sign-out", async (
   expect(screen.queryByRole("link", { name: /sign in/i })).toBeNull();
 });
 
+test("an expired session on the admin user list signs out", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "admin" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [], nextCursor: null });
+      if (url === "/api/admin/users")
+        return Response.json({ error: "unauthorized" }, { status: 401 });
+      throw new Error(`unexpected fetch ${url}`);
+    }),
+  );
+
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /admin/i }));
+
+  expect(
+    await screen.findByRole("link", { name: /sign in/i }),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("Users failed to load.")).toBeNull();
+});
+
 test("a failed deferred new-chat document upload stops the send and keeps the file staged", async () => {
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {

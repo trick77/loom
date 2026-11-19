@@ -1,3 +1,4 @@
+import { expectJSON } from "./http";
 import type { User } from "./types";
 
 export async function getMe(): Promise<User | null> {
@@ -29,12 +30,13 @@ export async function updateMe(patch: {
   return response.json();
 }
 
+// A 401 is AuthExpiredError: the admin page signs out on it rather than show
+// a failed list.
 export async function listUsers(): Promise<User[]> {
-  const response = await fetch("/api/admin/users");
-  if (!response.ok) {
-    throw new Error("failed to load users");
-  }
-  return response.json();
+  return expectJSON<User[]>(
+    await fetch("/api/admin/users"),
+    "failed to load users",
+  );
 }
 
 export async function logout(): Promise<string> {
