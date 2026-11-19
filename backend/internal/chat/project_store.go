@@ -109,7 +109,10 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 		}
 	}
 	description := project.Description
-	descriptionTouched := in.Description != nil
+	// The project dialog sends the description it was opened with on every
+	// save: handed back unchanged, it is no edit, and a rename must not lock
+	// the auto description.
+	descriptionTouched := in.Description != nil && strings.TrimSpace(*in.Description) != project.Description
 	if descriptionTouched {
 		description = strings.TrimSpace(*in.Description)
 		if len(description) > MaxProjectDescriptionLength {
@@ -123,7 +126,7 @@ func (s *Store) UpdateProject(ctx context.Context, userID, projectID string, in 
 	//   - emptied → re-arm auto-generation: clear the user-edited lock, the debounce
 	//     marker, and the source thread count so the very next titled-thread refresh
 	//     regenerates immediately with nothing stale blocking it.
-	// A name-only edit (in.Description == nil) leaves all three untouched.
+	// A name-only edit (no or an unchanged description) leaves all three untouched.
 	setDescriptionState := ""
 	if descriptionTouched {
 		if description == "" {

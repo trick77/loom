@@ -305,6 +305,45 @@ func TestStore_UpdateProjectNameOnlyEditPreservesDescriptionState(t *testing.T) 
 	}
 }
 
+// The project dialog always sends the description it was opened with: a rename
+// that hands the stored auto description back unchanged is no hand edit.
+func TestStore_UpdateProjectRenameWithUnchangedDescriptionStaysAuto(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	if _, _, err := store.SetAutoProjectDescription(ctx, userID, project.ID, "Auto plan.", 4); err != nil {
+		t.Fatalf("SetAutoProjectDescription() error: %v", err)
+	}
+
+	newName, same := "Research v2", " Auto plan. "
+	updated, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Name: &newName, Description: &same})
+	if err != nil {
+		t.Fatalf("UpdateProject() error: %v", err)
+	}
+	if updated.DescriptionUserEdited {
+		t.Fatal("DescriptionUserEdited = true after a rename that kept the description, want false")
+	}
+	if updated.DescriptionSourceThreadCount != 4 {
+		t.Fatalf("DescriptionSourceThreadCount = %d, want 4 preserved", updated.DescriptionSourceThreadCount)
+	}
+
+	// A changed description is a hand edit and locks.
+	edited := "My own words."
+	locked, _, err := store.UpdateProject(ctx, userID, project.ID, UpdateProjectInput{Description: &edited})
+	if err != nil {
+		t.Fatalf("UpdateProject() error: %v", err)
+	}
+	if !locked.DescriptionUserEdited {
+		t.Fatal("DescriptionUserEdited = false after a changed description, want true")
+	}
+}
+
 func TestStore_SetThreadImageModelIfEmptyLocksOnce(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
