@@ -213,6 +213,28 @@ WHERE user_id = ? AND id = ?`,
 	return st.GetSchedule(ctx, s.UserID, s.ID)
 }
 
+// SaveScheduleEdit is SaveSchedule for an edit that did not touch enabled:
+// enabled and the disabled reason stay as stored, and the next run is s's
+// only while the row is still on. An edit reads the row, may ask the model
+// for seconds, then writes: a Disable loom decided meanwhile (a timed-out
+// run) must stand, not be re-enabled by the edit's stale copy.
+func (st *Store) SaveScheduleEdit(ctx context.Context, s Schedule) (Schedule, error) {
+	res, err := st.db.ExecContext(ctx, `
+UPDATE schedules
+SET name = ?, prompt = ?, interval_text = ?, cron_template = ?, cron = ?, timezone = ?,
+    next_run_at = CASE WHEN enabled = 1 THEN ? ELSE NULL END, unread_runs = 0, updated_at = datetime('now')
+WHERE user_id = ? AND id = ?`,
+		s.Name, s.Prompt, s.IntervalText, s.CronTemplate, s.Cron, s.Timezone,
+		nullTS(s.NextRunAt), s.UserID, s.ID)
+	if err != nil {
+		return Schedule{}, fmt.Errorf("save schedule: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Schedule{}, ErrNotFound
+	}
+	return st.GetSchedule(ctx, s.UserID, s.ID)
+}
+
 // DeleteSchedule removes the schedule with its runs and memory. Run threads
 // still here stay, as ordinary threads.
 func (st *Store) DeleteSchedule(ctx context.Context, userID, id string) error {

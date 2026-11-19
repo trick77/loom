@@ -232,6 +232,45 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
+// disablingInterpreter disables the schedule while it interprets, as the
+// runner does when a run times out during an edit's model call.
+type disablingInterpreter struct {
+	fakeInterpreter
+	disable func()
+}
+
+func (d *disablingInterpreter) ParseSchedule(ctx context.Context, interval string) (string, bool, error) {
+	if d.disable != nil {
+		d.disable()
+	}
+	return d.fakeInterpreter.ParseSchedule(ctx, interval)
+}
+
+func TestUpdateKeepsDisableDecidedMeanwhile(t *testing.T) {
+	ctx := context.Background()
+	interp := &disablingInterpreter{fakeInterpreter: fakeInterpreter{template: "~ 7~22 * * ~", ok: true}}
+	svc := newService(t, &interp.fakeInterpreter)
+	sch, err := svc.Create(ctx, "u1", schedule.Input{Prompt: ptr("p"), Interval: ptr("once a week"), Timezone: ptr("Europe/Zurich")})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	svc.Interpreter = interp
+	interp.template = "0 9 * * *"
+	interp.disable = func() { _ = svc.Store.Disable(ctx, "u1", sch.ID, schedule.DisabledTimeout, sunday) }
+
+	got, err := svc.Update(ctx, "u1", sch.ID, schedule.Input{Interval: ptr("daily")})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if got.Enabled || got.DisabledReason != schedule.DisabledTimeout || got.DisabledAt == nil || got.NextRunAt != nil {
+		t.Fatalf("after an edit raced a disable = enabled %v, reason %q, at %v, next %v; want the disable kept",
+			got.Enabled, got.DisabledReason, got.DisabledAt, got.NextRunAt)
+	}
+	if got.Cron != "0 9 * * *" || got.IntervalText != "daily" {
+		t.Fatalf("edit lost: cron %q interval %q", got.Cron, got.IntervalText)
+	}
+}
+
 func TestNextRun(t *testing.T) {
 	sch := schedule.Schedule{Enabled: true, Cron: "37 14 * * 4", Timezone: "Europe/Zurich"}
 	if got := schedule.NextRun(sch, sunday); got == nil || !got.Equal(time.Date(2026, 10, 29, 13, 37, 0, 0, time.UTC)) {

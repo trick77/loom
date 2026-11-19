@@ -192,6 +192,9 @@ func (s *Service) Update(ctx context.Context, userID, id string, in Input) (Sche
 	if err := s.apply(ctx, &sch, in, false); err != nil {
 		return Schedule{}, err
 	}
+	if in.Enabled == nil {
+		return s.Store.SaveScheduleEdit(ctx, sch)
+	}
 	return s.Store.SaveSchedule(ctx, sch)
 }
 

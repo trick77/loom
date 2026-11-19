@@ -13,6 +13,15 @@ import (
 	"github.com/trick77/loom/internal/store"
 )
 
+func TestSaveScheduleEditReportsAFailedWrite(t *testing.T) {
+	db := openDB(t)
+	st := schedule.NewStore(db)
+	_ = db.Close()
+	if _, err := st.SaveScheduleEdit(context.Background(), schedule.Schedule{UserID: "u1", ID: "s1"}); err == nil || errors.Is(err, schedule.ErrNotFound) {
+		t.Fatalf("SaveScheduleEdit on a closed db err = %v, want the write's error", err)
+	}
+}
+
 func openDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "schedule_test.db"))
@@ -70,6 +79,9 @@ func TestScheduleCRUDIsScopedByUser(t *testing.T) {
 	other.UserID = "u2"
 	if _, err := st.SaveSchedule(ctx, other); !errors.Is(err, schedule.ErrNotFound) {
 		t.Fatalf("SaveSchedule as u2 err = %v", err)
+	}
+	if _, err := st.SaveScheduleEdit(ctx, other); !errors.Is(err, schedule.ErrNotFound) {
+		t.Fatalf("SaveScheduleEdit as u2 err = %v", err)
 	}
 	if err := st.DeleteSchedule(ctx, "u2", created.ID); !errors.Is(err, schedule.ErrNotFound) {
 		t.Fatalf("DeleteSchedule as u2 err = %v", err)
