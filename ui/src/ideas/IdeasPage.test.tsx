@@ -242,6 +242,26 @@ test("done moves the idea off the open list", async () => {
   expect(api.updateIdea).toHaveBeenCalledWith("i1", { done: true });
 });
 
+test("done answered after a switch to the done tab leaves that list alone", async () => {
+  let finish: (idea: typeof kanban) => void = () => {};
+  vi.mocked(api.updateIdea).mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  render(<IdeasPage {...props()} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Vibe Kanban/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+  const doneKanban = { ...kanban, state: "done" as const };
+  vi.mocked(api.listIdeas).mockResolvedValue([doneKanban]);
+  fireEvent.click(screen.getByRole("tab", { name: /Done/ }));
+  expect(await screen.findByText("Vibe Kanban")).toBeInTheDocument();
+
+  await act(async () => finish(doneKanban));
+  expect(screen.getByText("Vibe Kanban")).toBeInTheDocument();
+});
+
 test("a deep link opens its idea, on the done tab when it is done", async () => {
   const doneIdea = { ...kanban, state: "done" as const };
   vi.mocked(api.getIdea).mockResolvedValue(doneIdea);

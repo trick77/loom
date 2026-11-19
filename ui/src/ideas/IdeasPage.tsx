@@ -150,7 +150,9 @@ export function IdeasPage({
     setError("");
     try {
       await updateIdea(idea.id, { done });
-      drop(idea.id);
+      // Off the list it was on; after a switch to the other tab, that list
+      // already has it in its new state.
+      if (tabRef.current === idea.state) drop(idea.id);
       changed();
     } catch (err) {
       fail(err);
