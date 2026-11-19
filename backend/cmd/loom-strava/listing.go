@@ -92,6 +92,24 @@ func (t *tools) listActivities(ctx context.Context, raw json.RawMessage) mcpserv
 	if err != nil {
 		return failure(err)
 	}
+	// A window open to the past (before alone) needs rows older than the
+	// newest ones the page count above covers: read on, a page at a time,
+	// until it holds the limit or the history ends. Never further: the
+	// budget is shared. Without this no call reads past the cursor and the
+	// window answers "still being read" for good.
+	if after.IsZero() && !before.IsZero() {
+		for read := 0; more && len(list) < limit && read < maxBackfillPages && t.svc.spent(ctx) == ""; read++ {
+			// A failed read is logged and answered from the index: stop
+			// once a page adds nothing rather than retry it.
+			had := t.svc.indexed(user)
+			if list, more, err = t.svc.listActivities(ctx, user, afterE, beforeE, 1); err != nil {
+				return failure(err)
+			}
+			if t.svc.indexed(user) == had {
+				break
+			}
+		}
+	}
 	var rows []summaryActivity
 	for _, x := range list {
 		ls := x.localStart()

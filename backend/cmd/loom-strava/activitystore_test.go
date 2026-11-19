@@ -315,6 +315,29 @@ func TestStore_shortHeadPageDropsNothingUnseen(t *testing.T) {
 	}
 }
 
+// A window open to the past (before alone) reads back past the index's
+// cursor: "still being read" on every call would never end, since no other
+// call reads that far.
+func TestStore_beforeOnlyReadsBack(t *testing.T) {
+	f := newFakeStrava(t)
+	f.addAthlete(1, "Anna", "code-a", 250)
+	start := local(2019, 10, 1, 8)
+	for i := range 250 {
+		f.addActivity(1, int64(40000+i), fmt.Sprintf("Ride %d", i), "Ride", start.Add(time.Duration(i)*24*time.Hour), nil, nil)
+	}
+	svc, h, _ := newTestService(t, f)
+	connect(t, h, userA, "code-a")
+	callTool(t, h, userA, "list_activities", `{}`) // indexes the newest page
+	if n := svc.indexed(userA); n != activitiesPerPage {
+		t.Fatalf("indexed %d, want one page", n)
+	}
+
+	r := callTool(t, h, userA, "list_activities", `{"before":"2019-11-01","limit":5}`)
+	if !strings.Contains(r.Text, "newest first: 5") || !strings.Contains(r.Text, "Thu 2019-10-31") {
+		t.Fatalf("before-only window:\n%.400s", r.Text)
+	}
+}
+
 // Disconnect deletes the store; another athlete starts with an empty one.
 func TestStore_goneWithTheConnection(t *testing.T) {
 	_, svc, dir := analysisFixture(t)
