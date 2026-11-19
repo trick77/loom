@@ -290,21 +290,23 @@ export function useDocumentAttachments(scope: {
     [attachments, scopeKey, setScopeAttachments],
   );
 
-  const clearAttachments = useCallback(
-    (options: { revokePreviewUrls?: boolean } = {}) => {
-      const revokePreviewUrls = options.revokePreviewUrls ?? true;
-      setScopeAttachments(scopeKey, (current) => {
-        if (revokePreviewUrls) {
-          current.forEach((attachment) => {
-            if (isRevocablePreview(attachment.previewUrl))
-              URL.revokeObjectURL(attachment.previewUrl);
-          });
-        }
-        return [];
-      });
-    },
-    [scopeKey, setScopeAttachments],
-  );
+  // takeAttachments clears the scope's chips for a send, previews kept (the
+  // sent bubble shows them), and returns a restore for chips the send did not
+  // take: they go back to the scope they were taken from, ahead of any picked
+  // since.
+  const takeAttachments = useCallback(() => {
+    const key = scopeKey;
+    let taken: ComposerAttachment[] = [];
+    setScopeAttachments(key, (current) => {
+      taken = current;
+      return [];
+    });
+    return () =>
+      setScopeAttachments(key, (current) => [
+        ...taken.filter((item) => !current.some((c) => c.id === item.id)),
+        ...current,
+      ]);
+  }, [scopeKey, setScopeAttachments]);
 
   // The note is per-hook rather than per-scope, so drop it when the scope changes:
   // "Uploading report.pdf…" from the thread you just left has nothing to say about
@@ -395,10 +397,10 @@ export function useDocumentAttachments(scope: {
   return {
     attachNote,
     attachments,
-    clearAttachments,
     handleAttachError,
     handleAttachFiles,
     removeAttachment,
+    takeAttachments,
     uploadExistingAttachments,
   };
 }

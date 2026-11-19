@@ -57,7 +57,7 @@ export function ProjectDetailPage({
   pastedTexts: PastedText[];
   onAddPastedText(text: string): void;
   onRemovePastedText(id: string): void;
-  onSend(attachments?: ComposerAttachment[]): void;
+  onSend(attachments?: ComposerAttachment[]): void | Promise<boolean>;
   onStop(): void;
   onOpenThread(threadID: string): void;
   onRenameThread(thread: Thread): void;

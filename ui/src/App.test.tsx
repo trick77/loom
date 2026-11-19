@@ -6515,6 +6515,83 @@ test("an expired session on the admin user list signs out", async () => {
   expect(screen.queryByText("Users failed to load.")).toBeNull();
 });
 
+test("a thread send that fails before the message is stored puts its file back", async () => {
+  window.history.replaceState({}, "", "/thread/t1");
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [threadFixture()], nextCursor: null });
+      if (url === "/api/threads/t1")
+        return Response.json({ thread: threadFixture(), messages: [] });
+      if (url === "/api/artifacts/images/upload" && init?.method === "POST")
+        return Response.json({
+          id: "art_image",
+          threadId: "t1",
+          displayFilename: "tiny.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+          createdAt: "2026-05-30T00:00:00Z",
+          downloadUrl: "/api/artifacts/art_image/download",
+        });
+      if (url === "/api/threads/t1/messages:stream" && init?.method === "POST")
+        return Response.json({ error: "boom" }, { status: 500 });
+      return new Promise<Response>(() => {});
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  stubURLObjectMethods(
+    () => "blob:tiny",
+    () => undefined,
+  );
+
+  render(<App />);
+  const textbox = await screen.findByPlaceholderText("Write a message...");
+  await screen.findByRole("heading", { name: "Existing chat" });
+  const fileInput = textbox
+    .closest("form")
+    ?.querySelector('input[type="file"]');
+  if (fileInput === null || fileInput === undefined)
+    throw new Error("file input missing");
+  fireEvent.change(fileInput, {
+    target: { files: [new File(["png"], "tiny.png", { type: "image/png" })] },
+  });
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/artifacts/images/upload",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  fireEvent.change(textbox, { target: { value: "What is this image?" } });
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: /send message/i }),
+    ).not.toBeDisabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/threads/t1/messages:stream",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  // The draft comes back for the retry, and the file with it.
+  await waitFor(() =>
+    expect(screen.getByPlaceholderText("Write a message...")).toHaveValue(
+      "What is this image?",
+    ),
+  );
+  await waitFor(() =>
+    expect(
+      within(textbox.closest("form")!).getByTitle("tiny.png"),
+    ).toBeInTheDocument(),
+  );
+});
+
 test("a failed deferred new-chat document upload stops the send and keeps the file staged", async () => {
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {

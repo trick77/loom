@@ -180,7 +180,7 @@ export function ThreadPanel({
   // The thread\'s chat slot and its switch, passed to the composer.
   chatSlot?: string;
   onChatSlotChange?(slot: string): void;
-  onSend(attachments?: ComposerAttachment[]): void;
+  onSend(attachments?: ComposerAttachment[]): void | Promise<boolean>;
   onStop(): void;
   onRetry(content: string, pastedTexts?: MessagePastedText[]): void;
   /** Messages sent while the answer streams, waiting for the turn. */
@@ -441,7 +441,7 @@ export function ThreadPanel({
   const sendPinned = useCallback(
     (sentAttachments: ComposerAttachment[]) => {
       pinToLatest();
-      onSend(sentAttachments);
+      return onSend(sentAttachments);
     },
     [onSend, pinToLatest],
   );

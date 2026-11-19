@@ -1077,32 +1077,35 @@ export function ThreadShell({
     setPendingAttachNote("");
   }
 
+  // handleSend resolves whether the attachments went with the send; a
+  // composer that staged them puts them back on false (see ComposerSend).
   async function handleSend(
     attachments: ComposerAttachment[] = pendingAttachments.map(
       toSentAttachment,
     ),
-  ) {
+  ): Promise<boolean> {
     const draftText = draft.text.trim();
     const content = composeContent(draft);
-    if (content === "") return;
+    if (content === "") return false;
     // Slash command detection is the draft alone (the popover keys off it too); it
     // clears any staged chips along with the draft.
-    if (runSlashCommand(draftText)) return;
+    if (runSlashCommand(draftText)) return true;
     // On a thread route only the thread itself takes a send: still loading,
     // sendContent would start a new thread without its history or project.
-    if (route.view === "thread" && activeThread === null) return;
+    if (route.view === "thread" && activeThread === null) return false;
     // A send while this thread's turn runs queues behind it. Other threads
-    // streaming do not matter.
+    // streaming do not matter. A queued message carries text and pastes only.
     if (
       activeThread !== null &&
       isStreaming(runs, threadRunKey(activeThread.id))
     ) {
       await queueSend(activeThread.id, content);
-      return;
+      return false;
     }
-    // sendContent clears this scope's draft and chips; on a send error it restores
-    // the chips and the draft-only text (not the merged content) for retry.
-    await sendContent(content, {
+    // sendContent clears this scope's draft; on a send error it restores the
+    // draft-only text (not the merged content) for retry, and says the
+    // attachments did not go so the composer restores its chips.
+    return sendContent(content, {
       restoreDraftOnError: true,
       attachments,
       restoreDraft: draftText,
@@ -1230,7 +1233,10 @@ export function ThreadShell({
       // here on error — see restoreScope below for the one case they differ.
       draftScope: DraftScope;
     },
-  ) {
+  ): Promise<boolean> {
+    // Resolves whether options.attachments went with the send: false only when
+    // it failed before the server stored the message (the draft is restored
+    // then too).
     // A turn on an existing thread is keyed by that thread. A turn started before
     // the thread exists takes a provisional key of its own, so a second send while
     // createThread (and possibly an image-upload flush) is still in flight cannot
@@ -1610,12 +1616,14 @@ export function ThreadShell({
         setThreads((current) => upsertThreadById(current, fallbackThread));
         upsertIntoOpenProjectPage(fallbackThread);
       }
+      return true;
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (error instanceof DOMException && error.name === "AbortError")
+        return true;
       // A stop the user asked for closes the stream server-side before the
       // client aborts its fetch, which reads as an interruption; it is not one.
       if (abortController.signal.aborted || stopRequested(abortController))
-        return;
+        return true;
       // Keep the partial streamed blocks visible so a failed turn still shows what
       // streamed (prose, an activity trace, a tool that errored); the next send
       // clears them.
@@ -1655,6 +1663,8 @@ export function ThreadShell({
           else patchStreamRun(runKey, { error: message });
         },
       );
+      // Not stored with a message: the files go back with the draft.
+      return userMessageConfirmed || reattaching || answered;
     } finally {
       endStreamRun(runKey, {
         keepFailedTurnVisible: keepFailedTurnVisible && targetThreadID !== null,
