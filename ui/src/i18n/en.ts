@@ -930,7 +930,6 @@ export const en = {
       enable: "Enable again",
     },
     detail: {
-      when: "When",
       nextRun: "Next run",
       memory: "Memory",
       memorySummary: "{{sources}} sources · {{queries}} searches",
@@ -960,7 +959,6 @@ export const en = {
       noFinds: "no finds",
       useBrowser: "use browser",
       fetchBlocked: "fetch blocked since {{date}}",
-      fetchOk: "fetch ok",
       lastUsed: "last {{date}}",
       runs_one: "{{count}} run",
       runs_other: "{{count}} runs",

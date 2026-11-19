@@ -427,29 +427,20 @@ function ArtifactRow({
   onHoverChange(hovered: boolean): void;
 } & ArtifactRowMenuProps) {
   const isImage = artifact.mimeType.startsWith("image/");
-  if (isImage) {
-    return (
-      <ImageArtifactRow
-        artifact={artifact}
-        hideDivider={hideDivider}
-        hovered={hovered}
-        onHoverChange={onHoverChange}
-        {...menu}
-      />
-    );
-  }
   // A deleted PDF has no bytes to preview; fall through to the file row (which
   // downloads / surfaces the gone state) rather than opening a doomed preview.
   if (
-    artifact.deleted !== true &&
-    isPdfAttachment({
-      mimeType: artifact.mimeType,
-      filename: artifact.displayFilename,
-    })
+    isImage ||
+    (artifact.deleted !== true &&
+      isPdfAttachment({
+        mimeType: artifact.mimeType,
+        filename: artifact.displayFilename,
+      }))
   ) {
     return (
-      <PdfArtifactRow
+      <PreviewArtifactRow
         artifact={artifact}
+        image={isImage}
         hideDivider={hideDivider}
         hovered={hovered}
         onHoverChange={onHoverChange}
@@ -602,11 +593,39 @@ function FileArtifactButton({
       })}
       onClick={onDownload}
     >
-      <AttachmentPreview
-        mimeType={artifact.mimeType}
-        filename={artifact.displayFilename}
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]"
-      />
+      <ArtifactLabel artifact={artifact} />
+    </button>
+  );
+}
+
+// ArtifactLabel is a row's icon (an image's thumbnail), filename and type.
+function ArtifactLabel({
+  artifact,
+  image = false,
+}: {
+  artifact: Artifact;
+  image?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {image ? (
+        <AttachmentPreview
+          mimeType={artifact.mimeType}
+          filename={artifact.displayFilename}
+          previewUrl={artifact.thumbnailUrl ?? artifact.downloadUrl}
+          alt={t("artifacts.thumbnailAlt", {
+            filename: artifact.displayFilename,
+          })}
+          className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#1f1f1d] text-[#c7c5bd]"
+        />
+      ) : (
+        <AttachmentPreview
+          mimeType={artifact.mimeType}
+          filename={artifact.displayFilename}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]"
+        />
+      )}
       <span className="block min-w-0">
         <span className="block truncate text-[15px] leading-5 text-[#ecece6]">
           {artifact.displayFilename}
@@ -615,33 +634,35 @@ function FileArtifactButton({
           {artifact.mimeType}
         </span>
       </span>
-    </button>
+    </>
   );
 }
 
-// A PDF row mirrors the file row's icon + filename, but clicking it opens an
-// inline preview (PdfLightbox) instead of downloading — the "Download" action
+// An image or PDF row looks like the file row, but clicking it opens an inline
+// preview (ImageLightbox, PdfLightbox) instead of downloading: "Download"
 // lives in the row's context menu.
-function PdfArtifactRow({
+function PreviewArtifactRow({
   artifact,
+  image,
   hideDivider,
   hovered,
   onHoverChange,
   ...menu
 }: {
   artifact: Artifact;
+  image: boolean;
   hideDivider: boolean;
   hovered: boolean;
   onHoverChange(hovered: boolean): void;
 } & ArtifactRowMenuProps) {
   const { t } = useTranslation();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const label = t("artifacts.preview", { filename: artifact.displayFilename });
+  const close = () => setPreviewOpen(false);
   return (
     <>
       <ArtifactRowFrame
-        ariaLabel={t("artifacts.preview", {
-          filename: artifact.displayFilename,
-        })}
+        ariaLabel={label}
         artifact={artifact}
         hideDivider={hideDivider}
         hovered={hovered}
@@ -651,102 +672,26 @@ function PdfArtifactRow({
         action={
           <div
             className="flex w-full min-w-0 items-start gap-3 text-left"
-            title={t("artifacts.preview", {
-              filename: artifact.displayFilename,
-            })}
+            title={label}
           >
-            <AttachmentPreview
-              mimeType={artifact.mimeType}
-              filename={artifact.displayFilename}
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]"
-            />
-            <span className="block min-w-0">
-              <span className="block truncate text-[15px] leading-5 text-[#ecece6]">
-                {artifact.displayFilename}
-              </span>
-              <span className="ui-artifacts-row-secondary block truncate text-xs leading-4 text-[#8a887f]">
-                {artifact.mimeType}
-              </span>
-            </span>
+            <ArtifactLabel artifact={artifact} image={image} />
           </div>
         }
       />
-      {previewOpen && (
-        <PdfLightbox
-          downloadUrl={artifact.downloadUrl}
-          filename={artifact.displayFilename}
-          onClose={() => setPreviewOpen(false)}
-        />
-      )}
-    </>
-  );
-}
-
-function ImageArtifactRow({
-  artifact,
-  hideDivider,
-  hovered,
-  onHoverChange,
-  ...menu
-}: {
-  artifact: Artifact;
-  hideDivider: boolean;
-  hovered: boolean;
-  onHoverChange(hovered: boolean): void;
-} & ArtifactRowMenuProps) {
-  const { t } = useTranslation();
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-
-  const openPreview = () => {
-    setLightboxOpen(true);
-  };
-
-  return (
-    <>
-      <ArtifactRowFrame
-        ariaLabel={t("artifacts.preview", {
-          filename: artifact.displayFilename,
-        })}
-        artifact={artifact}
-        hideDivider={hideDivider}
-        hovered={hovered}
-        onHoverChange={onHoverChange}
-        onClick={openPreview}
-        {...menu}
-        action={
-          <div
-            className="flex w-full min-w-0 items-start gap-3 text-left"
-            title={t("artifacts.preview", {
-              filename: artifact.displayFilename,
-            })}
-          >
-            <AttachmentPreview
-              mimeType={artifact.mimeType}
-              filename={artifact.displayFilename}
-              previewUrl={artifact.thumbnailUrl ?? artifact.downloadUrl}
-              alt={t("artifacts.thumbnailAlt", {
-                filename: artifact.displayFilename,
-              })}
-              className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#1f1f1d] text-[#c7c5bd]"
-            />
-            <span className="block min-w-0">
-              <span className="block truncate text-[15px] leading-5 text-[#ecece6]">
-                {artifact.displayFilename}
-              </span>
-              <span className="ui-artifacts-row-secondary block truncate text-xs leading-4 text-[#8a887f]">
-                {artifact.mimeType}
-              </span>
-            </span>
-          </div>
-        }
-      />
-      {lightboxOpen && (
-        <ImageLightbox
-          src={artifact.downloadUrl}
-          alt={artifact.displayFilename}
-          onClose={() => setLightboxOpen(false)}
-        />
-      )}
+      {previewOpen &&
+        (image ? (
+          <ImageLightbox
+            src={artifact.downloadUrl}
+            alt={artifact.displayFilename}
+            onClose={close}
+          />
+        ) : (
+          <PdfLightbox
+            downloadUrl={artifact.downloadUrl}
+            filename={artifact.displayFilename}
+            onClose={close}
+          />
+        ))}
     </>
   );
 }

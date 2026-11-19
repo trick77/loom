@@ -953,7 +953,6 @@ export const de = {
       enable: "Wieder aktivieren",
     },
     detail: {
-      when: "Wann",
       nextRun: "Nächster Lauf",
       memory: "Gedächtnis",
       memorySummary: "{{sources}} Quellen · {{queries}} Suchen",
@@ -983,7 +982,6 @@ export const de = {
       noFinds: "keine Funde",
       useBrowser: "Browser nötig",
       fetchBlocked: "Abruf blockiert seit {{date}}",
-      fetchOk: "Abruf ok",
       lastUsed: "zuletzt {{date}}",
       runs_one: "{{count}} Lauf",
       runs_other: "{{count}} Läufe",

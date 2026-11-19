@@ -16,6 +16,7 @@ import { GeneratedArtifactCard } from "./chat/GeneratedArtifactCard";
 import { ICONS } from "./chat/Icon";
 import { possibleGreetings } from "./chat/threadUtils";
 import { escapeRegExp } from "./search/highlight";
+import { makeSchedule } from "./test/schedules";
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
@@ -207,6 +208,30 @@ test("opens the artifact library from the sidebar", async () => {
   ).toBeInTheDocument();
   expect(await screen.findByText("robot.png")).toBeInTheDocument();
   expect(window.location.pathname).toBe("/artifacts");
+});
+
+test("the sidebar opens memory, ideas and schedules, a schedule row its page", async () => {
+  const signedIn = basicSignedInFetch();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/api/schedules")
+        return Response.json([makeSchedule()]);
+      return signedIn(input);
+    }),
+  );
+
+  render(<App />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Memories" }));
+  expect(window.location.pathname).toBe("/memory");
+  fireEvent.click(screen.getByRole("button", { name: "Ideas" }));
+  expect(window.location.pathname).toBe("/ideas");
+  fireEvent.click(screen.getByRole("button", { name: "Schedules" }));
+  expect(window.location.pathname).toBe("/schedules");
+
+  fireEvent.click(await screen.findByText("Cinema scout"));
+  expect(window.location.pathname).toBe("/schedules/s1");
 });
 
 test("places library before projects in the primary sidebar navigation", async () => {

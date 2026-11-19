@@ -3,6 +3,7 @@ import {
   lazy,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -43,6 +44,7 @@ import {
 import { graftStreamedBlocks } from "./contentBlocks";
 import { ThreadsPage } from "../chats/ThreadsPage";
 import { useRouteState } from "./useRouteState";
+import type { RouteState } from "./routing";
 import type { MessageWithActivityTrace } from "./types";
 import { SlashCommandPanel } from "./SlashCommandPanel";
 import { matchSlashCommand, type SlashCommandName } from "./slashCommands";
@@ -692,15 +694,24 @@ export function ThreadShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route, activeThread?.title, activeProject?.name, i18n.language]);
 
+  // navigateTo opens a page from the shell: the admin view and the mobile
+  // sidebar close on the way.
+  const navigateTo = useCallback(
+    (next: RouteState) => {
+      onThread();
+      closeMobileSidebar();
+      go(next);
+    },
+    [go, onThread, closeMobileSidebar],
+  );
+
   const navigateToNew = useCallback(() => {
-    onThread();
-    closeMobileSidebar();
     activeThreadIDRef.current = null;
     setActiveThread(null);
     setMessages([]);
     setSendError("");
-    go({ view: "new" });
-  }, [go, onThread, setActiveThread, setMessages, closeMobileSidebar]);
+    navigateTo({ view: "new" });
+  }, [navigateTo, setActiveThread, setMessages]);
 
   // "Use in thread" from the Artifacts library: open the new-chat screen with the
   // artifact pre-attached so the user can prompt against it. navigateToNew() nulls
@@ -751,68 +762,28 @@ export function ThreadShell({
     ],
   );
 
-  const navigateToThreads = useCallback(() => {
-    onThread();
-    closeMobileSidebar();
-    go({ view: "threads" });
-  }, [go, onThread, closeMobileSidebar]);
-
-  const navigateToArtifacts = useCallback(() => {
-    onThread();
-    closeMobileSidebar();
-    go({ view: "artifacts" });
-  }, [go, onThread, closeMobileSidebar]);
-
-  const navigateToProjects = useCallback(() => {
-    onThread();
-    closeMobileSidebar();
-    go({ view: "projects" });
-  }, [go, onThread, closeMobileSidebar]);
-
-  const navigateToMemory = useCallback(() => {
-    onThread();
-    closeMobileSidebar();
-    go({ view: "memory" });
-  }, [go, onThread, closeMobileSidebar]);
-
-  const navigateToSchedules = useCallback(() => {
-    onThread();
-    closeMobileSidebar();
-    go({ view: "schedules" });
-  }, [go, onThread, closeMobileSidebar]);
-
-  const navigateToIdeas = useCallback(() => {
-    onThread();
-    closeMobileSidebar();
-    go({ view: "ideas" });
-  }, [go, onThread, closeMobileSidebar]);
-
-  const navigateToIdea = useCallback(
-    (ideaID: string) => {
-      onThread();
-      closeMobileSidebar();
-      go({ view: "idea", ideaID });
-    },
-    [go, onThread, closeMobileSidebar],
-  );
-
-  const navigateToSchedule = useCallback(
-    (scheduleID: string) => {
-      onThread();
-      closeMobileSidebar();
-      go({ view: "schedule", scheduleID });
-    },
-    [go, onThread, closeMobileSidebar],
+  // One stable callback per page, for the memoized Sidebar and the pages.
+  const pageNav = useMemo(
+    () => ({
+      threads: () => navigateTo({ view: "threads" }),
+      artifacts: () => navigateTo({ view: "artifacts" }),
+      projects: () => navigateTo({ view: "projects" }),
+      memory: () => navigateTo({ view: "memory" }),
+      schedules: () => navigateTo({ view: "schedules" }),
+      ideas: () => navigateTo({ view: "ideas" }),
+      idea: (ideaID: string) => navigateTo({ view: "idea", ideaID }),
+      schedule: (scheduleID: string) =>
+        navigateTo({ view: "schedule", scheduleID }),
+    }),
+    [navigateTo],
   );
 
   const navigateToProject = useCallback(
     (project: Project) => {
-      onThread();
-      closeMobileSidebar();
       setOpenedProject(project);
-      go({ view: "project", projectID: project.id });
+      navigateTo({ view: "project", projectID: project.id });
     },
-    [go, onThread, closeMobileSidebar],
+    [navigateTo],
   );
 
   const {
@@ -833,7 +804,7 @@ export function ThreadShell({
   } = useProjectActions({
     route,
     navigateToProject,
-    navigateToProjects,
+    navigateToProjects: pageNav.projects,
     setModalError,
     closeThreadMenu,
     setProjects,
@@ -887,15 +858,13 @@ export function ThreadShell({
   // passage").
   const selectThread = useCallback(
     async (threadID: string, messageID?: string | null) => {
-      onThread();
-      closeMobileSidebar();
-      go(
+      navigateTo(
         messageID == null
           ? { view: "thread", threadID }
           : { view: "thread", threadID, messageID },
       );
     },
-    [go, onThread, closeMobileSidebar],
+    [navigateTo],
   );
 
   // The thread opened at its message: the param leaves the URL, so a reload
@@ -913,13 +882,13 @@ export function ThreadShell({
   const openNotification = useCallback(
     (notification: AppNotification) => {
       if (notification.kind === "idea_due") {
-        if (notification.ideaId) navigateToIdea(notification.ideaId);
-        else navigateToIdeas();
+        if (notification.ideaId) pageNav.idea(notification.ideaId);
+        else pageNav.ideas();
       } else if (
         notification.kind === "schedule_disabled" &&
         notification.scheduleId !== null
       ) {
-        navigateToSchedule(notification.scheduleId);
+        pageNav.schedule(notification.scheduleId);
       } else if (notification.threadId !== null) {
         if (
           notification.kind === "schedule_run" &&
@@ -928,10 +897,10 @@ export function ThreadShell({
           setNewsThreadID(notification.threadId);
         void selectThread(notification.threadId);
       } else if (notification.scheduleId !== null) {
-        navigateToSchedule(notification.scheduleId);
+        pageNav.schedule(notification.scheduleId);
       }
     },
-    [navigateToSchedule, navigateToIdea, navigateToIdeas, selectThread],
+    [pageNav, selectThread],
   );
 
   const handleSetThreadStarred = useCallback(
@@ -1915,12 +1884,12 @@ export function ThreadShell({
           onLogout={onLogout}
           onAdmin={onAdmin}
           onNewThread={navigateToNew}
-          onThreads={navigateToThreads}
-          onArtifacts={navigateToArtifacts}
-          onProjects={navigateToProjects}
-          onMemory={navigateToMemory}
-          onSchedules={navigateToSchedules}
-          onIdeas={navigateToIdeas}
+          onThreads={pageNav.threads}
+          onArtifacts={pageNav.artifacts}
+          onProjects={pageNav.projects}
+          onMemory={pageNav.memory}
+          onSchedules={pageNav.schedules}
+          onIdeas={pageNav.ideas}
           onOpenSearch={openSearch}
           onSelectThread={selectThread}
           onDeleteThread={openDeleteModal}
@@ -1975,7 +1944,7 @@ export function ThreadShell({
           <Suspense fallback={null}>
             <SchedulesPage
               onOpenSidebar={openMobileSidebar}
-              onOpenSchedule={navigateToSchedule}
+              onOpenSchedule={pageNav.schedule}
               onOpenThread={(threadID) => void selectThread(threadID)}
               onSessionExpired={onSessionExpired}
             />
@@ -1999,7 +1968,7 @@ export function ThreadShell({
               key={route.scheduleID}
               scheduleID={route.scheduleID}
               onOpenSidebar={openMobileSidebar}
-              onBack={navigateToSchedules}
+              onBack={pageNav.schedules}
               onOpenThread={(threadID) => void selectThread(threadID)}
               onSessionExpired={onSessionExpired}
             />
@@ -2020,7 +1989,7 @@ export function ThreadShell({
               draft={draft.text}
               sendError={visibleSendError}
               openThreadMenuID={openThreadMenuID}
-              onBack={navigateToProjects}
+              onBack={pageNav.projects}
               onSessionExpired={onSessionExpired}
               onDraftChange={(text) => setDraftText(draftScope, text)}
               pastedTexts={draft.pastedTexts}
@@ -2074,7 +2043,7 @@ export function ThreadShell({
             chatSlot={newChatSlot}
             onChatSlotChange={setNewChatSlot}
             onOpenThread={(threadID) => void selectThread(threadID)}
-            onOpenIdea={navigateToIdea}
+            onOpenIdea={pageNav.idea}
             onStartIdeaThread={handleStartThreadFromIdea}
             projects={projects}
             selectedProject={startProject}
@@ -2100,7 +2069,7 @@ export function ThreadShell({
                 : null
             }
             onOpenedAtMessage={handleOpenedAtMessage}
-            onOpenIdea={navigateToIdea}
+            onOpenIdea={pageNav.idea}
             threadProject={activeThreadProject}
             share={activeShare}
             onShareChange={handleShareChange}
@@ -2144,7 +2113,7 @@ export function ThreadShell({
             }
             onToggleThreadMenu={toggleThreadMenu}
             onCloseThreadMenu={closeThreadMenu}
-            onOpenSchedule={navigateToSchedule}
+            onOpenSchedule={pageNav.schedule}
           />
         )}
       </main>
