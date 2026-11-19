@@ -23,3 +23,9 @@ func Handler(token string, api http.Handler) http.Handler {
 	}))
 	return root
 }
+
+// WriteCode answers a failed connection route as {"error", "code"}: the code
+// is what loom's Client reads (Error.Code), the text only its reason.
+func WriteCode(w http.ResponseWriter, status int, msg, code string) {
+	httpx.WriteJSON(w, status, map[string]string{"error": msg, "code": code})
+}

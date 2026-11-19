@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/trick77/loom/internal/sidecar"
 )
 
 func TestConfig(t *testing.T) {
@@ -564,7 +566,7 @@ func TestConnection_storageFailure(t *testing.T) {
 	f.addAthlete(1, "Anna", "code-a", 265)
 	svc, h, dir := newTestService(t, f)
 	svc.store = fileStore{dir: filepath.Join(dir, "missing")}
-	if code, body := request(t, h, "PUT", "/connection", userA, `{"code":"code-a"}`); code != 500 || body["code"] != codeStorage {
+	if code, body := request(t, h, "PUT", "/connection", userA, `{"code":"code-a"}`); code != 500 || body["code"] != sidecar.CodeStorage {
 		t.Errorf("storage: %d %v", code, body)
 	}
 	if svc.status(userA).State != "never" {

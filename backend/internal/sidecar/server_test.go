@@ -1,6 +1,8 @@
 package sidecar
 
 import (
+	"context"
+	"errors"
 	"go/parser"
 	"go/token"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHandler(t *testing.T) {
@@ -66,6 +69,20 @@ func TestHandler(t *testing.T) {
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("healthz from afar (auth %t): %d", auth != "", rec.Code)
 		}
+	}
+}
+
+// What a sidecar writes with WriteCode is what loom's Client reads back.
+func TestWriteCodeReachesClient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		WriteCode(w, http.StatusUnprocessableEntity, "nothing sent", "malformed")
+	}))
+	defer srv.Close()
+	c := New("thing", srv.URL, "tok", "BACKEND_THING_TOKEN", Codes{Unprocessable: []string{"rejected", "malformed"}}, time.Second)
+	var e *Error
+	err := c.Do(context.Background(), "u1", http.MethodGet, "/x", nil, nil)
+	if !errors.As(err, &e) || e.Code != "malformed" || e.Reason != "nothing sent" {
+		t.Fatalf("%v", err)
 	}
 }
 

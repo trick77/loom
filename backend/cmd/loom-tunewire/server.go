@@ -17,11 +17,10 @@ const maxTokenBody = 16 << 10
 // Codes on a failed PUT or DELETE /token, so loom's settings page can say
 // what went wrong: a 422 is codeMalformed (no token at all) or codeRejected
 // (Apple refused it); a 502 is errorKindBridge or errorKindUpstream; a 500 is
-// codeStorage (/data could not be written).
+// sidecar.CodeStorage (/data could not be written).
 const (
 	codeMalformed = "malformed"
 	codeRejected  = "rejected"
-	codeStorage   = "storage"
 )
 
 // codeNoUser: a per-user route was called without the loom user
@@ -59,11 +58,11 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		case err == nil:
 			httpx.WriteJSON(w, http.StatusOK, st)
 		case errors.Is(err, errMalformed):
-			httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error(), "code": codeMalformed})
+			sidecar.WriteCode(w, http.StatusUnprocessableEntity, err.Error(), codeMalformed)
 		case errors.Is(err, errRejected):
-			httpx.WriteJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error(), "code": codeRejected})
+			sidecar.WriteCode(w, http.StatusUnprocessableEntity, err.Error(), codeRejected)
 		case errors.Is(err, errStore):
-			httpx.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": codeStorage})
+			sidecar.WriteCode(w, http.StatusInternalServerError, err.Error(), sidecar.CodeStorage)
 		case r.Context().Err() != nil:
 			// loom gave up and already told the user; nothing was stored.
 			return
@@ -71,13 +70,13 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 			// The bridge broke (Apple changed the web player) or Apple failed:
 			// the code tells loom's page which, the token is not at fault.
 			slog.WarnContext(r.Context(), "tunewire: token check failed", "err", err)
-			httpx.WriteJSON(w, http.StatusBadGateway, map[string]string{"error": "could not check the token with Apple Music: " + err.Error(), "code": errorKind(err)})
+			sidecar.WriteCode(w, http.StatusBadGateway, "could not check the token with Apple Music: "+err.Error(), errorKind(err))
 		}
 	})))
 	api.Handle("DELETE /token", requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		st, err := svc.ClearToken(loomuser.FromRequest(r))
 		if err != nil {
-			httpx.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "code": codeStorage})
+			sidecar.WriteCode(w, http.StatusInternalServerError, err.Error(), sidecar.CodeStorage)
 			return
 		}
 		httpx.WriteJSON(w, http.StatusOK, st)
@@ -91,7 +90,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 func requireUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if checkUser(loomuser.FromRequest(r)) != nil {
-			httpx.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "the loom user is missing", "code": codeNoUser})
+			sidecar.WriteCode(w, http.StatusBadRequest, "the loom user is missing", codeNoUser)
 			return
 		}
 		next.ServeHTTP(w, r)

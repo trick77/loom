@@ -17,12 +17,12 @@ const maxConnectionBody = 16 << 10
 // Codes on a failed route, so loom's settings page can say what went wrong
 // without showing the sidecar's own text: 422 codeMalformed (nothing usable
 // sent) or codeRejected (Strava refused the code), 502 codeUpstream (Strava
-// failed or could not be reached), 500 codeStorage (/data not writable).
+// failed or could not be reached), 500 sidecar.CodeStorage (/data not
+// writable).
 const (
 	codeMalformed = "malformed"
 	codeRejected  = "rejected"
 	codeUpstream  = "upstream"
-	codeStorage   = "storage"
 )
 
 // newServer mounts kit's health probes (loopback only, the container's own
@@ -43,7 +43,7 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 	api.HandleFunc("GET /authorize", func(w http.ResponseWriter, r *http.Request) {
 		u, err := svc.authorizeURL(r.URL.Query().Get("redirect_uri"), r.URL.Query().Get("state"))
 		if err != nil {
-			writeCode(w, http.StatusUnprocessableEntity, "authorize needs an absolute http(s) redirect_uri and a state", codeMalformed)
+			sidecar.WriteCode(w, http.StatusUnprocessableEntity, "authorize needs an absolute http(s) redirect_uri and a state", codeMalformed)
 			return
 		}
 		httpx.WriteJSON(w, http.StatusOK, map[string]string{"url": u})
@@ -61,20 +61,20 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		case err == nil:
 			httpx.WriteJSON(w, http.StatusOK, st)
 		case errors.Is(err, errMalformed):
-			writeCode(w, http.StatusUnprocessableEntity, "no authorization code", codeMalformed)
+			sidecar.WriteCode(w, http.StatusUnprocessableEntity, "no authorization code", codeMalformed)
 		case errors.Is(err, errRejected):
-			writeCode(w, http.StatusUnprocessableEntity, err.Error(), codeRejected)
+			sidecar.WriteCode(w, http.StatusUnprocessableEntity, err.Error(), codeRejected)
 		case errors.Is(err, errStore):
-			writeCode(w, http.StatusInternalServerError, err.Error(), codeStorage)
+			sidecar.WriteCode(w, http.StatusInternalServerError, err.Error(), sidecar.CodeStorage)
 		default:
 			slog.WarnContext(r.Context(), "strava: code exchange failed", "err", err)
-			writeCode(w, http.StatusBadGateway, "could not exchange the code with Strava: "+err.Error(), codeUpstream)
+			sidecar.WriteCode(w, http.StatusBadGateway, "could not exchange the code with Strava: "+err.Error(), codeUpstream)
 		}
 	})
 	api.HandleFunc("DELETE /connection", func(w http.ResponseWriter, r *http.Request) {
 		st, err := svc.disconnect(r.Context(), loomuser.FromRequest(r))
 		if err != nil {
-			writeCode(w, http.StatusInternalServerError, err.Error(), codeStorage)
+			sidecar.WriteCode(w, http.StatusInternalServerError, err.Error(), sidecar.CodeStorage)
 			return
 		}
 		httpx.WriteJSON(w, http.StatusOK, st)
@@ -87,13 +87,9 @@ func newServer(cfg config, svc *service, version string) http.Handler {
 		// without a user answers an error result (tools.begin).
 		user := loomuser.FromRequest(r)
 		if !validUserID(user) && (r.URL.Path != "/mcp" || user != "") {
-			writeCode(w, http.StatusBadRequest, "missing or invalid "+loomuser.Header, codeMalformed)
+			sidecar.WriteCode(w, http.StatusBadRequest, "missing or invalid "+loomuser.Header, codeMalformed)
 			return
 		}
 		api.ServeHTTP(w, r)
 	}))
-}
-
-func writeCode(w http.ResponseWriter, status int, msg, code string) {
-	httpx.WriteJSON(w, status, map[string]string{"error": msg, "code": code})
 }
