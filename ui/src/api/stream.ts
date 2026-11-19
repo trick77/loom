@@ -1,5 +1,5 @@
 import { STANDARD_SLOT } from "./model";
-import { AuthExpiredError, UserFacingError } from "./http";
+import { AuthExpiredError, readErrorBody, UserFacingError } from "./http";
 import { browserTimezone } from "./schedules";
 import type {
   Artifact,
@@ -229,7 +229,8 @@ async function expectStreamResponse(
   if (!response.ok) {
     // The server rejects a send before the stream opens with a message meant
     // for the user (an unknown attachment, content that is too long).
-    throw new UserFacingError(await readStreamError(response));
+    const data = await readErrorBody(response);
+    throw new UserFacingError(data.error ?? "failed to stream message");
   }
   if (!response.body) {
     throw new Error("stream response has no body");
@@ -292,18 +293,6 @@ async function readSSEStream(
   if (!settled) {
     throw new StreamInterruptedError();
   }
-}
-
-async function readStreamError(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: unknown };
-    if (typeof body.error === "string" && body.error !== "") {
-      return body.error;
-    }
-  } catch {
-    // response body was empty or not JSON
-  }
-  return "failed to stream message";
 }
 
 // drainSSEBuffer dispatches every complete event in buffer and returns the

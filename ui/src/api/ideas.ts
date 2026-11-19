@@ -1,4 +1,5 @@
 import {
+  readErrorBody,
   request,
   requestJSON,
   UserFacingError,
@@ -87,9 +88,7 @@ async function sendIdea(
   if (response.status === 401) throw new AuthExpiredError();
   if (response.status === 404) throw new IdeaGoneError();
   if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
+    const data = await readErrorBody(response);
     if (response.status === 400 && data.error) {
       throw new UserFacingError(data.error);
     }

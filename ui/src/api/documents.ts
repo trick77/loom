@@ -6,50 +6,59 @@ import {
 } from "./types";
 import i18n from "../i18n";
 
-export async function uploadDocument(
+type UploadOptions = {
+  threadId?: string;
+  projectId?: string;
+  signal?: AbortSignal;
+};
+
+export function uploadDocument(
   file: File,
-  opts: { threadId?: string; projectId?: string; signal?: AbortSignal } = {},
+  opts: UploadOptions = {},
 ): Promise<Document> {
-  const form = new FormData();
-  form.append("file", file);
-  if (opts.threadId) form.append("threadId", opts.threadId);
-  if (opts.projectId) form.append("projectId", opts.projectId);
-  const response = await fetch("/api/documents/upload", {
-    method: "POST",
-    body: form,
-    signal: opts.signal,
-  });
-  if (response.status === 415) {
-    throw new UserFacingError(i18n.t("errors.unsupportedDocumentFormat"));
-  }
-  if (response.status === 409) {
-    throw new UserFacingError(
-      i18n.t("errors.tooManyAttachments", {
-        count: DOCUMENT_MAX_THREAD_ATTACHMENTS,
-      }),
-    );
-  }
-  if (response.status === 413) {
-    throw new UserFacingError(i18n.t("errors.fileTooLarge"));
-  }
-  return expectJSON<Document>(response, "failed to upload document");
+  return upload<Document>(
+    "/api/documents/upload",
+    file,
+    opts,
+    "errors.unsupportedDocumentFormat",
+    "failed to upload document",
+  );
 }
 
-export async function uploadImageAttachment(
+export function uploadImageAttachment(
   file: File,
-  opts: { threadId?: string; projectId?: string; signal?: AbortSignal } = {},
+  opts: UploadOptions = {},
 ): Promise<Artifact> {
+  return upload<Artifact>(
+    "/api/artifacts/images/upload",
+    file,
+    opts,
+    "errors.unsupportedImageFormat",
+    "failed to upload image",
+  );
+}
+
+// upload posts a file attached to a thread or project; the rejections the
+// user can act on (format, attachment count, size) come back localized.
+async function upload<T>(
+  url: string,
+  file: File,
+  opts: UploadOptions,
+  unsupportedKey:
+    "errors.unsupportedDocumentFormat" | "errors.unsupportedImageFormat",
+  errorMessage: string,
+): Promise<T> {
   const form = new FormData();
   form.append("file", file);
   if (opts.threadId) form.append("threadId", opts.threadId);
   if (opts.projectId) form.append("projectId", opts.projectId);
-  const response = await fetch("/api/artifacts/images/upload", {
+  const response = await fetch(url, {
     method: "POST",
     body: form,
     signal: opts.signal,
   });
   if (response.status === 415) {
-    throw new UserFacingError(i18n.t("errors.unsupportedImageFormat"));
+    throw new UserFacingError(i18n.t(unsupportedKey));
   }
   if (response.status === 409) {
     throw new UserFacingError(
@@ -61,7 +70,7 @@ export async function uploadImageAttachment(
   if (response.status === 413) {
     throw new UserFacingError(i18n.t("errors.fileTooLarge"));
   }
-  return expectJSON<Artifact>(response, "failed to upload image");
+  return expectJSON<T>(response, errorMessage);
 }
 
 export async function listDocuments(projectId?: string): Promise<Document[]> {

@@ -1,4 +1,4 @@
-import { request, type RequestOptions } from "./http";
+import { readErrorBody, request, type RequestOptions } from "./http";
 
 // AppleMusicStatus mirrors GET/PUT/POST/DELETE /api/me/apple-music. The token
 // itself never comes back: the server only reports what it learned from it.
@@ -48,29 +48,14 @@ async function call(
     EXPECTED_FAILURES,
   );
   if (!response.ok) {
-    const { message, code } = await errorBody(response);
-    throw new AppleMusicError(response.status, message, code);
+    const data = await readErrorBody(response);
+    throw new AppleMusicError(
+      response.status,
+      data.error ?? "apple music request failed",
+      data.code ?? "",
+    );
   }
   return response.json() as Promise<AppleMusicStatus>;
-}
-
-async function errorBody(
-  response: Response,
-): Promise<{ message: string; code: string }> {
-  const fallback = { message: "apple music request failed", code: "" };
-  try {
-    const body = (await response.json()) as { error?: unknown; code?: unknown };
-    return {
-      message:
-        typeof body.error === "string" && body.error !== ""
-          ? body.error
-          : fallback.message,
-      code: typeof body.code === "string" ? body.code : "",
-    };
-  } catch {
-    // Not JSON: the generic text.
-    return fallback;
-  }
 }
 
 export function getAppleMusicStatus(): Promise<AppleMusicStatus> {

@@ -50,6 +50,30 @@ export async function expectOK(
   }
 }
 
+// ErrorBody is the server's JSON error answer: `error` is text written for the
+// user, `code` a machine-readable reason. A field that is missing, empty or
+// not a string is left out.
+export type ErrorBody = { error?: string; code?: string };
+
+// readErrorBody reads a failed response's {error, code} body; an empty or
+// non-JSON body reads as {}.
+export async function readErrorBody(response: Response): Promise<ErrorBody> {
+  try {
+    const body = (await response.json()) as { error?: unknown; code?: unknown };
+    const out: ErrorBody = {};
+    if (typeof body.error === "string" && body.error !== "") {
+      out.error = body.error;
+    }
+    if (typeof body.code === "string" && body.code !== "") {
+      out.code = body.code;
+    }
+    return out;
+  } catch {
+    // Empty or not JSON: no server text.
+    return {};
+  }
+}
+
 // RequestOptions is RequestInit plus `json`: a body that is stringified and
 // sent with `Content-Type: application/json`.
 export type RequestOptions = Omit<RequestInit, "body"> & { json?: unknown };

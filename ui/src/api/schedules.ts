@@ -1,5 +1,6 @@
 import {
   AuthExpiredError,
+  readErrorBody,
   request,
   requestJSON,
   UserFacingError,
@@ -129,10 +130,7 @@ async function sendSchedule<T>(
   });
   if (response.status === 401) throw new AuthExpiredError();
   if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      code?: string;
-    };
+    const data = await readErrorBody(response);
     if (data.code === "too_often" || data.code === "not_understood") {
       throw new ScheduleIntervalError(data.code, data.error ?? errorMessage);
     }
@@ -206,9 +204,7 @@ export async function runScheduleNow(id: string): Promise<void> {
   const response = await fetch(`${scheduleUrl(id)}/run`, { method: "POST" });
   if (response.status === 401) throw new AuthExpiredError();
   if (response.status === 409) {
-    const data = (await response.json().catch(() => ({}))) as {
-      error?: string;
-    };
+    const data = await readErrorBody(response);
     throw new UserFacingError(data.error ?? "already running");
   }
   if (!response.ok) throw new Error("failed to start the run");

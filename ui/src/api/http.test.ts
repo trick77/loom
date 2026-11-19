@@ -4,6 +4,7 @@ import {
   AuthExpiredError,
   expectJSON,
   expectOK,
+  readErrorBody,
   request,
   requestJSON,
 } from "./http";
@@ -107,6 +108,20 @@ test("expectJSON maps a 401 to AuthExpiredError and other failures to the caller
   await expect(
     expectJSON(Response.json({ ok: true }), "failed"),
   ).resolves.toEqual({ ok: true });
+});
+
+test("readErrorBody keeps only non-empty string fields and reads junk as {}", async () => {
+  const failed = (body: string) => new Response(body, { status: 400 });
+
+  await expect(
+    readErrorBody(failed(JSON.stringify({ error: "bad", code: "x" }))),
+  ).resolves.toEqual({ error: "bad", code: "x" });
+  await expect(
+    readErrorBody(failed(JSON.stringify({ error: "", code: 7 }))),
+  ).resolves.toEqual({});
+  await expect(readErrorBody(failed("null"))).resolves.toEqual({});
+  await expect(readErrorBody(failed("not json"))).resolves.toEqual({});
+  await expect(readErrorBody(failed(""))).resolves.toEqual({});
 });
 
 test("expectOK accepts empty successes, tolerated statuses, and maps the rest", async () => {

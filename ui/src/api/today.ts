@@ -1,4 +1,9 @@
-import { AuthExpiredError, requestJSON, UserFacingError } from "./http";
+import {
+  AuthExpiredError,
+  readErrorBody,
+  requestJSON,
+  UserFacingError,
+} from "./http";
 import type { Idea } from "./ideas";
 import { browserTimezone } from "./schedules";
 
@@ -369,10 +374,7 @@ export async function dropLocated(): Promise<void> {
 async function throwLocationError(response: Response, fallback: string) {
   if (response.status === 401) throw new AuthExpiredError();
   if (response.ok) return;
-  const data = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    code?: string;
-  };
+  const data = await readErrorBody(response);
   if (data.code === "not_found") throw new PlaceNotFoundError();
   if (
     (response.status === 400 ||

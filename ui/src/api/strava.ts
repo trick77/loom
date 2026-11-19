@@ -1,4 +1,4 @@
-import { request, type RequestOptions } from "./http";
+import { readErrorBody, request, type RequestOptions } from "./http";
 
 // StravaStatus mirrors GET/POST/DELETE /api/me/strava: the signed-in user's own
 // connection. No Strava token ever comes back.
@@ -62,20 +62,12 @@ async function call(
     EXPECTED_FAILURES,
   );
   if (!response.ok) {
-    let message = "strava request failed";
-    let code = "";
-    try {
-      const body = (await response.json()) as {
-        error?: unknown;
-        code?: unknown;
-      };
-      if (typeof body.error === "string" && body.error !== "")
-        message = body.error;
-      if (typeof body.code === "string") code = body.code;
-    } catch {
-      // Not JSON: the generic text.
-    }
-    throw new StravaError(response.status, message, code);
+    const data = await readErrorBody(response);
+    throw new StravaError(
+      response.status,
+      data.error ?? "strava request failed",
+      data.code ?? "",
+    );
   }
   return response.json() as Promise<StravaStatus>;
 }
