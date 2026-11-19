@@ -309,6 +309,13 @@ func (s *Store) UpdateThread(ctx context.Context, userID, threadID string, in Up
 			return Thread{}, false, ErrProjectNotFound
 		}
 	}
+	var fromProject sql.NullString
+	if in.ProjectID.Set {
+		err := tx.QueryRowContext(ctx, `SELECT project_id FROM threads WHERE user_id = ? AND id = ?`, userID, threadID).Scan(&fromProject)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return Thread{}, false, fmt.Errorf("read thread project: %w", err)
+		}
+	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE threads
 SET title = COALESCE(?, title),
@@ -328,6 +335,20 @@ WHERE user_id = ? AND id = ?`,
 	}
 	if !updated {
 		return Thread{}, false, nil
+	}
+	// An artifact carries the project its thread was in when it was made, and
+	// the projects FK cascades it: left behind, deleting the old project would
+	// take a live thread's files along. One backing the old project's
+	// knowledge is the project's and stays.
+	if fromProject.Valid {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE artifacts SET project_id = ?
+WHERE user_id = ? AND thread_id = ? AND project_id = ?
+  AND NOT EXISTS (SELECT 1 FROM documents d
+                  WHERE d.user_id = artifacts.user_id AND d.artifact_id = artifacts.id AND d.project_id IS NOT NULL)`,
+			projectID, userID, threadID, fromProject.String); err != nil {
+			return Thread{}, false, fmt.Errorf("move thread artifacts: %w", err)
+		}
 	}
 	// Editing a thread is user activity in the project it is in, or was just
 	// moved into.

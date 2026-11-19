@@ -427,6 +427,46 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 // Artifacts created in the same second (one run_python job saving two charts)
 // list in creation order: created_at has one-second precision, so it needs a
 // tie-breaker, or view_image's "newest" picks either.
+// A project's delete takes its threads along, and with them artifacts whose
+// own project_id is not the project's: a composer upload carries none, an
+// artifact made before its thread moved in carries the old one. Their files
+// must be on the cleanup list too.
+func TestStoreListForProjectIncludesArtifactsOfItsThreads(t *testing.T) {
+	ctx := context.Background()
+	db, s := newArtifactTestStore(t)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO projects (id, user_id, name) VALUES ('proj_a', 'user_1', 'A'), ('proj_b', 'user_1', 'B');
+INSERT INTO threads (id, user_id, title, project_id) VALUES ('thread_a', 'user_1', 'In A', 'proj_a');
+INSERT INTO threads (id, user_id, title, project_id) VALUES ('thread_other', 'user_2', 'Not mine', NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	projectA, projectB := "proj_a", "proj_b"
+	for _, in := range []CreateInput{
+		{UserID: "user_1", ThreadID: "thread_a", ProjectID: &projectA, DisplayFilename: "generated.png"},
+		{UserID: "user_1", ThreadID: "thread_a", DisplayFilename: "composer-upload.pdf"},
+		{UserID: "user_1", ThreadID: "thread_a", ProjectID: &projectB, DisplayFilename: "made-before-move.png"},
+		{UserID: "user_1", ProjectID: &projectA, DisplayFilename: "project-upload.pdf"},
+		{UserID: "user_1", ThreadID: "thread_1", DisplayFilename: "elsewhere.png"},
+	} {
+		in.VolumeRelPath, in.MIMEType, in.SizeBytes = "files/"+in.DisplayFilename, "application/octet-stream", 1
+		if _, err := s.Create(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items, err := s.ListForProject(ctx, "user_1", "proj_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, item := range items {
+		got = append(got, item.DisplayFilename)
+	}
+	want := []string{"generated.png", "composer-upload.pdf", "made-before-move.png", "project-upload.pdf"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListForProject = %v, want %v", got, want)
+	}
+}
+
 func TestStoreListForThreadKeepsCreationOrderWithinASecond(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))

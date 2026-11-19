@@ -264,13 +264,19 @@ func listOrderBy(sort SortBy, order SortOrder) string {
 	}
 }
 
-// ListForProject retrieves artifacts in a project, scoped to the user.
+// ListForProject retrieves the artifacts a project's delete takes along,
+// scoped to the user: the project's own and those of its threads, whose
+// project_id may be none (a composer upload) or an earlier project's (made
+// before the thread moved in). The threads cascade with the project, and
+// their artifacts with them.
 func (s *Store) ListForProject(ctx context.Context, userID, projectID string) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
 FROM artifacts
-WHERE user_id = ? AND project_id = ? AND deleted_at IS NULL
-ORDER BY created_at ASC, rowid ASC`, userID, projectID)
+WHERE user_id = ? AND deleted_at IS NULL AND (
+	project_id = ?
+	OR thread_id IN (SELECT t.id FROM threads t WHERE t.user_id = ? AND t.project_id = ?))
+ORDER BY created_at ASC, rowid ASC`, userID, projectID, userID, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("list project artifacts: %w", err)
 	}

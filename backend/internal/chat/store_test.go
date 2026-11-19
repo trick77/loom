@@ -787,6 +787,80 @@ func TestStore_NormalizesThreadTitles(t *testing.T) {
 	}
 }
 
+// An artifact carries the project its thread was in when it was made, and the
+// projects FK cascades it: moving the thread on must move the artifact too,
+// or deleting the old project takes a live thread's image along. An artifact
+// that backs the old project's knowledge stays: it is the project's.
+func TestStore_UpdateThreadMoveCarriesItsArtifacts(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	projectA, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "A"})
+	if err != nil {
+		t.Fatalf("CreateProject(A) error: %v", err)
+	}
+	projectB, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "B"})
+	if err != nil {
+		t.Fatalf("CreateProject(B) error: %v", err)
+	}
+	thread, err := store.CreateThread(ctx, userID, CreateThreadInput{Title: "Notes", ProjectID: &projectA.ID})
+	if err != nil {
+		t.Fatalf("CreateThread() error: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO artifacts (id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes)
+VALUES ('art_image', ?, ?, ?, 'cat.png', 'files/cat.png', 'image/png', 1),
+       ('art_upload', ?, ?, NULL, 'notes.pdf', 'files/notes.pdf', 'application/pdf', 1),
+       ('art_knowledge', ?, ?, ?, 'plan.pdf', 'files/plan.pdf', 'application/pdf', 1)`,
+		userID, thread.ID, projectA.ID,
+		userID, thread.ID,
+		userID, thread.ID, projectA.ID); err != nil {
+		t.Fatalf("insert artifacts: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO documents (id, user_id, project_id, artifact_id, volume_relpath, filename, mime, size_bytes)
+VALUES ('doc_plan', ?, ?, 'art_knowledge', 'files/plan.pdf', 'plan.pdf', 'application/pdf', 1)`,
+		userID, projectA.ID); err != nil {
+		t.Fatalf("insert document: %v", err)
+	}
+
+	if _, _, err := store.UpdateThread(ctx, userID, thread.ID, UpdateThreadInput{
+		ProjectID: ProjectIDUpdate{Set: true, Value: &projectB.ID},
+	}); err != nil {
+		t.Fatalf("UpdateThread(move) error: %v", err)
+	}
+
+	projectOf := func(id string) string {
+		var project sql.NullString
+		if err := db.QueryRowContext(ctx, `SELECT project_id FROM artifacts WHERE id = ?`, id).Scan(&project); err != nil {
+			t.Fatalf("read %s: %v", id, err)
+		}
+		return project.String
+	}
+	if got := projectOf("art_image"); got != projectB.ID {
+		t.Fatalf("moved thread's image project = %q, want %q", got, projectB.ID)
+	}
+	if got := projectOf("art_upload"); got != "" {
+		t.Fatalf("composer upload project = %q, want none (it follows its thread)", got)
+	}
+	if got := projectOf("art_knowledge"); got != projectA.ID {
+		t.Fatalf("project knowledge artifact project = %q, want %q (stays with its project)", got, projectA.ID)
+	}
+
+	if _, err := store.DeleteProject(ctx, userID, projectA.ID); err != nil {
+		t.Fatalf("DeleteProject(A) error: %v", err)
+	}
+	var left int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM artifacts WHERE id IN ('art_image', 'art_upload')`).Scan(&left); err != nil {
+		t.Fatal(err)
+	}
+	if left != 2 {
+		t.Fatalf("after deleting the old project %d of the moved thread's 2 artifacts are left", left)
+	}
+}
+
 func TestStore_UpdateThreadProjectMembership(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

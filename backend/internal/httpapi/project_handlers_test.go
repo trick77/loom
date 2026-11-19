@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -153,6 +154,81 @@ func TestDeleteProjectRemovesGeneratedArtifactFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(absPath); !os.IsNotExist(err) {
 		t.Fatalf("artifact file still exists or stat failed: %v", err)
+	}
+}
+
+// The project's threads cascade with it, and their artifacts with them. One
+// backing a document that outlives the project (another project's knowledge,
+// uploaded from one of these threads) must be detached first, as a thread
+// delete does: the cascade reaching it aborts the delete on documents.user_id,
+// and its bytes are still needed.
+func TestDeleteProjectSparesArtifactsBackingSurvivingDocuments(t *testing.T) {
+	usersDir := t.TempDir()
+	projectID := "proj_1"
+	keptRel, sweptRel := "projects/prj_2/shared.txt", "projects/proj_1/outputs/chart.png"
+	absKept := writeUserFile(t, usersDir, keptRel)
+	absSwept := writeUserFile(t, usersDir, sweptRel)
+	var detached []string
+
+	docs := &fakeDocumentService{ArtifactsInUse: []string{"art_kept"}}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread: &fakeThreadStore{
+			Project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "School"},
+			Thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread", ProjectID: &projectID},
+		},
+		Documents: docs,
+		Artifacts: fakeArtifactStore{
+			Detached: &detached,
+			Artifacts: []artifact.Artifact{
+				{ID: "art_kept", UserID: testUser.ID, ThreadID: "thr_1", ProjectID: &projectID, VolumeRelPath: keptRel},
+				{ID: "art_swept", UserID: testUser.ID, ThreadID: "thr_1", ProjectID: &projectID, VolumeRelPath: sweptRel},
+			},
+		},
+		UsersDir: usersDir,
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/projects/proj_1", ""))
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204: %s", rec.Code, rec.Body.String())
+	}
+	if len(detached) != 1 || detached[0] != "art_kept" {
+		t.Fatalf("DetachFromThread ids = %v, want [art_kept]", detached)
+	}
+	if !exists(t, absKept) {
+		t.Error("file of an artifact backing a surviving document was deleted")
+	}
+	if exists(t, absSwept) {
+		t.Error("project thread's artifact file still exists")
+	}
+}
+
+// A failed in-use check fails the delete before anything is removed.
+func TestDeleteProjectFailsWhenArtifactRetentionFails(t *testing.T) {
+	usersDir := t.TempDir()
+	projectID := "proj_1"
+	relPath := "projects/proj_1/outputs/chart.png"
+	abs := writeUserFile(t, usersDir, relPath)
+	store := &fakeThreadStore{
+		Project: chat.Project{ID: projectID, UserID: testUser.ID, Name: "School"},
+		Thread:  chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Thread", ProjectID: &projectID},
+	}
+	srv := newAuthenticatedServer(t, Deps{
+		Thread:    store,
+		Documents: &fakeDocumentService{ArtifactsInUseErr: errors.New("boom")},
+		Artifacts: fakeArtifactStore{Artifacts: []artifact.Artifact{
+			{ID: "art_1", UserID: testUser.ID, ThreadID: "thr_1", ProjectID: &projectID, VolumeRelPath: relPath},
+		}},
+		UsersDir: usersDir,
+	})
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, authenticatedRequest(http.MethodDelete, "/api/projects/proj_1", ""))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body.String())
+	}
+	if !exists(t, abs) {
+		t.Error("artifact file removed despite the failed delete")
 	}
 }
 
