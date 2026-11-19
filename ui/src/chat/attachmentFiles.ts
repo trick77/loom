@@ -1,4 +1,9 @@
-import { ATTACHMENT_ACCEPT, DOCUMENT_MAX_UPLOAD_BYTES } from "../api";
+import {
+  ATTACHMENT_ACCEPT,
+  DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+  DOCUMENT_MAX_UPLOAD_BYTES,
+} from "../api";
+import i18n from "../i18n";
 
 const ACCEPTED_EXTENSIONS = ATTACHMENT_ACCEPT.split(",").map((ext) =>
   ext.trim().toLowerCase(),
@@ -66,6 +71,29 @@ export function isWithinUploadSizeLimit(file: File): boolean {
   return (
     typeof file.size !== "number" || file.size <= DOCUMENT_MAX_UPLOAD_BYTES
   );
+}
+
+// acceptAttachmentFiles admits picked files next to `staged` already on the
+// composer: too large ones are dropped, the rest cut at the per-message limit.
+// note says why files were turned away (the limit wins over the size), or is
+// null when every file was taken.
+export function acceptAttachmentFiles(
+  files: File[],
+  staged: number,
+): { accepted: File[]; note: string | null } {
+  const sizeFiltered = files.filter(isWithinUploadSizeLimit);
+  const limitNote = i18n.t("composer.attachLimit", {
+    count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
+  });
+  const remaining = DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - staged;
+  if (remaining <= 0) return { accepted: [], note: limitNote };
+  const accepted = sizeFiltered.slice(0, remaining);
+  if (accepted.length < sizeFiltered.length)
+    return { accepted, note: limitNote };
+  if (sizeFiltered.length < files.length) {
+    return { accepted, note: i18n.t("errors.fileTooLarge") };
+  }
+  return { accepted, note: null };
 }
 
 export function attachmentExtensionLabel(filename: string): string | null {

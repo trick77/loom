@@ -8,7 +8,6 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { ATTACHMENT_ACCEPT } from "../api";
-import i18n from "../i18n";
 import { AttachmentPreview } from "../components/AttachmentPreview";
 import {
   attachAcceptedFiles,
@@ -16,7 +15,6 @@ import {
   toSupportedImageFile,
   UNSUPPORTED_FILE_MESSAGE,
 } from "./attachmentFiles";
-import { formatFileSize } from "./artifacts";
 import { Icon } from "./Icon";
 import { useModelInfo } from "../useModelInfo";
 import { STANDARD_SLOT } from "../api/model";
@@ -30,6 +28,7 @@ import {
 } from "./pastedText";
 import { PassageCard } from "../ideas/PassageCard";
 import {
+  attachmentStatusLabel,
   isImageAttachment,
   type ComposerAttachment,
 } from "./useDocumentAttachments";
@@ -587,13 +586,4 @@ function AttachmentPill({
       )}
     </div>
   );
-}
-
-function attachmentStatusLabel(attachment: ComposerAttachment): string {
-  if (attachment.status === "queued") return i18n.t("composer.attached");
-  if (attachment.status === "uploading") return i18n.t("composer.uploading");
-  if (attachment.status === "processing") return i18n.t("composer.processing");
-  if (attachment.status === "ready")
-    return formatFileSize(attachment.sizeBytes);
-  return attachment.error ?? i18n.t("composer.uploadFailed");
 }

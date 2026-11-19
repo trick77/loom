@@ -3,14 +3,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deleteArtifact,
   deleteDocument,
-  DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   indexDocument,
   type MessageAttachment,
   uploadDocument,
   uploadImageAttachment,
 } from "../api";
 import { isRevocablePreview } from "../components/AttachmentPreview";
-import { isWithinUploadSizeLimit } from "./attachmentFiles";
+import { acceptAttachmentFiles } from "./attachmentFiles";
+import { formatFileSize } from "./artifacts";
 import { UserFacingError } from "../api/http";
 import i18n from "../i18n";
 
@@ -179,6 +179,33 @@ export function isPdfAttachment(
   );
 }
 
+// attachmentStatusLabel is a chip's status line, on the composer and on a sent
+// message alike.
+export function attachmentStatusLabel(attachment: ComposerAttachment): string {
+  if (attachment.status === "queued") return i18n.t("composer.attached");
+  if (attachment.status === "uploading") return i18n.t("composer.uploading");
+  if (attachment.status === "processing") return i18n.t("composer.processing");
+  if (attachment.status === "ready")
+    return formatFileSize(attachment.sizeBytes);
+  return attachment.error ?? i18n.t("composer.uploadFailed");
+}
+
+// useAttachmentIntake admits picked files next to the `staged` ones (see
+// acceptAttachmentFiles). The count is mirrored in a ref, re-synced after every
+// render and bumped as files are taken, so two drops in one render both see the
+// other's files.
+export function useAttachmentIntake(staged: number) {
+  const countRef = useRef(staged);
+  useEffect(() => {
+    countRef.current = staged;
+  }, [staged]);
+  return useCallback((files: File[]) => {
+    const intake = acceptAttachmentFiles(files, countRef.current);
+    countRef.current += intake.accepted.length;
+    return intake;
+  }, []);
+}
+
 type AttachmentStatusHandler = (
   id: string,
   patch: Partial<ComposerAttachment>,
@@ -219,12 +246,7 @@ export function useDocumentAttachments(scope: {
     Record<string, ComposerAttachment[]>
   >({});
   const attachments = attachmentsByScope[scopeKey] ?? NO_ATTACHMENTS;
-  // Synchronous mirror of attachments.length for the limit check; re-synced
-  // from state after every render and bumped as files are accepted.
-  const attachmentCountRef = useRef(attachments.length);
-  useEffect(() => {
-    attachmentCountRef.current = attachments.length;
-  }, [attachments.length]);
+  const intakeFiles = useAttachmentIntake(attachments.length);
 
   const setScopeAttachments = useCallback(
     (
@@ -321,30 +343,8 @@ export function useDocumentAttachments(scope: {
     (files: File[], override?: { threadId?: string; projectId?: string }) => {
       const threadId = override?.threadId ?? scope.threadId;
       const projectId = override?.projectId ?? scope.projectId;
-      const sizeFiltered = files.filter(isWithinUploadSizeLimit);
-      if (sizeFiltered.length < files.length) {
-        setAttachNote(i18n.t("errors.fileTooLarge"));
-      }
-      // attachmentCountRef, not attachments.length: two drops in one render
-      // would both read the count from before either was applied.
-      const remaining =
-        DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - attachmentCountRef.current;
-      if (remaining <= 0) {
-        setAttachNote(
-          i18n.t("composer.attachLimit", {
-            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-          }),
-        );
-        return;
-      }
-      const accepted = sizeFiltered.slice(0, remaining);
-      if (accepted.length < sizeFiltered.length) {
-        setAttachNote(
-          i18n.t("composer.attachLimit", {
-            count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-          }),
-        );
-      }
+      const { accepted, note } = intakeFiles(files);
+      if (note !== null) setAttachNote(note);
       if (accepted.length === 0) return;
       const pending = accepted.map((file) =>
         createComposerAttachment(
@@ -354,7 +354,6 @@ export function useDocumentAttachments(scope: {
             : "uploading",
         ),
       );
-      attachmentCountRef.current += pending.length;
       setScopeAttachments(scopeKey, (current) => [...current, ...pending]);
       if (threadId !== undefined || projectId !== undefined) {
         void uploadAttachments(
@@ -369,6 +368,7 @@ export function useDocumentAttachments(scope: {
       scope.threadId,
       scope.projectId,
       scopeKey,
+      intakeFiles,
       setScopeAttachments,
       updateAttachment,
     ],
@@ -413,41 +413,49 @@ async function uploadAttachments(
 ) {
   const { threadId, projectId } = scope;
 
-  const uploadDocumentAttachment = async (attachment: ComposerAttachment) => {
-    if (attachment.file === undefined) return;
+  for (const attachment of attachments) {
+    const file = attachment.file;
+    if (file === undefined || attachment.artifactId !== undefined) continue;
+    if (threadId === undefined && projectId === undefined) {
+      setAttachNote(
+        i18n.t("composer.uploadDeferred", { filename: attachment.filename }),
+      );
+      continue;
+    }
     setAttachNote(
       i18n.t("composer.uploadingFile", { filename: attachment.filename }),
     );
     onStatus(attachment.id, { status: "uploading" });
     const controller = new AbortController();
     inflightUploads.set(attachment.id, controller);
+    const options = { threadId, projectId, signal: controller.signal };
+    // Awaited one by one, so every id is set before the caller collects the
+    // attachment ids for the send: an image's artifact id is a model input, and
+    // a document whose id misses the send is neither seen nor persisted.
     try {
-      const doc = await uploadDocument(attachment.file, {
-        threadId,
-        projectId,
-        signal: controller.signal,
-      });
+      const ids = isImageAttachment(attachment)
+        ? { artifactId: (await uploadImageAttachment(file, options)).id }
+        : await uploadDocument(file, options).then((doc) => ({
+            documentId: doc.id,
+            artifactId: doc.artifactId,
+          }));
       if (controller.signal.aborted) {
         // Removed while the request was in flight and the server finished
-        // anyway: nothing on screen owns this document any more.
-        deleteUploadedAttachment({ ...attachment, documentId: doc.id });
-        return;
+        // anyway: nothing on screen owns the upload any more.
+        deleteUploadedAttachment({ ...attachment, ...ids });
+        continue;
       }
-      // The document is usable inline as soon as it is uploaded — its full text is
-      // injected into the prompt on send — so don't block sending on embedding.
-      // Mark ready immediately, then index in the background so the large-document
-      // RAG fallback and project knowledge retrieval stay available.
-      onStatus(attachment.id, {
-        status: "ready",
-        documentId: doc.id,
-        artifactId: doc.artifactId,
-      });
+      onStatus(attachment.id, { status: "ready", ...ids });
       setAttachNote("");
-      void indexDocument(doc.id).catch(() => {
-        // Best-effort: inline full-text still works even if background indexing fails.
-      });
+      // A document is usable inline as soon as it is uploaded (its full text goes
+      // into the prompt on send), so the send does not wait for embedding; it is
+      // indexed in the background for the large-document RAG fallback and project
+      // retrieval. Best effort: inline full text works without it.
+      if ("documentId" in ids) {
+        void indexDocument(ids.documentId).catch(() => {});
+      }
     } catch (error) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) continue;
       const message =
         error instanceof UserFacingError
           ? error.message
@@ -458,55 +466,5 @@ async function uploadAttachments(
       if (inflightUploads.get(attachment.id) === controller)
         inflightUploads.delete(attachment.id);
     }
-  };
-
-  for (const attachment of attachments) {
-    if (attachment.file === undefined || attachment.artifactId !== undefined)
-      continue;
-    if (threadId === undefined && projectId === undefined) {
-      setAttachNote(
-        i18n.t("composer.uploadDeferred", { filename: attachment.filename }),
-      );
-      continue;
-    }
-    if (isImageAttachment(attachment)) {
-      setAttachNote(
-        i18n.t("composer.uploadingFile", { filename: attachment.filename }),
-      );
-      onStatus(attachment.id, { status: "uploading" });
-      const controller = new AbortController();
-      inflightUploads.set(attachment.id, controller);
-      try {
-        const image = await uploadImageAttachment(attachment.file, {
-          threadId,
-          projectId,
-          signal: controller.signal,
-        });
-        if (controller.signal.aborted) {
-          deleteUploadedAttachment({ ...attachment, artifactId: image.id });
-          continue;
-        }
-        onStatus(attachment.id, { status: "ready", artifactId: image.id });
-        setAttachNote("");
-      } catch (error) {
-        if (controller.signal.aborted) continue;
-        const message =
-          error instanceof UserFacingError
-            ? error.message
-            : i18n.t("errors.uploadFailed", { filename: attachment.filename });
-        onStatus(attachment.id, { status: "error", error: message });
-        setAttachNote(message);
-      } finally {
-        if (inflightUploads.get(attachment.id) === controller)
-          inflightUploads.delete(attachment.id);
-      }
-      continue;
-    }
-    // Await the upload (not the background indexing) so the document's id is set
-    // before the caller collects documentAttachmentIds on send — otherwise a
-    // document attached on a new thread is uploaded fire-and-forget and its id
-    // misses the send, so the model never sees it and it isn't persisted. Mirrors
-    // the awaited image path above; indexDocument still runs in the background.
-    await uploadDocumentAttachment(attachment);
   }
 }

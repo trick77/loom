@@ -12,7 +12,6 @@ import { UserFacingError } from "../api/http";
 import { describeActionError } from "./actionErrors";
 import {
   DEFAULT_THREAD_TITLE,
-  DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
   createThread,
   updateThread,
   type AppNotification,
@@ -77,6 +76,7 @@ import {
   createComposerAttachment,
   isImageAttachment,
   toSentAttachment,
+  useAttachmentIntake,
   useDocumentAttachments,
   withLandedUploads,
   type ComposerAttachment,
@@ -104,7 +104,6 @@ import {
   upsertThreadById,
 } from "../projects/projectMembership";
 import { reconcileUserMessage, updateMessageAttachment } from "./threadUtils";
-import { isWithinUploadSizeLimit } from "./attachmentFiles";
 import { useComposerDrafts } from "./useComposerDrafts";
 import { applyMessageCost } from "../metrics";
 import { createTurnHandlers, newTempID } from "./turnHandlers";
@@ -228,10 +227,7 @@ export function ThreadShell({
   const [pendingAttachments, setPendingAttachments] = useState<
     ComposerAttachment[]
   >([]);
-  const pendingAttachmentCountRef = useRef(pendingAttachments.length);
-  useEffect(() => {
-    pendingAttachmentCountRef.current = pendingAttachments.length;
-  }, [pendingAttachments.length]);
+  const intakePendingFiles = useAttachmentIntake(pendingAttachments.length);
   const [pendingAttachNote, setPendingAttachNote] = useState("");
   const [modalError, setModalError] = useState("");
   // Every assistant turn in flight, keyed by the thread that owns it (see
@@ -1031,35 +1027,12 @@ export function ThreadShell({
 
   function handleAttachPendingFiles(files: File[]) {
     setSendError("");
-    const sizeFiltered = files.filter(isWithinUploadSizeLimit);
-    if (sizeFiltered.length < files.length) {
-      setPendingAttachNote(t("errors.fileTooLarge"));
-    }
-    // The count is mirrored in a ref so two drops in one render both see the
-    // other's files, and the note is set here rather than inside the state
-    // updater, which StrictMode runs twice.
-    const remaining =
-      DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE - pendingAttachmentCountRef.current;
-    if (remaining <= 0) {
-      setPendingAttachNote(
-        t("composer.attachLimit", {
-          count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-        }),
-      );
-      return;
-    }
-    const accepted = sizeFiltered.slice(0, remaining);
-    if (accepted.length < sizeFiltered.length) {
-      setPendingAttachNote(
-        t("composer.attachLimit", {
-          count: DOCUMENT_MAX_ATTACHMENTS_PER_MESSAGE,
-        }),
-      );
-    } else if (accepted.length > 0 && sizeFiltered.length === files.length) {
-      setPendingAttachNote("");
-    }
+    // The note is set here rather than inside the state updater, which
+    // StrictMode runs twice.
+    const { accepted, note } = intakePendingFiles(files);
+    if (note !== null) setPendingAttachNote(note);
+    else if (accepted.length > 0) setPendingAttachNote("");
     if (accepted.length === 0) return;
-    pendingAttachmentCountRef.current += accepted.length;
     const queued = accepted.map((file) =>
       createComposerAttachment(file, "queued"),
     );

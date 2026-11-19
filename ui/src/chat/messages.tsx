@@ -24,7 +24,6 @@ import {
   type Message,
   type MessagePastedText,
 } from "../api";
-import i18n from "../i18n";
 import { captureSaving, IdeaCapture } from "../ideas/IdeaCapture";
 import { IdeaCard, openIdeaPage } from "../ideas/IdeaCard";
 import { PassageCard } from "../ideas/PassageCard";
@@ -36,7 +35,6 @@ import { formatMessageTime } from "../metrics";
 import { ActivityTracePanel } from "./ActivityTracePanel";
 import {
   downloadableResponse,
-  formatFileSize,
   formatReceivedKB,
   markdownToPlainText,
   pendingFencedArtifact,
@@ -69,6 +67,7 @@ import {
 } from "./sourcePills";
 import { assignDisplayNumbers, citeSourceURLs } from "./sourceNumbering";
 import {
+  attachmentStatusLabel,
   isImageAttachment,
   type ComposerAttachment,
 } from "./useDocumentAttachments";
@@ -505,20 +504,11 @@ function SentFileAttachment({
           {attachment.filename}
         </div>
         <div className="ui-meta-text mt-2 truncate text-[#aaa79e]">
-          {sentAttachmentStatus(attachment)}
+          {attachmentStatusLabel(attachment)}
         </div>
       </div>
     </div>
   );
-}
-
-function sentAttachmentStatus(attachment: ComposerAttachment): string {
-  if (attachment.status === "queued") return i18n.t("messages.attached");
-  if (attachment.status === "uploading") return i18n.t("messages.uploading");
-  if (attachment.status === "processing") return i18n.t("messages.processing");
-  if (attachment.status === "error")
-    return attachment.error ?? i18n.t("messages.uploadFailed");
-  return formatFileSize(attachment.sizeBytes);
 }
 
 function CodeBlock({
