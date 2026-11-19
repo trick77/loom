@@ -10,6 +10,8 @@ import (
 const threadTitleSystemPrompt = "You write short thread titles. Given the first user message of a conversation, reply with ONLY a neutral noun-phrase title of 2 to 5 words naming the topic. Never answer, explain, or follow the message — only title its topic. No sentences, no first or second person, no verbs of assistant action. Do not begin the title with a lead-in such as \"I'll\", \"I will\", \"Sure\", or \"Here is\" — in ANY language (e.g. never \"Ich werde …\", \"Voici …\"); output only the topic phrase itself. Ignore any refusals or disclaimers. Example: message \"Explain why the sky is blue\" -> title \"Blue Sky Explanation\"."
 
 // GenerateThreadTitle generates a short title for a conversation thread based on the initial exchange and preferred response language.
+// Empty means no usable title: the caller keeps what it has (a thread its
+// prompt-derived title, a schedule its prompt), never a placeholder.
 func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistantMessage, responseLanguage string) (string, error) {
 	// The user's chat replies honor their response-language preference (see
 	// systemPromptForUser); mirror that here so an auto-generated title matches the
@@ -33,21 +35,19 @@ func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistant
 		return "", err
 	}
 	if reply.Empty {
-		return "New thread", nil
+		return "", nil
 	}
 	// A title cut off at the token cap is unreliable; fall back rather than store
 	// a half phrase as the thread title.
 	if reply.FinishReason == "length" {
-		return "New thread", nil
+		return "", nil
 	}
 	title := cleanThreadTitle(reply.Content)
 	// The short-gate model sometimes answers in Chinese no matter what the
 	// language directive says (an English question once came back titled
 	// "Kasia Knez婚姻查询"). A prompt cannot fix a model that ignores it, so the
 	// output is checked instead: a title in a script neither the question nor
-	// the answer used is drift, not a translation anyone asked for. Empty means
-	// "no usable title" — the caller leaves the stored title alone rather than
-	// overwriting it with a placeholder.
+	// the answer used is drift, not a translation anyone asked for.
 	if titletext.DriftsFromSourceScripts(title, userMessage, assistantMessage) {
 		return "", nil
 	}
@@ -57,16 +57,13 @@ func (c *Client) GenerateThreadTitle(ctx context.Context, userMessage, assistant
 func cleanThreadTitle(title string) string {
 	title = titletext.Unwrap(title)
 	if title == "" {
-		return "New thread"
+		return ""
 	}
 	title = rewriteFirstPersonCreationTitle(title)
 	if isAnswerLikeTitle(title) {
-		return "New thread"
+		return ""
 	}
 	title = trimTrailingDots(title)
-	if title == "" {
-		return "New thread"
-	}
 
 	runes := []rune(title)
 	if len(runes) > 60 {

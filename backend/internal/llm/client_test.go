@@ -902,8 +902,8 @@ func TestClient_TitlesSkippedWhenTruncatedAtTokenCap(t *testing.T) {
 	if got, err := client.GenerateReasoningTitle(context.Background(), "some reasoning", ""); err != nil || got != "" {
 		t.Fatalf("reasoning title = %q, err = %v; want skipped (empty)", got, err)
 	}
-	if got, err := client.GenerateThreadTitle(context.Background(), "Hi", "", ""); err != nil || got != "New thread" {
-		t.Fatalf("thread title = %q, err = %v; want New thread", got, err)
+	if got, err := client.GenerateThreadTitle(context.Background(), "Hi", "", ""); err != nil || got != "" {
+		t.Fatalf("thread title = %q, err = %v; want skipped (empty)", got, err)
 	}
 }
 
@@ -1066,8 +1066,8 @@ func TestClient_GenerateTitleFallsBackForAnswerLikeCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateThreadTitle() error: %v", err)
 	}
-	if title != "New thread" {
-		t.Fatalf("title = %q, want New thread", title)
+	if title != "" {
+		t.Fatalf("title = %q, want skipped (empty)", title)
 	}
 }
 
@@ -1079,8 +1079,8 @@ func TestCleanTitleFallsBackForRefusalLikeCompletion(t *testing.T) {
 	} {
 		t.Run(raw, func(t *testing.T) {
 			title := cleanThreadTitle(raw)
-			if title != "New thread" {
-				t.Fatalf("title = %q, want New thread", title)
+			if title != "" {
+				t.Fatalf("title = %q, want skipped (empty)", title)
 			}
 		})
 	}

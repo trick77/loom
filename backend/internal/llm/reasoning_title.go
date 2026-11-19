@@ -56,9 +56,8 @@ func (c *Client) GenerateReasoningTitle(ctx context.Context, reasoning, response
 	return title, nil
 }
 
-// cleanReasoningTitle strips surrounding quotes and caps the length. Unlike
-// cleanThreadTitle (tuned for thread titles), it never substitutes a placeholder: an
-// empty or unusable result yields "" so the caller omits the title entirely.
+// cleanReasoningTitle strips surrounding quotes and caps the length. An empty
+// or unusable result yields "" so the caller omits the title entirely.
 func cleanReasoningTitle(title string) string {
 	title = strings.TrimSpace(title)
 	if contentBlockTitle.MatchString(title) {

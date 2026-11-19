@@ -92,9 +92,9 @@ func TestGenerateThreadTitleDegrades(t *testing.T) {
 	}{
 		{name: "upstream error", status: http.StatusInternalServerError, body: `{"error":"boom"}`, wantErr: true},
 		{name: "undecodable body", status: http.StatusOK, body: `not json`, wantErr: true},
-		// No choices is not an error: the thread gets the placeholder title and the
-		// turn proceeds, rather than failing over a cosmetic label.
-		{name: "no choices", status: http.StatusOK, body: emptyChoicesBody, wantTitle: "New thread"},
+		// No choices is not an error: no title, the caller keeps the one it has
+		// and the turn proceeds, rather than failing over a cosmetic label.
+		{name: "no choices", status: http.StatusOK, body: emptyChoicesBody},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			title, err := gateServer(t, tc.status, tc.body).GenerateThreadTitle(context.Background(), "hello", "", "")
