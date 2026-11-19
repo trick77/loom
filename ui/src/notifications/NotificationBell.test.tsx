@@ -73,6 +73,27 @@ beforeEach(() => {
   vi.mocked(api.listNotifications).mockResolvedValue([run, disabled]);
 });
 
+test("the inbox opens on Unread again after All was picked", async () => {
+  vi.mocked(api.unreadNotificationCount).mockResolvedValue(1);
+  render(
+    <Bell placement="header" onOpen={vi.fn()} onManageSchedules={vi.fn()} />,
+  );
+  const bell = await screen.findByRole("button", {
+    name: /Notifications, some unread/,
+  });
+  fireEvent.click(bell);
+  fireEvent.click(await screen.findByRole("button", { name: "All" }));
+  expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  fireEvent.click(bell);
+  fireEvent.click(bell);
+  expect(
+    await screen.findByRole("button", { name: "Unread 1" }),
+  ).toHaveAttribute("aria-pressed", "true");
+});
+
 test("shows a dot while anything is unread, the inbox on click", async () => {
   vi.mocked(api.unreadNotificationCount).mockResolvedValue(1);
   const onOpen = vi.fn();
@@ -87,16 +108,24 @@ test("shows a dot while anything is unread, the inbox on click", async () => {
   );
   const panel = await screen.findByRole("dialog", { name: "Notifications" });
   expect(panel).toBeInTheDocument();
-  expect(await screen.findByText("Cinema scout")).toBeInTheDocument();
+  // Unread comes first and is what the inbox opens on.
+  const unreadFilter = screen.getByRole("button", { name: "Unread 1" });
+  const allFilter = screen.getByRole("button", { name: "All" });
   expect(
-    screen.getByText("Hallenstadion tickets was disabled"),
-  ).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("button", { name: "Unread 1" }));
+    unreadFilter.compareDocumentPosition(allFilter) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  expect(unreadFilter).toHaveAttribute("aria-pressed", "true");
+  expect(allFilter).toHaveAttribute("aria-pressed", "false");
+  expect(await screen.findByText("Cinema scout")).toBeInTheDocument();
   expect(
     screen.queryByText("Hallenstadion tickets was disabled"),
   ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "All" }));
+
+  fireEvent.click(allFilter);
+  expect(
+    screen.getByText("Hallenstadion tickets was disabled"),
+  ).toBeInTheDocument();
 
   fireEvent.click(screen.getByText("Cinema scout"));
   expect(onOpen).toHaveBeenCalledWith(run);

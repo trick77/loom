@@ -62,7 +62,8 @@ function useNotifications(onOpen: (notification: AppNotification) => void) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[] | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [onlyUnread, setOnlyUnread] = useState(false);
+  // The inbox opens on Unread; All is a click away.
+  const [onlyUnread, setOnlyUnread] = useState(true);
   const [toast, setToast] = useState<Toast | null>(null);
   const [panelStyle, setPanelStyle] = useState({ top: 48, left: 16 });
   const known = useRef<number | null>(null);
@@ -155,6 +156,7 @@ function useNotifications(onOpen: (notification: AppNotification) => void) {
               ? { top: Math.max(8, rect.top - 8), left: rect.right + 10 }
               : { top: rect.bottom + 6, left: Math.max(8, rect.left - 12) },
         );
+        setOnlyUnread(true);
         void load();
       }
       setOpen(!open);
@@ -330,10 +332,11 @@ export function NotificationBell({
               </button>
             </div>
             <div className="flex gap-1 border-b border-[#454540] px-2.5 pb-2">
-              {[false, true].map((unreadOnly) => (
+              {[true, false].map((unreadOnly) => (
                 <button
                   key={String(unreadOnly)}
                   type="button"
+                  aria-pressed={n.onlyUnread === unreadOnly}
                   onClick={() => n.setOnlyUnread(unreadOnly)}
                   className={`rounded-md px-2.5 py-0.5 text-[13px] ${n.onlyUnread === unreadOnly ? "bg-[#45453f] text-white" : "text-[#a8a59c] hover:text-white"}`}
                 >
