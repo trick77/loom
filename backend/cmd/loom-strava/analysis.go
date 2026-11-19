@@ -409,9 +409,11 @@ func metaDiffers(sm storedMetrics, x summaryActivity) bool {
 // within the rate and time budget.
 func (t *tools) compare(ctx context.Context, user string, a athlete, d detailedActivity, weeks int, mixIndoor bool, this storedMetrics, stored map[string]storedMetrics) (*comparison, error) {
 	local, utc := d.localStart(), d.utcStart()
-	offset := local.Sub(utc)
 	c := &comparison{weeks: weeks, mixIndoor: mixIndoor, from: weekStart(local).AddDate(0, 0, -7*weeks)}
-	list, more, err := t.svc.listActivities(ctx, user, c.from.Add(-offset).Unix()-1, utc.Unix(), maxBackfillPages)
+	// The window starts on a local date; the activities there may be in any
+	// UTC offset (summer time, travel), not only this one's: pad like every
+	// other window and let the local filter below cut.
+	list, more, err := t.svc.listActivities(ctx, user, c.from.Unix()-dayPadS, utc.Unix(), maxBackfillPages)
 	if err != nil {
 		return nil, err
 	}

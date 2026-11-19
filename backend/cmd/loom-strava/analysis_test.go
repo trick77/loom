@@ -36,6 +36,24 @@ func analysisFixture(t *testing.T) (*fakeStrava, *service, string) {
 	return f, svc, dir
 }
 
+// The window starts on a local Monday; an activity there in another UTC
+// offset than the analysed one (summer time, travel) still belongs to it.
+// The list read padded the start by the analysed activity's offset alone,
+// so Strava never sent it.
+func TestAnalysis_comparisonWindowAcrossOffsets(t *testing.T) {
+	f, svc, _ := analysisFixture(t)
+	early := synthRideWith(1, 1, 0, false)
+	// Mon 2026-09-14 00:30 local in summer time (UTC+2): Sun 22:30 UTC, while
+	// the analysed ride on 2026-11-01 is in winter time (UTC+1).
+	f.addActivity(1, 1009, "Midnight ride", "Ride", local(2026, 9, 14, 0).Add(30*time.Minute), &early,
+		map[string]any{"start_date": "2026-09-13T22:30:00Z"})
+	h := newServer(config{token: testToken}, svc, "test")
+	r := callTool(t, h, userA, "activity_analysis", `{"id":1001}`)
+	if r.IsError || !strings.Contains(r.Text, "compared with 4 rides (Ride), 2026-09-14") {
+		t.Fatalf("the window's first-Monday ride in summer time is missing:\n%s", r.Text)
+	}
+}
+
 func TestAnalysis_comparison(t *testing.T) {
 	f, svc, dir := analysisFixture(t)
 	h := newServer(config{token: testToken}, svc, "test")
