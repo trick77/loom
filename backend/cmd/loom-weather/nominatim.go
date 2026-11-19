@@ -8,8 +8,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/trick77/ship/kit/ratelimit"
 )
 
 // nominatim is OpenStreetMap's Nominatim reverse lookup: the town a point
@@ -21,7 +22,9 @@ type nominatim struct {
 	http      *http.Client
 	url       string
 	userAgent string
-	limit     *limiter
+	// limit spaces the calls reverseInterval apart, refusing past
+	// maxReverseWait.
+	limit *ratelimit.Throttle
 }
 
 // reverseAttribution is the credit the map data's licence (ODbL) asks for.
@@ -61,7 +64,11 @@ type town struct {
 // reverse names the town at a point; a point without one (the sea) has no
 // names.
 func (n nominatim) reverse(ctx context.Context, lat, lon float64, language string) (town, error) {
-	if err := n.limit.wait(ctx, reverseInterval, maxReverseWait); err != nil {
+	// One key: the policy's limit is the whole sidecar's.
+	if err := n.limit.Wait(ctx, ""); err != nil {
+		if errors.Is(err, ratelimit.ErrThrottled) {
+			return town{}, errMapBusy
+		}
 		return town{}, err
 	}
 	q := url.Values{}
@@ -88,39 +95,4 @@ func (n nominatim) reverse(ctx context.Context, lat, lon float64, language strin
 		t.countryCode = ""
 	}
 	return t, nil
-}
-
-// limiter lets one call through per interval, across every caller.
-type limiter struct {
-	mu   sync.Mutex
-	next time.Time
-}
-
-// wait blocks until the caller's turn; a context that ends first fails it,
-// and a turn further out than most is refused without taking it.
-func (l *limiter) wait(ctx context.Context, interval, most time.Duration) error {
-	l.mu.Lock()
-	now := time.Now()
-	at := now
-	if l.next.After(now) {
-		at = l.next
-	}
-	if at.Sub(now) > most {
-		l.mu.Unlock()
-		return errMapBusy
-	}
-	l.next = at.Add(interval)
-	l.mu.Unlock()
-	if delay := at.Sub(now); delay > 0 {
-		timer := time.NewTimer(delay)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	} else if err := ctx.Err(); err != nil {
-		return err
-	}
-	return nil
 }

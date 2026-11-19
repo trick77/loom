@@ -1,6 +1,7 @@
-// Package geo is the point arithmetic the weather sidecar and loom share:
-// which of a name's places lies at a point, and how coarse a point leaves.
-// No dependencies, so the sidecar pulls in nothing of loom's.
+// Package geo is the point arithmetic loom and its weather and strava
+// sidecars share: which of a name's places lies at a point, how far apart two
+// points lie, and how coarse a point leaves. No dependencies, so the sidecars
+// pull in nothing of loom's.
 package geo
 
 import "math"

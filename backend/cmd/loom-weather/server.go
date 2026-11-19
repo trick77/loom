@@ -14,6 +14,7 @@ import (
 
 	"github.com/trick77/loom/internal/geo"
 	"github.com/trick77/loom/internal/sidecar"
+	"github.com/trick77/ship/kit/ratelimit"
 	"github.com/trick77/toolkit/mcpserver"
 )
 
@@ -214,7 +215,8 @@ func newServerAt(cfg config, client *http.Client, version string, now func() tim
 		now:       now,
 	}
 	if cfg.reverseURL != "" {
-		w.reverse = &nominatim{http: client, url: strings.TrimRight(cfg.reverseURL, "/"), userAgent: agent, limit: &limiter{}}
+		w.reverse = &nominatim{http: client, url: strings.TrimRight(cfg.reverseURL, "/"), userAgent: agent,
+			limit: ratelimit.NewThrottle(reverseInterval, maxReverseWait)}
 	}
 	api := http.NewServeMux()
 	api.Handle("/mcp", mcpserver.New(w.mcpServer(version)))

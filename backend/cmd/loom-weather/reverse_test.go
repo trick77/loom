@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/mcp"
+	"github.com/trick77/ship/kit/ratelimit"
 )
 
 var reverseName = mcp.ExposedToolName(mcp.WeatherServer, mcp.WeatherReverseGeocodeTool)
@@ -109,7 +110,7 @@ func reverseService(t *testing.T, provider, reverseURL string) *mcp.Service {
 func noReverseWait(t *testing.T) {
 	t.Helper()
 	was := reverseInterval
-	reverseInterval = 0
+	reverseInterval = time.Nanosecond // the throttle refuses 0
 	t.Cleanup(func() { reverseInterval = was })
 }
 
@@ -305,31 +306,45 @@ func TestReverseGeocodeOff(t *testing.T) {
 }
 
 // The map provider allows one request a second from the whole sidecar; a
-// queue longer than most is refused, not grown.
+// queue longer than maxWait is refused as busy, not grown.
 func TestReverseLimiterSpacesCalls(t *testing.T) {
-	var l limiter
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_, _ = w.Write([]byte(`{"address":{"town":"Baden"}}`))
+	}))
+	defer srv.Close()
+	at := func(gap, maxWait time.Duration) nominatim {
+		return nominatim{http: srv.Client(), url: srv.URL, limit: ratelimit.NewThrottle(gap, maxWait)}
+	}
+	ctx := context.Background()
+
+	spaced := at(20*time.Millisecond, time.Second)
 	start := time.Now()
 	for range 3 {
-		if err := l.wait(context.Background(), 20*time.Millisecond, time.Second); err != nil {
+		if _, err := spaced.reverse(ctx, 47.47, 8.31, "de"); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
 		t.Fatalf("three calls in %v", elapsed)
 	}
-	var full limiter
-	if err := full.wait(context.Background(), time.Hour, 90*time.Minute); err != nil {
-		t.Fatalf("first: %v", err)
+
+	full := at(time.Hour, 0)
+	if got, err := full.reverse(ctx, 47.47, 8.31, "de"); err != nil || len(got.names) != 1 {
+		t.Fatalf("first: %v %v", got, err)
 	}
-	// The second's turn is an hour out, within the queue: it waits, until
-	// its caller gives up.
-	ctx, cancel := context.WithCancel(context.Background())
+	// The second's turn is an hour out, past the queue: refused at once.
+	if _, err := full.reverse(ctx, 47.47, 8.31, "de"); !errors.Is(err, errMapBusy) {
+		t.Fatalf("past the queue: %v", err)
+	}
+	// A caller gone before its turn asks nothing and is not told busy.
+	gone, cancel := context.WithCancel(ctx)
 	cancel()
-	if err := full.wait(ctx, time.Hour, 90*time.Minute); err == nil || errors.Is(err, errMapBusy) {
+	if _, err := at(time.Hour, 0).reverse(gone, 47.47, 8.31, "de"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("a canceled wait: %v", err)
 	}
-	// The third's would be two hours out: refused at once.
-	if err := full.wait(context.Background(), time.Hour, 90*time.Minute); !errors.Is(err, errMapBusy) {
-		t.Fatalf("past the queue: %v", err)
+	if n := calls.Load(); n != 4 {
+		t.Errorf("map provider asked %d times, want 4", n)
 	}
 }

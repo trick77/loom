@@ -3,6 +3,8 @@ package main
 import (
 	"math"
 	"sort"
+
+	"github.com/trick77/loom/internal/geo"
 )
 
 // series is one activity's streams on a 1 Hz grid of recorded time: short
@@ -864,9 +866,5 @@ func median(v []float64) float64 {
 
 // haversine is the distance between two points in m.
 func haversine(a, b latlng) float64 {
-	const r = 6371000.0
-	rad := math.Pi / 180
-	dLat, dLng := (b[0]-a[0])*rad, (b[1]-a[1])*rad
-	h := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(a[0]*rad)*math.Cos(b[0]*rad)*math.Sin(dLng/2)*math.Sin(dLng/2)
-	return 2 * r * math.Asin(math.Sqrt(h))
+	return geo.DistanceKm(a[0], a[1], b[0], b[1]) * 1000
 }
