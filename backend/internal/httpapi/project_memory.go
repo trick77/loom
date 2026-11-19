@@ -90,22 +90,15 @@ func (s *server) projectContextForThread(ctx context.Context, userID string, thr
 
 // countOtherProjectThreads returns how many non-archived threads the project has
 // besides the active one. Best-effort: on error it returns 0 so the nudge is
-// simply omitted rather than blocking the chat. Uses the id-only listing to avoid
-// loading thread rows just to count them.
+// simply omitted rather than blocking the chat.
 func (s *server) countOtherProjectThreads(ctx context.Context, userID string, thread chat.Thread) int {
 	if thread.ProjectID == nil {
 		return 0
 	}
-	ids, err := s.thread.ListThreadIDs(ctx, userID, chat.ListThreadsOptions{ProjectID: thread.ProjectID})
+	count, err := s.thread.CountOtherThreads(ctx, userID, thread.ID, chat.ListThreadsOptions{ProjectID: thread.ProjectID})
 	if err != nil {
 		slog.Warn("count project threads failed", "err", err)
 		return 0
-	}
-	count := 0
-	for _, id := range ids {
-		if id != thread.ID {
-			count++
-		}
 	}
 	return count
 }

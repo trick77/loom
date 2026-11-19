@@ -189,6 +189,16 @@ func (f *ThreadStore) ListThreadIDs(_ context.Context, userID string, opts chat.
 	return []string{f.Thread.ID}, nil
 }
 
+// CountOtherThreads records its arguments and counts Thread unless it is exceptID.
+func (f *ThreadStore) CountOtherThreads(_ context.Context, userID, exceptID string, opts chat.ListThreadsOptions) (int, error) {
+	f.ListThreadsUserID = userID
+	f.ListThreadsOptions = opts
+	if f.Thread.ID == "" || f.Thread.ID == exceptID {
+		return 0, nil
+	}
+	return 1, nil
+}
+
 // UpdateThread implements turn.ThreadStore.
 func (f *ThreadStore) UpdateThread(_ context.Context, userID, threadID string, in chat.UpdateThreadInput) (chat.Thread, bool, error) {
 	f.UpdateThreadInput = in

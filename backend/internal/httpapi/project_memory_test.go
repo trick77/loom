@@ -64,6 +64,32 @@ func TestStreamMessageInjectsProjectMemory(t *testing.T) {
 	}
 }
 
+type failingCountStore struct{ *fakeThreadStore }
+
+func (failingCountStore) CountOtherThreads(context.Context, string, string, chat.ListThreadsOptions) (int, error) {
+	return 0, errors.New("db down")
+}
+
+func TestCountOtherProjectThreads(t *testing.T) {
+	projectID := "proj_1"
+	active := chat.Thread{ID: "thr_1", UserID: testUser.ID, ProjectID: &projectID}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_2", UserID: testUser.ID, ProjectID: &projectID}}
+	s := &server{thread: store}
+	if got := s.countOtherProjectThreads(context.Background(), testUser.ID, active); got != 1 {
+		t.Fatalf("count = %d, want 1", got)
+	}
+	if store.ListThreadsOptions.ProjectID == nil || *store.ListThreadsOptions.ProjectID != projectID {
+		t.Fatalf("filter = %#v, want the active thread's project", store.ListThreadsOptions)
+	}
+	if got := s.countOtherProjectThreads(context.Background(), testUser.ID, chat.Thread{ID: "thr_3"}); got != 0 {
+		t.Fatalf("projectless count = %d, want 0", got)
+	}
+	s.thread = failingCountStore{store}
+	if got := s.countOtherProjectThreads(context.Background(), testUser.ID, active); got != 0 {
+		t.Fatalf("count on error = %d, want 0 (nudge omitted)", got)
+	}
+}
+
 // TestStreamMessageOmitsProjectContextForProjectlessThread guards that chats
 // without a project get no injected context.
 func TestStreamMessageOmitsProjectContextForProjectlessThread(t *testing.T) {

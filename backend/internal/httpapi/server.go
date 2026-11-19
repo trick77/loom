@@ -197,6 +197,7 @@ type ThreadStore interface {
 	GetThread(context.Context, string, string) (chat.Thread, bool, error)
 	ListThreads(context.Context, string, chat.ListThreadsOptions) ([]chat.Thread, error)
 	ListThreadIDs(context.Context, string, chat.ListThreadsOptions) ([]string, error)
+	CountOtherThreads(context.Context, string, string, chat.ListThreadsOptions) (int, error)
 	UpdateThread(context.Context, string, string, chat.UpdateThreadInput) (chat.Thread, bool, error)
 	SetThreadStarred(context.Context, string, string, bool) (chat.Thread, bool, error)
 	SetThreadImageModelIfEmpty(context.Context, string, string, string) (chat.Thread, bool, error)

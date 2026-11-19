@@ -1528,6 +1528,67 @@ VALUES ('t_a', ?, 'A', '2026-06-10 09:00:00', '2026-06-10 09:00:00', NULL),
 	}
 }
 
+func TestStore_CountOtherThreads(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	userID := insertTestUser(t, db, "alice")
+	store := NewStore(db)
+
+	project, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Research"})
+	if err != nil {
+		t.Fatalf("CreateProject() error: %v", err)
+	}
+	otherProject, err := store.CreateProject(ctx, userID, CreateProjectInput{Name: "Other"})
+	if err != nil {
+		t.Fatalf("CreateProject(other) error: %v", err)
+	}
+	create := func(user string, projectID *string) Thread {
+		t.Helper()
+		thread, err := store.CreateThread(ctx, user, CreateThreadInput{Title: "t", ProjectID: projectID})
+		if err != nil {
+			t.Fatalf("CreateThread() error: %v", err)
+		}
+		return thread
+	}
+	active := create(userID, &project.ID)
+	create(userID, &project.ID)
+	create(userID, &project.ID)
+	archived := create(userID, &project.ID)
+	if _, err := store.SetThreadArchived(ctx, userID, archived.ID, true); err != nil {
+		t.Fatalf("SetThreadArchived() error: %v", err)
+	}
+	create(userID, &otherProject.ID)
+	create(userID, nil)
+
+	opts := ListThreadsOptions{ProjectID: &project.ID}
+	got, err := store.CountOtherThreads(ctx, userID, active.ID, opts)
+	if err != nil {
+		t.Fatalf("CountOtherThreads() error: %v", err)
+	}
+	if got != 2 {
+		t.Fatalf("CountOtherThreads() = %d, want 2 (active, archived, other project excluded)", got)
+	}
+	// An archived active thread is not in the set: nothing to subtract.
+	if got, err := store.CountOtherThreads(ctx, userID, archived.ID, opts); err != nil || got != 3 {
+		t.Fatalf("CountOtherThreads(archived active) = %d, %v, want 3", got, err)
+	}
+	ids, err := store.ListThreadIDs(ctx, userID, opts)
+	if err != nil {
+		t.Fatalf("ListThreadIDs() error: %v", err)
+	}
+	if len(ids) != 3 {
+		t.Fatalf("ListThreadIDs() = %v, want the same 3 rows CountOtherThreads sees", ids)
+	}
+	if _, err := store.CountOtherThreads(ctx, userID, active.ID, ListThreadsOptions{ProjectID: &project.ID, ProjectlessOnly: true}); err == nil {
+		t.Fatal("CountOtherThreads(conflicting filters) error = nil, want validation error")
+	}
+	// Another user sees none of them.
+	otherUser := insertTestUser(t, db, "bob")
+	if got, err := store.CountOtherThreads(ctx, otherUser, "", opts); err != nil || got != 0 {
+		t.Fatalf("CountOtherThreads(other user) = %d, %v, want 0", got, err)
+	}
+}
+
 func TestStore_ArchivedProjectHidesChatsFromRestingLists(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

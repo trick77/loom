@@ -234,6 +234,23 @@ ORDER BY COALESCE(last_message_at, updated_at) DESC, updated_at DESC, id DESC`, 
 	return ids, nil
 }
 
+// CountOtherThreads counts the threads matching the same filters as
+// ListThreads, leaving out exceptID.
+func (s *Store) CountOtherThreads(ctx context.Context, userID, exceptID string, opts ListThreadsOptions) (int, error) {
+	filters, args, err := threadFilters(userID, opts)
+	if err != nil {
+		return 0, err
+	}
+	filters = append(filters, "id != ?")
+	args = append(args, exceptID)
+	var count int
+	query := `SELECT COUNT(*) FROM threads WHERE ` + strings.Join(filters, " AND ")
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count threads: %w", err)
+	}
+	return count, nil
+}
+
 // ListProjectThreadTitles returns the titles of the project's non-archived,
 // meaningfully-titled threads in creation order. Threads still carrying the
 // DefaultThreadTitle placeholder ("New thread") are excluded: a thread joins this
