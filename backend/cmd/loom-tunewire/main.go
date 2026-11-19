@@ -10,38 +10,19 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/trick77/ship/kit/env"
-	"github.com/trick77/ship/kit/fsx"
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/version"
 	"github.com/trick77/toolkit/applemusic"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: loom-tunewire serve|healthcheck")
-		os.Exit(2)
-	}
-	var err error
-	switch os.Args[1] {
-	case "serve":
-		err = serve()
-	case "healthcheck":
-		os.Exit(httpx.Healthcheck(httpx.LocalURL(envOr("TUNEWIRE_ADDR", defaultAddr), "/healthz")))
-	default:
-		err = fmt.Errorf("unknown command %q", os.Args[1])
-	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "loom-tunewire:", err)
-		os.Exit(1)
-	}
+	sidecar.Main("loom-tunewire", "TUNEWIRE_ADDR", defaultAddr, serve)
 }
 
 func serve() error {
@@ -53,7 +34,7 @@ func serve() error {
 	dev := &applemusic.Source{HTTP: httpClient}
 	// A tool call waits on it: one try, and a 429 waits at most 5 s once.
 	client := &applemusic.Client{HTTP: httpClient, Dev: dev, RateLimitWait: 5 * time.Second}
-	if err := writable(cfg.data); err != nil {
+	if err := sidecar.Writable(cfg.data); err != nil {
 		return err
 	}
 	svc, err := newService(client, fileStore{dir: cfg.data}, cfg.storefront)
@@ -67,23 +48,6 @@ func serve() error {
 	return httpx.Serve(context.Background(), srv, shutdownTimeout)
 }
 
-// writable fails the start when dir cannot be written: a host dir Docker
-// created for a bind mount is root-owned, and the sidecar would run healthy
-// with no state and fail only on the first save.
-func writable(dir string) error {
-	p := filepath.Join(dir, ".write-check")
-	if err := fsx.WriteFileAtomic(p, nil, 0o600); err != nil {
-		return fmt.Errorf("data dir %s is not writable: on the host, chown 65532:65532 it: %w", dir, err)
-	}
-	return os.Remove(p)
-}
-
 // shutdownTimeout lets a running tool call finish on SIGTERM; tools give up
 // at 25s.
 const shutdownTimeout = 30 * time.Second
-
-// envOr reads key through kit's env reader, as loadConfig does, so the
-// healthcheck probes the address serve listens on.
-func envOr(key, def string) string {
-	return env.New(os.Getenv).String(key, def)
-}

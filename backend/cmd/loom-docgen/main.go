@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/trick77/loom/internal/docgen"
-	"github.com/trick77/ship/kit/env"
+	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/httpx"
 	"github.com/trick77/ship/kit/version"
 )
@@ -28,25 +28,7 @@ const (
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: loom-docgen serve|healthcheck")
-		os.Exit(2)
-	}
-	var err error
-	switch os.Args[1] {
-	case "serve":
-		err = serve()
-	case "healthcheck":
-		// Read like serve reads it (trimmed, empty is unset), or the probe
-		// would miss a server listening fine.
-		os.Exit(httpx.Healthcheck(httpx.LocalURL(env.New(os.Getenv).String("DOCGEN_ADDR", defaultAddr), "/healthz")))
-	default:
-		err = fmt.Errorf("unknown command %q", os.Args[1])
-	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "loom-docgen:", err)
-		os.Exit(1)
-	}
+	sidecar.Main("loom-docgen", "DOCGEN_ADDR", defaultAddr, serve)
 }
 
 func serve() error {

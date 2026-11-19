@@ -1,5 +1,6 @@
 // Package sidecar is what loom and its sidecars share: the token rule
-// (TokenProblem), the sidecar's bearer-token root (Handler), and loom's
+// (TokenProblem), the sidecar's bearer-token root (Handler), its
+// serve|healthcheck main (Main) and data dir check (Writable), and loom's
 // client plumbing for the per-user sidecars' connection routes (tunewire,
 // strava): every request names the signed-in loom user (loomuser.Header)
 // and carries loom's bearer token; failures come back as *Error with the
