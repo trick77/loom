@@ -241,3 +241,71 @@ func TestIngester_ExtractText_cachesLiveExtraction(t *testing.T) {
 		t.Fatalf("extractor calls = %d, want 1 (the second read comes from the cache)", extractor.calls)
 	}
 }
+
+// An attachment inlined before it is indexed already cached its text; the
+// later "Add to knowledge" must not run Tika (or a billed vision call) again.
+func TestIngester_Ingest_usesCachedFullText(t *testing.T) {
+	extractor := &countingExtractor{text: "freshly extracted"}
+	emb := &fakeEmbedder{}
+	ing, s := newIngester(t, extractor, emb, fakeOpener{})
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusPending})
+	if err := s.SetDocumentFullText(ctx, "u1", "d1", "cached text"); err != nil {
+		t.Fatalf("SetDocumentFullText: %v", err)
+	}
+
+	if err := ing.Ingest(ctx, "u1", "d1"); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if extractor.calls != 0 {
+		t.Fatalf("extractor calls = %d, want 0 (the text is cached)", extractor.calls)
+	}
+	if len(emb.gotInputs) != 1 || len(emb.gotInputs[0]) != 1 || !strings.Contains(emb.gotInputs[0][0], "cached text") {
+		t.Fatalf("embedded %q, want the cached text", emb.gotInputs)
+	}
+	got, _, _ := s.GetDocument(ctx, "u1", "d1")
+	if got.Status != StatusEmbedded {
+		t.Errorf("status = %q, want embedded", got.Status)
+	}
+}
+
+// Re-indexing an embedded document is the one way to refresh its text (a new
+// vision model, a newer Tika): it extracts again and rewrites the cache.
+func TestIngester_Ingest_reindexRefreshesCachedText(t *testing.T) {
+	extractor := &countingExtractor{text: "freshly extracted"}
+	ing, s := newIngester(t, extractor, &fakeEmbedder{}, fakeOpener{})
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusEmbedded})
+	if err := s.SetDocumentFullText(ctx, "u1", "d1", "old text"); err != nil {
+		t.Fatalf("SetDocumentFullText: %v", err)
+	}
+
+	if err := ing.Ingest(ctx, "u1", "d1"); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if extractor.calls != 1 {
+		t.Fatalf("extractor calls = %d, want 1 (a re-index extracts again)", extractor.calls)
+	}
+	if cached, _ := s.GetDocumentFullText(ctx, "u1", "d1"); cached != "freshly extracted" {
+		t.Fatalf("cached = %q, want the fresh extraction", cached)
+	}
+}
+
+// The cache must not index a document whose file is gone from the volume.
+func TestIngester_Ingest_cachedTextStillNeedsTheFile(t *testing.T) {
+	extractor := &countingExtractor{text: "freshly extracted"}
+	ing, s := newIngester(t, extractor, &fakeEmbedder{}, fakeOpener{err: errors.New("file missing")})
+	ctx := context.Background()
+	_ = s.CreateDocument(ctx, Document{ID: "d1", UserID: "u1", VolumeRelpath: "files/a.txt", Filename: "a.txt", MIME: "text/plain", Status: StatusPending})
+	if err := s.SetDocumentFullText(ctx, "u1", "d1", "cached text"); err != nil {
+		t.Fatalf("SetDocumentFullText: %v", err)
+	}
+
+	if err := ing.Ingest(ctx, "u1", "d1"); err == nil {
+		t.Fatal("Ingest error = nil, want the open failure")
+	}
+	got, _, _ := s.GetDocument(ctx, "u1", "d1")
+	if got.Status != StatusError || !strings.Contains(got.Error, "file missing") {
+		t.Errorf("status=%q error=%q, want error containing 'file missing'", got.Status, got.Error)
+	}
+}

@@ -161,13 +161,25 @@ func (ing *Ingester) ExtractText(ctx context.Context, userID, documentID string)
 	return text, nil
 }
 
+// extract returns the document's text. A document not yet embedded reuses the
+// full_text an inline read cached (its file never changes under its id: an
+// upload is a new file and a new row). Re-indexing an embedded document
+// extracts again: it is the only way to refresh the text after a vision model
+// or Tika change.
 func (ing *Ingester) extract(ctx context.Context, doc Document) (string, error) {
 	_ = ing.store.UpdateStatus(ctx, doc.UserID, doc.ID, StatusExtracting, "")
+	// Open first even with a cached text: a document whose file is gone from
+	// the volume must fail to index, not index from the cache.
 	rc, err := ing.opener.OpenDocument(doc)
 	if err != nil {
 		return "", fmt.Errorf("open document: %w", err)
 	}
 	defer func() { _ = rc.Close() }()
+	if doc.Status != StatusEmbedded {
+		if cached, err := ing.store.GetDocumentFullText(ctx, doc.UserID, doc.ID); err == nil && strings.TrimSpace(cached) != "" {
+			return cached, nil
+		}
+	}
 	text, err := ing.extractContent(ctx, doc.Filename, doc.MIME, rc)
 	if err != nil {
 		return "", fmt.Errorf("extract text: %w", err)
