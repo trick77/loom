@@ -77,6 +77,7 @@ export function useInfiniteList<T>(
         setItems((prev) => [...prev, ...page.items]);
         setCursor(page.nextCursor);
         setHasMore(page.nextCursor !== null);
+        setError(null);
       })
       .catch((err: unknown) => {
         if (seq !== requestSeq.current) return;
@@ -117,15 +118,17 @@ export function useInfiniteList<T>(
   // fires on visibility *changes*, so a still-visible sentinel (e.g. a short
   // page that did not fill the viewport) would otherwise never load the next
   // page. Re-observing forces a fresh callback that keeps filling until the
-  // viewport is covered or there is nothing more.
+  // viewport is covered or there is nothing more. Not after a failed page:
+  // that would retry it back to back for as long as the sentinel is in view
+  // (offline: a tight loop); scrolling it back into view retries.
   useEffect(() => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore || error !== null) return;
     const node = nodeRef.current;
     const observer = observerRef.current;
     if (node === null || observer === null) return;
     observer.unobserve(node);
     observer.observe(node);
-  }, [loadingMore, hasMore, items.length]);
+  }, [loadingMore, hasMore, items.length, error]);
 
   useEffect(() => () => observerRef.current?.disconnect(), []);
 
