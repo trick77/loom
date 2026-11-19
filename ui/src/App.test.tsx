@@ -1066,6 +1066,42 @@ test("a project made from the start picker is picked, not opened", async () => {
   expect(window.location.pathname).toBe("/new");
 });
 
+test("a send on a thread that is still loading starts no new thread", async () => {
+  window.history.replaceState({}, "", "/thread/t1");
+  const fetchMock = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/me")
+        return Response.json({ id: "u1", username: "jan", role: "user" });
+      if (url === "/api/projects") return Response.json([]);
+      if (url === "/api/threads?limit=30")
+        return Response.json({ items: [threadFixture()], nextCursor: null });
+      if (url === "/api/threads/t1") return new Promise<Response>(() => {});
+      if (url === "/api/threads" && init?.method === "POST")
+        return Response.json(
+          { ...threadFixture(), id: "t2", title: "Hello" },
+          { status: 201 },
+        );
+      return new Promise<Response>(() => {});
+    },
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  render(<App />);
+  const composer = await screen.findByPlaceholderText("Write a message...");
+  fireEvent.change(composer, { target: { value: "Hello" } });
+  fireEvent.keyDown(composer, { key: "Enter" });
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    "/api/threads",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(window.location.pathname).toBe("/thread/t1");
+});
+
 test("adds a single chat to a project from the chat actions menu", async () => {
   const fetchMock = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {

@@ -1088,6 +1088,9 @@ export function ThreadShell({
     // Slash command detection is the draft alone (the popover keys off it too); it
     // clears any staged chips along with the draft.
     if (runSlashCommand(draftText)) return;
+    // On a thread route only the thread itself takes a send: still loading,
+    // sendContent would start a new thread without its history or project.
+    if (route.view === "thread" && activeThread === null) return;
     // A send while this thread's turn runs queues behind it. Other threads
     // streaming do not matter.
     if (

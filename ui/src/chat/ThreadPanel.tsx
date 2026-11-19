@@ -844,7 +844,9 @@ export function ThreadPanel({
                 focusSignal={focusSignal}
                 isSending={isSending}
                 canQueue={thread !== null}
-                sendDisabled={imageUploadPending}
+                // A thread still loading (or failed to) has nothing to send
+                // into: the send would start a new thread without its history.
+                sendDisabled={imageUploadPending || thread === null}
                 placeholder={t("thread.messagePlaceholder")}
                 onDraftChange={onDraftChange}
                 pastedTexts={pastedTexts}
