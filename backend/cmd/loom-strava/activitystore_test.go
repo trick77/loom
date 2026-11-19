@@ -99,13 +99,14 @@ func TestStore_restartReadsTheStore(t *testing.T) {
 			t.Errorf("%s read again after a restart: %d -> %d", p, before[p], f.count(p))
 		}
 	}
-	// The 5-minute head: past it, one list read and still no activity read.
+	// The 5-minute head: past it, one head read (its page and the empty one
+	// that ends it) and still no activity read.
 	f.advance(6 * time.Minute)
 	if r := callTool(t, h2, userA, "list_activities", `{}`); r.IsError || !strings.Contains(r.Text, "Albis loop") {
 		t.Fatalf("list: %s", r.Text)
 	}
-	if f.count("/athlete/activities") != before["/athlete/activities"]+1 {
-		t.Errorf("list calls %d, want one head read", f.count("/athlete/activities")-before["/athlete/activities"])
+	if f.count("/athlete/activities") != before["/athlete/activities"]+2 {
+		t.Errorf("list calls %d, want one head read of two pages", f.count("/athlete/activities")-before["/athlete/activities"])
 	}
 }
 
@@ -255,8 +256,62 @@ func TestStore_backfillResumes(t *testing.T) {
 	if !strings.Contains(r.Text, "newest first: 450\n") {
 		t.Fatalf("resumed:\n%.400s", r.Text)
 	}
-	if n := f.count("/athlete/activities"); n != 3 {
-		t.Errorf("list calls = %d, want 3 (200 + 200 + 50)", n)
+	// A short page is not the last: the end is the page that brings nothing
+	// older than the cursor.
+	if n := f.count("/athlete/activities"); n != 4 {
+		t.Errorf("list calls = %d, want 4 (200 + 200 + 50 + the end)", n)
+	}
+}
+
+// A page short of per_page is not the last one (Strava leaves out what the
+// app may not see, after paging): the backfill reads on to an empty page,
+// and a head read that took a short page for the end would drop the window's
+// activities it did not see.
+func TestStore_shortPageIsNotTheLast(t *testing.T) {
+	f := newFakeStrava(t)
+	f.addAthlete(1, "Anna", "code-a", 250)
+	start := local(2024, 1, 1, 8)
+	for i := range 250 {
+		f.addActivity(1, int64(20000+i), fmt.Sprintf("Ride %d", i), "Ride", start.Add(time.Duration(i)*24*time.Hour), nil, nil)
+	}
+	f.mu.Lock()
+	f.hidden = map[int64]bool{20200: true} // on the newest page
+	f.mu.Unlock()
+	_, h, _ := newTestService(t, f)
+	connect(t, h, userA, "code-a")
+
+	r := callTool(t, h, userA, "list_activities", `{"after":"2024-01-01","limit":500}`)
+	if !strings.Contains(r.Text, "newest first: 249\n") {
+		t.Fatalf("backfill stopped at the short page:\n%.400s", r.Text)
+	}
+	if strings.Contains(r.Text, "still being read") {
+		t.Fatalf("index read to its end is said partial:\n%.400s", r.Text)
+	}
+}
+
+func TestStore_shortHeadPageDropsNothingUnseen(t *testing.T) {
+	f := newFakeStrava(t)
+	f.addAthlete(1, "Anna", "code-a", 250)
+	f.mu.Lock()
+	start := f.now.Add(-25 * 24 * time.Hour)
+	f.mu.Unlock()
+	for i := range 250 { // all in the head's 30 days
+		f.addActivity(1, int64(30000+i), fmt.Sprintf("Ride %d", i), "Ride", start.Add(time.Duration(i)*2*time.Hour), nil, nil)
+	}
+	svc, h, _ := newTestService(t, f)
+	connect(t, h, userA, "code-a")
+	callTool(t, h, userA, "list_activities", `{"limit":500}`)
+	if n := svc.indexed(userA); n != 250 {
+		t.Fatalf("indexed %d, want 250", n)
+	}
+
+	f.mu.Lock()
+	f.hidden = map[int64]bool{30100: true} // the head's first page comes back short
+	f.mu.Unlock()
+	f.advance(10 * time.Minute)
+	callTool(t, h, userA, "list_activities", `{"limit":5}`)
+	if n := svc.indexed(userA); n != 249 {
+		t.Fatalf("indexed %d after a short head page, want 249: the head dropped activities it never read", n)
 	}
 }
 
@@ -422,7 +477,9 @@ func TestStore_backfillPastOneSecond(t *testing.T) {
 	f.addActivity(1, 29999, "Day before", "Ride", at.Add(-24*time.Hour), nil, nil)
 	svc, h, _ := newTestService(t, f)
 	connect(t, h, userA, "code-a")
-	if r := callTool(t, h, userA, "list_activities", `{"limit":500}`); !strings.Contains(r.Text, "newest first: 201\n") {
+	// A dated window reads back to its start: the end takes a page past the
+	// short one (200, the step past the second, 1, the end).
+	if r := callTool(t, h, userA, "list_activities", `{"after":"2026-09-01","limit":500}`); !strings.Contains(r.Text, "newest first: 201\n") {
 		t.Fatalf("list:\n%.300s", r.Text)
 	}
 	if idx := svc.store.loadIndex(userA); idx == nil || !idx.Complete || len(idx.Activities) != 201 {

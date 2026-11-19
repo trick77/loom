@@ -52,8 +52,12 @@ type fakeStrava struct {
 	athletes   map[int64]map[string]any
 	zones      map[int64]any
 	activities map[int64][]map[string]any // per athlete
-	streams    map[int64]map[string]any   // per activity
-	summit     map[int64]bool
+	// hidden activities take their place in a page but are left out of it,
+	// as Strava does: a page "may be lower than the requested page size,
+	// even when that page is not the last" (developers.strava.com/docs).
+	hidden  map[int64]bool
+	streams map[int64]map[string]any // per activity
+	summit  map[int64]bool
 
 	// rate headers: limit and the usage the next answer reports.
 	rateLimit15, rateLimitDay int
@@ -365,7 +369,13 @@ func (f *fakeStrava) list(w http.ResponseWriter, me int64, q url.Values) {
 	})
 	lo := min((page-1)*per, len(out))
 	hi := min(lo+per, len(out))
-	writeJSON(w, 200, out[lo:hi])
+	shown := []map[string]any{}
+	for _, a := range out[lo:hi] {
+		if id, _ := a["id"].(int64); !f.hidden[id] {
+			shown = append(shown, a)
+		}
+	}
+	writeJSON(w, 200, shown)
 }
 
 // addAthlete registers an athlete and an authorization code for it.

@@ -448,9 +448,10 @@ func TestListActivities(t *testing.T) {
 		t.Errorf("activities note:\n%s", r.Text)
 	}
 
-	// A filter reads on to the end (the second page): two calls in all.
+	// A filter reads on to the end (the second page, then the one that brings
+	// nothing older): three calls in all.
 	r = callTool(t, h, userA, "list_activities", `{"limit":500,"sport_type":"virtualride"}`)
-	if !strings.Contains(r.Text, "newest first: 50\n") || f.count("/athlete/activities") != 2 {
+	if !strings.Contains(r.Text, "newest first: 50\n") || f.count("/athlete/activities") != 3 {
 		t.Errorf("paged filter (%d list calls):\n%.300s", f.count("/athlete/activities"), r.Text)
 	}
 	r = callTool(t, h, userA, "list_activities", `{"after":"2026-03-01","before":"2026-03-08","trainer_only":true}`)

@@ -518,7 +518,10 @@ func (s *service) syncIndex(ctx context.Context, user string, need int64, pages 
 }
 
 // readHead reads the activities after after (0 = all, newest first); done
-// says every page was read.
+// says every page was read. Only an empty page ends the list: Strava's page
+// "may be lower than the requested page size, even when that page is not the
+// last" (developers.strava.com/docs, Pagination), and a head taken as done
+// drops every activity of its window it did not see.
 func (s *service) readHead(ctx context.Context, user string, after int64) ([]summaryActivity, bool, error) {
 	var out []summaryActivity
 	for page := 1; page <= maxHeadPages; page++ {
@@ -530,10 +533,10 @@ func (s *service) readHead(ctx context.Context, user string, after int64) ([]sum
 		if err := s.get(ctx, user, "/athlete/activities", q, &got); err != nil {
 			return out, false, err
 		}
-		out = append(out, got...)
-		if len(got) < activitiesPerPage {
+		if len(got) == 0 {
 			return out, true, nil
 		}
+		out = append(out, got...)
 	}
 	return out, false, nil
 }
@@ -585,8 +588,11 @@ func (s *service) mergeHead(user string, athlete int64, x *activityIndex, got []
 }
 
 // mergeBackfill puts one backfill page into the index and moves the cursor
-// to its oldest activity. complete: the page was the last one. ok is false
-// when the index is no longer the sync's.
+// to its oldest activity. complete: the history is read to its start. A short
+// page is not the last (see readHead); a page that brought nothing older than
+// the cursor is: the read asks one second past the cursor, so the end comes
+// back as the cursor's own activity alone. ok is false when the index is no
+// longer the sync's.
 func (s *service) mergeBackfill(user string, athlete int64, x *activityIndex, got []summaryActivity) (cursor int64, complete, ok bool) {
 	sl := s.slot(user)
 	sl.dataMu.Lock()
@@ -601,12 +607,13 @@ func (s *service) mergeBackfill(user string, athlete int64, x *activityIndex, go
 			x.Cursor = st
 		}
 	}
+	stuck := prev != 0 && x.Cursor >= prev
 	switch {
-	case len(got) < activitiesPerPage:
+	case len(got) == 0, stuck && len(got) < activitiesPerPage:
 		x.Complete = true
-	case prev != 0 && x.Cursor >= prev:
-		// A full page all in the cursor's second: step past it rather
-		// than read the same page forever.
+	case stuck:
+		// A full page all in the cursor's second: step past it rather than
+		// read the same page forever.
 		x.Cursor = prev - 1
 	}
 	if x.Athlete == 0 {
