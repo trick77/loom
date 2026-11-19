@@ -69,6 +69,20 @@ export function ArtifactsPage({
   const [deleteTarget, setDeleteTarget] = useState<Artifact | null>(null);
   const [actionError, setActionError] = useState("");
   const [actionPending, setActionPending] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
+
+  async function handleDownload(artifact: Artifact) {
+    setDownloadError("");
+    try {
+      downloadBlob(
+        await downloadArtifact(artifact.downloadUrl),
+        artifact.displayFilename,
+      );
+    } catch (err) {
+      if (err instanceof AuthExpiredError) onSessionExpired();
+      else setDownloadError(t("artifactCard.downloadFailed"));
+    }
+  }
 
   // The server owns filtering and ordering; the client renders pages in the
   // exact order they arrive so cursor boundaries stay aligned (no client re-sort).
@@ -204,9 +218,12 @@ export function ArtifactsPage({
           />
         </div>
 
-        {loadError !== "" && (
-          <div className="ui-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent">
-            {loadError}
+        {(loadError || downloadError) !== "" && (
+          <div
+            role="alert"
+            className="ui-meta-text mt-4 rounded-md border border-accent px-3 py-2 text-accent"
+          >
+            {loadError || downloadError}
           </div>
         )}
 
@@ -287,6 +304,7 @@ export function ArtifactsPage({
                         ? () => onUseInThread(artifact)
                         : undefined
                     }
+                    onDownload={() => void handleDownload(artifact)}
                     onRequestRename={() => {
                       setActionError("");
                       setRenameTarget(artifact);
@@ -385,6 +403,7 @@ function SortButton({
 }
 
 type ArtifactRowMenuProps = {
+  onDownload(): void;
   menuOpen: boolean;
   onToggleMenu(): void;
   onCloseMenu(): void;
@@ -441,7 +460,9 @@ function ArtifactRow({
   return (
     <ArtifactRowFrame
       artifact={artifact}
-      action={<FileArtifactButton artifact={artifact} />}
+      action={
+        <FileArtifactButton artifact={artifact} onDownload={menu.onDownload} />
+      }
       hideDivider={hideDivider}
       hovered={hovered}
       onHoverChange={onHoverChange}
@@ -458,6 +479,7 @@ function ArtifactRowFrame({
   hovered,
   onClick,
   onHoverChange,
+  onDownload,
   menuOpen,
   onToggleMenu,
   onCloseMenu,
@@ -492,7 +514,7 @@ function ArtifactRowFrame({
           <ArtifactActionsMenu
             onDownload={() => {
               onCloseMenu();
-              void downloadToBrowser(artifact);
+              onDownload();
             }}
             onUseInThread={
               onUseInThread === undefined
@@ -563,7 +585,13 @@ function ArtifactRowFrame({
   );
 }
 
-function FileArtifactButton({ artifact }: { artifact: Artifact }) {
+function FileArtifactButton({
+  artifact,
+  onDownload,
+}: {
+  artifact: Artifact;
+  onDownload(): void;
+}) {
   const { t } = useTranslation();
   return (
     <button
@@ -572,7 +600,7 @@ function FileArtifactButton({ artifact }: { artifact: Artifact }) {
       aria-label={t("artifacts.download", {
         filename: artifact.displayFilename,
       })}
-      onClick={() => void downloadToBrowser(artifact)}
+      onClick={onDownload}
     >
       <AttachmentPreview
         mimeType={artifact.mimeType}
@@ -720,12 +748,5 @@ function ImageArtifactRow({
         />
       )}
     </>
-  );
-}
-
-async function downloadToBrowser(artifact: Artifact) {
-  downloadBlob(
-    await downloadArtifact(artifact.downloadUrl),
-    artifact.displayFilename,
   );
 }

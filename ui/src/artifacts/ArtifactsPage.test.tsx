@@ -264,6 +264,21 @@ test("keeps row metadata on the filename line", async () => {
   ).toHaveClass("items-start");
 });
 
+test("a failed download says so; an expired session signs out", async () => {
+  listArtifactsMock.mockResolvedValue(page([textFile]));
+  downloadArtifactMock.mockRejectedValueOnce(new Error("failed"));
+  const props = renderPage();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Download notes.txt" }),
+  );
+  expect(await screen.findByText("Download failed")).toBeInTheDocument();
+  expect(props.onSessionExpired).not.toHaveBeenCalled();
+
+  downloadArtifactMock.mockRejectedValueOnce(new api.AuthExpiredError());
+  fireEvent.click(screen.getByRole("button", { name: "Download notes.txt" }));
+  await waitFor(() => expect(props.onSessionExpired).toHaveBeenCalled());
+});
+
 test("artifact rows fade dividers behind the rounded hover surface", async () => {
   renderPage();
   await screen.findByText("robot.png");
