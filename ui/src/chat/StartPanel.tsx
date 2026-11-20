@@ -163,7 +163,9 @@ export function StartPanel({
             a line was typed or a run was read. A fixed 22.7vh left a tablet
             scrolling with a fifth of it empty above. It shrinks, down to 2rem,
             only when Today would run off the bottom (unread runs on a
-            landscape tablet); while all fits the composer stays put. */}
+            landscape tablet); while all fits the composer stays put. Past
+            that point it moves with the content again (Today loading, a run
+            read, a long draft): taken over runs cut off at the bottom. */}
         <div
           aria-hidden
           className="min-h-8 w-full shrink basis-[clamp(2rem,calc((100svh_-_596px)/2),22.7svh)] @max-[596px]:basis-[clamp(2rem,calc((100svh_-_812px)/2),22.7svh)]"

@@ -581,6 +581,9 @@ test("only the gap above the greeting gives way when the page overflows", () => 
   expect(gap.className).toContain(
     "basis-[clamp(2rem,calc((100svh_-_596px)/2),22.7svh)]",
   );
+  expect(gap.className).toContain(
+    "@max-[596px]:basis-[clamp(2rem,calc((100svh_-_812px)/2),22.7svh)]",
+  );
   expect(scroller.className).not.toMatch(/(^|\s|:)pt-/);
   expect(greeting).toHaveClass("shrink-0");
   expect(greeting.nextElementSibling).toHaveClass("shrink-0");
