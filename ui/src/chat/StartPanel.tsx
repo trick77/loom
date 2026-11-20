@@ -155,14 +155,20 @@ export function StartPanel({
           <Icon name="ghost" size="18px" />
         </button>
       </header>
-      {/* The top gap centers the header, greeting, composer and weather
-          tiles in the screen: ~596px side by side, ~812px stacked (a column
-          under 596px), at least 2rem, at most 22.7svh. It follows the screen
-          only: tied to the content, the composer jumped when Today loaded, a
-          line was typed or a run was read. A fixed 22.7vh left a tablet
-          scrolling with a fifth of it empty above. */}
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pt-[clamp(2rem,calc((100svh_-_596px)/2),22.7svh)] pb-12 sm:px-8 @max-[596px]:pt-[clamp(2rem,calc((100svh_-_812px)/2),22.7svh)]">
-        <h2 className="ui-greeting-text mb-6 text-center font-serif">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-y-auto px-4 pb-12 sm:px-8">
+        {/* The top gap centers the header, greeting, composer and weather
+            tiles in the screen: ~596px side by side, ~812px stacked (a column
+            under 596px), at least 2rem, at most 22.7svh. Its size follows the
+            screen: tied to the content, the composer jumped when Today loaded,
+            a line was typed or a run was read. A fixed 22.7vh left a tablet
+            scrolling with a fifth of it empty above. It shrinks, down to 2rem,
+            only when Today would run off the bottom (unread runs on a
+            landscape tablet); while all fits the composer stays put. */}
+        <div
+          aria-hidden
+          className="min-h-8 w-full shrink basis-[clamp(2rem,calc((100svh_-_596px)/2),22.7svh)] @max-[596px]:basis-[clamp(2rem,calc((100svh_-_812px)/2),22.7svh)]"
+        />
+        <h2 className="ui-greeting-text mb-6 shrink-0 text-center font-serif">
           <img
             src={loomLogo}
             alt=""
@@ -171,7 +177,7 @@ export function StartPanel({
           />
           {greeting}
         </h2>
-        <div className="w-full max-w-[674px]">
+        <div className="w-full max-w-[674px] shrink-0">
           <WindowFileDrop
             enabled
             onAttachFiles={onAttachFiles}

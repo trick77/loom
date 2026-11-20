@@ -568,6 +568,24 @@ test("a saved place reloads today with its weather", async () => {
   expect(starters()).toBeNull();
 });
 
+// jsdom has no layout: this pins the structure, a browser checks the motion.
+test("only the gap above the greeting gives way when the page overflows", () => {
+  vi.mocked(api.getToday).mockRejectedValue(new Error("down"));
+  renderStart();
+  const greeting = screen.getByRole("heading", { level: 2 });
+  const scroller = greeting.parentElement!;
+  const gap = scroller.firstElementChild!;
+  expect(gap).not.toBe(greeting);
+  expect(gap).toHaveAttribute("aria-hidden");
+  expect(gap).toHaveClass("shrink", "min-h-8");
+  expect(gap.className).toContain(
+    "basis-[clamp(2rem,calc((100svh_-_596px)/2),22.7svh)]",
+  );
+  expect(scroller.className).not.toMatch(/(^|\s|:)pt-/);
+  expect(greeting).toHaveClass("shrink-0");
+  expect(greeting.nextElementSibling).toHaveClass("shrink-0");
+});
+
 describe("project picker", () => {
   const trip: Project = {
     id: "trip",
