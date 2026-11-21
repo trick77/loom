@@ -765,6 +765,39 @@ export const de = {
       "Feste Anweisungen, die du Loom gegeben hast. Füge sie hinzu, ändere oder entferne sie, indem du es Loom im Chat sagst.",
     otherInstructionsEmpty: "Noch keine gespeicherten Anweisungen.",
   },
+  toolActions: {
+    ask: "ausführen?",
+    run: "Ausführen",
+    running: "Wird ausgeführt…",
+    dismiss: "Verwerfen",
+    done: "ausgeführt",
+    failed: "fehlgeschlagen",
+    dismissed: "Verworfen",
+    gone: "Nicht mehr verfügbar",
+    open: "{{label}} öffnen",
+    failedGeneric:
+      "Der Aufruf ist fehlgeschlagen. Frag im Chat nochmal, um es erneut zu versuchen.",
+    actionFailed: "Server nicht erreichbar. Versuch es nochmal.",
+    serverFailed:
+      "Das hat nicht geklappt. Lade den Thread neu, um den Stand zu sehen.",
+    unknown: "Ergebnis unbekannt",
+    unknownHint:
+      "Der Aufruf lief an, aber loom hat keine Antwort erhalten. Prüf in {{server}}, ob es geklappt hat, bevor du nochmal fragst.",
+    status: {
+      done: "erledigt",
+      skipped: "übersprungen",
+      failed: "fehlgeschlagen",
+      unknown: "unbekannt",
+    },
+    count: {
+      done_one: "{{count}} erledigt",
+      done_other: "{{count}} erledigt",
+      skipped_one: "{{count}} übersprungen",
+      skipped_other: "{{count}} übersprungen",
+      failed_one: "{{count}} fehlgeschlagen",
+      failed_other: "{{count}} fehlgeschlagen",
+    },
+  },
   ideas: {
     title: "Ideen",
     subtitle: "Was du später weiterverfolgen willst, und warum.",

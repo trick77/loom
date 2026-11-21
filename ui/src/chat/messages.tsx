@@ -26,6 +26,7 @@ import {
 } from "../api";
 import { captureSaving, IdeaCapture } from "../ideas/IdeaCapture";
 import { IdeaCard, openIdeaPage } from "../ideas/IdeaCard";
+import { ActionCard } from "./ActionCard";
 import { PassageCard } from "../ideas/PassageCard";
 import { useIdeaCapture, useOpenCapture } from "../ideas/IdeaCaptureContext";
 import { cutExcerpt } from "../ideas/ideaText";
@@ -402,6 +403,9 @@ const AssistantBlock = memo(function AssistantBlock({
   }
   if (block.type === "idea") {
     return <IdeaCard card={block.idea} />;
+  }
+  if (block.type === "action") {
+    return <ActionCard card={block.action} />;
   }
   return (
     <AssistantProse sources={sources} display={display}>

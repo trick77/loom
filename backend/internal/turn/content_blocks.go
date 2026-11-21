@@ -14,17 +14,24 @@ import (
 //   - "trace":    Events (a contiguous run of reasoning+tool events = one panel)
 //   - "artifact": Artifact (a produced artifact)
 //   - "idea":     Idea (an idea tool's card, confirmed by the user's click)
+//   - "action":   Action (a confirm server's tool call, run by the user's click)
 type ContentBlock struct {
 	Type     string               `json:"type"`
 	Content  string               `json:"content,omitempty"`
 	Events   []ActivityTraceEvent `json:"events,omitempty"`
 	Artifact *artifact.Response   `json:"artifact,omitempty"`
 	Idea     *IdeaCard            `json:"idea,omitempty"`
+	Action   *ActionCard          `json:"action,omitempty"`
 }
 
 // addIdea appends an idea card block.
 func (b *blockBuilder) addIdea(card IdeaCard) {
 	b.blocks = append(b.blocks, ContentBlock{Type: "idea", Idea: &card})
+}
+
+// addAction appends an action card block.
+func (b *blockBuilder) addAction(card ActionCard) {
+	b.blocks = append(b.blocks, ContentBlock{Type: "action", Action: &card})
 }
 
 // blockBuilder accumulates the chronological content blocks of a single

@@ -2,7 +2,7 @@
 
 # Database schema
 
-30 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
+31 tables; the diagram is at the end. Go types are the `model.go` structs whose rows they hold.
 
 ## artifacts
 
@@ -579,6 +579,37 @@ Checks:
 
 - `CHECK (starred IN (0, 1))`
 
+## tool_actions
+
+Go types:
+
+- `toolactions.Action` (internal/toolactions): Action is one proposed tool call and what became of it.
+
+| Column | Type | Null | Default | PK |
+| --- | --- | --- | --- | --- |
+| `id` | TEXT | no |  | 1 |
+| `user_id` | TEXT | no |  |  |
+| `thread_id` | TEXT | no |  |  |
+| `tool` | TEXT | no |  |  |
+| `arguments` | TEXT | no |  |  |
+| `state` | TEXT | no |  |  |
+| `result` | TEXT | yes |  |  |
+| `created_at` | TEXT | no | `datetime('now')` |  |
+| `decided_at` | TEXT | yes |  |  |
+
+Foreign keys:
+
+- `user_id`, `thread_id` → `threads` (`user_id`, `id`), on delete CASCADE
+- `user_id` → `users` (`id`), on delete CASCADE
+
+Indexes:
+
+- `idx_tool_actions_thread` (`user_id`, `thread_id`)
+
+Checks:
+
+- `CHECK (state IN ('proposed', 'running', 'done', 'failed', 'dismissed'))`
+
 ## user_directives
 
 Go types:
@@ -1080,6 +1111,16 @@ In `internal/rag`. VecCompaction is what one CompactVectors call found and did. 
 | `ChunksBefore` | `int64` |  |
 | `ChunksAfter` | `int64` |  |
 
+### toolactions.Result
+
+In `internal/toolactions`. Result is what a call returned, for its card: the server's text, a status per element of its array argument and one link to open. Stored as JSON in tool_actions.result.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Text` | `string` |  |
+| `Items` | `[]mcp.ActionItem` |  |
+| `Link` | `*mcp.ActionLink` |  |
+
 ## Diagram
 
 ```mermaid
@@ -1319,6 +1360,17 @@ erDiagram
         TEXT schedule_id FK
         TEXT chat_slot
     }
+    tool_actions {
+        TEXT id PK
+        TEXT user_id FK
+        TEXT thread_id FK
+        TEXT tool
+        TEXT arguments
+        TEXT state
+        TEXT result
+        TEXT created_at
+        TEXT decided_at
+    }
     user_directives {
         TEXT id PK
         TEXT user_id FK
@@ -1466,6 +1518,8 @@ erDiagram
     threads }o--o| projects : "user_id, project_id"
     threads }o--o| schedules : "schedule_id"
     threads }o--|| users : "user_id"
+    tool_actions }o--|| threads : "user_id, thread_id"
+    tool_actions }o--|| users : "user_id"
     user_directives }o--|| users : "user_id"
     user_fact_cursor |o--|| users : "user_id"
     user_fact_sources }o--|| threads : "user_id, thread_id"

@@ -597,7 +597,9 @@ func (t *Run) runCiting(ctx context.Context, spec *toolSpec, call llm.ToolCall, 
 // outside content (Engine.acts): the one place the rule is checked, for
 // built-ins and MCP tools alike.
 func (t *Run) refusesAction(name string) bool {
-	if !t.e.acts(name) {
+	// A confirm server's call is only shown as a card in the turn: the
+	// user's click makes it, not the page.
+	if !t.e.acts(name) || t.e.confirms(name) {
 		return false
 	}
 	// The ideas a lookup read lock the turn's acting tools as outside

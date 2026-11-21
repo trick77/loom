@@ -157,6 +157,10 @@ func (s *server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err, "refresh message ideas failed")
 		return
 	}
+	if err := s.refreshMessageActions(r.Context(), user.ID, messages); err != nil {
+		serverError(w, r, err, "refresh message actions failed")
+		return
+	}
 	share, hasShare, err := s.thread.GetShareByThreadID(r.Context(), user.ID, threadID)
 	if err != nil {
 		serverError(w, r, err, "get thread share failed")

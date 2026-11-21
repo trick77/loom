@@ -32,6 +32,9 @@ type ToolService struct {
 	// refused document count every successful call returns.
 	Documents        []mcp.Document
 	DroppedDocuments int
+	// Items and Link are the card result every successful call returns.
+	Items []mcp.ActionItem
+	Link  *mcp.ActionLink
 	// Artifacts marks servers (by name) that may return artifacts.
 	Artifacts map[string]bool
 	// Users limits a server (by name) to these loom user ids, mirroring a
@@ -48,11 +51,19 @@ type ToolService struct {
 	// Acting marks exposed tool names that may act (mcp.Service.ReadsOnly
 	// false); every other tool only reads.
 	Acting map[string]bool
+	// Confirm marks exposed acting tool names that wait for the user's click
+	// (mcp.Service.Confirms).
+	Confirm map[string]bool
 }
 
 // ReadsOnly implements turn.ToolService: every tool not in Acting.
 func (f ToolService) ReadsOnly(name string) bool {
 	return !f.Acting[name]
+}
+
+// Confirms implements turn.ToolService: an acting tool in Confirm.
+func (f ToolService) Confirms(name string) bool {
+	return f.Acting[name] && f.Confirm[name]
 }
 
 // Tools implements turn.ToolService.
@@ -127,7 +138,7 @@ func (f ToolService) CallToolResult(ctx context.Context, name string, args map[s
 		return mcp.CallResult{}, err
 	}
 	return mcp.CallResult{Text: text, Sources: f.Sources, Files: f.Files, Images: f.Images, DroppedImages: f.DroppedImages,
-		Documents: f.Documents, DroppedDocuments: f.DroppedDocuments}, nil
+		Documents: f.Documents, DroppedDocuments: f.DroppedDocuments, Items: f.Items, Link: f.Link}, nil
 }
 
 // ToolAllowed implements turn.ToolService.

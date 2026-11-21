@@ -115,11 +115,50 @@ export type IdeaCardData = {
   remindOn: string | null;
 };
 
+/** One element's outcome in a tool action's result, by position. */
+export type ActionItem = {
+  /** "" is a status the server named that loom does not know. */
+  status: "done" | "skipped" | "failed" | "";
+  message: string;
+};
+
+/**
+ * ActionCardData is a call to an acting tool of a confirm server that the
+ * turn showed instead of making: the arguments the click sends (the model's,
+ * outside text: always rendered as plain text) and, overlaid on every load,
+ * what became of it.
+ */
+export type ActionCardData = {
+  actionId: string;
+  /**
+   * "unknown": the call started but never settled (a restart mid-call); it
+   * may have happened.
+   */
+  state:
+    | "proposed"
+    | "running"
+    | "done"
+    | "failed"
+    | "dismissed"
+    | "gone"
+    | "unknown";
+  server: string;
+  /** The tool's title from its server; "" when it gave none. */
+  title: string;
+  arguments: Record<string, unknown>;
+  result?: {
+    text: string;
+    items?: ActionItem[];
+    link?: { url: string; label: string };
+  };
+};
+
 export type ContentBlock =
   | { type: "text"; content: string }
   | { type: "trace"; events: ActivityTraceEvent[] }
   | { type: "artifact"; artifact: Artifact }
-  | { type: "idea"; idea: IdeaCardData };
+  | { type: "idea"; idea: IdeaCardData }
+  | { type: "action"; action: ActionCardData };
 
 export type Message = {
   id: string;

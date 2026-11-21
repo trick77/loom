@@ -301,6 +301,20 @@ func (t *Run) RunAssistantLoop(ctx context.Context) (out LoopResult, outErr erro
 				// reissuing (which never reaches the forced-final directive below).
 				output = fmt.Sprintf("Deferred: at most %d %s call(s) run per round, so this call was not run. Reissue it in a later round to process it. If you finish answering before it runs, tell the user that not everything was processed and offer to continue.", cap, call.Function.Name)
 				lastRoundDeferred = true
+			} else if t.e.confirms(call.Function.Name) {
+				// Not made, only shown: the user's click makes it. Past the
+				// round's cap like any call, never under the outside-content
+				// lock (refusesAction leaves it out).
+				var card *ActionCard
+				output, card = t.proposeAction(ctx, call)
+				if card != nil {
+					b.addAction(*card)
+					if err := t.stream.SendJSON("action_card", card); err != nil {
+						cancelRuns()
+						cancelTools()
+						return LoopResult{}, err
+					}
+				}
 			} else {
 				var created []artifact.Response
 				var handled bool

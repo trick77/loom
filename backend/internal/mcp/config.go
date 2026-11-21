@@ -75,6 +75,11 @@ type ServerConfig struct {
 	// content is in a turn, an acting tool refuses, since that content could
 	// be what asks for the call (prompt injection).
 	ReadOnly bool `json:"readOnly"`
+	// Confirm makes every acting tool of the server wait for the user: the
+	// turn shows the call as a card with its arguments and only the user's
+	// click runs it, with exactly those arguments. Outside content in the
+	// turn can then propose such a call but never make it.
+	Confirm bool `json:"confirm"`
 	// BuiltIn marks one of loom's own servers that is discovered best-effort
 	// (a sidecar loom must boot without): status labels it built-in, not
 	// file-defined.

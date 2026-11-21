@@ -30,6 +30,7 @@ type Engine struct {
 	// schedules runs the schedule tools; nil keeps them off.
 	schedules ScheduleTools
 	ideas     IdeaTools
+	actions   ToolActions
 	// places is where a user is, for outdoor_windows; nil plans only where
 	// the user names.
 	places Places
@@ -75,6 +76,9 @@ type Config struct {
 	Schedules ScheduleTools
 	// Ideas runs the idea tools; nil keeps them off.
 	Ideas IdeaTools
+	// ToolActions records the calls a turn shows as cards for the user's
+	// click (ToolService.Confirms); nil lets such a tool act like any other.
+	ToolActions ToolActions
 	// Places is where a user is today; nil plans outdoor windows only where
 	// the user names.
 	Places Places
@@ -110,6 +114,7 @@ func New(c Config) *Engine {
 		memory:                     memory,
 		schedules:                  c.Schedules,
 		ideas:                      c.Ideas,
+		actions:                    c.ToolActions,
 		places:                     c.Places,
 		reasoningTitleHold:         c.ReasoningTitleHold,
 		reasoningTitleStartBytes:   c.ReasoningTitleStartBytes,
