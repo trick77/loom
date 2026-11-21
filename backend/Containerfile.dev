@@ -21,7 +21,7 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/trick77/ship/kit/version.Version=${VERSION}" -o /out/loom ./cmd/loom
 
 # --- Stage 2: minimal runtime ---
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/loom /loom
 EXPOSE 8080
 ENTRYPOINT ["/loom"]
