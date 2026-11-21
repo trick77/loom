@@ -45,7 +45,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       ./cmd/loom-weather \
     && mkdir -p /out/data
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/loom-* /
 # /data holds strava's and tunewire's state (the others mount nothing). Owned
 # by the nonroot uid 65532 here: that covers a named volume (dev); a host bind

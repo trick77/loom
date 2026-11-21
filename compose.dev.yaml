@@ -120,7 +120,7 @@ services:
     # Chromium-based HTML→PDF renderer for the docgen sidecar, which reaches
     # it on the compose network. Published on a localhost port for
     # docgen's gated render test (internal/docgen/verify_test.go).
-    image: gotenberg/gotenberg:8
+    image: gotenberg/gotenberg:9
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
@@ -135,7 +135,7 @@ services:
     # Headless-browser MCP. Loom is host-networked here, so native MCP HTTP is
     # published on a localhost port and reached via BACKEND_OBSCURA_MCP_URL at
     # http://localhost:8090/mcp.
-    image: h4ckf0r0day/obscura:0.2.6
+    image: h4ckf0r0day/obscura:0.2.7
     environment:
       # v0.2.3+ refuses MCP beyond loopback without a token of at least 32
       # characters; loom sends the same value.

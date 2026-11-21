@@ -137,7 +137,7 @@ services:
 
   tika:
     # -full bundles Tesseract for OCR (pin a concrete version in real deployments)
-    image: apache/tika:4.2.0-1-full
+    image: apache/tika:4.2.0-2-full
     restart: unless-stopped
     # JVM heap, plus ~600 MB outside it for the forked server's watchdog JVM,
     # non-heap memory and Tesseract OCR on large scans.
@@ -159,7 +159,7 @@ services:
 
   gotenberg:
     # Chromium-based HTML→PDF renderer for the docgen sidecar's PDFs (Noto Color Emoji bundled)
-    image: gotenberg/gotenberg:8
+    image: gotenberg/gotenberg:9
     restart: unless-stopped
     # Chromium per render.
     mem_limit: 1g
@@ -180,7 +180,7 @@ services:
     # 0.0.0.0, so no local wrapper or stdio bridge is needed.
     # Loom reaches it via BACKEND_OBSCURA_MCP_URL; tools are
     # surfaced to the LLM as obscura__<tool>.
-    image: h4ckf0r0day/obscura:0.2.6
+    image: h4ckf0r0day/obscura:0.2.7
     restart: unless-stopped
     # Headless browser.
     mem_limit: 1g

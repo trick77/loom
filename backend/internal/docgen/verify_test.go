@@ -11,7 +11,7 @@ import (
 // Gated end-to-end render against a real Gotenberg sidecar, for manual visual
 // inspection. Skipped unless DOCGEN_GOTENBERG_URL and OUT_DIR are set, e.g.:
 //
-//	docker run --rm -p 3000:3000 gotenberg/gotenberg:8
+//	docker run --rm -p 3000:3000 gotenberg/gotenberg:9
 //	DOCGEN_GOTENBERG_URL=http://localhost:3000 OUT_DIR=/tmp \
 //	  go test ./internal/docgen -run TestGenerateVerifyPDFs -v
 func TestGenerateVerifyPDFs(t *testing.T) {
