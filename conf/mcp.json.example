@@ -5,7 +5,8 @@
   "_comment_trust": "Optional 'trustInstructions': true puts the server's own instructions (server/discover or initialize) into the system prompt whenever its tools are offered. Leave it off for third-party servers.",
   "_comment_sources": "A tool result whose structuredContent is {\"sources\":[{\"url\",\"title\",\"label\",\"snippet\",\"image\"}]} feeds loom's sources sidebar and [n] citations. List results unnumbered, in sources order: loom prepends 'Source [n]: title — url' lines, the only numbering the model should see.",
   "_comment_artifacts": "Optional 'artifacts': true lets the server's image results (MCP image content: png, jpeg, webp or gif, at most 4 per call and 25 MiB for all of them together; anything else is refused and the model is told) become artifacts in the caller's thread, and its replies grow to fit one. structuredContent {\"images\":[{\"filename\",\"model\",\"provider\",\"width\",\"height\",\"duration_ms\"}]} describes them by position. Off by default: a server without it cannot write files into anyone's volume.",
-  "_comment_readOnly": "Optional 'readOnly': true says every tool of the server only reads: none changes, creates or spends anything. A tool counts as acting unless its server says readOnly or the tool itself says readOnlyHint on a trustInstructions server, and once a turn has read outside content (a page, any tool's result) an acting tool refuses: that content could be what asks for the call (prompt injection). A scheduled run never gets an acting tool. Set it only for a server whose every tool reads.",
+  "_comment_readOnly": "Optional 'readOnly': true says every tool of the server only reads: none changes, creates or spends anything. A tool counts as acting unless its server says readOnly or the tool itself says readOnlyHint on a trustInstructions server, and once a turn has read outside content (a page, any tool's result) an acting tool refuses: that content could be what asks for the call (prompt injection). A scheduled run never gets an acting tool. Set it only for a server whose every tool reads. On a trustInstructions server a tool's explicit readOnlyHint: false wins over readOnly.",
+  "_comment_confirm": "Optional 'confirm': true makes every acting tool of the server wait for the user: the turn does not make the call but shows it as a card with its arguments, and only the user's Run click makes it, with exactly those arguments (so outside content in the turn can propose a call, never make one). The card reads structuredContent {\"items\":[{\"status\":\"done|skipped|failed\",\"message\"}],\"link\":{\"url\",\"label\"}}: items[i] is the outcome of the i-th element of the call's array argument, link a page to open afterwards. Keep 'readOnly': true beside it when all but the acting tools read: a trusted server's readOnlyHint: false still makes its acting tool a card.",
   "mcpServers": {
     "peeq": {
       "type": "http",
@@ -15,7 +16,8 @@
       },
       "users": "${BACKEND_PEEQ_USERS}",
       "trustInstructions": true,
-      "readOnly": true
+      "readOnly": true,
+      "confirm": true
     },
     "ipverse": {
       "type": "http",

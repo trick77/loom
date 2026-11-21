@@ -44,6 +44,7 @@ import { IdeaCaptureProvider } from "../ideas/IdeaCaptureContext";
 import { SelectionCapture } from "../ideas/SelectionCapture";
 import { questionBefore } from "../ideas/ideaText";
 import { IdeaCard } from "../ideas/IdeaCard";
+import { ActionCard } from "./ActionCard";
 
 // MESSAGE_FLASH_MS is how long a message opened by link stays highlighted:
 // the .ui-message-flash animation's length, and the outline's under reduced
@@ -760,6 +761,15 @@ export function ThreadPanel({
                     <IdeaCard
                       key={`stream-idea-${block.idea.ideaId}-${index}`}
                       card={block.idea}
+                    />,
+                  );
+                  return;
+                }
+                if (block.type === "action") {
+                  elements.push(
+                    <ActionCard
+                      key={`stream-action-${block.action.actionId}-${index}`}
+                      card={block.action}
                     />,
                   );
                   return;

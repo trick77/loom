@@ -25,7 +25,7 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
   name, secrets only `${VAR}`). Outside service behind a tool → own MCP sidecar (`loom-<name>`), contract in
   `docs/<name>.md`, swappable by an `mcp.json` entry of that name. loom keeps policy via `toolSpec` flags,
   never a tool-name check, vendor import or vendor arg. Results only via text, `structuredContent.sources`,
-  files, images (`artifacts: true`). `users` = loom user id.
+  files, images (`artifacts: true`), `items`/`link` (confirm card). `users` = loom user id.
 - `run_python` → `loom-sandbox` (`docs/sandbox.md`): a job never gets `/data`, a user id or a socket.
 
 ## Config
@@ -71,6 +71,8 @@ Self-hosted multi-user LLM chat: Go backend (JSON/SSE API) + embedded React SPA.
 - Personal data → own token per user, never shared (`PerUser`; `_USERS` only grants).
 - Outside content never triggers an action (iron rule, prompt injection, `Engine.acts`). Uploads don't
   count: every turn retrieves them, doc threads would lock for good.
+- An acting tool of an mcp.json `confirm` server (peeq's add) never runs in a turn: a card, the click
+  runs the stored args (`tool_actions`), so pages may propose it, never make it.
 - Idea tools only propose a card, the user's click saves (they run after pages). Excerpt = outside
   text: to a chat model only as a pasted block marked `outside` (message flagged read_outside, its
   turn locked, later turns see a stand-in); `ideas_lookup` refuses after outside content, counts as it.

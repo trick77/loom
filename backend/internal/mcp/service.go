@@ -69,9 +69,10 @@ type toolRoute struct {
 	server string
 	name   string
 	title  string
-	// readOnlyHint is the tool's own word that it only reads; ReadsOnly
-	// takes it from a trusted server only.
+	// readOnlyHint is the tool's own word that it only reads, actingHint
+	// that it acts; ReadsOnly takes either from a trusted server only.
 	readOnlyHint bool
+	actingHint   bool
 }
 
 // registeredServer is one server's client and the tools it last listed. A nil
@@ -473,8 +474,35 @@ func (s *Service) ToolTitle(name string) string {
 // ReadOnly, or the tool says readOnlyHint and its server is trusted
 // (TrustInstructions): an annotation is the server's own word, which a
 // third-party server could give its sending tool. Anything else, an unknown
-// name included, may act (fail closed).
+// name included, may act (fail closed). A trusted server's explicit
+// readOnlyHint: false beats its configured ReadOnly: an mcp.json written
+// before the server grew an acting tool must not run that tool as a read.
 func (s *Service) ReadsOnly(name string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.readsOnly(name)
+}
+
+// readsOnly is ReadsOnly under s.mu.
+func (s *Service) readsOnly(name string) bool {
+	route, ok := s.routes[name]
+	if !ok {
+		return false
+	}
+	cfg := s.cfg.Servers[route.server]
+	if cfg.TrustInstructions && route.actingHint {
+		return false
+	}
+	return cfg.ReadOnly || (route.readOnlyHint && cfg.TrustInstructions)
+}
+
+// Confirms reports whether a tool runs only after the user's click on a
+// card in the thread: an acting tool of a server configured Confirm. The turn
+// proposes such a call instead of making it.
+func (s *Service) Confirms(name string) bool {
 	if s == nil {
 		return false
 	}
@@ -484,8 +512,7 @@ func (s *Service) ReadsOnly(name string) bool {
 	if !ok {
 		return false
 	}
-	cfg := s.cfg.Servers[route.server]
-	return cfg.ReadOnly || (route.readOnlyHint && cfg.TrustInstructions)
+	return s.cfg.Servers[route.server].Confirm && !s.readsOnly(name)
 }
 
 // MakesArtifacts reports whether a tool's server may turn its results into
@@ -566,7 +593,7 @@ func (s *Service) register(serverName string, client Client, tools []Tool, onDup
 			}
 			continue
 		}
-		s.routes[tool.Name] = toolRoute{client: client, server: serverName, name: tool.OriginalName, title: tool.Title, readOnlyHint: tool.ReadOnly}
+		s.routes[tool.Name] = toolRoute{client: client, server: serverName, name: tool.OriginalName, title: tool.Title, readOnlyHint: tool.ReadOnly, actingHint: tool.Acting}
 		s.tools = append(s.tools, llm.Tool{
 			Type: "function",
 			Function: llm.ToolFunction{

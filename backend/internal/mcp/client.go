@@ -76,6 +76,9 @@ type Tool struct {
 	ServerName  string
 	// ReadOnly is the tool's own readOnlyHint annotation.
 	ReadOnly bool
+	// Acting is an explicit readOnlyHint: false, the tool's word that it
+	// changes something (no hint at all leaves both false).
+	Acting bool
 }
 
 // Client is the common interface for MCP tool-serving clients.
@@ -124,8 +127,9 @@ type toolResult struct {
 	InputSchema map[string]any `json:"inputSchema"`
 	Annotations struct {
 		Title string `json:"title"`
-		// ReadOnlyHint is the server's word that the tool changes nothing.
-		ReadOnlyHint bool `json:"readOnlyHint"`
+		// ReadOnlyHint is the server's word that the tool changes nothing
+		// (true) or that it does (false); nil when it said neither.
+		ReadOnlyHint *bool `json:"readOnlyHint"`
 	} `json:"annotations"`
 }
 
@@ -277,7 +281,7 @@ func (c *remoteClient) CallTool(ctx context.Context, name string, arguments map[
 		return CallResult{}, err
 	}
 	if result.IsError {
-		return CallResult{}, fmt.Errorf("MCP tool %q returned an error: %s", name, toolContentText(result.Content))
+		return CallResult{}, &ToolError{Tool: name, Text: toolContentText(result.Content)}
 	}
 	return result.toCallResult(c.cfg.Artifacts), nil
 }
@@ -567,7 +571,8 @@ func exposeTools(serverName string, cfg ServerConfig, tools []toolResult) []Tool
 			Description:  tool.Description,
 			InputSchema:  tool.InputSchema,
 			ServerName:   serverName,
-			ReadOnly:     tool.Annotations.ReadOnlyHint,
+			ReadOnly:     tool.Annotations.ReadOnlyHint != nil && *tool.Annotations.ReadOnlyHint,
+			Acting:       tool.Annotations.ReadOnlyHint != nil && !*tool.Annotations.ReadOnlyHint,
 		})
 	}
 	return out
@@ -680,7 +685,7 @@ func (c *stdioClient) CallTool(ctx context.Context, name string, arguments map[s
 		return CallResult{}, err
 	}
 	if result.IsError {
-		return CallResult{}, fmt.Errorf("MCP tool %q returned an error: %s", name, toolContentText(result.Content))
+		return CallResult{}, &ToolError{Tool: name, Text: toolContentText(result.Content)}
 	}
 	return result.toCallResult(c.cfg.Artifacts), nil
 }

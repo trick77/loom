@@ -18,6 +18,7 @@ import (
 	"github.com/trick77/loom/internal/location"
 	"github.com/trick77/loom/internal/mcp"
 	"github.com/trick77/loom/internal/schedule"
+	"github.com/trick77/loom/internal/toolactions"
 	"github.com/trick77/loom/internal/turn"
 	"github.com/trick77/loom/internal/usage"
 	"github.com/trick77/loom/internal/webpush"
@@ -91,6 +92,9 @@ type Deps struct {
 	// being captured; nil leaves the title to the user.
 	Ideas   *ideas.Store
 	IdeaLLM IdeaLLM
+	// ToolActions keeps the confirm servers' calls a turn showed as cards
+	// (mcp.json "confirm"); nil lets such a tool act like any other.
+	ToolActions *toolactions.Store
 	// Push delivers notifications to the users' devices (Web Push) into the
 	// subscriptions PushStore keeps. Either nil keeps push off.
 	Push      PushSender
@@ -154,6 +158,7 @@ type server struct {
 	schedules   *schedule.Store
 	ideas       *ideas.Store
 	ideaLLM     IdeaLLM
+	actions     *toolactions.Store
 	scheduleSvc *schedule.Service
 	scheduleLLM ScheduleLLM
 	runs        *scheduleRuns
@@ -381,6 +386,7 @@ func newServer(d Deps) *server {
 		pushStore:             d.PushStore,
 		ideas:                 d.Ideas,
 		ideaLLM:               d.IdeaLLM,
+		actions:               d.ToolActions,
 	}
 	if s.indexHTML == nil {
 		s.indexHTML = web.IndexHTML
@@ -408,9 +414,14 @@ func newServer(d Deps) *server {
 	if s.ideas != nil {
 		ideaTools = ideaToolRunner{s: s}
 	}
+	var toolActions turn.ToolActions
+	if s.actions != nil {
+		toolActions = s.actions
+	}
 	s.engine = turn.New(turn.Config{
 		Schedules:                  scheduleTools,
 		Ideas:                      ideaTools,
+		ToolActions:                toolActions,
 		Places:                     places,
 		Thread:                     d.Thread,
 		Usage:                      d.Usage,
@@ -519,6 +530,9 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("DELETE /api/ideas/{ideaID}", s.requireAuth(http.HandlerFunc(s.handleDeleteIdea)))
 	mux.Handle("POST /api/ideas/{ideaID}/restore", s.requireAuth(http.HandlerFunc(s.handleRestoreIdea)))
 	mux.Handle("POST /api/ideas/{ideaID}/confirm", s.requireAuth(http.HandlerFunc(s.handleConfirmIdea)))
+	mux.Handle("GET /api/tool-actions/{actionID}", s.requireAuth(http.HandlerFunc(s.handleGetToolAction)))
+	mux.Handle("POST /api/tool-actions/{actionID}/run", s.requireAuth(http.HandlerFunc(s.handleRunToolAction)))
+	mux.Handle("POST /api/tool-actions/{actionID}/dismiss", s.requireAuth(http.HandlerFunc(s.handleDismissToolAction)))
 	mux.Handle("GET /api/schedules", s.requireAuth(http.HandlerFunc(s.handleListSchedules)))
 	mux.Handle("POST /api/schedules", s.requireAuth(http.HandlerFunc(s.handleCreateSchedule)))
 	mux.Handle("POST /api/schedules:parse", s.requireAuth(http.HandlerFunc(s.handleParseSchedule)))

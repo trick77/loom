@@ -108,6 +108,8 @@ export function createTurnHandlers(opts: {
       applyBlocks((current) => appendArtifactBlock(current, artifact)),
     onIdeaCard: (idea) =>
       applyBlocks((current) => [...current, { type: "idea", idea }]),
+    onActionCard: (action) =>
+      applyBlocks((current) => [...current, { type: "action", action }]),
     onWebSources: (sources: Citation[]) =>
       opts.patch((run) => ({
         sources: mergeSourceSnapshot(run.sources, sources, true),

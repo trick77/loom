@@ -37,6 +37,7 @@ import (
 	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/loom/internal/store"
 	"github.com/trick77/loom/internal/strava"
+	"github.com/trick77/loom/internal/toolactions"
 	"github.com/trick77/loom/internal/tunewire"
 	"github.com/trick77/loom/internal/usage"
 	"github.com/trick77/loom/internal/webpush"
@@ -267,7 +268,8 @@ func runServer() error {
 		KnowledgeInlineTokenBudget: cfg.KnowledgeInlineTokenBudget,
 		ProjectSummaryTokenBudget:  cfg.ProjectSummaryTokenBudget,
 		// Ideas work without a model.
-		Ideas: ideas.NewStore(db),
+		Ideas:       ideas.NewStore(db),
+		ToolActions: toolactions.NewStore(db),
 	}
 	// Scheduled tasks run chat turns and read intervals with the model: they
 	// are on whenever chat is.

@@ -125,6 +125,9 @@ type ToolService interface {
 	// ReadsOnly reports whether a tool only reads (its server is configured
 	// read-only, or the tool says readOnlyHint); any other tool may act.
 	ReadsOnly(name string) bool
+	// Confirms reports whether an acting tool runs only after the user's
+	// click on its card (mcp.json "confirm"): the turn proposes the call.
+	Confirms(name string) bool
 }
 
 // DocumentService is the RAG document store a turn reads its knowledge from:

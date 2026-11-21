@@ -40,6 +40,8 @@ type fileServer struct {
 	Artifacts bool `json:"artifacts"`
 	// ReadOnly says every tool of the server only reads (ServerConfig.ReadOnly).
 	ReadOnly bool `json:"readOnly"`
+	// Confirm has the user click before an acting tool runs (ServerConfig.Confirm).
+	Confirm bool `json:"confirm"`
 }
 
 // userList accepts `"users": ["a","b"]` and `"users": "a,b"`. set records
@@ -180,6 +182,7 @@ func (f fileServer) toServerConfig(lookupEnv func(string) (string, bool)) (Serve
 		TrustInstructions: f.TrustInstructions,
 		Artifacts:         f.Artifacts,
 		ReadOnly:          f.ReadOnly,
+		Confirm:           f.Confirm,
 	}
 	switch transport {
 	case TransportStreamableHTTP:

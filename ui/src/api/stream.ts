@@ -2,6 +2,7 @@ import { STANDARD_SLOT } from "./model";
 import { AuthExpiredError, readErrorBody, UserFacingError } from "./http";
 import { browserTimezone } from "./schedules";
 import type {
+  ActionCardData,
   Artifact,
   IdeaCardData,
   Citation,
@@ -43,6 +44,8 @@ export type StreamHandlers = {
   onArtifact?(artifact: Artifact): void;
   /** An idea tool proposed something; the card asks for the user's click. */
   onIdeaCard?(card: IdeaCardData): void;
+  /** A confirm server's tool call waits for the user's click on its card. */
+  onActionCard?(card: ActionCardData): void;
   onKnowledgeSources?(sources: Citation[]): void;
   // Web sources gathered so far this turn, re-sent after every tool round so
   // inline [n] markers resolve while the answer is still streaming. Always a full
@@ -382,6 +385,9 @@ function dispatchSSEEvent(
       break;
     case "idea_card":
       handlers.onIdeaCard?.(payload as IdeaCardData);
+      break;
+    case "action_card":
+      handlers.onActionCard?.(payload as ActionCardData);
       break;
     case "knowledge_sources":
       handlers.onKnowledgeSources?.(

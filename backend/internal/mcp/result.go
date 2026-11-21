@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"path"
 	"regexp"
 	"strings"
@@ -115,6 +117,92 @@ type CallResult struct {
 	// rather than claiming a file that does not exist.
 	DroppedImages    int
 	DroppedDocuments int
+	// Items and Link are an acting call's result for its confirmation card
+	// (ServerConfig.Confirm): Items[i] belongs to the i-th element of the
+	// call's array argument, Link is one page to open after it.
+	Items []ActionItem
+	Link  *ActionLink
+}
+
+// ActionItem is one element's outcome in structuredContent.items. Status is
+// one of actionStatuses, "" when the server named another.
+type ActionItem struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
+// ActionLink is structuredContent.link: an http(s) page the card offers.
+type ActionLink struct {
+	URL   string `json:"url"`
+	Label string `json:"label"`
+}
+
+// The card's statuses: the call did it, there was nothing to do, it failed.
+const (
+	ActionDone    = "done"
+	ActionSkipped = "skipped"
+	ActionFailed  = "failed"
+)
+
+var actionStatuses = map[string]bool{ActionDone: true, ActionSkipped: true, ActionFailed: true}
+
+// maxActionItems bounds the statuses a card shows; maxActionMessageRunes
+// one status's text and the link's label.
+const (
+	maxActionItems        = 50
+	maxActionMessageRunes = 200
+)
+
+// ToolError is a call the server answered with isError: its text says why.
+type ToolError struct {
+	Tool string
+	Text string
+}
+
+func (e *ToolError) Error() string {
+	return fmt.Sprintf("MCP tool %q returned an error: %s", e.Tool, e.Text)
+}
+
+// structuredActionResult reads structuredContent.items and .link. Positions
+// are kept (items[i] is the i-th element); an unknown status becomes "", a
+// link that is not http(s) is dropped.
+func structuredActionResult(raw json.RawMessage) ([]ActionItem, *ActionLink) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var payload struct {
+		Items []ActionItem `json:"items"`
+		Link  *ActionLink  `json:"link"`
+	}
+	if json.Unmarshal(raw, &payload) != nil {
+		return nil, nil
+	}
+	items := payload.Items
+	if len(items) > maxActionItems {
+		items = items[:maxActionItems]
+	}
+	for i := range items {
+		if !actionStatuses[items[i].Status] {
+			items[i].Status = ""
+		}
+		items[i].Message = truncateRunes(strings.TrimSpace(items[i].Message), maxActionMessageRunes)
+	}
+	link := payload.Link
+	if link != nil {
+		link.URL = strings.TrimSpace(link.URL)
+		link.Label = truncateRunes(strings.TrimSpace(link.Label), maxActionMessageRunes)
+		if u, err := url.Parse(link.URL); err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			link = nil
+		}
+	}
+	return items, link
+}
+
+func truncateRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
 }
 
 // Document is a file a tool result carried as an MCP blob resource, for loom
@@ -208,6 +296,7 @@ type toolResource struct {
 // (a server without ServerConfig.Artifacts).
 func (r callToolResult) toCallResult(artifacts bool) CallResult {
 	out := CallResult{Text: toolContentText(r.Content), Sources: structuredSources(r.StructuredContent), Files: toolFiles(r.Content)}
+	out.Items, out.Link = structuredActionResult(r.StructuredContent)
 	if artifacts {
 		kept := toolArtifacts(r.Content, structuredImageMeta(r.StructuredContent), artifact.MaxArtifactSizeBytes)
 		out.Images, out.Documents, out.DroppedImages, out.DroppedDocuments = kept.images, kept.documents, kept.droppedImages, kept.droppedDocuments
