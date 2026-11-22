@@ -394,7 +394,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 	// editSourceID is the image whose original pixels are forwarded to the image
 	// model for direct editing (image-to-image). Defaults to the photo the user
 	// attached this turn; the follow-up branch below sets it to a reused prior image.
-	editSourceID := ""
+	editSourceID, editSourceModel := "", ""
 	if len(in.ImageAttachmentIDs) > 0 {
 		editSourceID = in.ImageAttachmentIDs[0]
 	}
@@ -412,7 +412,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 					"thread_id", t.thread.ID, "artifact_id", sourceID, "err", partsErr)
 			} else {
 				imageParts = parts
-				editSourceID = sourceID
+				editSourceID, editSourceModel = sourceID, imageRoute.sourceModel
 			}
 		}
 	}
@@ -434,6 +434,7 @@ func (t *Run) prepare(in PrepareInput) turnPlan {
 			slog.Warn("load edit source image failed; generating without source image",
 				"thread_id", t.thread.ID, "artifact_id", editSourceID, "err", srcErr)
 		} else if ok {
+			src.Model = editSourceModel
 			editSource = &src
 		}
 	}

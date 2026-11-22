@@ -98,32 +98,55 @@ func withoutLoomArgs(tool llm.Tool) llm.Tool {
 
 // loomArgs are the arguments loom adds to a call of the image tool: the
 // image to edit, whether the picture must carry legible text, and the model
-// the thread's first image used. nil for any other tool.
+// to keep: for an edit of a generated image the one that made it, else the
+// one the thread's first image used. nil for any other tool.
 func (t *Run) loomArgs(call llm.ToolCall) map[string]any {
 	if !t.e.toolPolicy(call.Function.Name).imageGenerator {
 		return nil
 	}
-	args, _ := parseToolArguments(call.Function.Arguments)
-	prompt, _ := args["prompt"].(string)
-	// Two signals, OR'd: the gate's language-agnostic NeedsText on an image
-	// turn, and a scan of the model's own prompt when it called the tool
-	// unprompted (no gate flag then).
-	extra := map[string]any{argTextHeavy: t.plan.imageRoute.typography || isTypographyImageRequest(prompt)}
+	extra := map[string]any{argTextHeavy: t.textHeavy(call)}
+	model := strings.TrimSpace(t.thread.ImageModel)
 	if src := t.plan.editSource; src != nil && len(src.Data) > 0 {
 		extra[argInputImages] = []map[string]any{{
 			"data":      base64.StdEncoding.EncodeToString(src.Data),
 			"mime_type": http.DetectContentType(src.Data),
 		}}
+		if src.Model != "" {
+			model = src.Model
+		}
 	}
-	if locked := strings.TrimSpace(t.thread.ImageModel); locked != "" {
-		extra[argModel] = locked
+	if model != "" {
+		extra[argModel] = model
 	}
 	return extra
 }
 
+// setsImageLook reports whether the call's image may lock the thread's model
+// (lockImageModel): not a text-heavy one (made on the typography model for
+// its text, not its look), not an edit of a generated image (made on its
+// source's model, which may be one of those).
+func (t *Run) setsImageLook(call llm.ToolCall) bool {
+	if src := t.plan.editSource; src != nil && src.Model != "" {
+		return false
+	}
+	return !t.textHeavy(call)
+}
+
+// textHeavy is the call's text_heavy argument. Two signals, OR'd: the gate's
+// language-agnostic NeedsText on an image turn, and a scan of the model's own
+// prompt when it called the tool unprompted (no gate flag then).
+func (t *Run) textHeavy(call llm.ToolCall) bool {
+	args, _ := parseToolArguments(call.Function.Arguments)
+	prompt, _ := args["prompt"].(string)
+	return t.plan.imageRoute.typography || isTypographyImageRequest(prompt)
+}
+
 // lockImageModel keeps the model of the thread's first image, as the server
-// reported it, so every later image is sent with it and the look never flips
-// mid-conversation. loom never interprets the name.
+// reported it, so later images are sent with it and the look stays. A
+// text-heavy image is the exception on both ends (the server sends it to its
+// typography model whatever the lock), so it never sets the lock: a thread
+// opened with a poster would draw every later photo on the text model.
+// loom never interprets the name.
 func (t *Run) lockImageModel(ctx context.Context, created []artifact.Response) {
 	if len(created) == 0 || strings.TrimSpace(t.thread.ImageModel) != "" {
 		return

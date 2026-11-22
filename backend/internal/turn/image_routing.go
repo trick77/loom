@@ -30,8 +30,10 @@ type imageRouting struct {
 	// sourceID is that image's artifact id when reuseSource is set: found once
 	// by classifyImageTurn, so the turn never scans the thread twice.
 	sourceID string
-	// typography picks the text-capable image model (FLUX.2 flex) for logo/text
-	// work. Was isTypographyImageRequest, run at dispatch on the compiled prompt.
+	// sourceModel is the model that made that image: the edit goes to it.
+	sourceModel string
+	// typography asks for the server's text-capable image model (the
+	// text_heavy argument) for logo/text work, from the gate's NeedsText.
 	typography bool
 }
 
@@ -70,7 +72,7 @@ func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadat
 	if strings.TrimSpace(content) == "" {
 		return imageRouting{}
 	}
-	sourceID := latestImageArtifactID(priorMessages)
+	sourceID, sourceModel := latestGeneratedImage(priorMessages)
 	threadHasImage := sourceID != ""
 	threadID := inf.ThreadID
 	meta := gateInference(inf, "image_intent")
@@ -91,7 +93,7 @@ func (s *Engine) classifyImageTurn(ctx context.Context, inf llm.InferenceMetadat
 	}
 	route := imageRoutingFor(intent, hasAttachedImage, threadHasImage)
 	if route.reuseSource {
-		route.sourceID = sourceID
+		route.sourceID, route.sourceModel = sourceID, sourceModel
 	}
 	return route
 }
@@ -168,6 +170,13 @@ func containsAnyToken(tokens []string, set map[string]bool) bool {
 // older generated one: "make it hand-drawn" is about the chart in view, and
 // redrawing a fox from many turns back would be the wrong picture.
 func latestImageArtifactID(messages []chat.Message) string {
+	id, _ := latestGeneratedImage(messages)
+	return id
+}
+
+// latestGeneratedImage is latestImageArtifactID plus the model that made
+// the image, as the server reported it.
+func latestGeneratedImage(messages []chat.Message) (id, model string) {
 	for _, message := range slices.Backward(messages) {
 		if chat.IsEmptyJSON(message.Artifacts) {
 			continue
@@ -190,11 +199,11 @@ func latestImageArtifactID(messages []chat.Message) string {
 			}
 			if strings.HasPrefix(item.MIMEType, "image/") || strings.HasPrefix(item.SnakeMIMEType, "image/") {
 				if (item.Generated != nil && *item.Generated) || (item.Generated == nil && item.Model != "") {
-					return item.ID
+					return item.ID, strings.TrimSpace(item.Model)
 				}
-				return ""
+				return "", ""
 			}
 		}
 	}
-	return ""
+	return "", ""
 }

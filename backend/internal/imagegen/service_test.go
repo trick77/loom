@@ -57,7 +57,13 @@ func TestServicePicksModel(t *testing.T) {
 	}{
 		{"default", CallArgs{Prompt: "a fox"}, "pro", false},
 		{"text heavy", CallArgs{Prompt: "a logo", TextHeavy: true, Width: 2048, Height: 2048}, "max", true},
-		{"locked wins over text", CallArgs{Prompt: "a logo", TextHeavy: true, Model: "pro"}, "pro", false},
+		// A thread's first picture (a FLUX photo) must not keep a later
+		// infographic off the model that renders text: it came back garbled.
+		{"text wins over locked", CallArgs{Prompt: "a mind map", TextHeavy: true, Model: "pro"}, "max", true},
+		{"locked wins without text", CallArgs{Prompt: "a fox", Model: "legacy"}, "legacy", false},
+		// An edit stays with the model that made its source (loom sends it):
+		// another model redraws the whole picture in its own look.
+		{"edit keeps its model over text", CallArgs{Prompt: "the sign says BAKERY", TextHeavy: true, Model: "pro", InputImages: []InputImage{{Data: "iVBORw0KGgo=", MimeType: "image/png"}}}, "pro", false},
 		{"locked typography model is clamped", CallArgs{Prompt: "x", Model: "max", Width: 2048, Height: 1024}, "max", true},
 	}
 	for _, tc := range cases {

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/imagegen"
 	"github.com/trick77/loom/internal/sidecar"
 	"github.com/trick77/ship/kit/env"
 )
@@ -18,10 +20,10 @@ const (
 	// 1024×576).
 	defaultModel           = "fal-ai/flux-2-pro"
 	defaultTypographyModel = "openai/gpt-image-2"
-	defaultPollTimeout     = time.Minute
-	// maxPollTimeout keeps fal's polling inside the tool's 170 s and loom's
-	// 3 min call limit, with room to fetch and send the picture.
-	maxPollTimeout = 2*time.Minute + 30*time.Second
+	// defaultPollTimeout waits as long as allowed: GPT Image took over a
+	// minute for a dense ~2 MP mind map and timed out at the old 1 min.
+	defaultPollTimeout = maxPollTimeout
+	maxPollTimeout     = imagegen.MaxPollTimeout
 )
 
 type config struct {
@@ -63,8 +65,14 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if u := r.URL("IMAGEGEN_BASE_URL", defaultBaseURL); u != nil {
 		cfg.baseURL = u.String()
 	}
-	if cfg.pollTimeout <= 0 || cfg.pollTimeout > maxPollTimeout {
-		r.Fail("IMAGEGEN_POLL_TIMEOUT must be greater than 0 and at most %s (the call limit)", maxPollTimeout)
+	if cfg.pollTimeout <= 0 {
+		r.Fail("IMAGEGEN_POLL_TIMEOUT must be greater than 0")
+	}
+	// Longer is cut, not refused: 2m30s was the documented maximum, and an
+	// install that set it must still boot.
+	if cfg.pollTimeout > maxPollTimeout {
+		slog.Warn("IMAGEGEN_POLL_TIMEOUT past the call limit, using the most allowed", "set", cfg.pollTimeout, "used", maxPollTimeout)
+		cfg.pollTimeout = maxPollTimeout
 	}
 	if err := r.Err(); err != nil {
 		return config{}, err

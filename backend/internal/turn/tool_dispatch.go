@@ -101,7 +101,7 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 		llm.RecordCost(ctx, run.costNanoUSD, true)
 	}
 	note, created := t.keepToolArtifacts(ctx, call.Function.Name, run)
-	if t.e.toolPolicy(call.Function.Name).imageGenerator {
+	if t.e.toolPolicy(call.Function.Name).imageGenerator && t.setsImageLook(call) {
 		t.lockImageModel(ctx, created)
 	}
 	if strings.TrimSpace(output) == "" {

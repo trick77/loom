@@ -171,7 +171,8 @@ func TestImageToolAvailable(t *testing.T) {
 }
 
 // The first image locks the thread's model as the server reported it; the
-// next image is sent with it, even when its prompt reads as typography work.
+// next image is sent with it. Typography work still goes to the typography
+// model: the server lets text_heavy win over the lock.
 func TestImageModelLockedAndEchoed(t *testing.T) {
 	provider := &countingImageProvider{}
 	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Pics"}}
@@ -195,14 +196,70 @@ func TestImageModelLockedAndEchoed(t *testing.T) {
 		t.Fatalf("kept image not marked generated: %s", store.Messages[len(store.Messages)-1].Artifacts)
 	}
 	cfg.LLM = &fakeToolChatClient{Results: []llm.StreamResult{
-		{ToolCalls: []llm.ToolCall{imageCall("c2", `{"prompt":"a logo that says 'FOX'"}`)}},
+		{ToolCalls: []llm.ToolCall{imageCall("c2", `{"prompt":"the fox at dusk"}`)}},
+		{Content: "Done."},
+	}}
+	if out := runStoredTurn(t, cfg, store, "now at dusk"); out.err != nil {
+		t.Fatal(out.err)
+	}
+	if len(provider.requests) != 2 || provider.requests[1].Model != "pro" {
+		t.Fatalf("requests = %+v, want the second on the locked model", provider.requests)
+	}
+	cfg.LLM = &fakeToolChatClient{Results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{imageCall("c3", `{"prompt":"a logo that says 'FOX'"}`)}},
 		{Content: "Done."},
 	}}
 	if out := runStoredTurn(t, cfg, store, "now a logo"); out.err != nil {
 		t.Fatal(out.err)
 	}
-	if len(provider.requests) != 2 || provider.requests[1].Model != "pro" {
-		t.Fatalf("requests = %+v, want the second on the locked model", provider.requests)
+	if len(provider.requests) != 3 || provider.requests[2].Model != "max" {
+		t.Fatalf("requests = %+v, want the logo on the typography model", provider.requests)
+	}
+	if store.Thread.ImageModel != "pro" {
+		t.Fatalf("locked model = %q, want pro kept", store.Thread.ImageModel)
+	}
+}
+
+// An edit goes with the model that made its source, not the thread's: a GPT
+// mind map in a FLUX thread redrawn by FLUX loses its text.
+func TestLoomArgsEditUsesSourceModel(t *testing.T) {
+	e := &Engine{mcp: turntest.ImageService(t, &countingImageProvider{}, "pro", "max")}
+	call := imageCall("c1", `{"prompt":"darker background"}`)
+	run := &Run{e: e, thread: chat.Thread{ImageModel: "pro"}, plan: turnPlan{editSource: &editImageSource{Data: []byte("\x89PNG\r\n\x1a\nx"), Model: "max"}}}
+	if got := run.loomArgs(call)[argModel]; got != "max" {
+		t.Fatalf("edit model = %v, want the source's max", got)
+	}
+	run.plan.editSource.Model = "" // an upload: no model made it
+	if got := run.loomArgs(call)[argModel]; got != "pro" {
+		t.Fatalf("upload edit model = %v, want the thread's pro", got)
+	}
+}
+
+// A text-heavy first image does not lock the thread: the typography model is
+// for text, and the thread's next photo takes the default's look.
+func TestTextHeavyImageDoesNotLock(t *testing.T) {
+	provider := &countingImageProvider{}
+	store := &fakeThreadStore{Thread: chat.Thread{ID: "thr_1", UserID: testUser.ID, Title: "Pics"}}
+	cfg := Config{MCP: turntest.ImageService(t, provider, "pro", "max"), Artifacts: fakeArtifactStore{}, UsersDir: t.TempDir()}
+	cfg.LLM = &fakeToolChatClient{Results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{imageCall("c1", `{"prompt":"a poster that says 'SALE'"}`)}},
+		{Content: "Done."},
+	}}
+	if out := runStoredTurn(t, cfg, store, "make a poster"); out.err != nil {
+		t.Fatal(out.err)
+	}
+	if store.Thread.ImageModel != "" {
+		t.Fatalf("locked model = %q, want none after a text image", store.Thread.ImageModel)
+	}
+	cfg.LLM = &fakeToolChatClient{Results: []llm.StreamResult{
+		{ToolCalls: []llm.ToolCall{imageCall("c2", `{"prompt":"a red fox"}`)}},
+		{Content: "Done."},
+	}}
+	if out := runStoredTurn(t, cfg, store, "now a fox"); out.err != nil {
+		t.Fatal(out.err)
+	}
+	if len(provider.requests) != 2 || provider.requests[1].Model != "pro" || store.Thread.ImageModel != "pro" {
+		t.Fatalf("requests = %+v, lock %q; want the fox on pro and pro locked", provider.requests, store.Thread.ImageModel)
 	}
 }
 

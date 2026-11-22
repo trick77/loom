@@ -18,14 +18,15 @@ import (
 // loop (where no gate NeedsText flag flows), reading its own English-leaning
 // prompt. loomArgs ORs the two.
 //
-// It fires on three cues, biased toward firing because the cost of a miss (text
-// rendered on the weaker klein model) is worse than the cost of a false positive
-// (a non-text image generated on the slightly slower/costlier flex):
+// A miss draws text on a model that garbles it; a false positive is no longer
+// cheap either: text_heavy wins over the thread's locked model, so a photo
+// prompt that fires leaves the thread's look mid-conversation. Hence the
+// negation check ("no text, no watermark"). It fires on three cues:
 //
 //   - a quoted span ("a banner reading 'OPEN TODAY'") — the strongest signal that
 //     specific letters must be drawn legibly (see hasRenderableQuotedText);
-//   - a typography/text noun ("logo", "wordmark", "poster", "infographic",
-//     German "schriftzug"/"plakat"); or
+//   - a typography/text noun ("logo", "poster", "infographic", "mindmap",
+//     German "schriftzug"/"plakat") no negator just before rules out; or
 //   - a "render this exact text" phrase ("a sign that says …", "the text reads …").
 //
 // Lexical detection cannot enumerate every phrasing; this is common-case, in the
@@ -37,7 +38,7 @@ func isTypographyImageRequest(prompt string) bool {
 	if hasRenderableQuotedText(prompt) {
 		return true
 	}
-	if containsAnyToken(wordTokens(prompt), typographyImageWords) {
+	if hasTypographyWord(wordTokens(prompt)) {
 		return true
 	}
 	lower := strings.ToLower(prompt)
@@ -124,6 +125,32 @@ var typographyImageWords = map[string]bool{
 	// German (Swiss orthography).
 	"schriftzug": true, "schrift": true, "plakat": true, "plakate": true,
 	"beschriftung": true, "aufschrift": true, "infografik": true, "infografiken": true,
+	// Labelled structures: a mind map is mostly words.
+	"mindmap": true, "mindmaps": true, "diagram": true, "diagrams": true,
+	"diagramm": true, "diagramme": true, "flowchart": true, "flowcharts": true,
+}
+
+// typographyNegators rule out the typography word after them ("no text",
+// "without any lettering or logos", "ohne Text"): a photo prompt saying so
+// must not leave the thread's model for the typography one.
+var typographyNegators = map[string]bool{
+	"no": true, "not": true, "without": true, "never": true, "remove": true,
+	"kein": true, "keine": true, "keinen": true, "keiner": true, "ohne": true, "nicht": true,
+}
+
+// typographyNegationWindow is how many tokens back a negator still counts:
+// "without any lettering or logos" negates "logos" four tokens on.
+const typographyNegationWindow = 4
+
+// hasTypographyWord reports a typography word that no negator just before it
+// rules out.
+func hasTypographyWord(tokens []string) bool {
+	for i, token := range tokens {
+		if typographyImageWords[token] && !containsAnyToken(tokens[max(0, i-typographyNegationWindow):i], typographyNegators) {
+			return true
+		}
+	}
+	return false
 }
 
 // typographyImagePhrases are "render this exact text" cues matched as substrings
@@ -132,5 +159,5 @@ var typographyImageWords = map[string]bool{
 var typographyImagePhrases = []string{
 	"that says", "that reads", "which says", "which reads",
 	"the text reads", "with the text", "with the word", "the words",
-	"spelling out", "spelled out", "the phrase",
+	"spelling out", "spelled out", "the phrase", "mind map",
 }

@@ -3,7 +3,9 @@ package imagegen
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestFalImageCost(t *testing.T) {
@@ -35,6 +37,26 @@ func TestFalImageCost(t *testing.T) {
 				t.Fatalf("falImageCost = %v, %v; want %v, %v", got, ok, tc.want, tc.priced)
 			}
 		})
+	}
+}
+
+// Polling stops early enough for the rest of the call: a slow submit (a large
+// edit source) eats into the call's deadline, and the poll budget alone would
+// leave no time to fetch and send an image fal already billed.
+func TestFalPollLeavesRoomBeforeTheCallDeadline(t *testing.T) {
+	stub := newFalStub(t)
+	stub.pendingPolls = 1 << 30
+	client := stub.client(stub.start())
+	client.pollTimeout = time.Hour
+	ctx, cancel := context.WithTimeout(context.Background(), falResultReserve+200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := client.Generate(ctx, GenerateRequest{Prompt: "a fox"})
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("err = %v, want a poll timeout", err)
+	}
+	if waited := time.Since(start); waited > falResultReserve {
+		t.Fatalf("polled %s, past the call deadline minus the %s reserve", waited, falResultReserve)
 	}
 }
 
