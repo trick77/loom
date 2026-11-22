@@ -37,11 +37,14 @@ import { useEscapeKey } from "./useEscapeKey";
  * outside text (a page, a read thread). It is safe by the package's guards:
  * - its own drawing escapes every label;
  * - the renderer fallback is fail-closed: a source holding a link, a URL or
- *   url(), an encoded character code, loading markup or front matter beyond
- *   a title is refused before it draws (unsafeSource), so no image node,
- *   init themeCSS or classDef can make the browser fetch anything;
- * - the renderer's SVG is checked again before it is shown (unsafeSvg);
- * - the renderer runs strict, without HTML labels, its config keys locked.
+ *   url(), an encoded character code that rebuilds one, any tag with an
+ *   attribute or a bare acting tag is refused before it draws
+ *   (unsafeSource), so no image node or classDef can make the browser fetch
+ *   anything;
+ * - directives and front-matter config are dropped, not obeyed: the
+ *   renderer's config is locked (strict, no HTML labels), so no init
+ *   themeCSS reaches it;
+ * - the renderer's SVG is checked again before it is shown (unsafeSvg).
  * A refused source takes the failure path below: the source shown as code,
  * never the reason, which is the package's English.
  *
