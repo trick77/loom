@@ -38,9 +38,13 @@ import { useEscapeKey } from "./useEscapeKey";
  * - its own drawing escapes every label;
  * - the renderer fallback is fail-closed: a source holding a link, a URL or
  *   url(), an encoded character code that rebuilds one, any tag with an
- *   attribute or a bare acting tag is refused before it draws
+ *   attribute, or a bare acting tag in lowercase is refused before it draws
  *   (unsafeSource), so no image node or classDef can make the browser fetch
  *   anything;
+ * - a capital bare tag or a `<<name>>` stereotype passes that gate and draws
+ *   as text: HTML labels are off and locked, escapeAngles turns brackets into
+ *   text before parsing, and the SVG re-check refuses script, iframe,
+ *   object, embed, link, base, meta, form and any on* attribute;
  * - directives and front-matter config are dropped, not obeyed: the
  *   renderer's config is locked (strict, no HTML labels), so no init
  *   themeCSS reaches it;
