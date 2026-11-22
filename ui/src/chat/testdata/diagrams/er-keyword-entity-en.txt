@@ -1,0 +1,52 @@
+A music school needs five tables. A lesson booking ties one pupil to one class, and a teacher runs several classes.
+
+```mermaid
+erDiagram
+    PUPIL ||--o{ ENROLMENT : "holds"
+    TERM ||--o{ ENROLMENT : "covers"
+    PUPIL ||--o{ LESSON : "books"
+    CLASS ||--o{ LESSON : "is booked for"
+    TEACHER ||--o{ CLASS : "runs"
+
+    PUPIL {
+        int pupil_id PK
+        string first_name
+        string last_name
+        string email UK
+        date joined
+        enum status
+    }
+    TERM {
+        int term_id PK
+        string name UK
+        decimal fee
+        int weeks
+    }
+    ENROLMENT {
+        int enrolment_id PK
+        int pupil_id FK
+        int term_id FK
+        date start_date
+        bool auto_renew
+    }
+    TEACHER {
+        int teacher_id PK
+        string name
+        string instrument
+    }
+    CLASS {
+        int class_id PK
+        int teacher_id FK
+        string weekday
+        time start_time
+        int capacity
+    }
+    LESSON {
+        int lesson_id PK
+        int pupil_id FK
+        int class_id FK
+        datetime booked_at
+    }
+```
+
+`CLASS` holds the weekly slot, `LESSON` one pupil's place in it.

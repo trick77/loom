@@ -1,0 +1,17 @@
+When a parking permit runs out, the office follows these steps:
+
+```mermaid
+flowchart TD
+    a["Permit end date passes"] --> b{"Renewed?" :::focus}
+    b -- "Yes" --> c["Nothing to do"]
+    b -- "No" --> d["Calculate late fee"]
+    d --> e["Send reminder letter"]
+    e --> f{"Fee paid?"}
+    f -- "Yes" --> g["Permit restored"]
+    f -- "No" --> h["Suspend the permit"]
+    h --> i["Hand to enforcement"]
+    g --> j["File the case"]
+    c --> j
+```
+
+A paid fee restores the permit the same day.

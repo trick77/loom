@@ -341,6 +341,26 @@ export const en = {
     previewFailed: "Preview failed",
     loadingPreview: "Loading preview…",
   },
+  diagram: {
+    pending: "Drawing the diagram…",
+    failed: "The diagram could not be drawn",
+    full: "Full view",
+    download: "Download SVG",
+    fullOf: "{{title}}: full view",
+    downloadOf: "{{title}}: download SVG",
+    close: "Close",
+    kind: {
+      flowchart: "Flow diagram",
+      sequence: "Sequence diagram",
+      state: "State diagram",
+      er: "Entity diagram",
+      class: "Class diagram",
+      mindmap: "Mind map",
+      timeline: "Timeline",
+      quadrant: "Quadrant chart",
+      other: "Diagram",
+    },
+  },
   projects: {
     startPicker: {
       trigger: "Project",

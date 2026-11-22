@@ -108,6 +108,25 @@ export function markdownToPlainText(content: string): string {
     .trim();
 }
 
+// markdownToSpeech is the answer as read aloud: the plain text without its
+// diagrams. A mermaid source read out is noise, while the copied text keeps it
+// (markdownToPlainText), so a pasted answer still holds the picture.
+export function markdownToSpeech(content: string): string {
+  return markdownToPlainText(
+    content
+      .replace(/\r\n/g, "\n")
+      // The opening fence, an optional body, and the first line that closes
+      // it: the same character, at least as many. A quote's or a list's
+      // prefix may stand before either, as fenceClosed (diagramFences.ts)
+      // reads it.
+      .replace(
+        /^[ \t>]*((`|~)\2{2,})[ \t]*mermaid\b[^\n]*\n(?:[\s\S]*?\n)??[ \t>]*\1\2*[ \t]*(?:\n|$)/gim,
+        "",
+      )
+      .replace(/\n{3,}/g, "\n\n"),
+  );
+}
+
 function utf8ByteLength(content: string): number {
   return new TextEncoder().encode(content).length;
 }

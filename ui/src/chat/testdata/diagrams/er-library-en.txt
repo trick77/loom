@@ -1,0 +1,31 @@
+A small lending library needs only three tables. A loan ties one member to one copy, so a book with several copies can be out to several members at once.
+
+```mermaid
+erDiagram
+  MEMBER ||--o{ LOAN : borrows
+  COPY ||--o{ LOAN : "is lent in"
+  BOOK ||--|{ COPY : "has"
+  MEMBER {
+    int id PK
+    string name
+    date joined
+  }
+  BOOK {
+    int id PK
+    string title
+    string isbn
+  }
+  COPY {
+    int id PK
+    int book_id FK
+    string shelf
+  }
+  LOAN {
+    int id PK
+    int member_id FK
+    int copy_id FK
+    date due
+  }
+```
+
+Keep `due` on the loan rather than the copy: it belongs to one lending, and the history of past loans stays intact.

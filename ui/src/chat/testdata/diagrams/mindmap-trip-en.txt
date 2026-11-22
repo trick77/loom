@@ -1,0 +1,19 @@
+Here are the topics for the trip, grouped around the plan:
+
+```mermaid
+mindmap
+  root(("Coast trip"))
+    route["Route"]
+      r1["Day 1: 220 km"]
+      r2["Ferry (optional)"]
+    stay["Stays"]
+      s1["Two campsites"]
+      s2["One guesthouse"]
+    food["Food"]
+      f1["Market on Saturday"]
+    gear["Gear"]
+      g1["Rain layers"]
+      g2["Spare tyre"]
+```
+
+The ferry is the one open decision; everything else is booked.

@@ -61,6 +61,14 @@ func TestClassifyImageIntent_multilingualEval(t *testing.T) {
 		// --- a chart of data is code, not an image model's job ---
 		{msg: "show my monthly distance as a bar chart", wantAction: ImageIntentNone},
 		{msg: "mach aus dem Diagramm ein Liniendiagramm", threadHasImg: true, wantAction: ImageIntentNone},
+		// --- a structure diagram is answer text the chat writes, not an image ---
+		{msg: "erzeuge eine Mindmap mit den Themen aus dem Workshop-Thread", wantAction: ImageIntentNone},
+		{msg: "zeichne ein Flussdiagramm vom Bestellprozess", wantAction: ImageIntentNone},
+		{msg: "draw a sequence diagram of the login flow", wantAction: ImageIntentNone},
+		{msg: "make an org chart of the club's teams", wantAction: ImageIntentNone},
+		// --- an illustration with text stays an image ---
+		{msg: "mach ein Poster fürs Sommerfest", wantAction: ImageIntentCreate},
+		{msg: "create an infographic about recycling for the school hallway", wantAction: ImageIntentCreate},
 	}
 
 	for _, tc := range cases {

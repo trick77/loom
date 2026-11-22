@@ -1,0 +1,23 @@
+The thread circled around five topics. Budget is the one still open, so it is marked:
+
+```mermaid
+mindmap
+  root(("Office move"))
+    space["New space"]
+      s1["Two floors"]
+      s2["Meeting rooms: 6"]
+    budget["Budget"]
+    :::focus
+      b1["Furniture 45 %"]
+      b2["Movers 30 %"]
+      b3["Reserve"]
+    it["IT"]
+      i1["Network cabling"]
+      i2["Printers"]
+    people["People"]
+      p1["Seating plan"]
+    timing["Timing"]
+      t1["Move in March"]
+```
+
+Everything except the budget split was agreed in the second meeting.

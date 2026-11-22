@@ -1,0 +1,36 @@
+Eine Buchung im Ferienhaus-Portal durchläuft diese Zustände:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Merkliste : Haus ausgewaehlt
+    Merkliste : Merkliste (noch keine Buchung)
+    Angefragt : Anfrage eingegangen
+    Anzahlung_offen : Anzahlung ausstehend
+    Angezahlt : Anzahlung eingegangen
+    Vorbereitung : Haus wird vorbereitet
+    Bereit : Schluessel hinterlegt
+    Abgereist : Aufenthalt beendet
+    Storniert : Buchung storniert
+    Reklamation : Maengel gemeldet
+    Erstattet : Betrag erstattet
+
+    Merkliste --> Angefragt : Anfrage gesendet
+    Angefragt --> Anzahlung_offen : Zahlung offen oder abgelehnt
+    Angefragt --> Angezahlt : Zahlung erfolgreich
+    Anzahlung_offen --> Angezahlt : Zahlung nachgereicht
+    Anzahlung_offen --> Storniert : Frist abgelaufen
+    Angefragt --> Storniert : Storno vor Zahlung
+    Angezahlt --> Storniert : Storno nach Zahlung
+    Angezahlt --> Vorbereitung : Termin bestaetigt
+    Vorbereitung --> Bereit : Reinigung erledigt
+    Bereit --> Abgereist : Abreise bestaetigt
+    Bereit --> Reklamation : Maengel bei Ankunft
+    Abgereist --> Reklamation : Maengel gemeldet
+    Reklamation --> Erstattet : Maengel bestaetigt
+    Reklamation --> Vorbereitung : Haus nachgebessert
+    Storniert --> Erstattet : Anzahlung erstattet
+    Abgereist --> [*]
+    Erstattet --> [*]
+```
+
+Die meisten Buchungen gehen den geraden Weg bis «Abgereist».

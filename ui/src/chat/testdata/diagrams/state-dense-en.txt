@@ -1,0 +1,30 @@
+A repair job at the bike shop moves through these states:
+
+```mermaid
+stateDiagram-v2
+    [*] --> JobOpened : Bike dropped off
+    JobOpened --> AwaitingQuote : Quote needed
+    AwaitingQuote --> JobApproved : Customer accepts
+    JobOpened --> JobApproved : Fixed-price service
+    JobApproved --> Cancelled : Customer declines or no reply
+    JobApproved --> Diagnosis : Strip, inspect, note parts
+    Diagnosis --> PartsReady : Parts ordered & arrived
+    PartsReady --> InRepair : Mechanic starts
+    InRepair --> InRepair : Extra adjustments
+    InRepair --> TestRide : Work finished
+    TestRide --> Ready : Rides smooth
+    TestRide --> TestFailed : Noise, slip or wobble
+    TestFailed --> TestRide : Readjusted
+    TestFailed --> OnHold : Part faulty again
+    TestFailed --> SupplierIssue : Wrong part supplied
+    SupplierIssue --> InRepair : Right part arrived
+    SupplierIssue --> OnHold : Part discontinued
+    OnHold --> TestRide : Workaround fitted
+    OnHold --> ReturnedUnfixed : Customer collects as is
+    Ready --> [*]
+    ReturnedUnfixed --> Refunded
+    Cancelled --> [*]
+    Refunded --> [*]
+```
+
+Most jobs pass the test ride the first time.

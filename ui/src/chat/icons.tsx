@@ -41,6 +41,21 @@ export function DownloadIcon() {
   );
 }
 
+// Four corners pointing out: a picture's full view.
+export function ExpandIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M9 4.5H4.5V9M15 4.5h4.5V9M9 19.5H4.5V15M15 19.5h4.5V15"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function FileIcon() {
   return (
     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">

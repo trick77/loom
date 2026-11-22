@@ -1,0 +1,18 @@
+Nach Aufwand und Nutzen eingeordnet, ergibt sich folgendes Bild:
+
+```mermaid
+quadrantChart
+  title Prioritäten für das Quartal
+  x-axis "Wenig Aufwand" --> "Viel Aufwand"
+  y-axis "Wenig Nutzen" --> "Viel Nutzen"
+  quadrant-1 "Planen"
+  quadrant-2 "Zuerst tun"
+  quadrant-3 "Weglassen"
+  quadrant-4 "Später"
+  "Grössere Schrift": [0.2, 0.75]
+  "Suche verbessern": [0.7, 0.8]
+  "Neues Logo": [0.6, 0.2]
+  "Tippfehler korrigieren": [0.1, 0.3]
+```
+
+«Grössere Schrift» ist der klare Startpunkt: wenig Aufwand, viel Nutzen.

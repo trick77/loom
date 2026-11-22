@@ -1,0 +1,13 @@
+Der Rückgabeprozess hat genau eine Verzweigung: ob die Ware innerhalb der Frist zurückkommt [1]. Alles andere läuft in beiden Fällen gleich ab.
+
+```mermaid
+flowchart TD
+  a["Rücksendung angemeldet"] --> b["Paket geprüft"]
+  b --> c{"Innerhalb 30 Tagen?"}:::focus
+  c -->|ja| d["Gutschrift ausgelöst"]
+  c -->|nein| e["Kulanz prüfen"]
+  e --> f["Kunde informiert"]
+  d --> f
+```
+
+Wichtig ist der Schritt **Paket geprüft**: Erst danach entscheidet die Frist, nicht beim Anmelden [2]. Eine Kulanzprüfung dauert in der Regel zwei bis drei Werktage.

@@ -1,0 +1,32 @@
+Aus dem Thread zum Gemeinschaftsgarten lassen sich acht Themen herauslesen, jedes mit zwei konkreten Punkten:
+
+```mermaid
+mindmap
+  root(("Gemeinschaftsgarten"))
+    a["Beete"]
+      a1["Hochbeete (6 Stück)"]
+      a2["Kräuterspirale"]
+    b["Wasser"]
+      b1["Regentonne: 80 % Bedarf"]
+      b2["Giessplan pro Woche"]
+    c["Werkzeug"]
+      c1["Gemeinsamer Schuppen"]
+      c2["Ausleihliste"]
+    d["Finanzen"]
+      d1["Jahresbeitrag 40 Fr."]
+      d2["Zuschuss der Gemeinde"]
+    e["Mitglieder"]
+      e1["Warteliste"]
+      e2["Neue Familien"]
+    f["Ernte"]
+      f1["Tauschbörse"]
+      f2["Überschuss spenden"]
+    g["Regeln"]
+      g1["Keine Pestizide"]
+      g2["Ruhezeiten"]
+    h["Feste"]
+      h1["Frühlingsfest"]
+      h2["Kürbis-Abend"]
+```
+
+Am meisten Diskussion gab es bei **Wasser** und **Finanzen**; die übrigen Punkte waren schnell entschieden.
