@@ -571,3 +571,49 @@ test("an idea's passage stages as its own card, with why this answer will not ac
   fireEvent.click(screen.getByRole("button", { name: "Remove the passage" }));
   expect(onRemove).toHaveBeenCalledWith("p1");
 });
+
+// Measuring collapses the textarea to "auto" for a moment. WebKit clamps the
+// thread's scrollTop in that forced layout, so the form keeps its height until
+// the new one is set.
+test("auto-grow keeps the composer's height while it measures", () => {
+  const heldAtMeasure: string[] = [];
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
+    function (this: HTMLElement) {
+      return this.tagName === "FORM" ? 120 : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function (this: HTMLElement) {
+      if (this.tagName !== "TEXTAREA") return 0;
+      heldAtMeasure.push(this.closest("form")?.style.minHeight ?? "");
+      return 80;
+    },
+  );
+  const { rerender } = render(
+    <Composer
+      variant="thread"
+      draft="one"
+      isSending
+      placeholder="Write a message..."
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+    />,
+  );
+  rerender(
+    <Composer
+      variant="thread"
+      draft={"one\ntwo"}
+      isSending
+      placeholder="Write a message..."
+      onDraftChange={() => undefined}
+      onSend={() => undefined}
+      onStop={() => undefined}
+    />,
+  );
+  const textarea = screen.getByPlaceholderText("Write a message...");
+  expect(heldAtMeasure.length).toBeGreaterThan(0);
+  expect(heldAtMeasure.every((held) => held === "120px")).toBe(true);
+  expect(textarea.closest("form")?.style.minHeight).toBe("");
+  expect(textarea.style.height).toBe("80px");
+});

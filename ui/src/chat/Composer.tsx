@@ -139,11 +139,19 @@ export function Composer({
   // caps the box; once content exceeds it, overflow-y-auto shows the scrollbar.
   // Direction of growth follows layout anchoring (the thread dock is sticky-bottom
   // -> grows upward; the start composer is top-anchored -> grows downward).
+  // The form holds its height while the textarea is collapsed to measure: a
+  // shorter composer shortens the thread's scroller, and WebKit clamps its
+  // scrollTop in that forced layout. Every keystroke of a multi-line draft then
+  // left the transcript off its bottom until the next stream event pulled it
+  // back: the text above shook while typing during a turn.
   const autoGrow = useCallback(() => {
     const el = textareaRef.current;
     if (el === null) return;
+    const form = el.parentElement;
+    if (form !== null) form.style.minHeight = `${form.offsetHeight}px`;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+    if (form !== null) form.style.minHeight = "";
   }, []);
   // Re-measure on every draft change (typing, and reset to base after send).
   useLayoutEffect(autoGrow, [autoGrow, draft]);
