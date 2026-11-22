@@ -41,15 +41,15 @@ func MCPServer(svc *Service, version string) mcpserver.Server {
 				if err != nil {
 					return mcpserver.ErrorResult(err.Error())
 				}
+				meta := map[string]any{
+					"filename": out.Filename, "model": out.Model, "provider": out.Provider,
+					"width": out.Width, "height": out.Height, "duration_ms": out.DurationMs,
+				}
+				if out.CostUSD != nil {
+					meta["cost_usd"] = *out.CostUSD
+				}
 				// No text: loom names the artifact it made.
-				return mcpserver.Result{Images: []mcpserver.Image{{
-					MimeType: out.MIMEType,
-					Data:     out.Bytes,
-					Meta: map[string]any{
-						"filename": out.Filename, "model": out.Model, "provider": out.Provider,
-						"width": out.Width, "height": out.Height, "duration_ms": out.DurationMs,
-					},
-				}}}
+				return mcpserver.Result{Images: []mcpserver.Image{{MimeType: out.MIMEType, Data: out.Bytes, Meta: meta}}}
 			},
 		}},
 	}

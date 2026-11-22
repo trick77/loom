@@ -17,7 +17,8 @@ type Totals struct {
 	ImageGens         int `json:"imageGens"`
 	CodeRuns          int `json:"codeRuns"`
 	// CostNanoUSD is the lifetime list-rate cost across chat and embedding
-	// calls, priced calls only.
+	// calls and generated images (the image tool's reported price), priced
+	// ones only.
 	CostNanoUSD     int64 `json:"costNanoUsd"`
 	ThreadsCreated  int   `json:"threadsCreated"`
 	ProjectsCreated int   `json:"projectsCreated"`

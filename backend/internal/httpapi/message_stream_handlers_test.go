@@ -774,6 +774,67 @@ func TestStreamMessageExecutesBuiltInImageTool(t *testing.T) {
 	}
 }
 
+// pricedImageProvider is fakeImageProvider that reports what the picture cost.
+type pricedImageProvider struct{ cost float64 }
+
+func (p pricedImageProvider) Generate(ctx context.Context, req imagegen.GenerateRequest) (imagegen.GenerateResult, error) {
+	result, err := fakeImageProvider{}.Generate(ctx, req)
+	result.CostUSD = &p.cost
+	return result, err
+}
+
+// The image's price is part of what the turn spent: on the message (the
+// thread's Σ) and in the lifetime total, like a model call.
+func TestStreamMessageBooksImageCost(t *testing.T) {
+	db := newUserDB(t)
+	threadStore := chat.NewStore(db)
+	thread, err := threadStore.CreateThread(context.Background(), testUser.ID, chat.CreateThreadInput{Title: "Images"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &recordingUsageStore{}
+	server := newAuthenticatedServer(t, Deps{
+		Thread:    threadStore,
+		Artifacts: artifact.NewStore(db),
+		Usage:     recorder,
+		MCP:       imageTools(t, pricedImageProvider{cost: 0.04}),
+		UsersDir:  t.TempDir(),
+		LLM: &fakeToolChatClient{
+			ImageIntent: llm.ImageIntent{Action: llm.ImageIntentCreate},
+			Results: []llm.StreamResult{{ToolCalls: []llm.ToolCall{{
+				ID: "call_1", Type: "function",
+				Function: llm.ToolCallFunction{Name: imageToolName, Arguments: `{"prompt":"a mind map","filename":"map"}`},
+			}}}},
+			Plain: "Created map.png.",
+		},
+	})
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, authenticatedRequest(http.MethodPost, "/api/threads/"+thread.ID+"/messages:stream", `{"content":"make a mind map"}`))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "event: artifact") {
+		t.Fatalf("status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	messages, _, err := threadStore.ListMessages(context.Background(), testUser.ID, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var assistant chat.Message
+	for _, m := range messages {
+		if m.Role == chat.RoleAssistant {
+			assistant = m
+		}
+	}
+	if assistant.CostNanoUSD == nil || *assistant.CostNanoUSD != 40_000_000 {
+		t.Fatalf("message CostNanoUSD = %v, want 40000000", assistant.CostNanoUSD)
+	}
+	var lifetime int64
+	for _, d := range recorder.Deltas {
+		lifetime += d.CostNanoUSD
+	}
+	if lifetime != 40_000_000 {
+		t.Fatalf("lifetime CostNanoUSD = %d, want 40000000", lifetime)
+	}
+}
+
 func TestStreamMessageUsesFallbackTextWhenImageFinalResponseIsEmpty(t *testing.T) {
 	db := newUserDB(t)
 	threadStore := chat.NewStore(db)

@@ -110,6 +110,8 @@ type Output struct {
 	Width      int
 	Height     int
 	DurationMs int64
+	// CostUSD is the provider's price for the image, nil when unknown.
+	CostUSD *float64
 }
 
 // Call decodes raw arguments and generates. A whole number sent as a string
@@ -250,7 +252,7 @@ func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 	return Output{
 		Filename: result.Filename, MIMEType: result.MIMEType, Bytes: result.Bytes,
 		Model: result.Model, Provider: result.Provider, Width: result.Width, Height: result.Height,
-		DurationMs: time.Since(start).Milliseconds(),
+		DurationMs: time.Since(start).Milliseconds(), CostUSD: result.CostUSD,
 	}, nil
 }
 

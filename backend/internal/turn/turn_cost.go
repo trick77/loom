@@ -14,8 +14,8 @@ import (
 // CostSettler books everything a streamed turn spent, whichever way the
 // turn ends. Two ledgers:
 //
-//   - The user's lifetime totals get the turn's tokens and chat cost
-//     (UsageAccumulator.Cost); rolled-up costs such as the query embedding
+//   - The user's lifetime totals get the turn's tokens and its chat and image
+//     cost (UsageAccumulator.Cost); rolled-up costs such as the query embedding
 //     were added there by their own path already.
 //   - The thread's Σ is the sum of its messages' costs, so the turn's full
 //     cost (TurnCost) must sit on one of its messages. The assistant message

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/imagescale"
 	"github.com/trick77/loom/internal/inference"
 )
 
@@ -146,10 +147,23 @@ func (c *FalClient) Generate(ctx context.Context, input GenerateRequest) (Genera
 		Seed:      req.Seed,
 		Width:     req.Width,
 		Height:    req.Height,
-		// fal does not report a per-request price in the API response, so cost
-		// stays unset (BFL returned one on submit).
-		CostCredits: nil,
+		CostUSD:   falCost(model, req),
 	}, nil
+}
+
+// falCost is fal's price for req from falPrices (fal's response carries none),
+// nil for a model without one.
+func falCost(model string, req GenerateRequest) *float64 {
+	inputs := make([][2]int, 0, len(req.InputImages))
+	for _, img := range req.InputImages {
+		w, h := imagescale.Dimensions(img)
+		inputs = append(inputs, [2]int{w, h})
+	}
+	cost, ok := falImageCost(model, req.Width, req.Height, inputs)
+	if !ok {
+		return nil
+	}
+	return &cost
 }
 
 // effectiveModel returns the per-request model override when one is supplied

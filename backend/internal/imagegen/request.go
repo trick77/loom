@@ -59,18 +59,20 @@ type GenerateRequest struct {
 
 // GenerateResult is the result of a successful image generation, containing the generated image and metadata.
 type GenerateResult struct {
-	Filename    string
-	Extension   string
-	MIMEType    string
-	Bytes       []byte
-	Provider    string
-	Model       string
-	RequestID   string
-	Prompt      string
-	Seed        *int64
-	Width       int
-	Height      int
-	CostCredits *float64
+	Filename  string
+	Extension string
+	MIMEType  string
+	Bytes     []byte
+	Provider  string
+	Model     string
+	RequestID string
+	Prompt    string
+	Seed      *int64
+	Width     int
+	Height    int
+	// CostUSD is what the provider bills for the image; nil when unknown,
+	// never a made-up zero.
+	CostUSD *float64
 }
 
 // Provider is an image generation provider that generates images from requests.

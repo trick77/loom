@@ -105,6 +105,25 @@ func TestServiceCallDecodesArgsAndReportsDetails(t *testing.T) {
 	}
 }
 
+type pricedProvider struct{ cost *float64 }
+
+func (p pricedProvider) Generate(context.Context, GenerateRequest) (GenerateResult, error) {
+	return GenerateResult{MIMEType: "image/png", Bytes: []byte("\x89PNG\r\n\x1a\nx"), Model: "m", CostUSD: p.cost}, nil
+}
+
+// The provider's price travels on; none stays none, never a zero.
+func TestServiceReportsCost(t *testing.T) {
+	price := 0.04
+	out, err := NewService(pricedProvider{cost: &price}, "", "").Generate(context.Background(), CallArgs{Prompt: "x"})
+	if err != nil || out.CostUSD == nil || *out.CostUSD != 0.04 {
+		t.Fatalf("CostUSD = %v, %v; want 0.04", out.CostUSD, err)
+	}
+	out, err = NewService(pricedProvider{}, "", "").Generate(context.Background(), CallArgs{Prompt: "x"})
+	if err != nil || out.CostUSD != nil {
+		t.Fatalf("CostUSD = %v, %v; want nil", out.CostUSD, err)
+	}
+}
+
 // The schema declares the loom-filled arguments next to the model's.
 func TestServiceSchemaDeclaresLoomArgs(t *testing.T) {
 	props := NewService(&recordingProvider{}, "", "").Schema()["properties"].(map[string]any)

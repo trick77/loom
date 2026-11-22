@@ -63,6 +63,39 @@ func TestToolImagesOnlyFromArtifactServers(t *testing.T) {
 	}
 }
 
+// cost_usd of every images entry is summed, a dropped image's too (the server
+// paid for it); a negative, non-finite or mistyped one counts nothing.
+func TestToolImagesSumCost(t *testing.T) {
+	server, _ := newModernServer(t, func(modernRequest) any {
+		return map[string]any{
+			"resultType": "complete",
+			"content":    []any{imageBlock("image/png", pngBytes(64)), imageBlock("text/html", []byte("<html>"))},
+			"structuredContent": map[string]any{"images": []any{
+				map[string]any{"filename": "a", "cost_usd": 0.04},
+				map[string]any{"filename": "b", "cost_usd": 0.015},
+				map[string]any{"cost_usd": -1},
+				map[string]any{"cost_usd": "0.5"},
+			}},
+		}
+	})
+	client := NewRemoteClient("img", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL, Artifacts: true}, nil)
+	got, err := client.CallTool(context.Background(), "generate", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.CostNanoUSD != 55_000_000 {
+		t.Fatalf("CostNanoUSD = %d, want 55000000", got.CostNanoUSD)
+	}
+	if len(got.Images) != 1 || got.Images[0].Filename != "a" {
+		t.Fatalf("images = %+v, want the one png", got.Images)
+	}
+	// A server not trusted with artifacts puts no money on the account.
+	plain := NewRemoteClient("img", ServerConfig{Transport: TransportStreamableHTTP, URL: server.URL}, nil)
+	if got, err = plain.CallTool(context.Background(), "generate", nil); err != nil || got.CostNanoUSD != 0 {
+		t.Fatalf("plain server CostNanoUSD = %d, %v; want 0", got.CostNanoUSD, err)
+	}
+}
+
 // A picture outgrows the 4 MiB every other server is held to; only a server
 // trusted with artifacts may answer that large.
 func TestToolImagesLargeResponseOnlyForArtifactServers(t *testing.T) {

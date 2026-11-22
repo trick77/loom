@@ -31,8 +31,10 @@ type toolRun struct {
 	// droppedImages and droppedDocuments count the image blocks and blob
 	// resources mcp refused.
 	droppedImages, droppedDocuments int
-	err                             error
-	durationMS                      int64
+	// costNanoUSD is what the server reported the call cost (its images).
+	costNanoUSD int64
+	err         error
+	durationMS  int64
 }
 
 // runToolCall performs the MCP call itself. It touches no per-turn state, so a
@@ -69,7 +71,7 @@ func (s *Engine) runToolCallWith(ctx context.Context, call llm.ToolCall, extra m
 	result, err := s.mcp.CallToolResult(callCtx, call.Function.Name, sent)
 	return toolRun{arguments: arguments, output: result.Text, sources: result.Sources, files: result.Files,
 		images: result.Images, documents: result.Documents, droppedImages: result.DroppedImages, droppedDocuments: result.DroppedDocuments,
-		err: err, durationMS: time.Since(start).Milliseconds()}
+		costNanoUSD: result.CostNanoUSD, err: err, durationMS: time.Since(start).Milliseconds()}
 }
 
 // toolCallDuration bounds one MCP call: a server that returns artifacts
@@ -90,6 +92,13 @@ func (t *Run) finishToolCall(ctx context.Context, call llm.ToolCall, round int, 
 	output := t.finishToolText(ctx, call, round, reg, run)
 	if run.err != nil || run.argsErr != nil {
 		return output, nil
+	}
+	// Booked before the artifacts are kept: an image refused or not stored
+	// was paid for all the same. The turn's accumulator carries it into the
+	// message (the thread's Σ) and the lifetime total, like a model call.
+	// Only the image tool's figure counts.
+	if run.costNanoUSD > 0 && t.e.toolPolicy(call.Function.Name).imageGenerator {
+		llm.RecordCost(ctx, run.costNanoUSD, true)
 	}
 	note, created := t.keepToolArtifacts(ctx, call.Function.Name, run)
 	if t.e.toolPolicy(call.Function.Name).imageGenerator {

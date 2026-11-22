@@ -139,10 +139,6 @@ func TestFalClientGenerateSubmitsPollsAndDownloadsImage(t *testing.T) {
 		!strings.HasPrefix(string(result.Bytes), "\x89PNG") {
 		t.Fatalf("result = %#v", result)
 	}
-	// fal reports no per-request price, so cost must stay unset rather than 0.
-	if result.CostCredits != nil {
-		t.Fatalf("CostCredits = %#v, want nil (fal returns no cost)", result.CostCredits)
-	}
 }
 
 func TestFalClientGenerateJoinsSlashedModelIDIntoPath(t *testing.T) {

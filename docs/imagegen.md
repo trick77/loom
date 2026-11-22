@@ -8,13 +8,17 @@ around the tool, never the provider:
 - an image turn (the intent gate) forces the tool, one image per turn, scheduled runs never get it;
 - it fills three arguments itself, hidden from the model;
 - it stores the image as an artifact and keeps the thread's model;
+- it books the reported price into the turn's cost (message Σ, lifetime total), images loom refused or could not
+  store too; a failed call (moderated, download error) reports no price and books nothing;
 - a follow-up edit ("make it cyberpunk") reuses the thread's newest image only when this tool made it (marked by
   loom at store time, `structuredContent` plays no part). A run_python chart or another tool's picture is data: an
   edit request then has no source, and a chart on top hides an older generated image. Once a correction after a
   Strava analysis went to the image model and came back painted into the chart.
 
 The sidecar holds the fal key and every model fact (which model renders text, the 1024 px cap for it, an edit keeping
-its source's shape). It is stateless (no volume) and best-effort: loom boots without it and offers images while it
+its source's shape, the price). fal reports no price per request (queue result, headers, usage API by request id:
+none), so the sidecar prices from fal's published rates (`imagegen/fal_price.go`); a model missing there books
+nothing, a rate change at fal goes unnoticed until the table follows. It is stateless (no volume) and best-effort: loom boots without it and offers images while it
 answers. The cost of the boundary: an edit's source and every result cross HTTP as base64, so one edit of a 20 MiB
 photo holds ~100 MiB across loom and the sidecar for its duration.
 
@@ -70,9 +74,10 @@ One MCP `image` content block (base64 `data`, `mimeType` png/jpeg/webp/gif; the 
 
 ```json
 "structuredContent": { "images": [ { "filename": "red-fox", "model": "…", "provider": "…",
-  "width": 1024, "height": 576, "duration_ms": 8100 } ] }
+  "width": 1024, "height": 576, "duration_ms": 8100, "cost_usd": 0.03 } ] }
 ```
 
 `images[i]` describes the i-th image block. `model` is what loom sends back as `model` on later calls in the thread.
+`cost_usd` is optional: the image's price, omitted when unknown (never a made-up 0).
 Text content is optional; loom tells the model which artifact was made. A failure is `isError` with the reason as
 text.

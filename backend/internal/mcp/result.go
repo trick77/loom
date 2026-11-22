@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"path"
@@ -122,6 +123,10 @@ type CallResult struct {
 	// call's array argument, Link is one page to open after it.
 	Items []ActionItem
 	Link  *ActionLink
+	// CostNanoUSD is what a server with ServerConfig.Artifacts reported its
+	// images cost (structuredContent.images[i].cost_usd), dropped ones
+	// included: the server paid for them all the same.
+	CostNanoUSD int64
 }
 
 // ActionItem is one element's outcome in structuredContent.items. Status is
@@ -242,6 +247,24 @@ type imageMeta struct {
 	Width      int    `json:"width"`
 	Height     int    `json:"height"`
 	DurationMs int64  `json:"duration_ms"`
+	// CostUSD is the image's price; a negative, absurd or mistyped one counts
+	// nothing (imagesCost).
+	CostUSD float64 `json:"cost_usd"`
+}
+
+// maxImageCostUSD bounds one reported price: far above any real image, low
+// enough that a broken server's figure cannot overflow the nano-USD sum.
+const maxImageCostUSD = 1000
+
+// imagesCost sums the images' reported prices in nano USD.
+func imagesCost(meta []imageMeta) int64 {
+	var total int64
+	for _, m := range meta {
+		if m.CostUSD > 0 && m.CostUSD <= maxImageCostUSD {
+			total += int64(math.Round(m.CostUSD * 1e9))
+		}
+	}
+	return total
 }
 
 // maxToolArtifacts caps how many images and documents one tool result may
@@ -298,7 +321,11 @@ func (r callToolResult) toCallResult(artifacts bool) CallResult {
 	out := CallResult{Text: toolContentText(r.Content), Sources: structuredSources(r.StructuredContent), Files: toolFiles(r.Content)}
 	out.Items, out.Link = structuredActionResult(r.StructuredContent)
 	if artifacts {
-		kept := toolArtifacts(r.Content, structuredImageMeta(r.StructuredContent), artifact.MaxArtifactSizeBytes)
+		// Only a server trusted with artifacts reports a cost: any other
+		// could put money on the user's account.
+		meta := structuredImageMeta(r.StructuredContent)
+		out.CostNanoUSD = imagesCost(meta)
+		kept := toolArtifacts(r.Content, meta, artifact.MaxArtifactSizeBytes)
 		out.Images, out.Documents, out.DroppedImages, out.DroppedDocuments = kept.images, kept.documents, kept.droppedImages, kept.droppedDocuments
 	}
 	return out
