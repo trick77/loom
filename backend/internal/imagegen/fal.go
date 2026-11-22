@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -84,7 +85,7 @@ func (c *FalClient) Generate(ctx context.Context, input GenerateRequest) (Genera
 		return GenerateResult{}, err
 	}
 	model := c.effectiveModel(req.Model)
-	req.Width, req.Height = clampToFalBounds(req.Width, req.Height)
+	req.Width, req.Height = clampToFalBounds(model, req.Width, req.Height)
 	shape := []slog.Attr{
 		slog.Int("width", req.Width),
 		slog.Int("height", req.Height),
@@ -189,19 +190,46 @@ const (
 	// falMaxSafetyTolerance is the most permissive value fal's "1".."5" tolerance
 	// enum accepts. Every request goes out at it; see submit for why.
 	falMaxSafetyTolerance = "5"
+
+	// gptImageMinPixels and gptImageMaxRatio are GPT Image's limits on fal (its
+	// schema: 655,360 to 8,294,400 px, at most 3:1, sides multiples of 16, max
+	// side 3840); 16:9 at 1024×576 is below the area.
+	gptImageMinPixels = 655_360
+	gptImageMaxRatio  = 3
+	// gptImageQuality is the quality every GPT Image request asks for. fal's
+	// default is high: about four times medium's price (1920×1080: $0.158 vs
+	// $0.040), and loom sent none. Its prices in falImageCost follow it.
+	gptImageQuality = "medium"
 )
+
+// isGPTImage reports whether model is OpenAI's GPT Image on fal, which takes
+// other parameters than FLUX.2.
+func isGPTImage(model string) bool {
+	return strings.HasPrefix(model, "openai/gpt-image")
+}
 
 // clampToFalBounds fits (w, h) into fal's per-side envelope, scaling down
 // proportionally first (so an oversized request keeps its aspect ratio) and only
 // then raising any side still below the floor. That order matters: clamping the
 // long side first means the floor bump can never push the area back over the cap.
-func clampToFalBounds(w, h int) (int, int) {
+// GPT Image is then raised to its least area, keeping the shape.
+func clampToFalBounds(model string, w, h int) (int, int) {
 	w, h = ClampMaxSide(w, h, falMaxSide)
 	if w < falMinSide {
 		w = falMinSide
 	}
 	if h < falMinSide {
 		h = falMinSide
+	}
+	if !isGPTImage(model) {
+		return align16(w), align16(h)
+	}
+	// GPT Image takes at most 3:1: the short side comes up, which stays
+	// inside fal's side limit.
+	w, h = max(w, (h+gptImageMaxRatio-1)/gptImageMaxRatio), max(h, (w+gptImageMaxRatio-1)/gptImageMaxRatio)
+	if w*h < gptImageMinPixels {
+		scale := math.Sqrt(float64(gptImageMinPixels) / float64(w*h))
+		w, h = int(math.Ceil(float64(w)*scale)), int(math.Ceil(float64(h)*scale))
 	}
 	return align16(w), align16(h)
 }
@@ -227,19 +255,25 @@ func (c *FalClient) submit(ctx context.Context, req GenerateRequest, model strin
 		},
 		"output_format": req.OutputFormat,
 		// Moderation is pinned as far open as the provider allows, deliberately.
-		// fal takes the tolerance as a string enum over 1-5 (1 strictest), so
-		// falMaxSafetyTolerance is the most permissive value the endpoint accepts;
-		// the caller's safety_tolerance is ignored rather than allowed to tighten
-		// it back up, which is why it is not read here. enable_safety_checker is
-		// asked to be off: fal gates that on an account authorization, and an
-		// unauthorized request is checked anyway — a flagged image then comes back
-		// as a black frame, which the has_nsfw_concepts check in Generate turns
-		// into a real error instead of a blank picture.
-		"safety_tolerance":      falMaxSafetyTolerance,
+		// enable_safety_checker is asked to be off: fal gates that on an account
+		// authorization, and an unauthorized request is checked anyway — a
+		// flagged image then comes back as a black frame, which the
+		// has_nsfw_concepts check in Generate turns into a real error instead of
+		// a blank picture.
 		"enable_safety_checker": false,
 	}
-	if req.Seed != nil {
-		payload["seed"] = *req.Seed
+	if isGPTImage(model) {
+		// No seed, no safety_tolerance on GPT Image.
+		payload["quality"] = gptImageQuality
+	} else {
+		// FLUX.2 takes the tolerance as a string enum over 1-5 (1 strictest), so
+		// falMaxSafetyTolerance is the most permissive value the endpoint
+		// accepts; the caller's safety_tolerance is ignored rather than allowed
+		// to tighten it back up, which is why it is not read here.
+		payload["safety_tolerance"] = falMaxSafetyTolerance
+		if req.Seed != nil {
+			payload["seed"] = *req.Seed
+		}
 	}
 	// Forward source images for direct editing/transformation. fal takes them as
 	// a list of URLs and accepts base64 data URIs inline, so the model edits the

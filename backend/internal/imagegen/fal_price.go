@@ -24,10 +24,32 @@ var falPrices = map[string]falPerMegapixel{
 	"fal-ai/flux-2-max": {first: 0.07, further: 0.03},
 }
 
+// gptImage2Prices is fal's per-image table for openai/gpt-image-2 at
+// gptImageQuality (medium; read 2026-11-22), by output size. fal bills it by
+// OpenAI's tokens, so the price is not linear in pixels: a square costs more
+// than a larger landscape (1024×1024 $0.053, 1920×1080 $0.040). A size takes
+// the row of its shape nearest in area; the table has one square and one
+// portrait row, so a ~2 MP square or portrait books that row's price, an
+// estimate. An edit's input tokens are not in the table and go unbooked.
+var gptImage2Prices = []struct {
+	w, h int
+	usd  float64
+}{
+	{1024, 768, 0.037},
+	{1024, 1024, 0.053},
+	{1024, 1536, 0.042},
+	{1920, 1080, 0.040},
+	{2560, 1440, 0.056},
+	{3840, 2160, 0.101},
+}
+
 // falImageCost is what fal bills in USD for one image of w×h made by model
 // from inputs (each a source image's width and height); false for a model
 // without a known price.
 func falImageCost(model string, w, h int, inputs [][2]int) (float64, bool) {
+	if model == "openai/gpt-image-2" {
+		return nearestGPTImage2Price(w, h), true
+	}
 	price, ok := falPrices[model]
 	if !ok {
 		return 0, false
@@ -38,6 +60,40 @@ func falImageCost(model string, w, h int, inputs [][2]int) (float64, bool) {
 	}
 	// Rounded to a millionth of a dollar: keeps float noise out of the booked figure.
 	return math.Round((price.first+float64(further)*price.further)*1e6) / 1e6, true
+}
+
+// nearestGPTImage2Price is the price of the gptImage2Prices row of w×h's shape
+// nearest to it in area. Every shape has a row.
+func nearestGPTImage2Price(w, h int) float64 {
+	best, bestDelta := 0.0, -1
+	for _, row := range gptImage2Prices {
+		if shapeOf(row.w, row.h) != shapeOf(w, h) {
+			continue
+		}
+		if delta := abs(row.w*row.h - w*h); bestDelta < 0 || delta < bestDelta {
+			best, bestDelta = row.usd, delta
+		}
+	}
+	return best
+}
+
+// shapeOf is -1 portrait, 0 square (within 10%), 1 landscape.
+func shapeOf(w, h int) int {
+	switch {
+	case w*10 > h*11:
+		return 1
+	case h*10 > w*11:
+		return -1
+	default:
+		return 0
+	}
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 // megapixels is w×h in fal's billed megapixels, rounded up, at least one.

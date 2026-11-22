@@ -15,8 +15,8 @@ around the tool, never the provider:
   edit request then has no source, and a chart on top hides an older generated image. Once a correction after a
   Strava analysis went to the image model and came back painted into the chart.
 
-The sidecar holds the fal key and every model fact (which model renders text, the 1024 px cap for it, an edit keeping
-its source's shape, the price). fal reports no price per request (queue result, headers, usage API by request id:
+The sidecar holds the fal key and every model fact (which model renders text, ~2 MP and quality medium for it, an edit
+keeping its source's shape, the price). fal reports no price per request (queue result, headers, usage API by request id:
 none), so the sidecar prices from fal's published rates (`imagegen/fal_price.go`); a model missing there books
 nothing, a rate change at fal goes unnoticed until the table follows. It is stateless (no volume) and best-effort: loom boots without it and offers images while it
 answers. The cost of the boundary: an edit's source and every result cross HTTP as base64, so one edit of a 20 MiB

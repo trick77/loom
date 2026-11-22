@@ -22,6 +22,10 @@ func TestFalImageCost(t *testing.T) {
 		{"max under one MP", "fal-ai/flux-2-max", 1024, 576, nil, 0.07, true},
 		{"max 2.25 MP", "fal-ai/flux-2-max", 2048, 1152, nil, 0.13, true},
 		{"max edit adds the source's MP", "fal-ai/flux-2-max", 1024, 1024, [][2]int{{1024, 1024}}, 0.10, true},
+		{"gpt image 1080p medium", "openai/gpt-image-2", 1920, 1088, nil, 0.040, true},
+		{"gpt image 4:3 medium", "openai/gpt-image-2", 1024, 768, nil, 0.037, true},
+		{"gpt image square takes the square row", "openai/gpt-image-2", 1440, 1440, nil, 0.053, true},
+		{"gpt image portrait takes the portrait row", "openai/gpt-image-2", 1088, 1920, nil, 0.042, true},
 		{"unknown model has no price", "fal-ai/some-other", 1024, 1024, nil, 0, false},
 	}
 	for _, tc := range cases {

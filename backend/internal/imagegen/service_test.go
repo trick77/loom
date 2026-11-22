@@ -70,8 +70,8 @@ func TestServicePicksModel(t *testing.T) {
 			if p.got.Model != tc.wantModel || out.Model != tc.wantModel {
 				t.Fatalf("model = %q (reported %q), want %q", p.got.Model, out.Model, tc.wantModel)
 			}
-			if tc.clamped && (p.got.Width > maxTypographySide || p.got.Height > maxTypographySide) {
-				t.Fatalf("typography size %dx%d not clamped", p.got.Width, p.got.Height)
+			if tc.clamped && !nearTypographyArea(p.got.Width, p.got.Height) {
+				t.Fatalf("typography size %dx%d, want about %d px", p.got.Width, p.got.Height, typographyPixels)
 			}
 		})
 	}
@@ -164,6 +164,42 @@ func TestServiceCallIsLenientWithModelArgs(t *testing.T) {
 	}
 }
 
+// nearTypographyArea: within the 16 px grid of the typography target.
+func nearTypographyArea(w, h int) bool {
+	area := w * h
+	return area > typographyPixels*95/100 && area < typographyPixels*105/100
+}
+
+// Text needs pixels: the typography model draws every shape at about 2 MP
+// (1024×576 leaves a mind map's labels a few pixels per letter). An explicit
+// smaller size is kept; a larger one comes down to the target.
+func TestServiceTypographySize(t *testing.T) {
+	cases := []struct {
+		name string
+		args CallArgs
+		w, h int
+	}{
+		{"16:9", CallArgs{AspectRatio: "16:9"}, 1920, 1088},
+		{"square default", CallArgs{}, 1440, 1440},
+		{"4:3", CallArgs{AspectRatio: "4:3"}, 1664, 1248},
+		{"explicit small kept", CallArgs{Width: 800, Height: 600}, 800, 600},
+		{"explicit large scaled down", CallArgs{Width: 2560, Height: 1440}, 1920, 1088},
+		{"partial size takes the ratio", CallArgs{Width: 1280, AspectRatio: "16:9"}, 1280, 720},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &recordingProvider{}
+			tc.args.Prompt, tc.args.TextHeavy = "a mind map", true
+			if _, err := NewService(p, "pro", "max").Generate(context.Background(), tc.args); err != nil {
+				t.Fatal(err)
+			}
+			if p.got.Width != tc.w || p.got.Height != tc.h {
+				t.Fatalf("size %dx%d, want %dx%d", p.got.Width, p.got.Height, tc.w, tc.h)
+			}
+		})
+	}
+}
+
 // A locked model arrives as the provider reported it (no slashes); it still
 // counts as the typography model and is clamped.
 func TestServiceNormalizesModelNames(t *testing.T) {
@@ -171,8 +207,8 @@ func TestServiceNormalizesModelNames(t *testing.T) {
 	if _, err := NewService(p, " /pro/ ", "/max/").Generate(context.Background(), CallArgs{Prompt: "x", Model: "max", Width: 2048, Height: 2048}); err != nil {
 		t.Fatal(err)
 	}
-	if p.got.Model != "max" || p.got.Width > maxTypographySide {
-		t.Fatalf("request %+v, want max clamped", p.got)
+	if p.got.Model != "max" || !nearTypographyArea(p.got.Width, p.got.Height) {
+		t.Fatalf("request %dx%d on %q, want max at about %d px", p.got.Width, p.got.Height, p.got.Model, typographyPixels)
 	}
 	if _, err := NewService(p, " /pro/ ", "").Generate(context.Background(), CallArgs{Prompt: "x"}); err != nil || p.got.Model != "pro" {
 		t.Fatalf("default model %q, %v", p.got.Model, err)

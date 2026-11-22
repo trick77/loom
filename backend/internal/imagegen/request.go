@@ -206,10 +206,8 @@ func align16(v int) int {
 // ClampMaxSide scales (w, h) down proportionally so the longest side is at most
 // max, preserving aspect ratio. Dimensions already within the bound — including
 // the 0×0 "unset" case that Normalized() later defaults to 1024×1024 — are
-// returned untouched. Used to keep typography-model output (FLUX.2 [max], which
-// supports up to 4 MP) at the same ~1024 px ceiling as the [pro] default. The
-// caller still passes the result through Normalized(), which applies align16 and
-// the 4 MP guard.
+// returned untouched. Used to fit a request into fal's per-side limit
+// (clampToFalBounds).
 func ClampMaxSide(w, h, max int) (int, int) {
 	if max <= 0 || (w <= max && h <= max) {
 		return w, h

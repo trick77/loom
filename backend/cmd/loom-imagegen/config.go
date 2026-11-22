@@ -12,9 +12,12 @@ const (
 	defaultAddr    = ":8040"
 	defaultBaseURL = "https://queue.fal.run"
 	// The models fal renders with: the default for ordinary pictures, the
-	// typography one (renders legible text far better) for text-heavy work.
+	// typography one for text-heavy work (infographics, mind maps, posters).
+	// FLUX.2 [max] there garbled dense German text into glyph soup; GPT Image 2
+	// at medium renders it and costs less ($0.040 at 1920×1080 vs $0.07 at
+	// 1024×576).
 	defaultModel           = "fal-ai/flux-2-pro"
-	defaultTypographyModel = "fal-ai/flux-2-max"
+	defaultTypographyModel = "openai/gpt-image-2"
 	defaultPollTimeout     = time.Minute
 	// maxPollTimeout keeps fal's polling inside the tool's 170 s and loom's
 	// 3 min call limit, with room to fetch and send the picture.

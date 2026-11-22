@@ -58,7 +58,7 @@ func (s *falStub) start() *httptest.Server {
 		s.authHeaders = append(s.authHeaders, r.Header.Get("authorization"))
 		base := "http://" + r.Host
 		switch r.URL.Path {
-		case testFalSubmitURL, testFalEditURL, "/fal-ai/flux-2-max":
+		case testFalSubmitURL, testFalEditURL, "/fal-ai/flux-2-max", "/openai/gpt-image-2", "/openai/gpt-image-2/edit":
 			s.submitPath = r.URL.Path
 			s.submitURI = r.RequestURI
 			if err := json.NewDecoder(r.Body).Decode(&s.submitted); err != nil {
@@ -175,6 +175,57 @@ func TestFalClientGenerateUsesPerRequestModelOverride(t *testing.T) {
 	}
 	if result.Model != "fal-ai/flux-2-max" {
 		t.Fatalf("result.Model = %q, want fal-ai/flux-2-max (metadata must report the model actually used)", result.Model)
+	}
+}
+
+// GPT Image takes quality, not FLUX's seed or safety_tolerance, and refuses
+// fewer than 655,360 pixels: 16:9 at 1024×576 would come back a 422.
+func TestFalClientGPTImageRequest(t *testing.T) {
+	stub := newFalStub(t)
+	client := stub.client(stub.start())
+	seed := int64(7)
+	result, err := client.Generate(context.Background(), GenerateRequest{
+		Prompt: "a mind map", Width: 1024, Height: 576, Seed: &seed, Model: "openai/gpt-image-2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stub.submitPath != "/openai/gpt-image-2" {
+		t.Fatalf("submit path = %q", stub.submitPath)
+	}
+	if stub.submitted["quality"] != "medium" || stub.submitted["enable_safety_checker"] != false {
+		t.Fatalf("submitted %#v, want quality medium and the checker off", stub.submitted)
+	}
+	for _, flux := range []string{"seed", "safety_tolerance"} {
+		if _, ok := stub.submitted[flux]; ok {
+			t.Fatalf("submitted %s to GPT Image: %#v", flux, stub.submitted)
+		}
+	}
+	size := stub.submitted["image_size"].(map[string]any)
+	w, h := int(size["width"].(float64)), int(size["height"].(float64))
+	if w*h < gptImageMinPixels || w%16 != 0 || h%16 != 0 || w*9 < h*15 || w*9 > h*17 {
+		t.Fatalf("image_size %dx%d, want 16:9 multiples of 16 of at least %d px", w, h, gptImageMinPixels)
+	}
+	if result.Width != w || result.Height != h {
+		t.Fatalf("result %dx%d, want the size sent %dx%d", result.Width, result.Height, w, h)
+	}
+
+	// Past 3:1 GPT Image refuses: the short side is raised.
+	if _, err := client.Generate(context.Background(), GenerateRequest{Prompt: "a banner", Width: 2560, Height: 256, Model: "openai/gpt-image-2"}); err != nil {
+		t.Fatal(err)
+	}
+	size = stub.submitted["image_size"].(map[string]any)
+	if w, h = int(size["width"].(float64)), int(size["height"].(float64)); w > 3*h {
+		t.Fatalf("image_size %dx%d, want at most 3:1", w, h)
+	}
+
+	if _, err := client.Generate(context.Background(), GenerateRequest{
+		Prompt: "darker", Model: "openai/gpt-image-2", InputImages: [][]byte{[]byte("\x89PNG\r\n\x1a\nsrc")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stub.submitPath != "/openai/gpt-image-2/edit" || stub.submitted["image_urls"] == nil {
+		t.Fatalf("edit went to %q with %#v", stub.submitPath, stub.submitted)
 	}
 }
 

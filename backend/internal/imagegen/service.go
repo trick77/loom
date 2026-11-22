@@ -30,9 +30,12 @@ const (
 	ArgModel       = "model"
 )
 
-// maxTypographySide caps the typography model's output to the default
-// model's ~1024 px ceiling; it would otherwise go up to 4 MP.
-const maxTypographySide = 1024
+// typographyPixels is the area the typography model draws at: about 2 MP
+// (1920×1088 at 16:9). Text needs pixels: at the default's 1024×576 a mind
+// map's labels got a few pixels per letter and came back garbled. On GPT
+// Image medium it costs next to nothing more (1024×768 $0.037, 1920×1080
+// $0.040).
+const typographyPixels = 1920 * 1088
 
 // Service is the image tool behind the MCP contract: the model's arguments
 // plus loom's (input images, text-heavy hint, locked model) in, one image and
@@ -242,7 +245,7 @@ func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 	}
 	req.Model = s.pickModel(args)
 	if s.typographyModel != "" && req.Model == s.typographyModel {
-		req.Width, req.Height = ClampMaxSide(req.Width, req.Height, maxTypographySide)
+		req.Width, req.Height = typographySize(req.AspectRatio, req.Width, req.Height)
 	}
 	start := time.Now()
 	result, err := s.provider.Generate(ctx, req)
@@ -254,6 +257,40 @@ func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 		Model: result.Model, Provider: result.Provider, Width: result.Width, Height: result.Height,
 		DurationMs: time.Since(start).Milliseconds(), CostUSD: result.CostUSD,
 	}, nil
+}
+
+// typographySize is the typography model's size: an unsized request (shape
+// from aspect, square without one) drawn at typographyPixels, an explicit size
+// kept up to that area and scaled down past it. A partial size completes from
+// the shape, as Normalized does. An unknown aspect is left to Normalized to
+// refuse.
+func typographySize(aspect string, w, h int) (int, int) {
+	shape, ok := AspectRatioSizes[aspect]
+	if aspect == "" {
+		shape, ok = [2]int{DefaultWidth, DefaultHeight}, true
+	}
+	if !ok {
+		return w, h
+	}
+	explicit := w > 0 || h > 0
+	switch {
+	case !explicit:
+		w, h = shape[0], shape[1]
+	case h == 0:
+		h = w * shape[1] / shape[0]
+	case w == 0:
+		w = h * shape[0] / shape[1]
+	}
+	if explicit && w*h <= typographyPixels {
+		return w, h
+	}
+	scale := math.Sqrt(float64(typographyPixels) / float64(w*h))
+	return round16(float64(w) * scale), round16(float64(h) * scale)
+}
+
+// round16 is v to the nearest multiple of 16, at least 16.
+func round16(v float64) int {
+	return max(16, int(math.Round(v/16))*16)
 }
 
 // pickModel keeps the model the conversation already used, else sends
