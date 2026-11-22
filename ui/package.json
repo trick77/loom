@@ -17,7 +17,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@trick77/diagram": "0.1.5",
+    "@trick77/diagram": "0.1.9",
     "i18next": "^27.0.1",
     "katex": "^0.16.0",
     "mermaid": "^12.0.0",
