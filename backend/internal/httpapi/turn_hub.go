@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/trick77/ship/kit/sse"
 )
@@ -16,6 +18,9 @@ import (
 // that freezes the tab mid-answer therefore no longer ends the turn, and on
 // return it reattaches and gets the whole turn replayed from the start.
 type turnHub struct {
+	// id names the hub to a long-polling client (messages:poll): its cursor is
+	// an index into this hub's log, meaningless in another's.
+	id     string
 	mu     sync.Mutex
 	events []sse.Event
 	// replayFrom is where a reattaching client starts: the latest follow-up
@@ -34,7 +39,54 @@ type eventWriter interface {
 }
 
 func newTurnHub() *turnHub {
-	return &turnHub{changed: make(chan struct{})}
+	return &turnHub{id: rand.Text(), changed: make(chan struct{})}
+}
+
+// replayStart is where a client that follows the hub afresh starts.
+func (h *turnHub) replayStart() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.replayFrom
+}
+
+// wait is one long poll on the log: the events from index from on, once there
+// are any, the hub closed, hold passed or ctx ended. At most maxBytes of raw
+// events (always at least one) go out, merged like a replay; next is the raw
+// index after the last one taken, the client's cursor for the next poll. done
+// reports that the hub closed and next is the log's end: nothing more comes.
+func (h *turnHub) wait(ctx context.Context, from int, hold time.Duration, maxBytes int) (events []sse.Event, next int, done bool) {
+	timer := time.NewTimer(hold)
+	defer timer.Stop()
+	for {
+		h.mu.Lock()
+		from = min(max(from, 0), len(h.events))
+		pending, closed, changed := h.events[from:], h.closed, h.changed
+		if len(pending) > 0 || closed {
+			end := from
+			for size := 0; end < len(h.events); end++ {
+				n := len(h.events[end].Name) + len(h.events[end].Data)
+				if end > from && size+n > maxBytes {
+					break
+				}
+				size += n
+			}
+			taken := h.events[from:end]
+			done = closed && end == len(h.events)
+			h.mu.Unlock()
+			if len(taken) > 1 {
+				taken = mergeDeltas(taken)
+			}
+			return taken, end, done
+		}
+		h.mu.Unlock()
+		select {
+		case <-changed:
+		case <-timer.C:
+			return nil, from, false
+		case <-ctx.Done():
+			return nil, from, false
+		}
+	}
 }
 
 // SendJSON appends one event to the log. It fails only on a value that does
