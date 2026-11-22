@@ -131,55 +131,297 @@ export async function streamMessage(
   if (opts.pastedTexts && opts.pastedTexts.length > 0) {
     requestBody.pastedTexts = opts.pastedTexts;
   }
-  let response: Response;
+  const watch = stallWatch(
+    (probe) =>
+      provenBuffered(threadId, probe, { send: opts.clientMessageId ?? "" }),
+    signal,
+  );
   try {
-    response = await fetch(
-      `/api/threads/${encodeURIComponent(threadId)}/messages:stream`,
-      {
-        method: "POST",
-        // The timezone lets a schedule created in this turn run on the
-        // user's clock.
-        headers: {
-          "Content-Type": "application/json",
-          "X-Loom-Timezone": browserTimezone(),
+    let response: Response;
+    try {
+      response = await fetch(
+        `/api/threads/${encodeURIComponent(threadId)}/messages:stream`,
+        {
+          method: "POST",
+          // The timezone lets a schedule created in this turn run on the
+          // user's clock.
+          headers: {
+            "Content-Type": "application/json",
+            "X-Loom-Timezone": browserTimezone(),
+          },
+          body: JSON.stringify(requestBody),
+          signal: watch.signal,
         },
-        body: JSON.stringify(requestBody),
-        signal,
-      },
-    );
+      );
+    } catch (error) {
+      throw watch.translate(error, () => new StreamConnectError());
+    }
+    await readSSEStream(await expectStreamResponse(response), handlers, watch);
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError")
-      throw error;
-    throw new StreamConnectError();
+    // A stalled send throws StreamStalledError, an interruption: the caller
+    // confirms the message reached the server and follows the turn, which
+    // attachStream now does by polling.
+    throw watch.translate(error);
+  } finally {
+    watch.stop();
   }
-  await readSSEStream(await expectStreamResponse(response), handlers);
 }
 
 // attachStream reattaches to the thread's running turn: the server replays every
 // event the turn has sent so far, then follows it live, so the handlers see the
 // turn from its first event. "finished" means no turn is running any more; its
-// answer, if any, is already saved on the thread.
+// answer, if any, is already saved on the thread. Once a proxy proved to buffer
+// the stream (see stallWatch), it follows by polling instead.
 export async function attachStream(
   threadId: string,
   handlers: StreamHandlers,
   signal?: AbortSignal,
 ): Promise<"attached" | "finished"> {
-  let response: Response;
+  if (buffered) return pollAttach(threadId, handlers, signal);
+  const watch = stallWatch(
+    (probe) => provenBuffered(threadId, probe, {}),
+    signal,
+  );
   try {
-    response = await fetch(
-      `/api/threads/${encodeURIComponent(threadId)}/messages:attach`,
-      { method: "GET", signal },
-    );
+    let response: Response;
+    try {
+      response = await fetch(
+        `/api/threads/${encodeURIComponent(threadId)}/messages:attach`,
+        { method: "GET", signal: watch.signal },
+      );
+    } catch (error) {
+      // fetch rejects with a TypeError when the network is down: the same
+      // dropped connection as a stream cut mid-turn.
+      throw watch.translate(error, () => new StreamInterruptedError());
+    }
+    if (response.status === 204) return "finished";
+    await readSSEStream(await expectStreamResponse(response), handlers, watch);
+    return "attached";
   } catch (error) {
-    // fetch rejects with a TypeError when the network is down: the same
-    // dropped connection as a stream cut mid-turn.
-    if (error instanceof DOMException && error.name === "AbortError")
-      throw error;
-    throw new StreamInterruptedError();
+    const translated = watch.translate(error);
+    // Nothing reached the handlers yet: the poll replays the turn from its
+    // start, as this attach would have.
+    if (translated instanceof StreamStalledError)
+      return pollAttach(threadId, handlers, signal);
+    throw translated;
+  } finally {
+    watch.stop();
   }
-  if (response.status === 204) return "finished";
-  await readSSEStream(await expectStreamResponse(response), handlers);
-  return "attached";
+}
+
+// --- a proxy that buffers the stream ---------------------------------------
+//
+// A TLS-inspecting proxy (an office network) can hold every response until it
+// ends: the turn's stream then arrives in one piece once the turn is over. A
+// stream that sends no byte for PROBE_MS asks messages:poll whether its turn is
+// registered; a turn that is, while the stream still has nothing, proves the
+// proxy, and the page follows turns by polling (whole responses) from then on.
+// Only proof aborts: a slow network keeps reading, and a send is never broken
+// off before the server stored it (the hub registers after the store).
+
+// HEARTBEAT_MS is the server's keepalive (streamHeartbeatInterval): a stream
+// that sent a byte goes quiet for no longer, plus slack.
+export const PROBE_MS = 5_000;
+// A page that already proved the proxy probes a new stream sooner: its turn
+// registers within moments of the store, and the stream will not come.
+export const PROBE_KNOWN_MS = 1_000;
+export const HEARTBEAT_MS = 20_000;
+export const WATCHDOG_MS = 2 * HEARTBEAT_MS + 5_000;
+// A page that slept fires its timers late and was hidden: no verdict then.
+export const RESUME_MS = 10_000;
+export const FROZEN_MS = 2_000;
+
+// buffered: a proxy proved to buffer the stream, for the page's life (a reload
+// probes again: a misfire must not stick).
+let buffered = false;
+let resumedAt = -Infinity;
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) resumedAt = Date.now();
+  });
+}
+
+export const streamBuffered = () => buffered;
+
+// resetStreamTransport forgets the proof (tests).
+export function resetStreamTransport() {
+  buffered = false;
+  resumedAt = -Infinity;
+}
+
+// StreamStalledError: a proxy holds the stream back. An interruption to every
+// caller; attachStream goes on by polling.
+export class StreamStalledError extends StreamInterruptedError {
+  constructor() {
+    super();
+    this.name = "StreamStalledError";
+  }
+}
+
+type StallWatch = {
+  signal: AbortSignal;
+  bytes(): void;
+  stop(): void;
+  // aborted reports that the watch itself aborted the stream.
+  aborted(): boolean;
+  translate(error: unknown, fallback?: () => Error): unknown;
+};
+
+// stallWatch guards one stream: its signal aborts the fetch on proof of a
+// buffering proxy (StreamStalledError) or on silence past WATCHDOG_MS after the
+// first byte (a plain interruption: the reattach's own watch decides then).
+// The caller's signal aborts it too and stays an AbortError, a user stop. A
+// probe in flight is aborted once bytes come or the stream ends: the server
+// would hold it up to its poll hold.
+function stallWatch(
+  proof: (signal: AbortSignal) => Promise<boolean>,
+  outer?: AbortSignal,
+): StallWatch {
+  const controller = new AbortController();
+  const onOuter = () => controller.abort(outer?.reason);
+  if (outer?.aborted) controller.abort(outer.reason);
+  else outer?.addEventListener("abort", onOuter, { once: true });
+  const probeMs = buffered ? PROBE_KNOWN_MS : PROBE_MS;
+  let probe: AbortController | null = null;
+  const endProbe = () => {
+    probe?.abort();
+    probe = null;
+  };
+  let outcome: "stalled" | "silent" | null = null;
+  let gotBytes = false;
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const asleep = (due: number) =>
+    (typeof document !== "undefined" && document.hidden) ||
+    Date.now() - resumedAt < RESUME_MS ||
+    Date.now() - due > FROZEN_MS;
+  const arm = (ms: number) => {
+    clearTimeout(timer);
+    const due = Date.now() + ms;
+    timer = setTimeout(() => void fire(due), ms);
+  };
+  const fire = async (due: number) => {
+    if (stopped) return;
+    // Slept: the stream may be fine, a reattach would replay the whole turn.
+    if (asleep(due)) return arm(gotBytes ? WATCHDOG_MS : probeMs);
+    if (gotBytes) {
+      outcome = "silent";
+      controller.abort();
+      return;
+    }
+    probe = new AbortController();
+    const proven = await proof(probe.signal).catch(() => false);
+    probe = null;
+    if (stopped || gotBytes) return;
+    if (!proven) return arm(probeMs);
+    outcome = "stalled";
+    buffered = true;
+    controller.abort();
+  };
+  arm(probeMs);
+  return {
+    signal: controller.signal,
+    bytes() {
+      if (stopped) return;
+      gotBytes = true;
+      endProbe();
+      arm(WATCHDOG_MS);
+    },
+    stop() {
+      stopped = true;
+      clearTimeout(timer);
+      endProbe();
+      outer?.removeEventListener("abort", onOuter);
+    },
+    aborted: () => outcome !== null,
+    translate(error, fallback) {
+      if (outcome === "stalled") return new StreamStalledError();
+      if (outcome === "silent") return new StreamInterruptedError();
+      if (error instanceof DOMException && error.name === "AbortError")
+        return error;
+      return fallback ? fallback() : error;
+    },
+  };
+}
+
+// pollResponse is one messages:poll answer.
+type PollResponse = {
+  hub: string;
+  sendId: string;
+  next: number;
+  done: boolean;
+  events: { event: string; data: string }[];
+};
+
+const pollURL = (threadId: string, hub = "", after = 0) =>
+  `/api/threads/${encodeURIComponent(threadId)}/messages:poll` +
+  (hub ? `?hub=${encodeURIComponent(hub)}&after=${after}` : "");
+
+// provenBuffered asks whether the stream's turn is registered and has events
+// the stream would already have carried: proof, while the stream has no byte,
+// that a proxy holds it. For a send it must be that send's turn (opts.send, its
+// client id): a send without one is never proven, so it is never broken off
+// before the server stored it. Any doubt is no proof.
+async function provenBuffered(
+  threadId: string,
+  signal: AbortSignal,
+  opts: { send?: string },
+): Promise<boolean> {
+  if (opts.send === "") return false;
+  const response = await fetch(pollURL(threadId), { method: "GET", signal });
+  if (response.status !== 200) return false;
+  const body = (await response.json()) as PollResponse;
+  if (body.events.length === 0) return false;
+  return opts.send === undefined || body.sendId === opts.send;
+}
+
+// pollAttach follows the thread's running turn in whole responses: the first
+// poll starts where an attach does, each next one at the cursor the last gave.
+async function pollAttach(
+  threadId: string,
+  handlers: StreamHandlers,
+  signal?: AbortSignal,
+): Promise<"attached" | "finished"> {
+  let hub = "";
+  let next = 0;
+  let settled = false;
+  for (;;) {
+    let response: Response;
+    try {
+      response = await fetch(pollURL(threadId, hub, next), {
+        method: "GET",
+        signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError")
+        throw error;
+      throw new StreamInterruptedError();
+    }
+    // Nothing runs any more: the answer is on the thread.
+    if (response.status === 204) return "finished";
+    if (response.status === 401) throw new AuthExpiredError();
+    // 409 hub_gone, or the server in trouble: the caller retries afresh.
+    if (!response.ok) throw new StreamInterruptedError();
+    let body: PollResponse;
+    try {
+      body = (await response.json()) as PollResponse;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError")
+        throw error;
+      throw new StreamInterruptedError();
+    }
+    hub = body.hub;
+    next = body.next;
+    for (const e of body.events) {
+      const outcome = dispatchEvent(e.event, e.data, handlers);
+      if (outcome === "reopened") settled = false;
+      else if (outcome) settled = true;
+    }
+    if (body.done) {
+      if (!settled) throw new StreamInterruptedError();
+      return "attached";
+    }
+  }
 }
 
 // streamIncognitoMessage runs an ephemeral turn against the stateless incognito
@@ -248,6 +490,7 @@ async function expectStreamResponse(
 async function readSSEStream(
   body: ReadableStream<Uint8Array>,
   handlers: StreamHandlers,
+  watch?: StallWatch,
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -270,6 +513,9 @@ async function readSSEStream(
         // going away (Safari: TypeError "Load failed"), typically a phone
         // freezing the tab: after the answer arrived that changes nothing,
         // before it the turn was interrupted, not failed to send.
+        // The watch giving up on a stream that went quiet after the answer
+        // arrived ends it like a dropped one: no failure.
+        if (settled && watch?.aborted()) break;
         if (error instanceof DOMException && error.name === "AbortError")
           throw error;
         if (settled) break;
@@ -279,6 +525,8 @@ async function readSSEStream(
       if (done) {
         break;
       }
+      // Any byte, a keepalive comment too, shows the stream is not held back.
+      watch?.bytes();
       buffer += decoder.decode(value, { stream: true });
       buffer = drainSSEBuffer(buffer, dispatch);
     }
@@ -316,8 +564,7 @@ function drainSSEBuffer(
   return buffer;
 }
 
-// dispatchSSEEvent routes one event to its handler and reports whether it was
-// a terminal event for the turn, or a user message opening a turn.
+// dispatchSSEEvent parses one event off the stream and dispatches it.
 function dispatchSSEEvent(
   rawEvent: string,
   handlers: StreamHandlers,
@@ -334,7 +581,18 @@ function dispatchSSEEvent(
   if (event === "" || dataLines.length === 0) {
     return false;
   }
-  const payload = JSON.parse(dataLines.join("\n")) as unknown;
+  return dispatchEvent(event, dataLines.join("\n"), handlers);
+}
+
+// dispatchEvent routes one event, from the stream or a poll, to its handler and
+// reports whether it was a terminal event for the turn, or a user message
+// opening a turn.
+function dispatchEvent(
+  event: string,
+  data: string,
+  handlers: StreamHandlers,
+): boolean | "reopened" {
+  const payload = JSON.parse(data) as unknown;
   switch (event) {
     case "user_message":
       handlers.onUserMessage(payload as Message);
