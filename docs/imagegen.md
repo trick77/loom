@@ -34,7 +34,8 @@ BACKEND_IMAGE_GEN_API_KEY=           # fal key; compose hands it and the other B
 ```
 
 `BACKEND_IMAGE_GEN_MODEL`, `_TYPOGRAPHY_MODEL` (`off`: every image on the model), `_BASE_URL` and `_POLL_TIMEOUT`
-(at most 2m30s) keep their meaning; they now configure the sidecar, loom does not read them.
+(default and at most 2m20s, a longer one is cut to it; polling also stops 20 s before the call's deadline, so a slow
+submit cannot leave a billed image undelivered) keep their meaning; they now configure the sidecar, loom does not read them.
 
 ## Replacing it
 
@@ -65,8 +66,8 @@ loom fills (declare them too; loom strips them from what the model sees and drop
 | argument | type | |
 |---|---|---|
 | `input_images` | `[{"data": base64, "mime_type"}]` | the image to edit, first is the source, up to 20 MiB; keep its proportions unless a shape was asked |
-| `text_heavy` | boolean | the picture must carry legible text (logo, sign, poster): pick a model that renders text |
-| `model` | string | the model the thread's first image reported: use it, so the look stays |
+| `text_heavy` | boolean | the picture must carry legible text (logo, sign, poster): pick a model that renders text, even over `model` |
+| `model` | string | for an edit of a generated image the model that made it (keep it, even over `text_heavy`); else the model the thread's first non-text image reported: use it, so the look stays, unless `text_heavy` |
 
 ## Output
 

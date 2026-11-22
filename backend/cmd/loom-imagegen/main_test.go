@@ -34,16 +34,29 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.addr != defaultAddr || cfg.baseURL != defaultBaseURL || cfg.model != defaultModel || cfg.typographyModel != defaultTypographyModel || cfg.pollTimeout != defaultPollTimeout {
 		t.Fatalf("defaults %+v", cfg)
 	}
+	// GPT Image takes over a minute for a dense ~2 MP picture: the default
+	// waits as long as the call limit allows.
+	if defaultPollTimeout != 2*time.Minute+20*time.Second {
+		t.Fatalf("default poll timeout %s, want 2m20s", defaultPollTimeout)
+	}
 	cfg, err = loadConfig(vars(map[string]string{"IMAGEGEN_TOKEN": testToken, "IMAGEGEN_API_KEY": "k", "IMAGEGEN_TYPOGRAPHY_MODEL": "off", "IMAGEGEN_POLL_TIMEOUT": "2m"}))
 	if err != nil || cfg.typographyModel != "" || cfg.pollTimeout != 2*time.Minute {
 		t.Fatalf("overrides %+v, %v", cfg, err)
 	}
+	// Past the most allowed is cut down, not refused: 2m30s was the documented
+	// maximum, and an install that set it must still boot.
+	for _, long := range []string{"2m30s", "5m"} {
+		cfg, err = loadConfig(vars(map[string]string{"IMAGEGEN_TOKEN": testToken, "IMAGEGEN_API_KEY": "k", "IMAGEGEN_POLL_TIMEOUT": long}))
+		if err != nil || cfg.pollTimeout != maxPollTimeout {
+			t.Fatalf("%s: poll %s, %v; want cut to %s", long, cfg.pollTimeout, err, maxPollTimeout)
+		}
+	}
 	for name, values := range map[string]map[string]string{
-		"short token":   {"IMAGEGEN_TOKEN": "short", "IMAGEGEN_API_KEY": "k"},
-		"token space":   {"IMAGEGEN_TOKEN": testToken + " x", "IMAGEGEN_API_KEY": "k"},
-		"no api key":    {"IMAGEGEN_TOKEN": testToken},
-		"bad base url":  {"IMAGEGEN_TOKEN": testToken, "IMAGEGEN_API_KEY": "k", "IMAGEGEN_BASE_URL": "queue.fal.run"},
-		"poll too long": {"IMAGEGEN_TOKEN": testToken, "IMAGEGEN_API_KEY": "k", "IMAGEGEN_POLL_TIMEOUT": "5m"},
+		"short token":  {"IMAGEGEN_TOKEN": "short", "IMAGEGEN_API_KEY": "k"},
+		"token space":  {"IMAGEGEN_TOKEN": testToken + " x", "IMAGEGEN_API_KEY": "k"},
+		"no api key":   {"IMAGEGEN_TOKEN": testToken},
+		"bad base url": {"IMAGEGEN_TOKEN": testToken, "IMAGEGEN_API_KEY": "k", "IMAGEGEN_BASE_URL": "queue.fal.run"},
+		"poll zero":    {"IMAGEGEN_TOKEN": testToken, "IMAGEGEN_API_KEY": "k", "IMAGEGEN_POLL_TIMEOUT": "0s"},
 	} {
 		if _, err := loadConfig(vars(values)); err == nil {
 			t.Errorf("%s: accepted", name)

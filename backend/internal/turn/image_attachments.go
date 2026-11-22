@@ -120,6 +120,9 @@ const maxEditSourceBytes = mcp.ImagegenMaxInputBytes
 // them from the bytes, EXIF orientation too).
 type editImageSource struct {
 	Data []byte
+	// Model made the source when the image tool did (a reused generated
+	// image); "" for an upload. The edit goes to it (loomArgs).
+	Model string
 }
 
 // loadEditSourceImage reads the original full-resolution bytes of an image

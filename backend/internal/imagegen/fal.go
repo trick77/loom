@@ -21,8 +21,13 @@ import (
 
 const (
 	defaultFalPollInterval = 750 * time.Millisecond
-	// Keep in sync with config's runtime default.
-	defaultFalPollTimeout  = 1 * time.Minute
+	// MaxPollTimeout is the longest fal is polled, and the default: GPT Image
+	// took over a minute for a dense ~2 MP mind map. It leaves 30 s of the
+	// tool's 170 s call (toolTimeout) to submit, fetch, download and send.
+	MaxPollTimeout = 2*time.Minute + 20*time.Second
+	// falResultReserve is what a call keeps back from polling for the result,
+	// the download and the reply (see poll).
+	falResultReserve       = 20 * time.Second
 	maxDownloadedImageSize = 25 << 20
 )
 
@@ -54,7 +59,7 @@ func NewFalClient(cfg FalConfig) *FalClient {
 	}
 	pollTimeout := cfg.PollTimeout
 	if pollTimeout <= 0 {
-		pollTimeout = defaultFalPollTimeout
+		pollTimeout = MaxPollTimeout
 	}
 	client := cfg.HTTPClient
 	if client == nil {
@@ -326,7 +331,14 @@ func dataURI(img []byte) string {
 }
 
 func (c *FalClient) poll(ctx context.Context, statusURL string) (falStatusResponse, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.pollTimeout)
+	timeout := c.pollTimeout
+	// The call's own deadline wins, less what fetching, downloading and
+	// sending the picture takes: a slow submit (a large edit source) eats
+	// into it, and polling to the last second loses an image fal billed.
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = min(timeout, time.Until(deadline)-falResultReserve)
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()

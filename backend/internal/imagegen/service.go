@@ -214,8 +214,8 @@ func (l *looseInputImage) UnmarshalJSON(b []byte) error {
 }
 
 // Generate renders one image. An edit keeps its source's proportions unless
-// the call asked for a shape; a text-heavy first image goes to the typography
-// model; a model the conversation already used is kept.
+// the call asked for a shape; a text-heavy image goes to the typography
+// model; otherwise a model the conversation already used is kept.
 func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 	if s == nil || s.provider == nil {
 		return Output{}, errors.New("image provider is not configured")
@@ -293,14 +293,24 @@ func round16(v float64) int {
 	return max(16, int(math.Round(v/16))*16)
 }
 
-// pickModel keeps the model the conversation already used, else sends
-// text-heavy work to the typography model, else the default.
+// pickModel keeps an edit on the model loom names (the one that made its
+// source: another model redraws the whole picture in its own look), sends
+// other text-heavy work to the typography model, else keeps the model the
+// conversation already used, else the default. Text wins over the thread's
+// model: a mind map asked for in a thread whose first picture was a FLUX
+// photo stayed on FLUX and came back as glyph soup, and nothing showed the
+// user why. Such a picture breaks the thread's look; legible text is worth
+// more.
 func (s *Service) pickModel(args CallArgs) string {
-	if m := normalizeModel(args.Model); m != "" {
-		return m
+	model := normalizeModel(args.Model)
+	if len(args.InputImages) > 0 && model != "" {
+		return model
 	}
 	if args.TextHeavy && s.typographyModel != "" {
 		return s.typographyModel
+	}
+	if model != "" {
+		return model
 	}
 	return s.defaultModel
 }
