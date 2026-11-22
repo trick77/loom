@@ -151,7 +151,8 @@ test("streamMessage sends image attachment ids", async () => {
       content: "describe this",
       imageAttachmentIds: ["art_image"],
     }),
-    signal: undefined,
+    // the stall watch's own signal, which it aborts on proof of a proxy
+    signal: expect.any(AbortSignal),
   });
 });
 
@@ -359,31 +360,33 @@ test("api helpers throw AuthExpiredError on 401", async () => {
   await expect(listProjects()).rejects.toBeInstanceOf(AuthExpiredError);
 });
 
-test("streamMessage passes abort signal to fetch", async () => {
+test("streamMessage's fetch aborts with the caller's signal", async () => {
   const controller = new AbortController();
-  const fetchMock = vi
-    .fn()
-    .mockResolvedValue(Response.json({}, { status: 503 }));
+  let sent: AbortSignal | undefined;
+  const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+    sent = init?.signal ?? undefined;
+    return new Promise<Response>((_, reject) =>
+      sent?.addEventListener("abort", () =>
+        reject(new DOMException("aborted", "AbortError")),
+      ),
+    );
+  });
   vi.stubGlobal("fetch", fetchMock);
 
-  await expect(
-    streamMessage(
-      "t1",
-      "Hi",
-      {
-        onUserMessage: () => undefined,
-        onDelta: () => undefined,
-        onAssistantMessage: () => undefined,
-        onThread: () => undefined,
-      },
-      controller.signal,
-    ),
-  ).rejects.toThrow("failed to stream message");
-
-  expect(fetchMock).toHaveBeenCalledWith(
-    "/api/threads/t1/messages:stream",
-    expect.objectContaining({ signal: controller.signal }),
+  const streamed = streamMessage(
+    "t1",
+    "Hi",
+    {
+      onUserMessage: () => undefined,
+      onDelta: () => undefined,
+      onAssistantMessage: () => undefined,
+      onThread: () => undefined,
+    },
+    controller.signal,
   );
+  controller.abort();
+  await expect(streamed).rejects.toMatchObject({ name: "AbortError" });
+  expect(sent?.aborted).toBe(true);
 });
 
 test("streamMessage surfaces the server error message on failure", async () => {
