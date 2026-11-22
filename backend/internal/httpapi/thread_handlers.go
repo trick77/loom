@@ -303,6 +303,8 @@ func (s *server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 // turn, and a scheduled run's research (run_python writes artifacts).
 func (s *server) stopThreadWork(userID, threadID string) {
 	s.activeStreams.stopAndWait(userID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
+	// The stopped turn's log is not polled after its thread is gone.
+	s.activeStreams.forget(userID, threadID)
 	s.runStreams.stopAndWait(userID, threadID, errStreamThreadDeleted, threadDeleteStopTimeout)
 }
 

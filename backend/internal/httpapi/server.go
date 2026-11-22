@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -147,6 +148,8 @@ type server struct {
 	publicURL             string
 	indexHTML             func() ([]byte, bool)
 	activeStreams         activeStreamRegistry
+	// pollHold is a long poll's wait (pollHold when zero; tests shorten it).
+	pollHold time.Duration
 	// runStreams holds the scheduled runs whose research (the only part that
 	// writes artifacts) is in flight, by thread, only so a thread delete can
 	// stop it first (stopThreadWork); chat's queue and hand-off never see them.
@@ -437,6 +440,8 @@ func newServer(d Deps) *server {
 		ReasoningTitleHold:         d.ReasoningTitleHold,
 		ReasoningTitleStartBytes:   d.ReasoningTitleStartBytes,
 	})
+	// Chat turns are followed by long poll too (messages:poll); runs are not.
+	s.activeStreams.keepRecent = true
 	return s
 }
 
@@ -507,6 +512,7 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("POST /api/threads/{threadID}/messages:stream", s.requireAuth(http.HandlerFunc(s.handleStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/messages:stop", s.requireAuth(http.HandlerFunc(s.handleStopStreamMessage)))
 	mux.Handle("GET /api/threads/{threadID}/messages:attach", s.requireAuth(http.HandlerFunc(s.handleAttachStreamMessage)))
+	mux.Handle("GET /api/threads/{threadID}/messages:poll", s.requireAuth(http.HandlerFunc(s.handlePollStreamMessage)))
 	mux.Handle("POST /api/threads/{threadID}/messages:queue", s.requireAuth(http.HandlerFunc(s.handleQueueMessage)))
 	mux.Handle("DELETE /api/threads/{threadID}/messages:queue/{clientMessageID}", s.requireAuth(http.HandlerFunc(s.handleDeleteQueuedMessage)))
 	// Incognito: a fully ephemeral, stateless turn — no thread/messages/artifacts
@@ -587,8 +593,110 @@ type activeStreamRegistry struct {
 	earlyStops map[earlyStopKey]earlyStop
 	// queueLocks are the per-thread queue locks; see queueLock.
 	queueLocks map[activeStreamKey]*sync.Mutex
+	// keepRecent: the registry remembers replaced and ended streams (recent).
+	// Only the chat registry is polled; the run registry keeps nothing.
+	keepRecent bool
+	// recent are each thread's last few replaced or ended streams, for
+	// recentWindow: a long-polling client (messages:poll) drains a hub to its
+	// terminal event, which a hand-off sends only after the next stream
+	// registered. Swept as it is written, so it holds at most what ended in the
+	// last window.
+	recent    map[activeStreamKey][]recentStream
+	lastSweep time.Time
 	// now is time.Now; tests replace it.
 	now func() time.Time
+}
+
+// recentStream is a stream that just stopped being the thread's running one.
+type recentStream struct {
+	hub    *turnHub
+	sendID string
+	at     time.Time
+}
+
+// recentWindow bounds how long a replaced stream's hub stays pollable: a
+// poller is back within a hold (20 s) and a retry. maxRecent bounds the hubs
+// kept per thread: a chain of quick hand-offs while one poller drains the first.
+const (
+	recentWindow = 2 * time.Minute
+	maxRecent    = 4
+)
+
+// rememberLocked keeps stream among the thread's recent ones, dropping the
+// expired: this thread's at once, every thread's once per window.
+func (r *activeStreamRegistry) rememberLocked(stream *activeStream) {
+	if !r.keepRecent {
+		return
+	}
+	now := r.clock()
+	if r.recent == nil {
+		r.recent = make(map[activeStreamKey][]recentStream)
+	}
+	if now.Sub(r.lastSweep) >= recentWindow {
+		r.lastSweep = now
+		for key := range r.recent {
+			r.pruneRecentLocked(key, now)
+		}
+	}
+	r.pruneRecentLocked(stream.key, now)
+	list := append(r.recent[stream.key], recentStream{hub: stream.hub, sendID: stream.sendID, at: now})
+	if len(list) > maxRecent {
+		list = list[len(list)-maxRecent:]
+	}
+	r.recent[stream.key] = list
+}
+
+// pruneRecentLocked drops the thread's recent streams past recentWindow.
+func (r *activeStreamRegistry) pruneRecentLocked(key activeStreamKey, now time.Time) {
+	list := slices.DeleteFunc(r.recent[key], func(rec recentStream) bool { return now.Sub(rec.at) >= recentWindow })
+	if len(list) == 0 {
+		delete(r.recent, key)
+		return
+	}
+	r.recent[key] = list
+}
+
+// forget drops the thread's recent streams: the thread is gone, its turns
+// must not be readable any more.
+func (r *activeStreamRegistry) forget(userID, threadID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.recent, activeStreamKey{userID: userID, threadID: threadID})
+}
+
+// pollTarget is what a long poll follows: found, nothing running (the answer
+// is on the thread), or a hub the client named that is gone.
+type pollTarget int
+
+const (
+	pollFound pollTarget = iota
+	pollNone
+	pollGone
+)
+
+// pollLookup finds the hub a long poll follows: the running stream's when
+// hubID is "" or names it, the recent one's when hubID names that. With it
+// comes the send id of the stream's send, "" for a queued or handed-off one.
+func (r *activeStreamRegistry) pollLookup(userID, threadID, hubID string) (*turnHub, string, pollTarget) {
+	key := activeStreamKey{userID: userID, threadID: threadID}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.streams[key]
+	if current != nil && (hubID == "" || current.hub.id == hubID) {
+		return current.hub, current.sendID, pollFound
+	}
+	if hubID != "" {
+		now := r.clock()
+		for _, rec := range r.recent[key] {
+			if rec.hub.id == hubID && now.Sub(rec.at) < recentWindow {
+				return rec.hub, rec.sendID, pollFound
+			}
+		}
+	}
+	if current == nil {
+		return nil, "", pollNone
+	}
+	return nil, "", pollGone
 }
 
 type earlyStopKey struct {
@@ -686,15 +794,19 @@ func (r *activeStreamRegistry) registerLocked(key activeStreamKey, sendID string
 	if r.streams == nil {
 		r.streams = make(map[activeStreamKey]*activeStream)
 	}
-	if previous := r.streams[key]; previous != nil && !previous.finishing {
-		previous.finishing = true
-		previous.cancel(errStreamSuperseded)
+	if previous := r.streams[key]; previous != nil {
+		r.rememberLocked(previous)
+		if !previous.finishing {
+			previous.finishing = true
+			previous.cancel(errStreamSuperseded)
+		}
 	}
 	r.streams[key] = stream
 	return stream, func() {
 		r.mu.Lock()
 		if r.streams[key] == stream {
 			delete(r.streams, key)
+			r.rememberLocked(stream)
 		}
 		r.mu.Unlock()
 		// Closed unconditionally, outside the map check: stop and stopAndWait drop
