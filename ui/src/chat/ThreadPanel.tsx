@@ -206,6 +206,7 @@ export function ThreadPanel({
   const headerMenuRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const scrollFrameRef = useRef<number | null>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
   // The latest run's answer: the message after the last prompt.
   const answerStartRef = useRef<HTMLDivElement | null>(null);
   const answerStartIndex = useMemo(() => {
@@ -566,6 +567,30 @@ export function ThreadPanel({
     liveTraceExpanded,
   ]);
 
+  // The composer dock is sticky inside the transcript: a draft wrapping to a
+  // new line makes the transcript taller under a reader pinned to its bottom.
+  // Follow it in the same frame, or the next stream event jumps the text by
+  // that line. A reader who scrolled away stays where they are.
+  useEffect(() => {
+    const dock = dockRef.current;
+    const transcript = transcriptRef.current;
+    if (dock === null || transcript === null) return;
+    let height = dock.offsetHeight;
+    const observer = new ResizeObserver(() => {
+      const grown = dock.offsetHeight - height;
+      height = dock.offsetHeight;
+      if (grown <= 0 || !shouldStickToBottomRef.current) return;
+      const gapBefore =
+        transcript.scrollHeight -
+        transcript.clientHeight -
+        transcript.scrollTop -
+        grown;
+      if (gapBefore <= 1) transcript.scrollTop = transcript.scrollHeight;
+    });
+    observer.observe(dock);
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     return () => {
       if (scrollFrameRef.current !== null)
@@ -838,6 +863,7 @@ export function ThreadPanel({
             />
           </div>
           <div
+            ref={dockRef}
             aria-label={t("thread.composerDock")}
             className="pointer-events-none sticky bottom-0 -mx-6 bg-bg px-6 pb-[14px] pt-4 md:-mx-8 md:px-8"
           >
