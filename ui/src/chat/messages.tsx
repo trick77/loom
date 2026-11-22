@@ -38,11 +38,18 @@ import {
   downloadableResponse,
   formatReceivedKB,
   markdownToPlainText,
+  markdownToSpeech,
   pendingFencedArtifact,
   type DownloadableResponse,
 } from "./artifacts";
 import { arrangeBlocks, messageBlocks } from "./contentBlocks";
 import { compactURL } from "./compactURL";
+import { Diagram, DiagramPending } from "./Diagram";
+import {
+  diagramMark,
+  diagramSource,
+  rehypeDiagramFences,
+} from "./diagramFences";
 import { PastedTextCard } from "./PastedTextCard";
 import { stripPastedBlocks } from "./pastedText";
 import {
@@ -234,6 +241,10 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
     () => markdownToPlainText(citeSourceURLs(proseText, sources)),
     [proseText, sources],
   );
+  const speechText = useMemo(
+    () => markdownToSpeech(citeSourceURLs(proseText, sources)),
+    [proseText, sources],
+  );
   // Number the sources by the order the answer first cites them, so the prose opens
   // at [1] and the sidebar leads with the source actually used. MessageCitations
   // gets the full citation list and decides what to show from this map — it needs
@@ -362,6 +373,7 @@ const AssistantMessageBubble = memo(function AssistantMessageBubble({
           category={category}
           threadCostNanoUsd={threadCostNanoUsd}
           speakable
+          speechText={speechText}
         />
       )}
     </div>
@@ -515,7 +527,18 @@ function SentFileAttachment({
   );
 }
 
-function CodeBlock({
+// CodeBlock is every fenced block of an answer. A ```mermaid fence that
+// rehypeDiagramFences marked is a picture: drawn once closed, a placeholder
+// while it still streams.
+function CodeBlock(props: ComponentPropsWithoutRef<"pre"> & ExtraProps) {
+  const mark = diagramMark(props.node);
+  if (mark === "pending") return <DiagramPending />;
+  if (mark === "draw" && props.node !== undefined)
+    return <Diagram src={diagramSource(props.node)} />;
+  return <PlainCodeBlock {...props} />;
+}
+
+function PlainCodeBlock({
   children,
   node: _node,
   ...props
@@ -571,7 +594,11 @@ export const ProseMarkdown = memo(function ProseMarkdown({
   // below; neither spares a parse.
   // rehypeKatex first so math renders before streamFade/sourcePills post-process the tree.
   const rehypePlugins = useMemo<PluggableList>(() => {
-    const plugins: PluggableList = [rehypeKatexPlugin, rehypeHighlight];
+    const plugins: PluggableList = [
+      rehypeKatexPlugin,
+      rehypeHighlight,
+      [rehypeDiagramFences, { streaming }],
+    ];
     if (streaming) plugins.push(rehypeStreamFade);
     if (sources !== undefined && display !== undefined)
       plugins.push([rehypeSourcePills, sources, display]);
@@ -755,10 +782,13 @@ function MessageActions({
   category,
   threadCostNanoUsd,
   speakable = false,
+  speechText = copyText,
   alignRight = false,
 }: {
   copyLabel: string;
   copyText: string;
+  /** What Read aloud says: the copied text without its diagrams. */
+  speechText?: string;
   /** The answer's markdown, the passage of "Save as idea" (a stored thread
    *  offers it). Turned into plain text only when the bulb is clicked. */
   ideaSource?: string;
@@ -810,7 +840,7 @@ function MessageActions({
       return;
     }
     if (synth.speaking && !speakingRef.current) return;
-    const utterance = new SpeechSynthesisUtterance(copyText);
+    const utterance = new SpeechSynthesisUtterance(speechText);
     utterance.addEventListener("end", endSpeech);
     synth.speak(utterance);
     setSpeaking(true);

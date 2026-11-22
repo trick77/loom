@@ -1,0 +1,22 @@
+Eine Garantieanfrage verzweigt zuerst danach, ob das Gerät sichtbar beschädigt ist:
+
+```mermaid
+flowchart TD
+    K["Anfrage geht ein"] --> D1{"Gerät beschädigt?"} :::focus
+    D1 -->|"ja"| A1["Fotos anfordern"]
+    A1 --> A2["Werkstatt prüft Ursache"]
+    A2 --> A3{"Schaden gedeckt?"}
+    A3 -->|"ja"| OUT["Reparatur oder Ersatz"]
+    A3 -->|"nein"| A4["Begründung an den Kunden"]
+    D1 -->|"nein"| B1{"Anliegen klären"}
+    B1 -->|"Rückgabe, z. B. passt nicht"| B2["30-Tage-Frist prüfen"]
+    B2 --> B3["Rücksendung prüfen"]
+    B3 --> OUT
+    B1 -->|"Fehler, z. B. startet nicht"| B4["Garantiezeit prüfen: noch gültig?"]
+    B4 --> B5{"Fehler bestätigt?"}
+    B5 -->|"ja"| OUT
+    B5 -->|"nein"| A4
+    A4 --> ENDE(["Fall abgeschlossen / Schlichtung"])
+```
+
+Die meisten Fälle enden beim Ersatz.

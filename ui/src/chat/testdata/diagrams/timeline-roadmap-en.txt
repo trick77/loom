@@ -1,0 +1,12 @@
+The roadmap from the planning notes, quarter by quarter:
+
+```mermaid
+timeline
+  title Product roadmap
+  Q1 : Pilot with five teams
+  Q2 : Public beta : Pricing page
+  Q3 : General release
+  Q4 : Mobile app
+```
+
+The beta and the pricing page ship together on purpose, so early users see the final prices before the release.

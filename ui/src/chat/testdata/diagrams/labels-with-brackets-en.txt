@@ -1,0 +1,10 @@
+When the fetch fails, the error names the address, which is where the angle brackets come from:
+
+```mermaid
+flowchart TD
+  a["Fetch <url>"] --> b{"Status 200?"}
+  b -->|yes| c["Parse the page"]
+  b -->|no| d["Failed to fetch <url>: <cause>"]
+```
+
+The message keeps the address so the log shows which page failed.

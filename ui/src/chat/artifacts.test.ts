@@ -2,6 +2,8 @@ import { describe, expect, test } from "vitest";
 import {
   downloadableResponse,
   fileTypeLabel,
+  markdownToPlainText,
+  markdownToSpeech,
   pendingFencedArtifact,
 } from "./artifacts";
 
@@ -202,5 +204,58 @@ describe("fileTypeLabel", () => {
     ["weird.extension-too-long"], // not a plausible extension
   ])("returns null for %s so callers fall back to the glyph", (filename) => {
     expect(fileTypeLabel(filename)).toBeNull();
+  });
+});
+
+describe("an answer holding a diagram", () => {
+  const answer =
+    'The flow:\n\n```mermaid\nflowchart TD\n  a["Start"] --> b["End"]\n```\n\nThat is **all**.';
+
+  test("copies with the diagram's source", () => {
+    expect(markdownToPlainText(answer)).toContain('a["Start"] --> b["End"]');
+  });
+
+  test("is read aloud without the diagram", () => {
+    expect(markdownToSpeech(answer)).toBe("The flow:\n\nThat is all.");
+  });
+
+  test("reads every other code block aloud as before", () => {
+    const code = "Run:\n\n```sh\nmake check\n```";
+    expect(markdownToSpeech(code)).toBe(markdownToPlainText(code));
+  });
+
+  test("drops an empty diagram fence", () => {
+    expect(markdownToSpeech("A\n\n```mermaid\n```\n\nB")).toBe("A\n\nB");
+    expect(
+      markdownToSpeech("A\n\n```mermaid\n```\n\nB\n\n```sh\nls\n```"),
+    ).toContain("B");
+  });
+
+  test("drops each diagram up to its own closing fence, keeping the prose between", () => {
+    expect(
+      markdownToSpeech(
+        "A\n\n```mermaid\nflowchart TD\n```\n\nMiddle\n\n```mermaid\nmindmap\n```\n\nB",
+      ),
+    ).toBe("A\n\nMiddle\n\nB");
+    expect(
+      markdownToSpeech(
+        "A\n\n```mermaid\nflowchart TD\n```\n\nMiddle\n\n~~~js\nx\n~~~\n\nB",
+      ),
+    ).toContain("Middle");
+  });
+
+  test("drops a diagram inside a quote", () => {
+    expect(markdownToSpeech("A\n\n> ```mermaid\n> mindmap\n> ```\n\nB")).toBe(
+      "A\n\nB",
+    );
+  });
+
+  test("drops a diagram fenced with tildes or more backticks", () => {
+    expect(markdownToSpeech("A\n\n~~~mermaid\nmindmap\n  root\n~~~\n\nB")).toBe(
+      "A\n\nB",
+    );
+    expect(
+      markdownToSpeech("A\n\n````mermaid\nmindmap\n  root\n````\n\nB"),
+    ).toBe("A\n\nB");
   });
 });

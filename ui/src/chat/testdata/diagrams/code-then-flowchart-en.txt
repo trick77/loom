@@ -1,0 +1,26 @@
+The retry helper waits longer after each failure and gives up after three attempts:
+
+```python
+def fetch_with_retry(url, attempts=3):
+    for n in range(attempts):
+        try:
+            return fetch(url)
+        except TimeoutError:
+            sleep(2 ** n)
+    raise GiveUp(url)
+```
+
+The same logic as a picture:
+
+```mermaid
+flowchart TD
+  start(["Request"]) --> try["Fetch the URL"]
+  try --> ok{"Answer in time?"}
+  ok -->|yes| done(["Return the page"])
+  ok -->|no| more{"Attempts left?"}:::focus
+  more -->|yes| wait["Wait 2^n seconds"]
+  wait --> try
+  more -->|no| fail(["Raise GiveUp"])
+```
+
+A timeout is the only error that is retried; any other exception reaches the caller at once.

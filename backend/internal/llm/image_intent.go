@@ -61,6 +61,7 @@ This assistant is ALSO a coding and writing helper, so DO NOT read these as imag
 - converting or rendering data/text/markup: "render the JSON", "convert this to CSV", "render this template", "wandle das in CSV um".
 - figurative language: "draw a conclusion", "paint a picture of the situation".
 - charts, plots and graphs of data, new or changed: "plot my weekly mileage", "redraw that chart as bars", "zeichne die Herzfrequenz als Diagramm". They are drawn from the numbers with code, not by an image model.
+- diagrams of a structure: a mind map, flowchart, process or workflow, sequence diagram, state diagram, org chart, entity diagram: "make a mind map of the topics", "erstell ein Ablaufdiagramm für die Urlaubsanfrage". The assistant writes them as text the interface draws. An illustration, poster or infographic stays "create".
 - asking to WRITE text content (a summary, email, plan, pitch, poem) — that is not an image.
 - correcting the assistant's answer or adding facts to it, even when an image is present: "you got it slightly wrong, it was two hours after lunch", "actually I ran it in the heat", "das stimmt nicht, es war nach dem Mittagessen". "edit" only when the message asks to change the picture itself.
 

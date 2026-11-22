@@ -1,0 +1,21 @@
+A recipe submission loops until the editors approve it:
+
+```mermaid
+flowchart TD
+    A["Submit recipe"] --> B["Run format checks"]
+    B --> C{"All checks pass?"}
+    C -->|"No"| D["Author fixes and resubmits"]
+    D --> B
+    C -->|"Yes"| E["Editors read it"]
+    E --> F{"Verdict?"}
+    F -->|"Request changes"| G["Author revises"]
+    G --> B
+    F -->|"Approve"| H{"Two approvals?"}
+    H -->|"No"| E
+    H -->|"Yes":::focus --> I["Publish recipe"]
+    I --> J["Tag for the newsletter"]
+
+    classDef focus fill:#ffe08a,stroke:#b8860b,stroke-width:2px
+```
+
+Most recipes need one round of changes.

@@ -349,6 +349,26 @@ export const de = {
     previewFailed: "Vorschau fehlgeschlagen",
     loadingPreview: "Vorschau lädt…",
   },
+  diagram: {
+    pending: "Diagramm wird gezeichnet…",
+    failed: "Diagramm konnte nicht gezeichnet werden",
+    full: "Vollansicht",
+    download: "SVG herunterladen",
+    fullOf: "{{title}}: Vollansicht",
+    downloadOf: "{{title}}: SVG herunterladen",
+    close: "Schliessen",
+    kind: {
+      flowchart: "Flussdiagramm",
+      sequence: "Sequenzdiagramm",
+      state: "Zustandsdiagramm",
+      er: "Entitätsdiagramm",
+      class: "Klassendiagramm",
+      mindmap: "Mindmap",
+      timeline: "Zeitstrahl",
+      quadrant: "Quadrantendiagramm",
+      other: "Diagramm",
+    },
+  },
   projects: {
     startPicker: {
       trigger: "Projekt",

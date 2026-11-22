@@ -17,8 +17,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@trick77/diagram": "0.1.5",
     "i18next": "^27.0.1",
     "katex": "^0.16.0",
+    "mermaid": "^12.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-i18next": "^18.0.0",

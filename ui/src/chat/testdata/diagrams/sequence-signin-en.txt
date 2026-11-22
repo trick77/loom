@@ -1,0 +1,20 @@
+## How the sign-in works
+
+The browser never sees the password check itself: it is redirected to the identity provider, which hands back a short-lived code, and the app exchanges that code server to server [1].
+
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant A as App server
+  participant I as Identity provider
+  B->>A: Open the app
+  A-->>B: Redirect to sign-in
+  B->>I: Sign in
+  I-->>B: Redirect with code
+  B->>A: Return with code
+  A->>I: Exchange code for tokens
+  I-->>A: ID token
+  A-->>B: Session cookie
+```
+
+The cookie is the only thing the browser keeps. When it expires, the same round trip runs again, usually without a prompt because the provider still remembers the user.

@@ -1,0 +1,14 @@
+Ein Ticket kennt fünf Zustände. Zurück nach «Offen» geht es nur aus «Wartet auf Rückmeldung», sobald die Antwort eintrifft.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Offen
+  Offen --> InArbeit: zugewiesen
+  InArbeit --> Wartet: Rückfrage gestellt
+  Wartet --> Offen: Antwort erhalten
+  InArbeit --> Geloest: Lösung erfasst
+  Geloest --> Geschlossen: nach 7 Tagen
+  Geschlossen --> [*]
+```
+
+«Gelöst» ist bewusst ein eigener Zustand: So kann die Person, die das Ticket eröffnet hat, eine Woche lang widersprechen, bevor es endgültig schliesst.

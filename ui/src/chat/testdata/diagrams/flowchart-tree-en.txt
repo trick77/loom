@@ -1,0 +1,16 @@
+The club's volunteer work splits into three teams under the board, and each team has two standing duties.
+
+```mermaid
+flowchart TD
+  board["Board"] --> events["Events team"]
+  board --> grounds["Grounds team"]
+  board --> youth["Youth team"]
+  events --> e1["Summer fair"]
+  events --> e2["Winter market"]
+  grounds --> g1["Field upkeep"]
+  grounds --> g2["Equipment shed"]
+  youth --> y1["Saturday training"]
+  youth --> y2["Holiday camp"]
+```
+
+New volunteers usually start in the grounds team, since its duties need the least coordination.

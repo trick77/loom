@@ -1,0 +1,55 @@
+Here is a mind map for planning the school's open day:
+
+```mermaid
+mindmap
+  root(("School<br/>Open Day"))
+    Purpose & Goals
+      Show the new wing
+      Meet future parents
+      Set date and hours
+      Agree on a budget
+    Rooms & Logistics
+      Classroom tours
+      Signs and maps
+      Chairs, tables, screens
+      Parking and access
+      Power for the stands
+    Programme
+      Choir in the hall
+      Science demos
+      Children's corner
+      Art exhibition
+      Snacks and drinks
+      Raffle
+    People & Helpers
+      Organising group
+      Pupil guides
+      Shift plan
+      First aid cover
+      Lost and found
+    Promotion
+      Letters home
+      Local news page
+      Banner at the gate
+      Signs on the day
+    Money
+      Parent donations
+      Stand fees
+      Raffle tickets
+      Expense list
+      Reserve
+    Inclusion
+      Step-free routes
+      Quiet room
+      Translated flyers
+      Seating for elders
+      Sign language guide
+    Follow-up
+      Feedback cards
+      Thank-you notes
+      Photos for the website
+      Lessons for next year
+      Enrolment questions
+```
+
+The programme is the busiest branch; the rest is routine.
