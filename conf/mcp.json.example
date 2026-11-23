@@ -25,7 +25,6 @@
       "headers": {
         "Authorization": "Bearer ${IPVERSE_API_KEY}"
       },
-      "categories": ["coding", "knowledge_discovery"],
       "readOnly": true
     },
     "context7": {
