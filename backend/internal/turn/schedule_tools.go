@@ -117,9 +117,9 @@ const scheduleRunIsShort = "A run is short: a few tool rounds and minutes. Write
 
 var scheduleUpdateTool = scheduleTool(scheduleUpdateToolName,
 	"Change one of the user's scheduled tasks: its name, prompt or interval, or turn it off (disable, pause, stop: enabled=false) and on again (enable, resume: enabled=true). "+
-		"Find the id with schedule_list by the schedule's name. A new interval gets a new random time. "+scheduleRunIsShort+scheduleFirst+"Returns the updated schedule.",
+		"A new prompt follows "+scheduleCreateToolName+"'s rules (stands alone, short run, known sources only); a new interval gets a new random time. "+scheduleFirst+"Returns the updated schedule.",
 	map[string]any{
-		"id":       map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},
+		"id":       map[string]any{"type": "string", "description": "The schedule's id, from schedule_list (match its name)."},
 		"name":     map[string]any{"type": "string"},
 		"prompt":   map[string]any{"type": "string"},
 		"interval": map[string]any{"type": "string"},
@@ -128,16 +128,16 @@ var scheduleUpdateTool = scheduleTool(scheduleUpdateToolName,
 
 var scheduleRunTool = scheduleTool(scheduleRunToolName,
 	"Start one of the user's scheduled tasks now, outside its time, when they ask to run or test it (\"run the cinema scout now\"). "+
-		"Pass the id from schedule_list. "+scheduleFirst+
+		scheduleFirst+
 		"The run works in the background and answers in a new thread of its own, not in this chat; "+
 		"a timed run with nothing to report leaves no thread, a run started here keeps its thread even then; "+
 		"tell the user that, and do not do the task yourself.",
 	map[string]any{
-		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},
+		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list (match its name)."},
 	}, []any{"id"})
 
 var scheduleDeleteTool = scheduleTool(scheduleDeleteToolName,
-	"Delete one of the user's scheduled tasks for good, when they ask to remove it. Pass the id from schedule_list. "+scheduleFirst+"Run threads the user left untouched go with it; ones they followed up in, starred, archived, shared or filed into a project stay.",
+	"Delete one of the user's scheduled tasks for good, when they ask to remove it. "+scheduleFirst+"Run threads the user left untouched go with it; ones they followed up in, starred, archived, shared or filed into a project stay.",
 	map[string]any{
-		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list."},
+		"id": map[string]any{"type": "string", "description": "The schedule's id, from schedule_list (match its name)."},
 	}, []any{"id"})
