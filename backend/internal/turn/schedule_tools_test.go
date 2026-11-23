@@ -19,13 +19,28 @@ func TestScheduleCreateToolNamesThePromptCap(t *testing.T) {
 	if !strings.Contains(prompt["description"].(string), strconv.Itoa(schedule.MaxPromptLength)) {
 		t.Fatalf("prompt description = %q, want the cap %d", prompt["description"], schedule.MaxPromptLength)
 	}
-	for _, tool := range []func() llm.Tool{scheduleCreateTool, scheduleUpdateTool} {
-		if !strings.Contains(tool().Function.Description, "A run is short") {
-			t.Fatalf("%s does not say a run is short", tool().Function.Name)
-		}
+	// The tools are offered together: the rules for a prompt are said once.
+	if !strings.Contains(scheduleCreateTool().Function.Description, "A run is short") {
+		t.Fatal("schedule_create does not say a run is short")
 	}
-	if !strings.Contains(scheduleUpdateTool().Function.Description, "disable") {
+	update := scheduleUpdateTool().Function.Description
+	if strings.Contains(update, "A run is short") || !strings.Contains(update, scheduleCreateToolName+"'s rules (stands alone, short run, known sources only)") {
+		t.Fatalf("schedule_update = %q, want it to point at %s's rules", update, scheduleCreateToolName)
+	}
+	if !strings.Contains(update, "disable") {
 		t.Fatal("schedule_update does not name disabling")
+	}
+}
+
+// Where the id comes from is the id argument's to say, not the description's
+// too: both ride in every turn.
+func TestScheduleToolsSayTheIDsSourceOnce(t *testing.T) {
+	for _, tool := range []func() llm.Tool{scheduleUpdateTool, scheduleRunTool, scheduleDeleteTool} {
+		fn := tool().Function
+		id := fn.Parameters["properties"].(map[string]any)["id"].(map[string]any)
+		if d := id["description"].(string); !strings.Contains(d, scheduleListToolName) || !strings.Contains(d, "name") || strings.Contains(fn.Description, scheduleListToolName) {
+			t.Errorf("%s: id %q, description %q", fn.Name, id["description"], fn.Description)
+		}
 	}
 }
 
