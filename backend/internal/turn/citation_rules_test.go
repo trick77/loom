@@ -58,7 +58,7 @@ func TestSharedPromptRulesInEveryPrompt(t *testing.T) {
 		name, prompt string
 		rules        []string
 	}{
-		{"chat", loomSystemPrompt, []string{proseStyle, diagramStyle, imageShownRule, citationMarkerRule, sourceURLRule}},
+		{"chat", loomSystemPrompt, []string{proseStyle, toolFormatRule, diagramStyle, imageShownRule, citationMarkerRule, sourceURLRule}},
 		{"incognito", incognitoSystemPrompt, []string{proseStyle, diagramStyle}},
 		{"image compiler", imagePromptCompilerSystemPrompt, []string{imageShownRule}},
 		{"image edit compiler", imageEditPromptCompilerSystemPrompt, []string{imageShownRule}},
