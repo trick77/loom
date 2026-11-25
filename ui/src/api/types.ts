@@ -241,6 +241,9 @@ export type Artifact = {
   // thumbnailUrl points at a small JPEG preview for raster image artifacts; absent
   // for SVGs and non-images, so callers fall back to downloadUrl / a typed icon.
   thumbnailUrl?: string;
+  // threadTitle is the title of the chat the artifact belongs to; set on library
+  // listings when the artifact has a chat.
+  threadTitle?: string;
   model?: string;
   provider?: string;
   width?: number;
@@ -356,6 +359,16 @@ export const DOCUMENT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export type ArtifactListType = "all" | "images" | "files";
 export type ArtifactSort = "name" | "modified" | "size";
 export type SortOrder = "asc" | "desc";
+
+// ArtifactSummary feeds the Artifacts page's period picker: how many artifacts
+// sit before the recent window, and the months that have any ("YYYY-MM",
+// newest first), cut in the zone sent as `tz` (UTC when absent or not
+// loadable by the server).
+export type ArtifactSummaryMonth = { month: string; count: number };
+export type ArtifactSummary = {
+  olderCount: number;
+  months: ArtifactSummaryMonth[];
+};
 
 export type ToolCallEvent = {
   id: string;

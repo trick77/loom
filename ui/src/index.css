@@ -1063,6 +1063,83 @@ a.ui-activity-tool-url:hover {
   }
 }
 
+/*
+ * Artifact tiles: filename + chat overlay and the actions button appear on hover
+ * or focus. Plain CSS like the idea rows above: Tailwind's group-hover is gated
+ * by (hover: hover), which Safari mishandles. Touch has no hover, so it shows a
+ * caption under the tile and the actions button for good instead.
+ */
+.ui-artifact-tile-overlay {
+  opacity: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-bg) 92%, transparent),
+    color-mix(in srgb, var(--color-bg) 55%, transparent) 60%,
+    transparent
+  );
+  transition: opacity 120ms ease;
+}
+
+.ui-artifact-tile-kebab {
+  visibility: hidden;
+}
+
+.ui-artifact-tile-caption {
+  display: none;
+}
+
+.ui-artifact-tile:hover .ui-artifact-tile-overlay,
+.ui-artifact-tile:focus-within .ui-artifact-tile-overlay {
+  opacity: 1;
+}
+
+.ui-artifact-tile:hover .ui-artifact-tile-kebab,
+.ui-artifact-tile:focus-within .ui-artifact-tile-kebab,
+.ui-artifact-tile-kebab[aria-expanded="true"] {
+  visibility: visible;
+}
+
+@media (hover: none) {
+  .ui-artifact-tile-kebab {
+    visibility: visible;
+  }
+
+  .ui-artifact-tile-overlay {
+    display: none;
+  }
+
+  .ui-artifact-tile-caption {
+    display: block;
+  }
+}
+
+/*
+ * The actions menu is wider than a phone tile: it opens rightwards from the
+ * tile's left edge, except in the last column (3 per row, 5 from 40rem), where
+ * it opens leftwards so it stays on the page.
+ */
+.ui-artifact-tile > .ui-artifact-tile-menu {
+  left: 0;
+  right: auto;
+}
+
+.ui-artifact-tile:nth-child(3n) > .ui-artifact-tile-menu {
+  left: auto;
+  right: 0;
+}
+
+@media (min-width: 40rem) {
+  .ui-artifact-tile:nth-child(3n) > .ui-artifact-tile-menu {
+    left: 0;
+    right: auto;
+  }
+
+  .ui-artifact-tile:nth-child(5n) > .ui-artifact-tile-menu {
+    left: auto;
+    right: 0;
+  }
+}
+
 /* The offer to save a marked passage fades in; nothing moves. */
 .ui-idea-select-in {
   animation: prompt-fade-in 150ms ease both;

@@ -24,6 +24,10 @@ export function useInfiniteList<T>(
   const [loadingMore, setLoadingMore] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
+  // paged: the first page came with a next cursor, so the list arrives in
+  // pages. Unlike hasMore it stays set once the last page is in, so a view
+  // laid out for a list in pages does not rearrange itself at the end.
+  const [paged, setPaged] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   // Hold the latest fetchPage without making it a reset dependency (it is a
@@ -44,6 +48,7 @@ export function useInfiniteList<T>(
     setLoaded(false);
     setCursor(null);
     setHasMore(false);
+    setPaged(false);
     setError(null);
     setLoadingMore(true);
     fetchPageRef
@@ -53,6 +58,7 @@ export function useInfiniteList<T>(
         setItems(page.items);
         setCursor(page.nextCursor);
         setHasMore(page.nextCursor !== null);
+        setPaged(page.nextCursor !== null);
         setLoaded(true);
       })
       .catch((err: unknown) => {
@@ -138,6 +144,7 @@ export function useInfiniteList<T>(
     loaded,
     loadingMore,
     hasMore,
+    paged,
     error,
     sentinelRef,
   };

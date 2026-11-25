@@ -34,8 +34,9 @@ export function GeneratedArtifactCard({ artifact }: { artifact: Artifact }) {
   const imageStats = isImage ? buildImageStats(artifact) : null;
   const typeLabel = fileTypeLabel(artifact.displayFilename);
 
-  // The card shows the original, like the lightbox: the 144px thumbnail is for
-  // small preview boxes and, stretched to this card, blurred charts. A plain,
+  // The card shows the original, like the lightbox: the thumbnail (320px on the
+  // shorter side) is for tiles and small preview boxes and, stretched to this
+  // card, blurs charts. A plain,
   // lazy image load on the session cookie, cached (immutable), on the same URL
   // as the lightbox. Only an image too big to decode inline while scrolling
   // keeps the thumbnail (none past the server's own limit: click to open).

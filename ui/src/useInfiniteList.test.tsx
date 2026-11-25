@@ -31,10 +31,14 @@ afterEach(() => {
 
 function List({
   fetchPage,
+  resetKey = "",
 }: {
   fetchPage: (cursor: string | null) => Promise<Page<string>>;
+  resetKey?: string;
 }) {
-  const { items, error, sentinelRef } = useInfiniteList(fetchPage, []);
+  const { items, error, paged, sentinelRef } = useInfiniteList(fetchPage, [
+    resetKey,
+  ]);
   return (
     <>
       <ul>
@@ -43,6 +47,7 @@ function List({
         ))}
       </ul>
       {error !== null && <p role="alert">failed</p>}
+      <p data-testid="paged">{paged ? "paged" : "whole"}</p>
       <div ref={sentinelRef} />
     </>
   );
@@ -78,4 +83,25 @@ test("a page that fills nothing still loads the next one", async () => {
   );
   render(<List fetchPage={fetchPage} />);
   expect(await screen.findByText("b")).toBeInTheDocument();
+});
+
+test("paged tells a list that came in pages from one that came whole, until a reset", async () => {
+  const fetchPage = vi.fn(
+    async (cursor: string | null): Promise<Page<string>> =>
+      cursor === null
+        ? { items: ["a"], nextCursor: "c2" }
+        : { items: ["b"], nextCursor: null },
+  );
+  const { rerender } = render(<List fetchPage={fetchPage} />);
+  // Still paged once the last page is in.
+  expect(await screen.findByText("b")).toBeInTheDocument();
+  expect(screen.getByTestId("paged")).toHaveTextContent("paged");
+
+  const whole = vi.fn(async (): Promise<Page<string>> => ({
+    items: ["w"],
+    nextCursor: null,
+  }));
+  rerender(<List fetchPage={whole} resetKey="other" />);
+  expect(await screen.findByText("w")).toBeInTheDocument();
+  expect(screen.getByTestId("paged")).toHaveTextContent("whole");
 });
