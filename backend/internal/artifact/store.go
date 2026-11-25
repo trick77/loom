@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/chat"
 	"github.com/trick77/loom/internal/sqlutil"
@@ -192,21 +193,29 @@ WHERE user_id = ? AND id = ? AND deleted_at IS NULL`, userID, artifactID))
 	return out, true, nil
 }
 
-// List retrieves a paginated list of artifacts filtered and sorted according to the given options.
-func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Artifact, error) {
+// List retrieves a paginated list of artifacts filtered and sorted according to
+// the given options, each with its thread's title. Search matches the filename
+// or that title.
+func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]ListItem, error) {
 	limit := EffectiveArtifactLimit(opts.Limit)
 
-	filters := []string{"user_id = ?", "deleted_at IS NULL"}
+	filters := []string{"a.user_id = ?", "a.deleted_at IS NULL"}
 	args := []any{userID}
 	if search := strings.TrimSpace(opts.Search); search != "" {
-		filters = append(filters, `display_filename LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+sqlutil.EscapeLike(search)+"%")
+		pattern := "%" + sqlutil.EscapeLike(search) + "%"
+		filters = append(filters, `(a.display_filename LIKE ? ESCAPE '\' OR t.title LIKE ? ESCAPE '\')`)
+		args = append(args, pattern, pattern)
 	}
-	switch opts.Type {
-	case ListTypeImages:
-		filters = append(filters, `mime_type LIKE 'image/%'`)
-	case ListTypeFiles:
-		filters = append(filters, `mime_type NOT LIKE 'image/%'`)
+	if filter := typeFilter(opts.Type); filter != "" {
+		filters = append(filters, filter)
+	}
+	if !opts.Since.IsZero() {
+		filters = append(filters, "a.created_at >= ?")
+		args = append(args, sqliteTime(opts.Since))
+	}
+	if !opts.Until.IsZero() {
+		filters = append(filters, "a.created_at < ?")
+		args = append(args, sqliteTime(opts.Until))
 	}
 	if opts.Cursor != "" {
 		clause, boundValue, err := artifactKeysetClause(opts.Sort, opts.Order, opts.Cursor)
@@ -220,10 +229,13 @@ func (s *Store) List(ctx context.Context, userID string, opts ListOptions) ([]Ar
 	}
 	args = append(args, limit)
 
+	// The join is per row on threads' UNIQUE(user_id, id); a.user_id = ? keeps
+	// it to the caller's own threads. Plan pinned by store's index_plan_test.
 	query := fmt.Sprintf( //nolint:gosec // only fixed SQL structure is interpolated (a closed switch over typed constants); every value is a bound ? parameter
 		`
-SELECT id, user_id, thread_id, project_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, thumbnail_relpath
-FROM artifacts
+SELECT a.id, a.user_id, a.thread_id, a.project_id, a.display_filename, a.volume_relpath, a.mime_type, a.size_bytes, a.source, a.created_at, a.thumbnail_relpath, COALESCE(t.title, '')
+FROM artifacts a
+LEFT JOIN threads t ON t.user_id = a.user_id AND t.id = a.thread_id
 WHERE %s
 ORDER BY %s
 LIMIT ?`, strings.Join(filters, " AND "), listOrderBy(opts.Sort, opts.Order))
@@ -232,8 +244,100 @@ LIMIT ?`, strings.Join(filters, " AND "), listOrderBy(opts.Sort, opts.Order))
 		return nil, fmt.Errorf("list artifacts: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	return scanArtifacts(rows)
+	var items []ListItem
+	for rows.Next() {
+		var title string
+		item, _, err := scanArtifactRow(rowScannerFunc(func(dest ...any) error {
+			return rows.Scan(append(dest, &title)...)
+		}), false)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, ListItem{Artifact: item, ThreadTitle: title})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan artifacts: %w", err)
+	}
+	return items, nil
 }
+
+// Summary counts the user's live artifacts per month in opts.Location, newest
+// first, and those created before opts.Since, for the library's period picker.
+func (s *Store) Summary(ctx context.Context, userID string, opts SummaryOptions) (Summary, error) {
+	where := "a.user_id = ? AND a.deleted_at IS NULL"
+	if filter := typeFilter(opts.Type); filter != "" {
+		where += " AND " + filter
+	}
+	months, err := s.countMonths(ctx, where, userID, opts.Location)
+	if err != nil {
+		return Summary{}, err
+	}
+	out := Summary{Months: months}
+	if opts.Since.IsZero() {
+		return out, nil
+	}
+	if err := s.db.QueryRowContext(ctx, //nolint:gosec // only fixed SQL from typeFilter is interpolated; every value is a bound ? parameter
+		`SELECT COUNT(*) FROM artifacts a WHERE `+where+` AND a.created_at < ?`,
+		userID, sqliteTime(opts.Since)).Scan(&out.OlderCount); err != nil {
+		return Summary{}, fmt.Errorf("count older artifacts: %w", err)
+	}
+	return out, nil
+}
+
+// countMonths buckets the matching artifacts by month in loc (nil is UTC),
+// newest first. In Go, not strftime: SQLite knows no IANA zones. Walking
+// created_at newest first keeps each month's rows together, so a month ends
+// where the key changes.
+func (s *Store) countMonths(ctx context.Context, where, userID string, loc *time.Location) ([]MonthCount, error) {
+	if loc == nil {
+		loc = time.UTC
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT a.created_at FROM artifacts a WHERE `+where+` ORDER BY a.created_at DESC`, userID) //nolint:gosec // only fixed SQL from typeFilter is interpolated; the user id is a bound ? parameter
+	if err != nil {
+		return nil, fmt.Errorf("summarize artifacts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	months := []MonthCount{}
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, fmt.Errorf("scan artifact month: %w", err)
+		}
+		created, err := sqlutil.ParseTime(raw)
+		if err != nil {
+			return nil, fmt.Errorf("parse artifact created_at: %w", err)
+		}
+		month := created.In(loc).Format("2006-01")
+		if n := len(months); n > 0 && months[n-1].Month == month {
+			months[n-1].Count++
+			continue
+		}
+		months = append(months, MonthCount{Month: month, Count: 1})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan artifact months: %w", err)
+	}
+	return months, nil
+}
+
+// typeFilter is the SQL condition for a library type filter on the artifacts
+// alias "a", empty for all.
+func typeFilter(t ListType) string {
+	switch t {
+	case ListTypeImages:
+		return `a.mime_type LIKE 'image/%'`
+	case ListTypeFiles:
+		return `a.mime_type NOT LIKE 'image/%'`
+	}
+	return ""
+}
+
+// rowScannerFunc adapts a function to rowScanner, so List can scan its extra
+// thread title after the shared artifact columns.
+type rowScannerFunc func(dest ...any) error
+
+func (f rowScannerFunc) Scan(dest ...any) error { return f(dest...) }
 
 // ListForThread retrieves artifacts in a thread, scoped to the user.
 func (s *Store) ListForThread(ctx context.Context, userID, threadID string) ([]Artifact, error) {
@@ -254,13 +358,14 @@ func listOrderBy(sort SortBy, order SortOrder) string {
 	if order == SortAsc {
 		direction = "ASC"
 	}
+	// Alias "a" as in artifactKeysetClause; the two must name the same tuple.
 	switch sort {
 	case SortByName:
-		return "display_filename COLLATE NOCASE " + direction + ", id " + direction
+		return "a.display_filename COLLATE NOCASE " + direction + ", a.id " + direction
 	case SortBySize:
-		return "size_bytes " + direction + ", id " + direction
+		return "a.size_bytes " + direction + ", a.id " + direction
 	default:
-		return "created_at " + direction + ", id " + direction
+		return "a.created_at " + direction + ", a.id " + direction
 	}
 }
 
@@ -364,6 +469,11 @@ func scanArtifactRow(scanner rowScanner, withDeleted bool) (Artifact, sql.NullSt
 func setArtifactURLs(a *Artifact) {
 	a.DownloadURL = "/api/artifacts/" + a.ID + "/download"
 	if IsThumbnailableMIME(a.MIMEType) {
-		a.ThumbnailURL = "/api/artifacts/" + a.ID + "/thumbnail"
+		a.ThumbnailURL = "/api/artifacts/" + a.ID + ThumbnailURLSuffix
 	}
 }
+
+// ThumbnailURLSuffix ends an artifact's thumbnail URL. The version query only
+// busts the browser cache (see ThumbnailVersion); the endpoint ignores it, so
+// URLs saved in messages and shares before it keep working.
+const ThumbnailURLSuffix = "/thumbnail?v=" + ThumbnailVersion

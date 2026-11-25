@@ -15,6 +15,7 @@ import (
 	"image/jpeg"
 	_ "image/png" // register PNG decoder
 	"io"
+	"math"
 
 	xdraw "golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // register WebP decoder (decode-only)
@@ -118,14 +119,16 @@ func TooLarge(r io.Reader) bool {
 	return err == nil && int64(cfg.Width)*int64(cfg.Height) > maxSourcePixels
 }
 
-// Thumbnail decodes data and produces a small JPEG whose longest side is at most
-// maxDimension, flattening any transparency onto white. Unlike DownscaleForModel
-// it ALWAYS re-encodes as JPEG (callers serve the result with a fixed image/jpeg
-// content type) and returns an error for input it cannot decode as a raster image
-// (SVG, corrupt bytes); callers treat that as "no thumbnail" and fall back to the
-// original. An image already within maxDimension is re-encoded at its current size
-// rather than upscaled.
-func Thumbnail(data []byte, maxDimension int) ([]byte, error) {
+// Thumbnail decodes data and produces a small JPEG whose shorter side is
+// shortSide (a square crop fills from that side) and whose longer side is at
+// most maxLongSide (a panorama stops there, its shorter side below shortSide),
+// flattening any transparency onto white. Unlike DownscaleForModel it ALWAYS
+// re-encodes as JPEG (callers serve the result with a fixed image/jpeg content
+// type) and returns an error for input it cannot decode as a raster image (SVG,
+// corrupt bytes); callers treat that as "no thumbnail" and fall back to the
+// original. An image already within those sizes is re-encoded at its current
+// size rather than upscaled.
+func Thumbnail(data []byte, shortSide, maxLongSide int) ([]byte, error) {
 	// Read the declared dimensions cheaply (no pixel allocation) and reject a
 	// decompression bomb before the full decode below would blow up memory.
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
@@ -144,8 +147,19 @@ func Thumbnail(data []byte, maxDimension int) ([]byte, error) {
 	if w == 0 || h == 0 {
 		return nil, errors.New("imagescale: image has zero dimension")
 	}
-	nw, nh := fitDims(w, h, maxDimension)
+	nw, nh := coverDims(w, h, shortSide, maxLongSide)
 	return scaleToJPEG(img, src, nw, nh)
+}
+
+// coverDims scales w×h down so the shorter side is shortSide, unless that
+// leaves the longer side past maxLongSide, which then caps it. Never upscales.
+// Rounded, not truncated: 576×0.5556 must land on 320, not 319.
+func coverDims(w, h, shortSide, maxLongSide int) (int, int) {
+	scale := min(float64(shortSide)/float64(min(w, h)), float64(maxLongSide)/float64(max(w, h)))
+	if scale >= 1 {
+		return w, h
+	}
+	return max(1, int(math.Round(float64(w)*scale))), max(1, int(math.Round(float64(h)*scale)))
 }
 
 // scaleToJPEG resizes the src region of img into an nw×nh canvas and encodes it as

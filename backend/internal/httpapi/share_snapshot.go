@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/chat"
 )
 
@@ -270,7 +271,7 @@ func rewriteArtifactObjectURLs(shareID string, obj map[string]json.RawMessage) (
 	// Only rewrite a thumbnail URL the artifact actually had (raster images); leave
 	// SVGs/files without one so the viewer falls back to the download/typed icon.
 	if _, ok := obj["thumbnailUrl"]; ok {
-		if encoded, err := json.Marshal(base + "/thumbnail"); err == nil {
+		if encoded, err := json.Marshal(base + artifact.ThumbnailURLSuffix); err == nil {
 			shared["thumbnailUrl"] = encoded
 		}
 	}

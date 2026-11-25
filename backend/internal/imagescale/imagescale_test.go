@@ -85,55 +85,81 @@ func TestDownscaleForModel_returnsInputOnUndecodableData(t *testing.T) {
 	}
 }
 
-func TestThumbnail_scalesLargeImageToJPEGWithinMaxDimension(t *testing.T) {
-	// Given: an image far larger than the thumbnail cap.
-	in := pngBytes(t, 1024, 768)
+func TestThumbnail_scalesTheShorterSideToJPEG(t *testing.T) {
+	// Given: images far larger than the thumbnail. A square crop fills from the
+	// shorter side, so that side lands on 320, whatever the aspect.
+	for name, tc := range map[string]struct {
+		w, h, wantW, wantH int
+	}{
+		"4:3":  {1024, 768, 427, 320},
+		"16:9": {1920, 1080, 569, 320},
+		"9:16": {1080, 1920, 320, 569},
+	} {
+		in := pngBytes(t, tc.w, tc.h)
 
-	// When
-	out, err := Thumbnail(in, 144)
+		// When
+		out, err := Thumbnail(in, 320, 768)
 
-	// Then: a JPEG capped to 144 on the long side, preserving aspect ratio.
+		// Then: a JPEG with the aspect ratio kept.
+		if err != nil {
+			t.Fatalf("%s: Thumbnail: %v", name, err)
+		}
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(out))
+		if err != nil {
+			t.Fatalf("%s: decode thumbnail: %v", name, err)
+		}
+		if format != "jpeg" {
+			t.Fatalf("%s: format = %q, want jpeg", name, format)
+		}
+		if cfg.Width != tc.wantW || cfg.Height != tc.wantH {
+			t.Fatalf("%s: dimensions = %dx%d, want %dx%d", name, cfg.Width, cfg.Height, tc.wantW, tc.wantH)
+		}
+		if len(out) >= len(in) {
+			t.Fatalf("%s: thumbnail size = %d, want smaller than original %d", name, len(out), len(in))
+		}
+	}
+}
+
+func TestThumbnail_capsTheLongerSideOfAPanorama(t *testing.T) {
+	// 6:1: a 320 shorter side would make it 1920 wide; the cap holds it at 768.
+	out, err := Thumbnail(pngBytes(t, 3000, 500), 320, 768)
 	if err != nil {
 		t.Fatalf("Thumbnail: %v", err)
 	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(out))
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(out))
 	if err != nil {
 		t.Fatalf("decode thumbnail: %v", err)
 	}
-	if format != "jpeg" {
-		t.Fatalf("format = %q, want jpeg", format)
-	}
-	if cfg.Width != 144 {
-		t.Fatalf("width = %d, want 144 (long side capped)", cfg.Width)
-	}
-	if want := 144 * 3 / 4; cfg.Height < want-2 || cfg.Height > want+2 {
-		t.Fatalf("height = %d, want ~%d (4:3 preserved)", cfg.Height, want)
-	}
-	if len(out) >= len(in) {
-		t.Fatalf("thumbnail size = %d, want smaller than original %d", len(out), len(in))
+	if cfg.Width != 768 || cfg.Height != 128 {
+		t.Fatalf("dimensions = %dx%d, want 768x128", cfg.Width, cfg.Height)
 	}
 }
 
 func TestThumbnail_doesNotUpscaleSmallImage(t *testing.T) {
-	in := pngBytes(t, 50, 40)
-	out, err := Thumbnail(in, 144)
-	if err != nil {
-		t.Fatalf("Thumbnail: %v", err)
-	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(out))
-	if err != nil {
-		t.Fatalf("decode thumbnail: %v", err)
-	}
-	if format != "jpeg" {
-		t.Fatalf("format = %q, want jpeg", format)
-	}
-	if cfg.Width != 50 || cfg.Height != 40 {
-		t.Fatalf("dimensions = %dx%d, want 50x40 (no upscale)", cfg.Width, cfg.Height)
+	for name, tc := range map[string]struct{ w, h int }{
+		"tiny": {50, 40},
+		// Longer than the shorter-side target, but its shorter side is below it.
+		"short side small": {600, 300},
+	} {
+		out, err := Thumbnail(pngBytes(t, tc.w, tc.h), 320, 768)
+		if err != nil {
+			t.Fatalf("%s: Thumbnail: %v", name, err)
+		}
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(out))
+		if err != nil {
+			t.Fatalf("%s: decode thumbnail: %v", name, err)
+		}
+		if format != "jpeg" {
+			t.Fatalf("%s: format = %q, want jpeg", name, format)
+		}
+		if cfg.Width != tc.w || cfg.Height != tc.h {
+			t.Fatalf("%s: dimensions = %dx%d, want %dx%d (no upscale)", name, cfg.Width, cfg.Height, tc.w, tc.h)
+		}
 	}
 }
 
 func TestThumbnail_errorsOnUndecodableData(t *testing.T) {
-	if _, err := Thumbnail([]byte("<svg/>"), 144); err == nil {
+	if _, err := Thumbnail([]byte("<svg/>"), 320, 768); err == nil {
 		t.Fatal("Thumbnail of non-raster data = nil error, want error")
 	}
 }
@@ -143,7 +169,7 @@ func TestThumbnail_rejectsDecompressionBomb(t *testing.T) {
 	// dimensions are read via DecodeConfig and rejected before the full decode would
 	// allocate gigabytes; the caller treats the error as "no thumbnail".
 	bomb := pngHeaderWithDimensions(20000, 20000)
-	if _, err := Thumbnail(bomb, 144); err == nil {
+	if _, err := Thumbnail(bomb, 320, 768); err == nil {
 		t.Fatal("Thumbnail accepted an oversized image; want rejection before decode")
 	}
 }

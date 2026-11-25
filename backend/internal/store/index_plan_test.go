@@ -63,6 +63,41 @@ ORDER BY created_at ASC`, "u", "p")
 	}
 }
 
+// The Artifacts library joins threads for the title search; the join must stay
+// a per-row seek and the default sort must still walk (user, created_at DESC),
+// with or without a period bound or a cursor. Mirrors artifact.Store.List.
+func TestArtifactLibraryListWalksTheCreatedIndex(t *testing.T) {
+	db := openPlanDB(t)
+	const head = `
+SELECT a.id, COALESCE(t.title, '') FROM artifacts a
+LEFT JOIN threads t ON t.user_id = a.user_id AND t.id = a.thread_id
+WHERE a.user_id = ? AND a.deleted_at IS NULL`
+	const tail = `
+ORDER BY a.created_at DESC, a.id DESC
+LIMIT 100`
+	for name, where := range map[string]string{
+		"default": "",
+		"period":  ` AND a.created_at >= '2026-10-01 00:00:00' AND a.created_at < '2026-11-01 00:00:00'`,
+		"cursor":  ` AND (a.created_at, a.id) < ('2026-10-01 00:00:00', 'x')`,
+		"search":  ` AND (a.display_filename LIKE '%x%' ESCAPE '\' OR t.title LIKE '%x%' ESCAPE '\')`,
+	} {
+		plan := queryPlan(t, db, head+where+tail, "u")
+		if !strings.Contains(plan, "idx_artifacts_user_created") {
+			t.Fatalf("%s: artifact list does not use the created index:\n%s", name, plan)
+		}
+		if name == "period" && !strings.Contains(plan, "(user_id=? AND created_at>? AND created_at<?)") {
+			t.Fatalf("period: the bounds are not an index range:\n%s", plan)
+		}
+		if !strings.Contains(plan, "SEARCH t USING") {
+			t.Fatalf("%s: thread join is not a seek:\n%s", name, plan)
+		}
+		// The index holds no id: only the tie-break (LAST TERM) may sort.
+		if strings.Contains(plan, "USE TEMP B-TREE FOR ORDER BY") {
+			t.Fatalf("%s: artifact list sorts the whole result in a temporary b-tree:\n%s", name, plan)
+		}
+	}
+}
+
 func openPlanDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := Open(filepath.Join(t.TempDir(), "a.db"))

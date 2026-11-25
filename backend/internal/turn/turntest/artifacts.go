@@ -17,6 +17,21 @@ type ArtifactStore struct {
 	// CreateErr makes Create fail; Created, when set, receives Create's input.
 	CreateErr error
 	Created   *artifact.CreateInput
+	// ThreadTitles maps thread id to the title List reports for it.
+	ThreadTitles map[string]string
+	// Listed, when set, receives List's options.
+	Listed *artifact.ListOptions
+	// SummaryResult is what Summary returns; Summarized, when set, receives its options.
+	SummaryResult artifact.Summary
+	Summarized    *artifact.SummaryOptions
+}
+
+// Summary returns SummaryResult and records the options in Summarized.
+func (f ArtifactStore) Summary(_ context.Context, _ string, opts artifact.SummaryOptions) (artifact.Summary, error) {
+	if f.Summarized != nil {
+		*f.Summarized = opts
+	}
+	return f.SummaryResult, nil
 }
 
 // DetachFromThread records the detached ids in Detached.
@@ -103,12 +118,16 @@ func (f ArtifactStore) Get(_ context.Context, userID, artifactID string) (artifa
 	return artifact.Artifact{}, false, nil
 }
 
-// List returns the user's artifacts, ignoring the options.
-func (f ArtifactStore) List(_ context.Context, userID string, _ artifact.ListOptions) ([]artifact.Artifact, error) {
-	var out []artifact.Artifact
+// List returns the user's artifacts with their ThreadTitles entry, recording
+// the options in Listed but not applying them.
+func (f ArtifactStore) List(_ context.Context, userID string, opts artifact.ListOptions) ([]artifact.ListItem, error) {
+	if f.Listed != nil {
+		*f.Listed = opts
+	}
+	var out []artifact.ListItem
 	for _, item := range f.Artifacts {
 		if item.UserID == userID {
-			out = append(out, item)
+			out = append(out, artifact.ListItem{Artifact: item, ThreadTitle: f.ThreadTitles[item.ThreadID]})
 		}
 	}
 	return out, nil
