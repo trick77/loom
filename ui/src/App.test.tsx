@@ -163,7 +163,8 @@ test("does not overwrite a profile that already has a pinned language", async ()
   );
 });
 
-test("opens the artifact library from the sidebar", async () => {
+test("opens the artifact library from the sidebar, and a chat from it", async () => {
+  const thread = threadFixture();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -178,23 +179,28 @@ test("opens the artifact library from the sidebar", async () => {
       }
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30")
-        return Response.json({ items: [], nextCursor: null });
-      if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
+        return Response.json({ items: [thread], nextCursor: null });
+      if (url === "/api/threads/t1")
+        return Response.json({ thread, messages: [] });
+      if (isArtifactListURL(url)) {
         return Response.json({
           items: [
             {
               id: "art_1",
               threadId: "t1",
-              displayFilename: "robot.png",
-              mimeType: "image/png",
+              threadTitle: "Existing chat",
+              displayFilename: "notes.txt",
+              mimeType: "text/plain",
               sizeBytes: 1024,
-              modifiedAt: "2026-06-10T12:00:00Z",
+              modifiedAt: new Date().toISOString(),
               downloadUrl: "/api/artifacts/art_1/download",
             },
           ],
           nextCursor: null,
         });
       }
+      if (url.startsWith("/api/artifacts/summary?"))
+        return Response.json({ olderCount: 0, months: [] });
       throw new Error(`unexpected fetch ${url}`);
     }),
   );
@@ -206,9 +212,20 @@ test("opens the artifact library from the sidebar", async () => {
   expect(
     await screen.findByRole("heading", { name: "Artifacts" }),
   ).toBeInTheDocument();
-  expect(await screen.findByText("robot.png")).toBeInTheDocument();
+  expect(await screen.findByText("notes.txt")).toBeInTheDocument();
   expect(window.location.pathname).toBe("/artifacts");
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Open chat Existing chat" }),
+  );
+  await waitFor(() => expect(window.location.pathname).toBe("/thread/t1"));
 });
+
+// isArtifactListURL matches the Artifacts page's list request, whatever its
+// window bounds (they follow the clock).
+function isArtifactListURL(url: string): boolean {
+  return url.startsWith("/api/artifacts?");
+}
 
 test("the sidebar opens memory, ideas and schedules, a schedule row its page", async () => {
   const signedIn = basicSignedInFetch();
@@ -1658,7 +1675,7 @@ test('"Use in thread" references an existing artifact without re-uploading it', 
       if (url === "/api/projects") return Response.json([]);
       if (url === "/api/threads?limit=30")
         return Response.json({ items: [], nextCursor: null });
-      if (url === "/api/artifacts?type=all&sort=modified&order=desc&limit=50") {
+      if (isArtifactListURL(url)) {
         return Response.json({
           items: [
             {
@@ -1674,6 +1691,8 @@ test('"Use in thread" references an existing artifact without re-uploading it', 
           nextCursor: null,
         });
       }
+      if (url.startsWith("/api/artifacts/summary?"))
+        return Response.json({ olderCount: 0, months: [] });
       if (url === "/api/threads" && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as { title?: string };
         return Response.json(

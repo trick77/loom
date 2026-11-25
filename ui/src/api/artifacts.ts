@@ -3,16 +3,21 @@ import type {
   Artifact,
   ArtifactListType,
   ArtifactSort,
+  ArtifactSummary,
   Page,
   SortOrder,
 } from "./types";
 
+// since/until are RFC 3339 bounds on the creation time (since inclusive, until
+// exclusive); empty or absent means unbounded.
 export async function listArtifacts(
   params: {
     type?: ArtifactListType;
     sort?: ArtifactSort;
     order?: SortOrder;
     search?: string;
+    since?: string;
+    until?: string;
     limit?: number;
     cursor?: string | null;
   } = {},
@@ -30,6 +35,12 @@ export async function listArtifacts(
   if (params.search !== undefined && params.search !== "") {
     query.set("search", params.search);
   }
+  if (params.since !== undefined && params.since !== "") {
+    query.set("since", params.since);
+  }
+  if (params.until !== undefined && params.until !== "") {
+    query.set("until", params.until);
+  }
   if (params.limit !== undefined) {
     query.set("limit", String(params.limit));
   }
@@ -42,6 +53,23 @@ export async function listArtifacts(
   }
   const suffix = query.toString() === "" ? "" : `?${query.toString()}`;
   return requestJSON(`/api/artifacts${suffix}`, "failed to load artifacts");
+}
+
+// getArtifactSummary returns how many artifacts predate since and which months
+// hold artifacts at all, for the given type filter. The months are cut in the
+// browser's zone (tz), the one the page lists a month in; without one the
+// server cuts them in UTC.
+export async function getArtifactSummary(params: {
+  since: string;
+  type: ArtifactListType;
+}): Promise<ArtifactSummary> {
+  const query = new URLSearchParams({ since: params.since, type: params.type });
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (timeZone) query.set("tz", timeZone);
+  return requestJSON(
+    `/api/artifacts/summary?${query.toString()}`,
+    "failed to load artifact summary",
+  );
 }
 
 export async function downloadArtifact(downloadUrl: string): Promise<Blob> {

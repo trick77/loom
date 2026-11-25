@@ -1,7 +1,9 @@
 import {
-  type ReactNode,
   useCallback,
   useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -11,56 +13,109 @@ import {
   AuthExpiredError,
   deleteArtifact,
   downloadArtifact,
+  getArtifactSummary,
   listArtifacts,
   renameArtifact,
   type Artifact,
   type ArtifactListType,
-  type ArtifactSort,
-  type SortOrder,
+  type ArtifactSummary,
 } from "../api";
-import { BrowsingListRowFrame } from "../BrowsingListRowFrame";
-import { formatFileSize } from "../chat/artifacts";
 import { Icon } from "../chat/Icon";
-import { ImageLightbox } from "../chat/ImageLightbox";
-import { PdfLightbox } from "../chat/PdfLightbox";
-import {
-  isImageAttachment,
-  isPdfAttachment,
-} from "../chat/useDocumentAttachments";
-import { AttachmentPreview } from "../components/AttachmentPreview";
+import { downloadBlob } from "../chat/download";
+import { isImageAttachment } from "../chat/useDocumentAttachments";
 import { SidebarOpenButton } from "../SidebarOpenButton";
-import { formatTimeAgo } from "../timeago";
-import { useDebouncedValue } from "../useDebouncedValue";
 import { useInfiniteList } from "../useInfiniteList";
-import { ArtifactActionsMenu } from "./ArtifactActionsMenu";
-import { useEscapeKey } from "../chat/useEscapeKey";
 import {
   DeleteArtifactModal,
   RenameArtifactModal,
 } from "./ArtifactActionModals";
-import { downloadBlob } from "../chat/download";
-import { useOutsideRefPointerDown } from "../chat/useOutsidePointerDown";
+import type { ArtifactItemMenuProps } from "./ArtifactActionsMenu";
+import { ArtifactRow, chatOf } from "./ArtifactRow";
+import { ArtifactTile } from "./ArtifactTile";
+import {
+  type ArtifactGroup,
+  type ArtifactPeriod,
+  type GroupMode,
+  groupArtifacts,
+  newestOlderYear,
+  periodBounds,
+  periodKey,
+  recentWindowStart,
+  sameLocalDay,
+} from "./artifactGroups";
+import { formatMonth, PeriodBar } from "./PeriodBar";
 
-const PAGE_SIZE = 50;
+// The recent window comes in one request, so no group shows half-loaded,
+// unless it holds more than RECENT_LIMIT; a year, a month or a search loads
+// page-wise as the list scrolls.
+const RECENT_LIMIT = 500;
+const PAGE_SIZE = 200;
 const SEARCH_DEBOUNCE_MS = 250;
+// How often a foreground page checks whether the local day changed.
+const DAY_CHECK_MS = 60_000;
 
 export function ArtifactsPage({
   onOpenSidebar,
   onSessionExpired,
   onUseInThread,
+  onOpenThread,
 }: {
   onOpenSidebar(): void;
   onSessionExpired(): void;
   // Start a new chat with this artifact pre-attached (no re-upload). Only wired
   // for artifacts that can be referenced as an image input.
   onUseInThread(artifact: Artifact): void;
+  // Open the chat an artifact came from.
+  onOpenThread(threadId: string): void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // The page's clock: the window start is part of the fetch, and a fresh one
+  // per render would reload the list forever. It moves only to another local
+  // day, seen by a tick while the tab is in the foreground (open across
+  // midnight) or when it is shown again (a hidden tab left overnight).
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    function checkDay() {
+      if (document.visibilityState !== "visible") return;
+      // Read now: React may run the updater later.
+      const seenAt = new Date();
+      setNow((prev) => (sameLocalDay(prev, seenAt) ? prev : seenAt));
+    }
+    document.addEventListener("visibilitychange", checkDay);
+    const tick = window.setInterval(checkDay, DAY_CHECK_MS);
+    return () => {
+      document.removeEventListener("visibilitychange", checkDay);
+      window.clearInterval(tick);
+    };
+  }, []);
+  const recentSince = useMemo(
+    () => recentWindowStart(now).toISOString(),
+    [now],
+  );
   const [searchInput, setSearchInput] = useState("");
-  const searchTerm = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
+  // The term searched for. Typing sets it after a pause; an emptied box ends
+  // the search at once and drops the pending term, so neither a picked period
+  // nor the next keystroke re-sends the old search.
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(searchTimer.current), []);
+  function changeSearch(value: string) {
+    setSearchInput(value);
+    window.clearTimeout(searchTimer.current);
+    const term = value.trim();
+    if (term === "") {
+      setSearchTerm("");
+      return;
+    }
+    searchTimer.current = window.setTimeout(
+      () => setSearchTerm(term),
+      SEARCH_DEBOUNCE_MS,
+    );
+  }
+  const searching = searchTerm !== "";
   const [type, setType] = useState<ArtifactListType>("all");
-  const [sort, setSort] = useState<ArtifactSort>("modified");
-  const [order, setOrder] = useState<SortOrder>("desc");
+  const [period, setPeriod] = useState<ArtifactPeriod>({ kind: "recent" });
+  const currentPeriodKey = periodKey(period);
   const [hoveredArtifactID, setHoveredArtifactID] = useState<string | null>(
     null,
   );
@@ -70,6 +125,13 @@ export function ArtifactsPage({
   const [actionError, setActionError] = useState("");
   const [actionPending, setActionPending] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+
+  // The parent may hand a fresh callback each render; the summary effect must
+  // not refetch for that.
+  const onSessionExpiredRef = useRef(onSessionExpired);
+  useLayoutEffect(() => {
+    onSessionExpiredRef.current = onSessionExpired;
+  });
 
   async function handleDownload(artifact: Artifact) {
     setDownloadError("");
@@ -84,19 +146,35 @@ export function ArtifactsPage({
     }
   }
 
-  // The server owns filtering and ordering; the client renders pages in the
-  // exact order they arrive so cursor boundaries stay aligned (no client re-sort).
+  // The server owns filtering and ordering (newest first); the client renders
+  // pages in the order they arrive so cursor boundaries stay aligned. A search
+  // spans all time, whatever the period.
   const fetchPage = useCallback(
-    (cursor: string | null) =>
-      listArtifacts({
+    (cursor: string | null) => {
+      if (searching)
+        return listArtifacts({
+          type,
+          search: searchTerm,
+          limit: PAGE_SIZE,
+          cursor,
+        });
+      const bounds = periodBounds(period);
+      if (bounds === null)
+        return listArtifacts({
+          type,
+          since: recentSince,
+          limit: RECENT_LIMIT,
+          cursor,
+        });
+      return listArtifacts({
         type,
-        sort,
-        order,
-        search: searchTerm,
+        since: bounds.since.toISOString(),
+        until: bounds.until.toISOString(),
         limit: PAGE_SIZE,
         cursor,
-      }),
-    [type, sort, order, searchTerm],
+      });
+    },
+    [searching, searchTerm, type, period, recentSince],
   );
   const {
     items: artifacts,
@@ -104,9 +182,17 @@ export function ArtifactsPage({
     loaded,
     loadingMore,
     hasMore,
+    paged,
     error,
     sentinelRef,
-  } = useInfiniteList(fetchPage, [type, sort, order, searchTerm]);
+  } = useInfiniteList(fetchPage, [
+    type,
+    searchTerm,
+    currentPeriodKey,
+    // Only the recent window moves with the day; a year, a month or a search
+    // keeps the pages it has loaded.
+    !searching && period.kind === "recent" ? recentSince : "",
+  ]);
 
   useEffect(() => {
     if (error instanceof AuthExpiredError) onSessionExpired();
@@ -116,24 +202,82 @@ export function ArtifactsPage({
       ? t("artifacts.loadFailed")
       : "";
 
-  function updateSort(nextSort: ArtifactSort) {
-    if (sort === nextSort) {
-      setOrder((current) => (current === "asc" ? "desc" : "asc"));
-      return;
+  // The summary (older count, months with artifacts) always counts against the
+  // recent window, whatever period is shown, and belongs to one type filter:
+  // another type's older count must not speak for this one. A failed one
+  // leaves the page as is (the period bar then offers the recent window only;
+  // a failed refresh keeps the last good one). summary null = it failed with
+  // no good one for this type: nothing is known about older artifacts.
+  const [summaryState, setSummaryState] = useState<{
+    type: ArtifactListType;
+    summary: ArtifactSummary | null;
+  } | null>(null);
+  const [summaryVersion, setSummaryVersion] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    getArtifactSummary({ since: recentSince, type })
+      .then((next) => {
+        if (!cancelled) setSummaryState({ type, summary: next });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof AuthExpiredError) onSessionExpiredRef.current();
+        setSummaryState((prev) =>
+          prev?.type === type ? prev : { type, summary: null },
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recentSince, type, summaryVersion]);
+  const summaryLoaded = summaryState?.type === type;
+  const summary = summaryLoaded ? summaryState.summary : null;
+  const summaryFailed = summaryLoaded && summary === null;
+
+  // A recent window too big for one request comes in pages: tiles first would
+  // put a later page's tiles above rows on screen, so it keeps arrival order
+  // (to its end, or the finished window would rearrange itself).
+  const mode: GroupMode = searching
+    ? "flat"
+    : period.kind === "recent"
+      ? paged
+        ? "recentPages"
+        : "recent"
+      : "months";
+  const groups = useMemo(
+    () => groupArtifacts(artifacts, now, mode),
+    [artifacts, now, mode],
+  );
+
+  // groupCount is a heading's count: a calendar month's from the summary (this
+  // type's, cut in this zone), so it holds before every page is in; else what
+  // is loaded, once nothing more can load; else none rather than a low one.
+  function groupCount(group: ArtifactGroup): number | null {
+    if (group.kind === "calendarMonth") {
+      const known = summary?.months.find((m) => m.month === group.key);
+      if (known !== undefined) return known.count;
     }
-    setSort(nextSort);
-    setOrder(nextSort === "modified" ? "desc" : "asc");
+    return hasMore ? null : group.size;
+  }
+  const inRecentWindow = !searching && period.kind === "recent";
+  const olderCount = summary?.olderCount ?? 0;
+  const olderYear =
+    summary === null
+      ? null
+      : newestOlderYear(summary, new Date(recentSince).getFullYear());
+
+  function selectPeriod(next: ArtifactPeriod) {
+    setPeriod(next);
+    // A period is a choice to browse, so it ends a search.
+    changeSearch("");
+    setOpenMenuID(null);
   }
 
   // Translate a failed artifact action into either a session expiry (bubbled up)
-  // or an inline modal error; returns true when the error was a session expiry.
-  function reportActionError(err: unknown, fallback: string): boolean {
-    if (err instanceof AuthExpiredError) {
-      onSessionExpired();
-      return true;
-    }
-    setActionError(fallback);
-    return false;
+  // or an inline modal error.
+  function reportActionError(err: unknown, fallback: string) {
+    if (err instanceof AuthExpiredError) onSessionExpired();
+    else setActionError(fallback);
   }
 
   async function handleRename(displayFilename: string) {
@@ -165,6 +309,7 @@ export function ArtifactsPage({
       await deleteArtifact(deleteTarget.id);
       setItems((prev) => prev.filter((item) => item.id !== deleteTarget.id));
       setDeleteTarget(null);
+      setSummaryVersion((version) => version + 1);
     } catch (err) {
       reportActionError(err, t("artifacts.deleteFailed"));
     } finally {
@@ -172,13 +317,89 @@ export function ArtifactsPage({
     }
   }
 
+  function menuProps(artifact: Artifact): ArtifactItemMenuProps {
+    const chat = chatOf(artifact);
+    return {
+      menuOpen: openMenuID === artifact.id,
+      onToggleMenu: () =>
+        setOpenMenuID((prev) => (prev === artifact.id ? null : artifact.id)),
+      onCloseMenu: () =>
+        setOpenMenuID((prev) => (prev === artifact.id ? null : prev)),
+      // Only image artifacts can be re-referenced in a new chat without
+      // re-uploading; gate on the same predicate the send path uses
+      // (isImageAttachment) and skip deleted ones.
+      onUseInThread:
+        isImageAttachment({
+          mimeType: artifact.mimeType,
+          filename: artifact.displayFilename,
+        }) && artifact.deleted !== true
+          ? () => onUseInThread(artifact)
+          : undefined,
+      onOpenChat: chat === null ? undefined : () => onOpenThread(chat.threadId),
+      onDownload: () => void handleDownload(artifact),
+      onRequestRename: () => {
+        setActionError("");
+        setRenameTarget(artifact);
+      },
+      onRequestDelete: () => {
+        setActionError("");
+        setDeleteTarget(artifact);
+      },
+    };
+  }
+
+  function groupLabel(group: ArtifactGroup): string | null {
+    switch (group.kind) {
+      case "today":
+        return t("artifacts.groupToday");
+      case "week":
+        return t("artifacts.groupWeek");
+      case "month":
+        return t("artifacts.groupMonth");
+      case "calendarMonth":
+        return formatMonth(group.year ?? 0, group.month ?? 1, i18n.language);
+      case "all":
+        return null;
+    }
+  }
+
+  // The empty text for the recent window depends on the summary (older items
+  // or none at all), so it waits for both rather than flash the wrong one.
+  const showEmpty =
+    artifacts.length === 0 &&
+    loadError === "" &&
+    loaded &&
+    (!inRecentWindow || summaryLoaded);
+  // Without a summary nothing is known about older artifacts, so the empty
+  // window says only that it is empty, never that there are none at all.
+  const emptyText = searching
+    ? t("artifacts.noMatch")
+    : period.kind !== "recent"
+      ? t("artifacts.emptyPeriod")
+      : olderCount > 0 || summaryFailed
+        ? t("artifacts.emptyRecent")
+        : t("artifacts.empty");
+  // The older note goes below the whole window only: while the window still
+  // loads, "not loaded" would speak of its own pages too.
+  const showOlderNote =
+    inRecentWindow && artifacts.length > 0 && olderCount > 0 && !hasMore;
+  const showYearButton = olderYear !== null && (
+    <button
+      type="button"
+      className="ui-meta-text mt-1 rounded-md px-1.5 py-0.5 font-medium text-ink-dim underline-offset-2 hover:text-ink hover:underline"
+      onClick={() => selectPeriod({ kind: "year", year: olderYear })}
+    >
+      {t("artifacts.showYear", { year: olderYear })}
+    </button>
+  );
+
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <div className="relative mx-auto w-full max-w-[802px] px-4 pb-16 pt-10 md:px-6">
         <SidebarOpenButton variant="floating" onClick={onOpenSidebar} />
         <header className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="font-serif text-[28px] font-medium leading-8 text-[#f4f0e8]">
+            <h1 className="font-serif text-[28px] font-medium leading-8 text-ink-bright">
               {t("artifacts.title")}
             </h1>
           </div>
@@ -205,18 +426,27 @@ export function ArtifactsPage({
           <Icon
             name="search"
             size="18px"
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[#807d74]"
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
           />
           <input
             type="text"
             autoFocus
             value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
+            onChange={(event) => changeSearch(event.target.value)}
             placeholder={t("artifacts.searchPlaceholder")}
             aria-label={t("artifacts.searchLabel")}
-            className="ui-composer-text h-11 w-full rounded-xl border border-[#3f3f3d] bg-[#343433] pl-11 pr-3 text-ink outline-none placeholder:text-[#807d74] focus:border-[#69665f]"
+            className="ui-composer-text h-11 w-full rounded-xl border border-border-strong bg-track pl-11 pr-3 text-ink outline-none placeholder:text-muted focus:border-faint"
           />
         </div>
+
+        <PeriodBar
+          period={period}
+          // The last months shown stay while a type switch loads its own,
+          // rather than the chips blinking out and back.
+          months={summaryState?.summary?.months ?? []}
+          searching={searching}
+          onChange={selectPeriod}
+        />
 
         {(loadError || downloadError) !== "" && (
           <div
@@ -227,102 +457,41 @@ export function ArtifactsPage({
           </div>
         )}
 
-        <div className="mt-3">
-          {artifacts.length > 0 && (
-            <div
-              className={`grid min-h-8 grid-cols-[minmax(0,1fr)_8.5rem_5.5rem_2rem] items-center border-b px-1.5 text-xs font-semibold text-[#aaa79e] sm:grid-cols-[minmax(0,1fr)_10rem_7rem_2rem] ${
-                hoveredArtifactID === artifacts[0]?.id
-                  ? "border-transparent"
-                  : "border-[#343432]"
-              }`}
-            >
-              <SortButton
-                active={sort === "name"}
-                label={t("artifacts.sortName")}
-                order={order}
-                onClick={() => updateSort("name")}
-              />
-              <SortButton
-                active={sort === "modified"}
-                label={t("artifacts.sortModified")}
-                order={order}
-                onClick={() => updateSort("modified")}
-              />
-              <SortButton
-                active={sort === "size"}
-                label={t("artifacts.sortSize")}
-                order={order}
-                onClick={() => updateSort("size")}
-              />
+        <div className="mt-2">
+          {showEmpty && (
+            <div className="py-10 text-center text-muted">
+              <div>{emptyText}</div>
+              {inRecentWindow && olderCount > 0 && showYearButton}
             </div>
           )}
-          {artifacts.length === 0 && loadError === "" ? (
-            loaded && (
-              <div className="py-10 text-center text-[#807d74]">
-                {searchTerm === ""
-                  ? t("artifacts.empty")
-                  : t("artifacts.noMatch")}
-              </div>
-            )
-          ) : (
-            <ul>
-              {artifacts.map((artifact, index) => {
-                const nextArtifact = artifacts[index + 1];
-                const hovered = hoveredArtifactID === artifact.id;
-                const nextHovered =
-                  nextArtifact !== undefined &&
-                  hoveredArtifactID === nextArtifact.id;
-                const menuOpen = openMenuID === artifact.id;
-                return (
-                  <ArtifactRow
-                    key={artifact.id}
-                    artifact={artifact}
-                    hovered={hovered}
-                    hideDivider={hovered || nextHovered || menuOpen}
-                    onHoverChange={(hovered) =>
-                      setHoveredArtifactID(hovered ? artifact.id : null)
-                    }
-                    menuOpen={menuOpen}
-                    onToggleMenu={() =>
-                      setOpenMenuID((prev) =>
-                        prev === artifact.id ? null : artifact.id,
-                      )
-                    }
-                    onCloseMenu={() =>
-                      setOpenMenuID((prev) =>
-                        prev === artifact.id ? null : prev,
-                      )
-                    }
-                    onUseInThread={
-                      // Only image artifacts can be re-referenced in a new chat
-                      // without re-uploading; gate on the same predicate the send
-                      // path uses (isImageAttachment) and skip deleted ones.
-                      isImageAttachment({
-                        mimeType: artifact.mimeType,
-                        filename: artifact.displayFilename,
-                      }) && artifact.deleted !== true
-                        ? () => onUseInThread(artifact)
-                        : undefined
-                    }
-                    onDownload={() => void handleDownload(artifact)}
-                    onRequestRename={() => {
-                      setActionError("");
-                      setRenameTarget(artifact);
-                    }}
-                    onRequestDelete={() => {
-                      setActionError("");
-                      setDeleteTarget(artifact);
-                    }}
-                  />
-                );
-              })}
-            </ul>
-          )}
+          {groups.map((group) => (
+            <ArtifactGroupView
+              key={group.key}
+              group={group}
+              ageInLine={mode === "flat"}
+              label={groupLabel(group)}
+              count={groupCount(group)}
+              hoveredArtifactID={hoveredArtifactID}
+              onHoverChange={(id, hovered) =>
+                setHoveredArtifactID((prev) =>
+                  hovered ? id : prev === id ? null : prev,
+                )
+              }
+              menuProps={menuProps}
+              onOpenThread={onOpenThread}
+            />
+          ))}
           {/* Sentinel observed for infinite scroll; loads the next page when in view. */}
           <div ref={sentinelRef} aria-hidden="true" className="h-px" />
           {loadingMore && hasMore && (
-            <div className="ui-meta-text mt-3 px-1.5 text-[#8a887f]">
+            <div className="ui-meta-text mt-3 px-1.5 text-muted">
               {t("artifacts.loadingMore")}
+            </div>
+          )}
+          {showOlderNote && (
+            <div className="ui-meta-text mt-8 border-t border-border px-1.5 pt-4 text-center text-muted">
+              <div>{t("artifacts.olderNote", { count: olderCount })}</div>
+              {showYearButton}
             </div>
           )}
         </div>
@@ -350,6 +519,95 @@ export function ArtifactsPage({
   );
 }
 
+// ArtifactGroupView is one group: a heading with its count (none for search
+// results, nor while it is unknown), then its runs, images as a tile grid and
+// other files as rows. Each tile run is its own grid, so the column-anchored
+// menu placement (.ui-artifact-tile:nth-child) counts from its first tile.
+function ArtifactGroupView({
+  group,
+  ageInLine,
+  label,
+  count,
+  hoveredArtifactID,
+  onHoverChange,
+  menuProps,
+  onOpenThread,
+}: {
+  group: ArtifactGroup;
+  // Search results: no heading tells a row's age (ArtifactRow ageInLine).
+  ageInLine: boolean;
+  label: string | null;
+  count: number | null;
+  hoveredArtifactID: string | null;
+  onHoverChange(id: string, hovered: boolean): void;
+  menuProps(artifact: Artifact): ArtifactItemMenuProps;
+  onOpenThread(threadId: string): void;
+}) {
+  const { t } = useTranslation();
+  const headingID = useId();
+  const body = group.runs.map((run, runIndex) => {
+    const spacing = runIndex > 0 ? "mt-3" : "";
+    if (run.kind === "tiles")
+      return (
+        <ul
+          key={run.key}
+          className={`grid grid-cols-3 gap-2 sm:grid-cols-5 sm:gap-3 ${spacing}`}
+        >
+          {run.items.map((artifact) => (
+            <ArtifactTile
+              key={artifact.id}
+              artifact={artifact}
+              onOpenThread={onOpenThread}
+              {...menuProps(artifact)}
+            />
+          ))}
+        </ul>
+      );
+    return (
+      <ul key={run.key} className={spacing}>
+        {run.items.map((artifact, index) => {
+          const next = run.items[index + 1];
+          const hovered = hoveredArtifactID === artifact.id;
+          const nextHovered =
+            next !== undefined && hoveredArtifactID === next.id;
+          const menu = menuProps(artifact);
+          return (
+            <ArtifactRow
+              key={artifact.id}
+              artifact={artifact}
+              ageInLine={ageInLine}
+              hovered={hovered}
+              hideDivider={hovered || nextHovered || menu.menuOpen}
+              onHoverChange={(hovered) => onHoverChange(artifact.id, hovered)}
+              onOpenThread={onOpenThread}
+              {...menu}
+            />
+          );
+        })}
+      </ul>
+    );
+  });
+  if (label === null) return <div className="mt-3">{body}</div>;
+  return (
+    <section aria-labelledby={headingID} className="mt-6">
+      <div className="mb-2 flex items-baseline justify-between gap-3 px-1.5">
+        <h2
+          id={headingID}
+          className="ui-control-text font-medium text-ink-warm"
+        >
+          {label}
+        </h2>
+        {count !== null && (
+          <span className="ui-meta-text shrink-0 text-faint">
+            {t("artifacts.groupCount", { count })}
+          </span>
+        )}
+      </div>
+      {body}
+    </section>
+  );
+}
+
 function FilterButton({
   active,
   label,
@@ -365,333 +623,12 @@ function FilterButton({
       aria-pressed={active}
       className={`ui-control-text rounded-lg px-3 py-1.5 font-medium transition-colors ${
         active
-          ? "bg-[#343433] text-[#f5f3ee]"
-          : "bg-[#282827] text-[#c7c5bd] hover:text-white"
+          ? "bg-track text-ink-bright"
+          : "bg-raised text-ink-dim hover:text-ink"
       }`}
       onClick={onClick}
     >
       {label}
     </button>
-  );
-}
-
-function SortButton({
-  active,
-  label,
-  order,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  order: SortOrder;
-  onClick(): void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`flex items-center gap-1 text-left transition-colors hover:text-[#f4f0e8] ${
-        active ? "text-[#dedbd0]" : ""
-      }`}
-      onClick={onClick}
-    >
-      <span>{label}</span>
-      {active && (
-        <Icon name={order === "asc" ? "sortUp" : "sortDown"} size="0.9em" />
-      )}
-    </button>
-  );
-}
-
-type ArtifactRowMenuProps = {
-  onDownload(): void;
-  menuOpen: boolean;
-  onToggleMenu(): void;
-  onCloseMenu(): void;
-  // Present only for artifacts that can be re-referenced in a new chat without
-  // re-uploading (image artifacts); undefined hides the "Use in thread" entry.
-  onUseInThread?(): void;
-  onRequestRename(): void;
-  onRequestDelete(): void;
-};
-
-function ArtifactRow({
-  artifact,
-  hideDivider,
-  hovered,
-  onHoverChange,
-  ...menu
-}: {
-  artifact: Artifact;
-  hideDivider: boolean;
-  hovered: boolean;
-  onHoverChange(hovered: boolean): void;
-} & ArtifactRowMenuProps) {
-  const isImage = artifact.mimeType.startsWith("image/");
-  // A deleted PDF has no bytes to preview; fall through to the file row (which
-  // downloads / surfaces the gone state) rather than opening a doomed preview.
-  if (
-    isImage ||
-    (artifact.deleted !== true &&
-      isPdfAttachment({
-        mimeType: artifact.mimeType,
-        filename: artifact.displayFilename,
-      }))
-  ) {
-    return (
-      <PreviewArtifactRow
-        artifact={artifact}
-        image={isImage}
-        hideDivider={hideDivider}
-        hovered={hovered}
-        onHoverChange={onHoverChange}
-        {...menu}
-      />
-    );
-  }
-  return (
-    <ArtifactRowFrame
-      artifact={artifact}
-      action={
-        <FileArtifactButton artifact={artifact} onDownload={menu.onDownload} />
-      }
-      hideDivider={hideDivider}
-      hovered={hovered}
-      onHoverChange={onHoverChange}
-      {...menu}
-    />
-  );
-}
-
-function ArtifactRowFrame({
-  action,
-  artifact,
-  ariaLabel,
-  hideDivider,
-  hovered,
-  onClick,
-  onHoverChange,
-  onDownload,
-  menuOpen,
-  onToggleMenu,
-  onCloseMenu,
-  onUseInThread,
-  onRequestRename,
-  onRequestDelete,
-}: {
-  action: ReactNode;
-  artifact: Artifact;
-  ariaLabel?: string;
-  hideDivider: boolean;
-  hovered: boolean;
-  onClick?: () => void;
-  onHoverChange(hovered: boolean): void;
-} & ArtifactRowMenuProps) {
-  const { t } = useTranslation();
-  const modifiedAt = artifact.modifiedAt ?? "";
-  const interactive = onClick !== undefined;
-  const rowRef = useRef<HTMLLIElement | null>(null);
-  const showMenuButton = hovered || menuOpen;
-
-  // Close the menu on an outside click or Escape, mirroring the thread row menu.
-  useEscapeKey(onCloseMenu, { active: menuOpen });
-  useOutsideRefPointerDown(menuOpen, rowRef, onCloseMenu);
-
-  return (
-    <BrowsingListRowFrame
-      ref={rowRef}
-      active={hovered || menuOpen}
-      after={
-        menuOpen ? (
-          <ArtifactActionsMenu
-            onDownload={() => {
-              onCloseMenu();
-              onDownload();
-            }}
-            onUseInThread={
-              onUseInThread === undefined
-                ? undefined
-                : () => {
-                    onCloseMenu();
-                    onUseInThread();
-                  }
-            }
-            onRename={() => {
-              onCloseMenu();
-              onRequestRename();
-            }}
-            onDelete={() => {
-              onCloseMenu();
-              onRequestDelete();
-            }}
-          />
-        ) : null
-      }
-      hideDivider={hideDivider}
-      surfaceAriaLabel={ariaLabel}
-      surfaceClassName={`ui-artifacts-row-surface relative min-h-[56px] rounded-xl px-1.5 py-2 transition-colors hover:bg-[#2a2a28] ${
-        interactive ? "cursor-pointer" : ""
-      }`}
-      surfaceRole={interactive ? "button" : undefined}
-      surfaceTabIndex={interactive ? 0 : undefined}
-      onPointerEnter={() => onHoverChange(true)}
-      onPointerLeave={() => onHoverChange(false)}
-      onSurfaceClick={onClick}
-      onSurfaceKeyDown={(event) => {
-        if (!interactive) return;
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onClick();
-        }
-      }}
-    >
-      <div className="ui-artifacts-row-primary grid grid-cols-[minmax(0,1fr)_8.5rem_5.5rem_2rem] items-center gap-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem_2rem]">
-        <div className="min-w-0 pr-3">{action}</div>
-        <div className="shrink-0 text-[13px] text-[#8a887f]">
-          {formatTimeAgo(modifiedAt)}
-        </div>
-        <div className="shrink-0 text-[13px] text-[#c7c5bd]">
-          {formatFileSize(artifact.sizeBytes)}
-        </div>
-        {/* The actions button has its own reserved column so the size stays put
-            and visible; the button only toggles visibility (keeping its slot) on
-            hover, and is permanently shown on touch. */}
-        <button
-          aria-expanded={menuOpen}
-          aria-label={t("artifacts.actionsFor", {
-            filename: artifact.displayFilename,
-          })}
-          className={`grid h-7 w-7 place-items-center justify-self-end rounded-md text-[#d8d4ca] transition-colors hover:bg-[#363632] hover:text-white ${
-            showMenuButton ? "" : "invisible [@media(hover:none)]:visible"
-          }`}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleMenu();
-          }}
-          type="button"
-        >
-          <Icon name="moreVertical" size="18px" />
-        </button>
-      </div>
-    </BrowsingListRowFrame>
-  );
-}
-
-function FileArtifactButton({
-  artifact,
-  onDownload,
-}: {
-  artifact: Artifact;
-  onDownload(): void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <button
-      type="button"
-      className="flex w-full min-w-0 items-start gap-3 text-left"
-      aria-label={t("artifacts.download", {
-        filename: artifact.displayFilename,
-      })}
-      onClick={onDownload}
-    >
-      <ArtifactLabel artifact={artifact} />
-    </button>
-  );
-}
-
-// ArtifactLabel is a row's icon (an image's thumbnail), filename and type.
-function ArtifactLabel({
-  artifact,
-  image = false,
-}: {
-  artifact: Artifact;
-  image?: boolean;
-}) {
-  const { t } = useTranslation();
-  return (
-    <>
-      {image ? (
-        <AttachmentPreview
-          mimeType={artifact.mimeType}
-          filename={artifact.displayFilename}
-          previewUrl={artifact.thumbnailUrl ?? artifact.downloadUrl}
-          alt={t("artifacts.thumbnailAlt", {
-            filename: artifact.displayFilename,
-          })}
-          className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-[#1f1f1d] text-[#c7c5bd]"
-        />
-      ) : (
-        <AttachmentPreview
-          mimeType={artifact.mimeType}
-          filename={artifact.displayFilename}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#3a3a37] text-[#c7c5bd]"
-        />
-      )}
-      <span className="block min-w-0">
-        <span className="block truncate text-[15px] leading-5 text-[#ecece6]">
-          {artifact.displayFilename}
-        </span>
-        <span className="ui-artifacts-row-secondary block truncate text-xs leading-4 text-[#8a887f]">
-          {artifact.mimeType}
-        </span>
-      </span>
-    </>
-  );
-}
-
-// An image or PDF row looks like the file row, but clicking it opens an inline
-// preview (ImageLightbox, PdfLightbox) instead of downloading: "Download"
-// lives in the row's context menu.
-function PreviewArtifactRow({
-  artifact,
-  image,
-  hideDivider,
-  hovered,
-  onHoverChange,
-  ...menu
-}: {
-  artifact: Artifact;
-  image: boolean;
-  hideDivider: boolean;
-  hovered: boolean;
-  onHoverChange(hovered: boolean): void;
-} & ArtifactRowMenuProps) {
-  const { t } = useTranslation();
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const label = t("artifacts.preview", { filename: artifact.displayFilename });
-  const close = () => setPreviewOpen(false);
-  return (
-    <>
-      <ArtifactRowFrame
-        ariaLabel={label}
-        artifact={artifact}
-        hideDivider={hideDivider}
-        hovered={hovered}
-        onHoverChange={onHoverChange}
-        onClick={() => setPreviewOpen(true)}
-        {...menu}
-        action={
-          <div
-            className="flex w-full min-w-0 items-start gap-3 text-left"
-            title={label}
-          >
-            <ArtifactLabel artifact={artifact} image={image} />
-          </div>
-        }
-      />
-      {previewOpen &&
-        (image ? (
-          <ImageLightbox
-            src={artifact.downloadUrl}
-            alt={artifact.displayFilename}
-            onClose={close}
-          />
-        ) : (
-          <PdfLightbox
-            downloadUrl={artifact.downloadUrl}
-            filename={artifact.displayFilename}
-            onClose={close}
-          />
-        ))}
-    </>
   );
 }

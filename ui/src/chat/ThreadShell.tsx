@@ -1934,6 +1934,7 @@ export function ThreadShell({
               onOpenSidebar={openMobileSidebar}
               onSessionExpired={onSessionExpired}
               onUseInThread={handleUseArtifactInThread}
+              onOpenThread={(threadID) => void selectThread(threadID)}
             />
           </Suspense>
         ) : route.view === "memory" ? (
