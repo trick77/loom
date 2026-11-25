@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // DefaultWidth and related constants define the default dimensions and limits for image generation requests.
@@ -36,8 +38,8 @@ type GenerateRequest struct {
 	Filename string
 	// AspectRatio shapes the output when Width/Height are not given, e.g. "16:9"
 	// for a wide scene or "3:4" for a poster. Explicit Width/Height win over it,
-	// so a caller asking for exact pixels still gets them. See AspectRatioSizes
-	// for the accepted values and the size each one resolves to.
+	// so a caller asking for exact pixels still gets them. See parseAspect for
+	// the form and sizeForAspect for the size a ratio resolves to.
 	AspectRatio     string
 	Width           int
 	Height          int
@@ -92,21 +94,11 @@ func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 	}
 	out.AspectRatio = strings.TrimSpace(out.AspectRatio)
 	if out.AspectRatio != "" {
-		size, ok := AspectRatioSizes[out.AspectRatio]
+		aspect, ok := parseAspect(out.AspectRatio)
 		if !ok {
-			return GenerateRequest{}, fmt.Errorf("aspect_ratio must be one of %s", strings.Join(AspectRatioNames(), ", "))
+			return GenerateRequest{}, errors.New("aspect_ratio must be W:H, e.g. 16:9 or 3:1")
 		}
-		// A partial size ("800 wide, 16:9") completes from the ratio instead of
-		// letting the missing side fall back to the square default, which would
-		// match neither what was asked for nor the ratio.
-		switch {
-		case out.Width == 0 && out.Height == 0:
-			out.Width, out.Height = size[0], size[1]
-		case out.Height == 0:
-			out.Height = out.Width * size[1] / size[0]
-		case out.Width == 0:
-			out.Width = out.Height * size[0] / size[1]
-		}
+		out.Width, out.Height = sizeForAspect(aspect, out.Width, out.Height)
 	}
 	if out.Width == 0 {
 		out.Width = DefaultWidth
@@ -153,47 +145,66 @@ func (r GenerateRequest) Normalized() (GenerateRequest, error) {
 	return out, nil
 }
 
-// AspectRatioSizes maps each accepted aspect ratio to the exact pixel size it
-// produces. Every entry is align16 and fits inside MaxDefaultSide, so picking a
-// shape never costs more than the square default — on a per-megapixel provider
-// the wide and tall ratios are cheaper than 1:1, not dearer.
-var AspectRatioSizes = map[string][2]int{
-	"1:1":  {1024, 1024},
-	"16:9": {1024, 576},
-	"9:16": {576, 1024},
-	"4:3":  {1024, 768},
-	"3:4":  {768, 1024},
-	"3:2":  {1024, 688},
-	"2:3":  {688, 1024},
+// maxAspect is the most lopsided shape a ratio resolves to. Past it the short
+// side falls under the 256 px a provider takes at least, which then raises it
+// and changes the shape unseen; a ratio beyond it is drawn at this one.
+const maxAspect = 4
+
+// parseAspect reads an aspect ratio as width over height, held within
+// maxAspect. The model passes a ratio as the user named it and the image turn
+// makes one call, so every common spelling counts: "16:9", "16x9", "16/9",
+// "2,35:1", a bare "2.35". Reports false for a value that is no ratio.
+func parseAspect(ratio string) (aspect float64, ok bool) {
+	ratio = strings.ReplaceAll(strings.TrimSpace(ratio), ",", ".")
+	left, right := ratio, "1"
+	if i := strings.IndexAny(ratio, ":xX×/"); i >= 0 {
+		_, size := utf8.DecodeRuneInString(ratio[i:])
+		left, right = ratio[:i], ratio[i+size:]
+	}
+	a, errA := strconv.ParseFloat(strings.TrimSpace(left), 64)
+	b, errB := strconv.ParseFloat(strings.TrimSpace(right), 64)
+	// Written as "not above zero" so a NaN term fails too.
+	if errA != nil || errB != nil || !(a > 0) || !(b > 0) || math.IsInf(a, 0) || math.IsInf(b, 0) {
+		return 0, false
+	}
+	return min(max(a/b, 1.0/maxAspect), maxAspect), true
 }
 
-// AspectRatioNames lists the accepted ratios in a fixed order — the square
-// default first, then each landscape ratio beside its portrait mirror — so the
-// tool schema and the validation error read predictably rather than in Go's
-// randomized map order.
-func AspectRatioNames() []string {
-	return []string{"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"}
+// sizeForAspect is the pixel size a request of the shape aspect (width over
+// height) gets. Without a size: the long side at MaxDefaultSide, the short
+// one on the 16 px grid, so a shape never costs more than the square default
+// — on a per-megapixel provider a wide or tall one is cheaper than 1:1, not
+// dearer. The short side goes to the nearest grid line, not the next: rounded
+// up, an edit of an image drew its shape a little squarer each time. A
+// partial size ("800 wide, 16:9") completes from the ratio instead of letting
+// the missing side fall back to the square default, which would match
+// neither what was asked for nor the ratio. A full size is kept.
+func sizeForAspect(aspect float64, w, h int) (int, int) {
+	switch {
+	case w == 0 && h == 0 && aspect >= 1:
+		return MaxDefaultSide, round16(MaxDefaultSide / aspect)
+	case w == 0 && h == 0:
+		return round16(MaxDefaultSide * aspect), MaxDefaultSide
+	case h == 0:
+		return w, max(1, int(float64(w)/aspect))
+	case w == 0:
+		return max(1, int(float64(h)*aspect)), h
+	}
+	return w, h
 }
 
-// AspectRatioForSize returns the accepted ratio closest in shape to (w, h),
-// used to carry a source image's proportions over to an edit so a wide photo
-// does not come back square. Zero or negative input falls back to "1:1".
+// AspectRatioForSize returns the aspect ratio of (w, h) in lowest terms, used
+// to carry a source image's proportions over to an edit so a wide photo does
+// not come back square. Zero or negative input falls back to "1:1".
 func AspectRatioForSize(w, h int) string {
 	if w <= 0 || h <= 0 {
 		return "1:1"
 	}
-	target := float64(w) / float64(h)
-	best, bestDelta := "1:1", math.Inf(1)
-	for _, name := range AspectRatioNames() {
-		size := AspectRatioSizes[name]
-		// Compare in log space so 16:9 and 9:16 are judged equally far from a
-		// square; a plain difference of ratios favours the landscape side.
-		delta := math.Abs(math.Log(target) - math.Log(float64(size[0])/float64(size[1])))
-		if delta < bestDelta {
-			best, bestDelta = name, delta
-		}
+	a, b := w, h
+	for b != 0 {
+		a, b = b, a%b
 	}
-	return best
+	return strconv.Itoa(w/a) + ":" + strconv.Itoa(h/a)
 }
 
 func align16(v int) int {

@@ -46,6 +46,16 @@ func TestServiceEditKeepsSourceShape(t *testing.T) {
 	if p.got.AspectRatio != "3:4" {
 		t.Fatalf("explicit aspect lost: %q", p.got.AspectRatio)
 	}
+	// A shape outside the common ones survives an edit: a generated 3:1
+	// banner must not come back 16:9.
+	banner := []InputImage{{Data: pngOfSize(t, 1024, 352), MimeType: "image/png"}}
+	if _, err := svc.Generate(context.Background(), CallArgs{Prompt: "cyberpunk", InputImages: banner}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := p.got.Normalized()
+	if err != nil || got.Width != 1024 || got.Height != 352 {
+		t.Fatalf("edit of a 1024x352 banner asks for %dx%d (%v), want its shape kept", got.Width, got.Height, err)
+	}
 }
 
 func TestServicePicksModel(t *testing.T) {
@@ -188,6 +198,8 @@ func TestServiceTypographySize(t *testing.T) {
 		{"16:9", CallArgs{AspectRatio: "16:9"}, 1920, 1088},
 		{"square default", CallArgs{}, 1440, 1440},
 		{"4:3", CallArgs{AspectRatio: "4:3"}, 1664, 1248},
+		// A ratio outside the common ones gets the text model's pixels too.
+		{"3:1", CallArgs{AspectRatio: "3:1"}, 2528, 832},
 		{"explicit small kept", CallArgs{Width: 800, Height: 600}, 800, 600},
 		{"explicit large scaled down", CallArgs{Width: 2560, Height: 1440}, 1920, 1088},
 		{"partial size takes the ratio", CallArgs{Width: 1280, AspectRatio: "16:9"}, 1280, 720},

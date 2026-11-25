@@ -219,6 +219,33 @@ func TestFalClientGPTImageRequest(t *testing.T) {
 		t.Fatalf("image_size %dx%d, want at most 3:1", w, h)
 	}
 
+	// A 3:1 ratio starts under GPT Image's least area: raised, it stays a
+	// banner inside the 3:1 limit.
+	if _, err := client.Generate(context.Background(), GenerateRequest{Prompt: "a banner", AspectRatio: "3:1", Model: "openai/gpt-image-2"}); err != nil {
+		t.Fatal(err)
+	}
+	size = stub.submitted["image_size"].(map[string]any)
+	if w, h = int(size["width"].(float64)), int(size["height"].(float64)); w > 3*h || w*10 < h*28 || w*h < gptImageMinPixels {
+		t.Fatalf("image_size %dx%d, want about 3:1 of at least %d px", w, h, gptImageMinPixels)
+	}
+	// An edit asks for the shape of the image just drawn. Rounded up at each
+	// step, the banner grew squarer edit by edit: it settles within one grid
+	// line and stays a banner.
+	for edit := 1; edit <= 4; edit++ {
+		if _, err := client.Generate(context.Background(), GenerateRequest{Prompt: "darker", AspectRatio: AspectRatioForSize(w, h), Model: "openai/gpt-image-2"}); err != nil {
+			t.Fatal(err)
+		}
+		size = stub.submitted["image_size"].(map[string]any)
+		w2, h2 := int(size["width"].(float64)), int(size["height"].(float64))
+		if edit > 1 && (w2 != w || h2 != h) {
+			t.Fatalf("edit %d of a %dx%d image asks for %dx%d, want the same size", edit, w, h, w2, h2)
+		}
+		if w2*10 < h2*28 {
+			t.Fatalf("edit %d asks for %dx%d, want it still about 3:1", edit, w2, h2)
+		}
+		w, h = w2, h2
+	}
+
 	if _, err := client.Generate(context.Background(), GenerateRequest{
 		Prompt: "darker", Model: "openai/gpt-image-2", InputImages: [][]byte{[]byte("\x89PNG\r\n\x1a\nsrc")},
 	}); err != nil {

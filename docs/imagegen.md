@@ -55,8 +55,8 @@ The model fills (the server declares them in its input schema):
 |---|---|---|
 | `prompt` | string, required | at most 4000 characters |
 | `filename` | string | no path, no extension |
-| `aspect_ratio` | string | e.g. `16:9`, `3:4`; omitted = square |
-| `width`, `height` | integer | exact size, only when asked |
+| `aspect_ratio` | string | `W:H`, any ratio (`16:9`, `3:1`, `2.35:1`), no fixed list; past 4:1 drawn at 4:1, or at less where the model takes less (GPT Image 3:1); omitted = square |
+| `width`, `height` | integer | only when the user names a size in pixels |
 | `seed` | integer | |
 | `output_format` | `png` \| `jpeg` | |
 | `safety_tolerance` | integer 0-5 | |

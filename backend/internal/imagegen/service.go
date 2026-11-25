@@ -262,25 +262,21 @@ func (s *Service) Generate(ctx context.Context, args CallArgs) (Output, error) {
 // typographySize is the typography model's size: an unsized request (shape
 // from aspect, square without one) drawn at typographyPixels, an explicit size
 // kept up to that area and scaled down past it. A partial size completes from
-// the shape, as Normalized does. An unknown aspect is left to Normalized to
-// refuse.
+// the shape, as Normalized does. An aspect that is no ratio is left to
+// Normalized to refuse.
 func typographySize(aspect string, w, h int) (int, int) {
-	shape, ok := AspectRatioSizes[aspect]
-	if aspect == "" {
-		shape, ok = [2]int{DefaultWidth, DefaultHeight}, true
-	}
-	if !ok {
-		return w, h
+	shape := 1.0
+	if strings.TrimSpace(aspect) != "" {
+		var ok bool
+		if shape, ok = parseAspect(aspect); !ok {
+			return w, h
+		}
 	}
 	explicit := w > 0 || h > 0
-	switch {
-	case !explicit:
-		w, h = shape[0], shape[1]
-	case h == 0:
-		h = w * shape[1] / shape[0]
-	case w == 0:
-		w = h * shape[0] / shape[1]
+	if !explicit {
+		w, h = 0, 0
 	}
+	w, h = sizeForAspect(shape, w, h)
 	if explicit && w*h <= typographyPixels {
 		return w, h
 	}
