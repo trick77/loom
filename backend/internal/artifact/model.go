@@ -83,6 +83,50 @@ type ListOptions struct {
 	// Cursor is an opaque keyset position from a previous page; empty for the
 	// first page.
 	Cursor string
+	// Since and Until bound created_at to [Since, Until); zero leaves that side open.
+	Since time.Time
+	Until time.Time
+}
+
+// ListItem is one Artifacts library row: the artifact plus the title of its
+// thread, empty when it has none.
+//
+// Table: -
+type ListItem struct {
+	Artifact
+	ThreadTitle string
+}
+
+// SummaryOptions scopes the library's period summary.
+//
+// Table: -
+type SummaryOptions struct {
+	Type ListType
+	// Since splits off OlderCount; zero counts nothing as older.
+	Since time.Time
+	// Location is the zone the months are cut in, the client's own: it lists a
+	// month by its local bounds. Nil is UTC.
+	Location *time.Location
+}
+
+// Summary counts a user's live artifacts for the library's period picker.
+//
+// Table: -
+type Summary struct {
+	// OlderCount is the number of artifacts created before SummaryOptions.Since.
+	OlderCount int
+	// Months lists every month (in SummaryOptions.Location) holding an
+	// artifact, newest first.
+	Months []MonthCount
+}
+
+// MonthCount is one month of the summary.
+//
+// Table: -
+type MonthCount struct {
+	// Month is the month as YYYY-MM in SummaryOptions.Location.
+	Month string
+	Count int
 }
 
 // OutputRequest specifies parameters for resolving an artifact's storage path.

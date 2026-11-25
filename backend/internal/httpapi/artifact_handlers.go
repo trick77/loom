@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/trick77/loom/internal/artifact"
 	"github.com/trick77/loom/internal/documents"
 	"github.com/trick77/loom/internal/imagescale"
+	"github.com/trick77/loom/internal/schedule"
 	"github.com/trick77/ship/kit/httpx"
 )
 
@@ -57,14 +59,57 @@ func (s *server) handleListArtifacts(w http.ResponseWriter, r *http.Request) {
 			ModifiedAt:      item.CreatedAt,
 			DownloadURL:     item.DownloadURL,
 			ThumbnailURL:    item.ThumbnailURL,
+			ThreadTitle:     item.ThreadTitle,
 		})
 	}
 	var nextCursor *string
 	if limit := artifact.EffectiveArtifactLimit(opts.Limit); len(items) == limit {
-		cursor := artifact.EncodeArtifactCursor(items[len(items)-1], opts.Sort)
+		cursor := artifact.EncodeArtifactCursor(items[len(items)-1].Artifact, opts.Sort)
 		nextCursor = &cursor
 	}
 	httpx.WriteJSON(w, http.StatusOK, artifactListResponse{Items: response, NextCursor: nextCursor})
+}
+
+// handleArtifactSummary feeds the library's period picker: the months holding
+// artifacts and how many predate the default window.
+func (s *server) handleArtifactSummary(w http.ResponseWriter, r *http.Request) {
+	user, ok := currentUser(w, r)
+	if !ok {
+		return
+	}
+	if s.artifacts == nil {
+		writeNotFound(w)
+		return
+	}
+	query := r.URL.Query()
+	listType, err := listTypeFromQuery(query.Get("type"))
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	since, err := timeFromQuery(query.Get("since"), "since")
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// The client's IANA zone: it lists a month by its local bounds, so the
+	// months are cut there. Absent is UTC, and so is one the server cannot
+	// load (a zone newer than its tzdata, a browser's Etc/Unknown): the client
+	// always sends its zone, and a 400 would leave it with no summary at all.
+	loc, err := schedule.LoadLocation(query.Get("tz"))
+	if err != nil {
+		loc = time.UTC
+	}
+	summary, err := s.artifacts.Summary(r.Context(), user.ID, artifact.SummaryOptions{Type: listType, Since: since, Location: loc})
+	if err != nil {
+		serverError(w, r, err, "summarize artifacts failed")
+		return
+	}
+	months := make([]artifactMonthResponse, 0, len(summary.Months))
+	for _, m := range summary.Months {
+		months = append(months, artifactMonthResponse{Month: m.Month, Count: m.Count})
+	}
+	httpx.WriteJSON(w, http.StatusOK, artifactSummaryResponse{OlderCount: summary.OlderCount, Months: months})
 }
 
 func (s *server) handleDownloadArtifact(w http.ResponseWriter, r *http.Request) {
@@ -125,8 +170,10 @@ func artifactETag(id string, sizeBytes int64) string {
 	return fmt.Sprintf("%q", fmt.Sprintf("art-%s-%d", id, sizeBytes))
 }
 
+// artifactThumbnailETag carries the thumbnail version: the same URL served the
+// older, smaller thumbnail, and a revalidation of that one must not get a 304.
 func artifactThumbnailETag(id string, sizeBytes int64) string {
-	return fmt.Sprintf("%q", fmt.Sprintf("thumb-%s-%d", id, sizeBytes))
+	return fmt.Sprintf("%q", fmt.Sprintf("thumb-v%s-%s-%d", artifact.ThumbnailVersion, id, sizeBytes))
 }
 
 // handleThumbnailArtifact serves a small JPEG preview for a raster image artifact.
@@ -159,7 +206,7 @@ func (s *server) serveArtifactThumbnail(w http.ResponseWriter, r *http.Request, 
 		writeNotFound(w)
 		return
 	}
-	abs, err := s.resolveOrCreateThumbnail(r.Context(), userID, found)
+	abs, legacy, err := s.resolveOrCreateThumbnail(r.Context(), userID, found)
 	if err != nil {
 		writeNotFound(w)
 		return
@@ -172,25 +219,99 @@ func (s *server) serveArtifactThumbnail(w http.ResponseWriter, r *http.Request, 
 	defer func() { _ = file.Close() }()
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Content-Disposition", "inline")
+	if legacy {
+		// The older, smaller thumbnail stands in on the current size's URL:
+		// cached as immutable, the browser would keep it for a year. No store
+		// and no validator, so the next view asks for the current size again.
+		w.Header().Set("Cache-Control", "no-store")
+		http.ServeContent(w, r, found.DisplayFilename+".jpg", time.Time{}, file)
+		return
+	}
 	w.Header().Set("Cache-Control", artifactCacheControl)
 	w.Header().Set("ETag", artifactThumbnailETag(found.ID, found.SizeBytes))
 	http.ServeContent(w, r, found.DisplayFilename+".jpg", found.CreatedAt, file)
 }
 
+// thumbnailRegenerations is how many thumbnails are made from their originals
+// at once. A size bump leaves every tile on screen asking at once, each decode
+// of a large original takes hundreds of MB, and the container has 2 GiB.
+const thumbnailRegenerations = 2
+
+// thumbnailSlot waits for a regeneration slot, or gives up when the request
+// goes away; release frees it.
+func (s *server) thumbnailSlot(ctx context.Context) (release func(), err error) {
+	select {
+	case s.thumbnailSlots <- struct{}{}:
+		return func() { <-s.thumbnailSlots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 // resolveOrCreateThumbnail returns the absolute path of the artifact's sidecar
 // thumbnail, generating and persisting it on demand when it is missing. It is the
-// lazy-backfill core: a stored relpath whose file still exists is served directly;
-// otherwise the original is decoded into a fresh thumbnail, the path is recorded
-// (best-effort — a failed write of the column still serves this request), and the
-// new file's path is returned. An error means no thumbnail could be produced.
-func (s *server) resolveOrCreateThumbnail(ctx context.Context, userID string, found artifact.Artifact) (string, error) {
-	if found.ThumbnailRelPath != "" {
+// lazy-backfill core: a stored relpath of the current size whose file still exists
+// is served directly; otherwise (none yet, gone, or an older size) it waits for a
+// regeneration slot, takes a current-size file another request wrote meanwhile,
+// or decodes the original into a fresh one. The path is recorded (best-effort — a
+// failed write of the column still serves this request), an older-size file is
+// removed, and the new file's path is returned. If no fresh one can be made, an
+// older-size file still serves, flagged legacy. An error means there is no
+// thumbnail at all.
+func (s *server) resolveOrCreateThumbnail(ctx context.Context, userID string, found artifact.Artifact) (abs string, legacy bool, err error) {
+	if artifact.IsCurrentThumbnail(found.VolumeRelPath, found.ThumbnailRelPath) {
 		if abs, err := artifact.ResolveThumbnailExisting(s.usersDir, userID, found.ThumbnailRelPath); err == nil {
 			if _, statErr := os.Stat(abs); statErr == nil {
-				return abs, nil
+				return abs, false, nil
 			}
 		}
 	}
+	release, err := s.thumbnailSlot(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	defer release()
+	// found was read before the wait: the request that held the slot may have
+	// written this artifact's thumbnail already.
+	thumbRel := artifact.ThumbnailRelPath(found.VolumeRelPath)
+	if abs, err := artifact.ResolveThumbnailExisting(s.usersDir, userID, thumbRel); err == nil {
+		if _, statErr := os.Stat(abs); statErr == nil {
+			s.recordThumbnail(ctx, userID, found, thumbRel)
+			return abs, false, nil
+		}
+	}
+	generate := s.thumbnailGenerator
+	if generate == nil {
+		generate = s.writeThumbnailFromOriginal
+	}
+	thumbRel, err = generate(userID, found)
+	if err != nil {
+		if abs, legacyErr := artifact.ResolveLegacyThumbnail(s.usersDir, userID, found.VolumeRelPath); legacyErr == nil {
+			if _, statErr := os.Stat(abs); statErr == nil {
+				return abs, true, nil
+			}
+		}
+		return "", false, err
+	}
+	s.recordThumbnail(ctx, userID, found, thumbRel)
+	abs, err = artifact.ResolveThumbnailExisting(s.usersDir, userID, thumbRel)
+	return abs, false, err
+}
+
+// recordThumbnail stores a current-size thumbnail's path on the artifact's row
+// (best-effort) and removes the older-size file it replaces.
+func (s *server) recordThumbnail(ctx context.Context, userID string, found artifact.Artifact, thumbRel string) {
+	if found.ThumbnailRelPath != thumbRel {
+		if err := s.artifacts.SetThumbnailRelPath(ctx, userID, found.ID, thumbRel); err != nil {
+			slog.Warn("persist artifact thumbnail path failed", "artifact_id", found.ID, "err", err)
+		}
+	}
+	artifact.RemoveLegacyThumbnail(s.usersDir, userID, found.VolumeRelPath)
+}
+
+// writeThumbnailFromOriginal decodes the artifact's original into a fresh
+// current-size thumbnail and returns its relpath.
+func (s *server) writeThumbnailFromOriginal(userID string, found artifact.Artifact) (string, error) {
 	origAbs, err := artifact.ResolveExisting(s.usersDir, userID, found.VolumeRelPath)
 	if err != nil {
 		return "", err
@@ -199,14 +320,7 @@ func (s *server) resolveOrCreateThumbnail(ctx context.Context, userID string, fo
 	if err != nil {
 		return "", err
 	}
-	thumbRel, err := artifact.WriteThumbnail(s.usersDir, userID, found.VolumeRelPath, src)
-	if err != nil {
-		return "", err
-	}
-	if err := s.artifacts.SetThumbnailRelPath(ctx, userID, found.ID, thumbRel); err != nil {
-		slog.Warn("persist artifact thumbnail path failed", "artifact_id", found.ID, "err", err)
-	}
-	return artifact.ResolveThumbnailExisting(s.usersDir, userID, thumbRel)
+	return artifact.WriteThumbnail(s.usersDir, userID, found.VolumeRelPath, src)
 }
 
 // handleDeleteArtifact removes an artifact the caller owns: its row and its file
@@ -416,18 +530,18 @@ func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, err
 	query := r.URL.Query()
 	opts := artifact.ListOptions{
 		Search: query.Get("search"),
-		Type:   artifact.ListTypeAll,
 		Sort:   artifact.SortByModified,
 		Order:  artifact.SortDesc,
 	}
-	switch value := query.Get("type"); value {
-	case "", string(artifact.ListTypeAll):
-	case string(artifact.ListTypeImages):
-		opts.Type = artifact.ListTypeImages
-	case string(artifact.ListTypeFiles):
-		opts.Type = artifact.ListTypeFiles
-	default:
-		return artifact.ListOptions{}, fmt.Errorf("invalid type")
+	var err error
+	if opts.Type, err = listTypeFromQuery(query.Get("type")); err != nil {
+		return artifact.ListOptions{}, err
+	}
+	if opts.Since, err = timeFromQuery(query.Get("since"), "since"); err != nil {
+		return artifact.ListOptions{}, err
+	}
+	if opts.Until, err = timeFromQuery(query.Get("until"), "until"); err != nil {
+		return artifact.ListOptions{}, err
 	}
 	switch value := query.Get("sort"); value {
 	case "", string(artifact.SortByModified):
@@ -454,6 +568,31 @@ func listArtifactsOptionsFromRequest(r *http.Request) (artifact.ListOptions, err
 	}
 	opts.Cursor = query.Get("cursor")
 	return opts, nil
+}
+
+// listTypeFromQuery maps the type param, shared by the list and the summary.
+func listTypeFromQuery(value string) (artifact.ListType, error) {
+	switch value {
+	case "", string(artifact.ListTypeAll):
+		return artifact.ListTypeAll, nil
+	case string(artifact.ListTypeImages):
+		return artifact.ListTypeImages, nil
+	case string(artifact.ListTypeFiles):
+		return artifact.ListTypeFiles, nil
+	}
+	return "", fmt.Errorf("invalid type")
+}
+
+// timeFromQuery parses an optional RFC 3339 bound; empty is the zero time.
+func timeFromQuery(value, name string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid %s", name)
+	}
+	return parsed, nil
 }
 
 func headerSafeFilename(filename string) string {

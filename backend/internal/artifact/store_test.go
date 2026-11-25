@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/trick77/loom/internal/store"
 )
@@ -91,31 +92,31 @@ VALUES ('art_pdf', 'user_1', 'thread_1', 'Quarterly Board.pdf', 'files/outputs/b
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	assertArtifactIDs(t, all, []string{"art_png", "art_pdf", "art_csv"})
+	assertListItemIDs(t, all, []string{"art_png", "art_pdf", "art_csv"})
 
 	images, err := s.List(ctx, "user_1", ListOptions{Type: ListTypeImages})
 	if err != nil {
 		t.Fatalf("List(images) error = %v", err)
 	}
-	assertArtifactIDs(t, images, []string{"art_png"})
+	assertListItemIDs(t, images, []string{"art_png"})
 
 	files, err := s.List(ctx, "user_1", ListOptions{Type: ListTypeFiles, Sort: SortByName, Order: SortAsc})
 	if err != nil {
 		t.Fatalf("List(files) error = %v", err)
 	}
-	assertArtifactIDs(t, files, []string{"art_csv", "art_pdf"})
+	assertListItemIDs(t, files, []string{"art_csv", "art_pdf"})
 
 	matches, err := s.List(ctx, "user_1", ListOptions{Search: "100%"})
 	if err != nil {
 		t.Fatalf("List(search) error = %v", err)
 	}
-	assertArtifactIDs(t, matches, []string{"art_csv"})
+	assertListItemIDs(t, matches, []string{"art_csv"})
 
 	bySize, err := s.List(ctx, "user_1", ListOptions{Sort: SortBySize, Order: SortAsc})
 	if err != nil {
 		t.Fatalf("List(size asc) error = %v", err)
 	}
-	assertArtifactIDs(t, bySize, []string{"art_csv", "art_png", "art_pdf"})
+	assertListItemIDs(t, bySize, []string{"art_csv", "art_png", "art_pdf"})
 }
 
 func TestStoreListPaginatesWithCursor(t *testing.T) {
@@ -150,36 +151,272 @@ VALUES ('art_a', 'user_1', 'thread_1', 'alpha.txt', 'f/a.txt', 'text/plain', 1, 
 
 	// modified DESC: newest first.
 	wantModified := []string{"art_e", "art_d", "art_c", "art_b", "art_a"}
-	assertArtifactIDs(t, collectPages(t, s, ListOptions{Sort: SortByModified, Order: SortDesc, Limit: 2}), wantModified)
+	assertListItemIDs(t, collectPages(t, s, ListOptions{Sort: SortByModified, Order: SortDesc, Limit: 2}), wantModified)
 
 	// name ASC with case-insensitive collation: alpha, Bravo, charlie, Delta, echo.
 	wantName := []string{"art_a", "art_b", "art_c", "art_d", "art_e"}
-	assertArtifactIDs(t, collectPages(t, s, ListOptions{Sort: SortByName, Order: SortAsc, Limit: 2}), wantName)
+	assertListItemIDs(t, collectPages(t, s, ListOptions{Sort: SortByName, Order: SortAsc, Limit: 2}), wantName)
 
 	// size DESC.
 	wantSize := []string{"art_e", "art_d", "art_c", "art_b", "art_a"}
-	assertArtifactIDs(t, collectPages(t, s, ListOptions{Sort: SortBySize, Order: SortDesc, Limit: 2}), wantSize)
+	assertListItemIDs(t, collectPages(t, s, ListOptions{Sort: SortBySize, Order: SortDesc, Limit: 2}), wantSize)
+
+	// Every sort pages the same with a thread-title search and a period bound
+	// active: the keyset stays aligned with the joined ORDER BY.
+	bounded := ListOptions{
+		Search: "artifacts",
+		Since:  time.Date(2026, 6, 10, 9, 0, 1, 0, time.UTC),
+		Until:  time.Date(2026, 6, 10, 9, 0, 4, 0, time.UTC),
+		Limit:  2,
+	}
+	for _, tc := range []struct {
+		sort  SortBy
+		order SortOrder
+		want  []string
+	}{
+		{SortByModified, SortDesc, []string{"art_d", "art_c", "art_b"}},
+		{SortByModified, SortAsc, []string{"art_b", "art_c", "art_d"}},
+		{SortByName, SortDesc, []string{"art_d", "art_c", "art_b"}},
+		{SortByName, SortAsc, []string{"art_b", "art_c", "art_d"}},
+		{SortBySize, SortDesc, []string{"art_d", "art_c", "art_b"}},
+		{SortBySize, SortAsc, []string{"art_b", "art_c", "art_d"}},
+	} {
+		opts := bounded
+		opts.Sort, opts.Order = tc.sort, tc.order
+		items := collectPages(t, s, opts)
+		assertListItemIDs(t, items, tc.want)
+		for _, item := range items {
+			if item.ThreadTitle != "Artifacts" {
+				t.Fatalf("%s %s: ThreadTitle = %q, want Artifacts", tc.sort, tc.order, item.ThreadTitle)
+			}
+		}
+	}
 }
 
 // collectPages walks every page via the returned next cursor and concatenates
 // the results, asserting no page exceeds the limit.
-func collectPages(t *testing.T, s *Store, opts ListOptions) []Artifact {
+func collectPages(t *testing.T, s *Store, opts ListOptions) []ListItem {
 	t.Helper()
 	ctx := context.Background()
-	var all []Artifact
+	var all []ListItem
 	limit := EffectiveArtifactLimit(opts.Limit)
 	for {
 		page, err := s.List(ctx, "user_1", opts)
 		if err != nil {
 			t.Fatalf("List(cursor=%q) error = %v", opts.Cursor, err)
 		}
+		if len(page) > limit {
+			t.Fatalf("page of %d exceeds limit %d", len(page), limit)
+		}
 		all = append(all, page...)
 		if len(page) < limit {
 			break
 		}
-		opts.Cursor = EncodeArtifactCursor(page[len(page)-1], opts.Sort)
+		opts.Cursor = EncodeArtifactCursor(page[len(page)-1].Artifact, opts.Sort)
 	}
 	return all
+}
+
+// The library's period bound is [Since, Until): a row stamped exactly at Since
+// is in, one stamped exactly at Until is out. Bounds in another zone are
+// compared as UTC, the zone created_at is stored in.
+func TestStoreListBoundsByPeriod(t *testing.T) {
+	ctx := context.Background()
+	db, s := newArtifactTestStore(t)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO artifacts (id, user_id, thread_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at)
+VALUES ('before', 'user_1', 'thread_1', 'a.txt', 'f/a', 'text/plain', 1, 'uploaded', '2026-09-30 23:59:59'),
+       ('at_since', 'user_1', 'thread_1', 'b.txt', 'f/b', 'text/plain', 1, 'uploaded', '2026-10-01 00:00:00'),
+       ('inside', 'user_1', 'thread_1', 'c.txt', 'f/c', 'text/plain', 1, 'uploaded', '2026-10-15 12:00:00'),
+       ('last', 'user_1', 'thread_1', 'd.txt', 'f/d', 'text/plain', 1, 'uploaded', '2026-10-31 23:59:59'),
+       ('at_until', 'user_1', 'thread_1', 'e.txt', 'f/e', 'text/plain', 1, 'uploaded', '2026-11-01 00:00:00'),
+       ('after', 'user_1', 'thread_1', 'f.txt', 'f/f', 'text/plain', 1, 'uploaded', '2026-11-02 00:00:00')`); err != nil {
+		t.Fatal(err)
+	}
+	zurich := time.FixedZone("CET", 3600)
+	since := time.Date(2026, 10, 1, 1, 0, 0, 0, zurich) // 2026-10-01 00:00:00 UTC
+	until := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+
+	for name, tc := range map[string]struct {
+		opts ListOptions
+		want []string
+	}{
+		"both":       {ListOptions{Since: since, Until: until}, []string{"last", "inside", "at_since"}},
+		"since only": {ListOptions{Since: since}, []string{"after", "at_until", "last", "inside", "at_since"}},
+		"until only": {ListOptions{Until: until}, []string{"last", "inside", "at_since", "before"}},
+	} {
+		items, err := s.List(ctx, "user_1", tc.opts)
+		if err != nil {
+			t.Fatalf("%s: List() error = %v", name, err)
+		}
+		assertListItemIDs(t, items, tc.want)
+	}
+}
+
+// Search matches the artifact's filename or its thread's title, only ever
+// within the caller's own artifacts.
+func TestStoreListSearchesThreadTitle(t *testing.T) {
+	ctx := context.Background()
+	db, s := newArtifactTestStore(t)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO threads (id, user_id, title) VALUES ('thread_plan', 'user_1', 'Quarterly planning'),
+                                                ('thread_foreign', 'user_2', 'Quarterly planning');
+INSERT INTO artifacts (id, user_id, thread_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at)
+VALUES ('by_title', 'user_1', 'thread_plan', 'chart.png', 'f/chart', 'image/png', 1, 'assistant_generated', '2026-10-03 00:00:00'),
+       ('by_name', 'user_1', NULL, 'planning-notes.txt', 'f/notes', 'text/plain', 1, 'user_uploaded', '2026-10-02 00:00:00'),
+       ('no_match', 'user_1', 'thread_1', 'robot.png', 'f/robot', 'image/png', 1, 'assistant_generated', '2026-10-01 00:00:00'),
+       ('foreign', 'user_2', 'thread_foreign', 'secret.png', 'f/secret', 'image/png', 1, 'assistant_generated', '2026-10-04 00:00:00')`); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := s.List(ctx, "user_1", ListOptions{Search: "PLANNING"})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	assertListItemIDs(t, items, []string{"by_title", "by_name"})
+	if items[0].ThreadTitle != "Quarterly planning" {
+		t.Fatalf("ThreadTitle = %q, want the thread's title", items[0].ThreadTitle)
+	}
+	if items[1].ThreadTitle != "" || items[1].ThreadID != "" {
+		t.Fatalf("thread-less artifact: ThreadTitle=%q ThreadID=%q, want both empty", items[1].ThreadTitle, items[1].ThreadID)
+	}
+
+	// The other user's identically-titled thread never leaks across.
+	foreign, err := s.List(ctx, "user_2", ListOptions{Search: "planning"})
+	if err != nil {
+		t.Fatalf("List(user_2) error = %v", err)
+	}
+	assertListItemIDs(t, foreign, []string{"foreign"})
+
+	// LIKE wildcards in the term stay literal against the title too.
+	none, err := s.List(ctx, "user_1", ListOptions{Search: "Quarterly_planning"})
+	if err != nil {
+		t.Fatalf("List(wildcard) error = %v", err)
+	}
+	assertListItemIDs(t, none, []string{})
+}
+
+func TestStoreSummaryCountsMonthsAndOlder(t *testing.T) {
+	ctx := context.Background()
+	db, s := newArtifactTestStore(t)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO threads (id, user_id, title) VALUES ('thread_2', 'user_2', 'Other');
+INSERT INTO artifacts (id, user_id, thread_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, deleted_at)
+VALUES ('nov_png', 'user_1', 'thread_1', 'a.png', 'f/a', 'image/png', 1, 'uploaded', '2026-11-03 08:00:00', NULL),
+       ('nov_pdf', 'user_1', 'thread_1', 'b.pdf', 'f/b', 'application/pdf', 1, 'uploaded', '2026-11-20 08:00:00', NULL),
+       ('oct_end', 'user_1', 'thread_1', 'c.png', 'f/c', 'image/png', 1, 'uploaded', '2026-10-31 23:59:59', NULL),
+       ('oct_start', 'user_1', NULL, 'd.csv', 'f/d', 'text/csv', 1, 'uploaded', '2026-10-01 00:00:00', NULL),
+       ('sep_gone', 'user_1', 'thread_1', 'e.png', 'f/e', 'image/png', 1, 'uploaded', '2026-09-10 08:00:00', '2026-09-11 00:00:00'),
+       ('sep_last', 'user_1', 'thread_1', 'f.txt', 'f/f', 'text/plain', 1, 'uploaded', '2026-09-30 23:59:59', NULL),
+       ('aug', 'user_1', 'thread_1', 'g.png', 'f/g', 'image/png', 1, 'uploaded', '2026-08-15 08:00:00', NULL),
+       ('jul_foreign', 'user_2', 'thread_2', 'h.png', 'f/h', 'image/png', 1, 'uploaded', '2026-07-01 08:00:00', NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	since := time.Date(2026, 10, 1, 2, 0, 0, 0, time.FixedZone("CEST", 2*3600)) // 2026-10-01 00:00:00 UTC
+
+	for name, tc := range map[string]struct {
+		opts SummaryOptions
+		want Summary
+	}{
+		"all": {SummaryOptions{Type: ListTypeAll, Since: since}, Summary{OlderCount: 2, Months: []MonthCount{
+			{Month: "2026-11", Count: 2}, {Month: "2026-10", Count: 2}, {Month: "2026-09", Count: 1}, {Month: "2026-08", Count: 1},
+		}}},
+		"images": {SummaryOptions{Type: ListTypeImages, Since: since}, Summary{OlderCount: 1, Months: []MonthCount{
+			{Month: "2026-11", Count: 1}, {Month: "2026-10", Count: 1}, {Month: "2026-08", Count: 1},
+		}}},
+		"files": {SummaryOptions{Type: ListTypeFiles, Since: since}, Summary{OlderCount: 1, Months: []MonthCount{
+			{Month: "2026-11", Count: 1}, {Month: "2026-10", Count: 1}, {Month: "2026-09", Count: 1},
+		}}},
+		"no since": {SummaryOptions{}, Summary{OlderCount: 0, Months: []MonthCount{
+			{Month: "2026-11", Count: 2}, {Month: "2026-10", Count: 2}, {Month: "2026-09", Count: 1}, {Month: "2026-08", Count: 1},
+		}}},
+	} {
+		got, err := s.Summary(ctx, "user_1", tc.opts)
+		if err != nil {
+			t.Fatalf("%s: Summary() error = %v", name, err)
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("%s: Summary() = %+v, want %+v", name, got, tc.want)
+		}
+	}
+
+	// A closed database surfaces as an error from both library reads.
+	defer func() {
+		_ = db.Close()
+		if _, err := s.Summary(ctx, "user_1", SummaryOptions{}); err == nil {
+			t.Fatal("Summary() on a closed DB returned no error")
+		}
+		if _, err := s.List(ctx, "user_1", ListOptions{}); err == nil {
+			t.Fatal("List() on a closed DB returned no error")
+		}
+	}()
+
+	// A user with no artifacts gets an empty, non-nil month list.
+	empty, err := s.Summary(ctx, "user_3", SummaryOptions{Since: since})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.Months == nil || len(empty.Months) != 0 || empty.OlderCount != 0 {
+		t.Fatalf("empty Summary() = %#v, want zero count and an empty month list", empty)
+	}
+}
+
+// The client lists a month by its local bounds, so the summary buckets in the
+// client's zone: just past local midnight on Jan 1 is January there, whatever
+// UTC says.
+func TestStoreSummaryBucketsMonthsInTheGivenZone(t *testing.T) {
+	ctx := context.Background()
+	db, s := newArtifactTestStore(t)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO threads (id, user_id, title) VALUES ('thread_2', 'user_2', 'Other');
+INSERT INTO artifacts (id, user_id, thread_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at, deleted_at)
+VALUES ('east_jan', 'user_1', 'thread_1', 'a.png', 'f/a', 'image/png', 1, 'uploaded', '2025-12-31 23:30:00', NULL),
+       ('west_jan', 'user_1', 'thread_1', 'b.pdf', 'f/b', 'application/pdf', 1, 'uploaded', '2026-01-01 05:30:00', NULL),
+       ('west_dec', 'user_1', 'thread_1', 'c.png', 'f/c', 'image/png', 1, 'uploaded', '2026-01-01 00:30:00', NULL),
+       ('gone', 'user_1', 'thread_1', 'd.png', 'f/d', 'image/png', 1, 'uploaded', '2026-01-01 00:45:00', '2026-01-02 00:00:00'),
+       ('foreign', 'user_2', 'thread_2', 'e.png', 'f/e', 'image/png', 1, 'uploaded', '2026-01-01 00:45:00', NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	load := func(name string) *time.Location {
+		loc, err := time.LoadLocation(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return loc
+	}
+
+	for name, tc := range map[string]struct {
+		opts SummaryOptions
+		want []MonthCount
+	}{
+		// UTC+1: east_jan is 00:30 on Jan 1, west_dec 01:30, west_jan 06:30.
+		"east": {SummaryOptions{Location: load("Europe/Zurich")}, []MonthCount{{Month: "2026-01", Count: 3}}},
+		// UTC-5: west_jan is 00:30 on Jan 1; the other two are still December.
+		"west": {SummaryOptions{Location: load("America/New_York")}, []MonthCount{
+			{Month: "2026-01", Count: 1}, {Month: "2025-12", Count: 2},
+		}},
+		// No zone is UTC.
+		"utc":         {SummaryOptions{}, []MonthCount{{Month: "2026-01", Count: 2}, {Month: "2025-12", Count: 1}}},
+		"east images": {SummaryOptions{Type: ListTypeImages, Location: load("Europe/Zurich")}, []MonthCount{{Month: "2026-01", Count: 2}}},
+	} {
+		got, err := s.Summary(ctx, "user_1", tc.opts)
+		if err != nil {
+			t.Fatalf("%s: Summary() error = %v", name, err)
+		}
+		if !reflect.DeepEqual(got.Months, tc.want) {
+			t.Fatalf("%s: Months = %+v, want %+v", name, got.Months, tc.want)
+		}
+	}
+
+	// A created_at that is no time fails the summary rather than miscount.
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO artifacts (id, user_id, thread_id, display_filename, volume_relpath, mime_type, size_bytes, source, created_at)
+VALUES ('bad', 'user_1', 'thread_1', 'x.png', 'f/x', 'image/png', 1, 'uploaded', 'not a time')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Summary(ctx, "user_1", SummaryOptions{}); err == nil {
+		t.Fatal("Summary() with an unparseable created_at returned no error")
+	}
 }
 
 func TestStoreSoftDeleteHidesFromListAndGet(t *testing.T) {
@@ -207,7 +444,7 @@ func TestStoreSoftDeleteHidesFromListAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	assertArtifactIDs(t, all, []string{})
+	assertListItemIDs(t, all, []string{})
 	if _, ok, err := s.Get(ctx, "user_1", created.ID); err != nil || ok {
 		t.Fatalf("Get() after delete ok=%v err=%v, want false nil", ok, err)
 	}
@@ -299,6 +536,15 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 	return db, NewStore(db)
 }
 
+func assertListItemIDs(t *testing.T, items []ListItem, want []string) {
+	t.Helper()
+	artifacts := make([]Artifact, 0, len(items))
+	for _, item := range items {
+		artifacts = append(artifacts, item.Artifact)
+	}
+	assertArtifactIDs(t, artifacts, want)
+}
+
 func assertArtifactIDs(t *testing.T, artifacts []Artifact, want []string) {
 	t.Helper()
 	got := make([]string, 0, len(artifacts))
@@ -344,7 +590,9 @@ VALUES ('thread_1', 'user_1', 'Artifacts')`); err != nil {
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	wantURL := "/api/artifacts/" + img.ID + "/thumbnail"
+	// Versioned, so a browser never reuses an older, smaller thumbnail it
+	// cached as immutable.
+	wantURL := "/api/artifacts/" + img.ID + "/thumbnail?v=2"
 	wantThumbRel := ThumbnailRelPath("files/outputs/robot.png")
 	if img.ThumbnailRelPath != wantThumbRel || img.ThumbnailURL != wantURL {
 		t.Fatalf("create result relpath=%q url=%q, want stored relpath and %q", img.ThumbnailRelPath, img.ThumbnailURL, wantURL)

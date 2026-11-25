@@ -23,6 +23,39 @@ func TestResolveThumbnailExistingRejectsSymlinkEscape(t *testing.T) {
 	}
 }
 
+// The tile-sized thumbnail lives apart from the older, smaller one, so a stored
+// path tells which size is on disk; a delete removes both.
+func TestThumbnailSizesLiveApartAndRemoveTakesBoth(t *testing.T) {
+	const rel = "files/outputs/robot.png"
+	current, legacy := ThumbnailRelPath(rel), legacyThumbnailRelPath(rel)
+	if current != ".loom/thumbnails/v2/files/outputs/robot.png.jpg" {
+		t.Fatalf("ThumbnailRelPath() = %q", current)
+	}
+	if legacy != ".loom/thumbnails/files/outputs/robot.png.jpg" {
+		t.Fatalf("legacyThumbnailRelPath() = %q", legacy)
+	}
+	if !IsCurrentThumbnail(rel, current) || IsCurrentThumbnail(rel, legacy) || IsCurrentThumbnail(rel, "") {
+		t.Fatal("IsCurrentThumbnail() must accept only the current path")
+	}
+
+	usersDir := t.TempDir()
+	for _, thumb := range []string{current, legacy} {
+		abs := filepath.Join(usersDir, "user_1", filepath.FromSlash(thumb))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte("jpg"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	RemoveThumbnail(usersDir, "user_1", rel)
+	for _, thumb := range []string{current, legacy} {
+		if _, err := os.Stat(filepath.Join(usersDir, "user_1", filepath.FromSlash(thumb))); !os.IsNotExist(err) {
+			t.Fatalf("%s still exists after RemoveThumbnail, err = %v", thumb, err)
+		}
+	}
+}
+
 func TestResolveThumbnailExistingAcceptsMissingPathInsideRoot(t *testing.T) {
 	usersDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(usersDir, "user_1"), 0o700); err != nil {

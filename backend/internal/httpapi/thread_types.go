@@ -200,4 +200,15 @@ type artifactListItemResponse struct {
 	ModifiedAt      time.Time `json:"modifiedAt"`
 	DownloadURL     string    `json:"downloadUrl"`
 	ThumbnailURL    string    `json:"thumbnailUrl,omitempty"`
+	ThreadTitle     string    `json:"threadTitle,omitempty"`
+}
+
+type artifactSummaryResponse struct {
+	OlderCount int                     `json:"olderCount"`
+	Months     []artifactMonthResponse `json:"months"`
+}
+
+type artifactMonthResponse struct {
+	Month string `json:"month"`
+	Count int    `json:"count"`
 }

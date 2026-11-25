@@ -180,6 +180,10 @@ type server struct {
 	now             func() time.Time
 	runTimeout      time.Duration
 	runSoftDeadline time.Duration
+	// thumbnailSlots bounds thumbnail regeneration (thumbnailRegenerations);
+	// thumbnailGenerator makes one, nil → writeThumbnailFromOriginal (tests).
+	thumbnailSlots     chan struct{}
+	thumbnailGenerator func(userID string, found artifact.Artifact) (string, error)
 }
 
 // The stores and services below are the HTTP layer's full dependencies. Each
@@ -293,7 +297,8 @@ type ArtifactStore interface {
 	Rename(context.Context, string, string, string) error
 	SetThumbnailRelPath(context.Context, string, string, string) error
 	DetachFromThread(context.Context, string, []string) error
-	List(context.Context, string, artifact.ListOptions) ([]artifact.Artifact, error)
+	List(context.Context, string, artifact.ListOptions) ([]artifact.ListItem, error)
+	Summary(context.Context, string, artifact.SummaryOptions) (artifact.Summary, error)
 	ListForThread(context.Context, string, string) ([]artifact.Artifact, error)
 	ListForProject(context.Context, string, string) ([]artifact.Artifact, error)
 }
@@ -380,6 +385,7 @@ func newServer(d Deps) *server {
 		stravaUsers:           d.StravaUsers,
 		usersDir:              d.UsersDir,
 		faviconCacheDir:       faviconCacheDirFor(d.UsersDir),
+		thumbnailSlots:        make(chan struct{}, thumbnailRegenerations),
 		oidcAdminGroup:        d.OIDCAdminGroup,
 		devAuthClaims:         d.DevAuthClaims,
 		postLogoutRedirectURL: d.PostLogoutRedirectURL,
@@ -561,6 +567,7 @@ func NewWithWorkers(d Deps) (http.Handler, *MemoryWorker, *ScheduleWorker) {
 	mux.Handle("GET /api/favicon", s.requireAuth(http.HandlerFunc(s.handleFavicon)))
 	mux.Handle("GET /api/source-image", s.requireAuth(http.HandlerFunc(s.handleSourceImage)))
 	mux.Handle("GET /api/artifacts", s.requireAuth(http.HandlerFunc(s.handleListArtifacts)))
+	mux.Handle("GET /api/artifacts/summary", s.requireAuth(http.HandlerFunc(s.handleArtifactSummary)))
 	mux.Handle("POST /api/artifacts/images/upload", s.requireAuth(http.HandlerFunc(s.handleUploadImageAttachment)))
 	mux.Handle("GET /api/artifacts/{artifactID}/download", s.requireAuth(http.HandlerFunc(s.handleDownloadArtifact)))
 	mux.Handle("GET /api/artifacts/{artifactID}/thumbnail", s.requireAuth(http.HandlerFunc(s.handleThumbnailArtifact)))

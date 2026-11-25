@@ -60,7 +60,7 @@ func TestBuildShareSnapshot_sanitizes(t *testing.T) {
 		"art1", "art2", // generated artifacts kept
 		"/api/shares/SH4RE/artifacts/art1/download",
 		"/api/shares/SH4RE/artifacts/art2/download",
-		"/api/shares/SH4RE/artifacts/art2/thumbnail",
+		"/api/shares/SH4RE/artifacts/art2/thumbnail?v=2",
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(got, want) {

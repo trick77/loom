@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 )
 
 // sqliteTimeLayout matches the textual datetime format SQLite stores and orders
@@ -16,6 +17,13 @@ import (
 // format (fractional seconds, 'T'/'Z', offset) would silently shift the page
 // boundary. The existing ORDER BY depends on the same invariant.
 const sqliteTimeLayout = "2006-01-02 15:04:05"
+
+// sqliteTime renders a bound for comparison against created_at. Sub-second
+// precision is dropped (created_at has none), so a period bound and the
+// summary's olderCount split at the same second.
+func sqliteTime(t time.Time) string {
+	return t.UTC().Format(sqliteTimeLayout)
+}
 
 // defaultArtifactLimit is the page size when the client passes none. The
 // client paginates with cursors, so the default only bounds the first page;
@@ -43,7 +51,7 @@ func EncodeArtifactCursor(a Artifact, sort SortBy) string {
 	case SortBySize:
 		value = strconv.FormatInt(a.SizeBytes, 10)
 	default:
-		value = a.CreatedAt.UTC().Format(sqliteTimeLayout)
+		value = sqliteTime(a.CreatedAt)
 	}
 	raw, _ := json.Marshal(artifactCursorPayload{Value: value, ID: a.ID})
 	return base64.RawURLEncoding.EncodeToString(raw)
@@ -81,23 +89,25 @@ func artifactKeysetClause(sort SortBy, order SortOrder, cursor string) (artifact
 	if order == SortAsc {
 		cmp = ">"
 	}
+	// Columns carry List's artifacts alias "a": the query joins threads, which
+	// has its own id and created_at.
 	var expr string
 	var bound any = payload.Value
 	switch sort {
 	case SortByName:
-		expr = "display_filename COLLATE NOCASE"
+		expr = "a.display_filename COLLATE NOCASE"
 	case SortBySize:
-		expr = "size_bytes"
+		expr = "a.size_bytes"
 		n, err := strconv.ParseInt(payload.Value, 10, 64)
 		if err != nil {
 			return artifactKeyset{}, nil, fmt.Errorf("invalid cursor: %w", err)
 		}
 		bound = n
 	default:
-		expr = "created_at"
+		expr = "a.created_at"
 	}
 	return artifactKeyset{
-		expr: fmt.Sprintf("(%s, id) %s (?, ?)", expr, cmp),
+		expr: fmt.Sprintf("(%s, a.id) %s (?, ?)", expr, cmp),
 		id:   payload.ID,
 	}, bound, nil
 }

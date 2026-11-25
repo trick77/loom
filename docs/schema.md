@@ -863,6 +863,15 @@ Foreign keys:
 
 ## Types not stored as rows
 
+### artifact.ListItem
+
+In `internal/artifact`. ListItem is one Artifacts library row: the artifact plus the title of its thread, empty when it has none.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Artifact` (embedded) | `Artifact` |  |
+| `ThreadTitle` | `string` |  |
+
 ### artifact.ListOptions
 
 In `internal/artifact`. ListOptions specifies filtering and pagination parameters for artifact lists.
@@ -875,6 +884,17 @@ In `internal/artifact`. ListOptions specifies filtering and pagination parameter
 | `Order` | `SortOrder` |  |
 | `Limit` | `int` |  |
 | `Cursor` | `string` | Cursor is an opaque keyset position from a previous page; empty for the first page. |
+| `Since` | `time.Time` | Since and Until bound created_at to [Since, Until); zero leaves that side open. |
+| `Until` | `time.Time` | see `Since` |
+
+### artifact.MonthCount
+
+In `internal/artifact`. MonthCount is one month of the summary.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Month` | `string` | Month is the month as YYYY-MM in SummaryOptions.Location. |
+| `Count` | `int` |  |
 
 ### artifact.OutputPath
 
@@ -899,6 +919,25 @@ In `internal/artifact`. OutputRequest specifies parameters for resolving an arti
 | `ProjectID` | `*string` |  |
 | `DisplayFilename` | `string` |  |
 | `Extension` | `string` |  |
+
+### artifact.Summary
+
+In `internal/artifact`. Summary counts a user's live artifacts for the library's period picker.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `OlderCount` | `int` | OlderCount is the number of artifacts created before SummaryOptions.Since. |
+| `Months` | `[]MonthCount` | Months lists every month (in SummaryOptions.Location) holding an artifact, newest first. |
+
+### artifact.SummaryOptions
+
+In `internal/artifact`. SummaryOptions scopes the library's period summary.
+
+| Field | Type | Doc |
+| --- | --- | --- |
+| `Type` | `ListType` |  |
+| `Since` | `time.Time` | Since splits off OlderCount; zero counts nothing as older. |
+| `Location` | `*time.Location` | Location is the zone the months are cut in, the client's own: it lists a month by its local bounds. Nil is UTC. |
 
 ### auth.Claims
 
